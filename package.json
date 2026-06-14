@@ -1,0 +1,10 @@
+{
+  "name": "loladesk",
+  "version": "1.0.0",
+  "description": "LolaDesk — AI Front Desk for Salons & Spas",
+  "private": true,
+  "scripts": {
+    "dev": "python3 -m http.server 8080",
+    "start": "python3 -m http.server 8080"
+  }
+}
