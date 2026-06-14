@@ -175,32 +175,66 @@ function drawOrb(){
   const active = orbState==='listening' || orbState==='speaking';
   const think = orbState==='thinking';
 
-  // glow
-  const g = octx.createRadialGradient(cx,cy,0,cx,cy,90);
-  const gA = 0.05 + Math.sin(t*1.2)*0.02 + (active?0.07:0);
-  g.addColorStop(0,`rgba(255,45,142,${gA})`);
-  g.addColorStop(1,'rgba(255,45,142,0)');
-  octx.fillStyle=g; octx.fillRect(0,0,240,240);
+  // breathing pulse — the orb is always gently alive
+  const breath = 0.5 + Math.sin(t*1.3)*0.5;            // 0..1 slow breath
+  const energy = active ? 1 : (think ? 0.6 : 0.32);     // base liveliness
 
-  // outer ring
-  for(let i=0;i<56;i++){
-    const a=(i/56)*Math.PI*2;
-    const r=70 + Math.sin(t*.75+i*.4)*6 + Math.sin(t*1.3+i*.85)*3 + (active?Math.sin(t*2.8+i)*9:0) + (think?Math.sin(t*1.8+i*.5)*4:0);
+  // additive blending = neon bloom
+  octx.globalCompositeOperation = 'lighter';
+
+  // ── deep outer halo (radiates outward like Siri) ──
+  const halo = octx.createRadialGradient(cx,cy,10,cx,cy,118);
+  const haloA = 0.10 + breath*0.10 + energy*0.14;
+  halo.addColorStop(0, `rgba(255,45,142,${haloA})`);
+  halo.addColorStop(0.45, `rgba(255,45,142,${haloA*0.4})`);
+  halo.addColorStop(1, 'rgba(255,45,142,0)');
+  octx.fillStyle = halo; octx.fillRect(0,0,240,240);
+
+  // ── bright core glow ──
+  const core = octx.createRadialGradient(cx,cy,0,cx,cy,60);
+  const coreA = 0.22 + breath*0.18 + energy*0.25;
+  core.addColorStop(0, `rgba(255,120,190,${coreA})`);
+  core.addColorStop(0.5, `rgba(255,45,142,${coreA*0.5})`);
+  core.addColorStop(1, 'rgba(255,45,142,0)');
+  octx.fillStyle = core; octx.fillRect(0,0,240,240);
+
+  // ── outer particle ring (bright, alive) ──
+  for(let i=0;i<64;i++){
+    const a=(i/64)*Math.PI*2;
+    const r=68 + Math.sin(t*.8+i*.4)*7 + Math.sin(t*1.4+i*.85)*4
+            + (active?Math.sin(t*3+i)*11:0) + (think?Math.sin(t*1.9+i*.5)*5:0)
+            + breath*3;
     const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-    const al=0.1 + Math.abs(Math.sin(t*.55+i*.3))*0.22 + (active?0.18:0);
-    octx.beginPath(); octx.arc(x,y,1.4,0,Math.PI*2);
-    octx.fillStyle=`rgba(255,${45+Math.sin(t+i*.2)*40},${142+Math.sin(t+i)*30},${al})`;
+    const al=0.25 + Math.abs(Math.sin(t*.6+i*.3))*0.4 + energy*0.25;
+    const size = 1.5 + Math.abs(Math.sin(t*.9+i))*1.2;
+    octx.beginPath(); octx.arc(x,y,size,0,Math.PI*2);
+    octx.fillStyle=`rgba(255,${90+Math.sin(t+i*.2)*60},${175+Math.sin(t+i)*30},${al})`;
     octx.fill();
   }
-  // inner nebula
-  for(let i=0;i<28;i++){
-    const a=(i/28)*Math.PI*2 + t*.2;
-    const r=26 + Math.sin(t*1.1+i*.55)*8 + (active?Math.sin(t*3.5+i)*6:0);
+
+  // ── mid swirl ──
+  for(let i=0;i<40;i++){
+    const a=(i/40)*Math.PI*2 - t*.35;
+    const r=44 + Math.sin(t*1.1+i*.5)*9 + (active?Math.sin(t*3.2+i)*7:0) + breath*4;
     const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-    octx.beginPath(); octx.arc(x,y,.9,0,Math.PI*2);
-    octx.fillStyle=`rgba(255,107,176,${0.04+Math.abs(Math.sin(t*.85+i))*0.09})`;
+    const al=0.18 + Math.abs(Math.sin(t*.75+i*.4))*0.32 + energy*0.2;
+    octx.beginPath(); octx.arc(x,y,1.2,0,Math.PI*2);
+    octx.fillStyle=`rgba(255,140,200,${al})`;
     octx.fill();
   }
+
+  // ── inner nebula core ──
+  for(let i=0;i<30;i++){
+    const a=(i/30)*Math.PI*2 + t*.25;
+    const r=20 + Math.sin(t*1.2+i*.55)*9 + (active?Math.sin(t*3.8+i)*7:0);
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    const al=0.2 + Math.abs(Math.sin(t*.9+i))*0.35 + energy*0.2;
+    octx.beginPath(); octx.arc(x,y,1.1,0,Math.PI*2);
+    octx.fillStyle=`rgba(255,180,215,${al})`;
+    octx.fill();
+  }
+
+  octx.globalCompositeOperation = 'source-over';
   orbT += 0.016;
   requestAnimationFrame(drawOrb);
 }
@@ -576,23 +610,38 @@ function drawPhoneOrb(){
   (function loop(){
     px.clearRect(0,0,150,150);
     const cx=75, cy=75;
-    for(let i=0;i<42;i++){
-      const a=(i/42)*Math.PI*2;
-      const r=44+Math.sin(pt*.8+i*.4)*5+Math.sin(pt*1.3+i*.85)*2.5;
+    const breath = 0.5 + Math.sin(pt*1.3)*0.5;
+    px.globalCompositeOperation = 'lighter';
+    // halo
+    const halo = px.createRadialGradient(cx,cy,6,cx,cy,72);
+    const hA = 0.12 + breath*0.12;
+    halo.addColorStop(0,`rgba(255,45,142,${hA})`);
+    halo.addColorStop(1,'rgba(255,45,142,0)');
+    px.fillStyle=halo; px.fillRect(0,0,150,150);
+    // core
+    const core = px.createRadialGradient(cx,cy,0,cx,cy,38);
+    const cA = 0.25 + breath*0.2;
+    core.addColorStop(0,`rgba(255,120,190,${cA})`);
+    core.addColorStop(1,'rgba(255,45,142,0)');
+    px.fillStyle=core; px.fillRect(0,0,150,150);
+    for(let i=0;i<46;i++){
+      const a=(i/46)*Math.PI*2;
+      const r=42+Math.sin(pt*.8+i*.4)*5+Math.sin(pt*1.3+i*.85)*3+breath*2;
       const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-      const al=.1+Math.abs(Math.sin(pt*.55+i*.3))*.2;
-      px.beginPath(); px.arc(x,y,1.1,0,Math.PI*2);
-      px.fillStyle=`rgba(255,${45+Math.sin(pt+i*.2)*40},${142+Math.sin(pt+i)*30},${al})`;
+      const al=.22+Math.abs(Math.sin(pt*.6+i*.3))*.35;
+      px.beginPath(); px.arc(x,y,1.3,0,Math.PI*2);
+      px.fillStyle=`rgba(255,${90+Math.sin(pt+i*.2)*60},${175+Math.sin(pt+i)*30},${al})`;
       px.fill();
     }
     for(let i=0;i<20;i++){
-      const a=(i/20)*Math.PI*2 + pt*.2;
-      const r=18+Math.sin(pt*1.1+i*.55)*5;
+      const a=(i/20)*Math.PI*2 + pt*.25;
+      const r=16+Math.sin(pt*1.1+i*.55)*5;
       const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-      px.beginPath(); px.arc(x,y,.7,0,Math.PI*2);
-      px.fillStyle=`rgba(255,107,176,${0.04+Math.abs(Math.sin(pt*.85+i))*0.08})`;
+      px.beginPath(); px.arc(x,y,.9,0,Math.PI*2);
+      px.fillStyle=`rgba(255,180,215,${0.18+Math.abs(Math.sin(pt*.85+i))*0.3})`;
       px.fill();
     }
+    px.globalCompositeOperation = 'source-over';
     pt+=.016;
     requestAnimationFrame(loop);
   })();

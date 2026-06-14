@@ -3,9 +3,10 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/landing.html" },
     { "source": "/start", "destination": "/onboarding.html" },
-    { "source": "/dashboard", "destination": "/index.html" }
+    { "source": "/signin", "destination": "/login.html" },
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/numbers", "destination": "/numbers.html" }
   ],
   "headers": [
     {
