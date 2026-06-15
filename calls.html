@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Calls — LolaDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.call-layout{display:grid;grid-template-columns:1fr 360px;gap:16px}
+@media(max-width:1000px){.call-layout{grid-template-columns:1fr}}
+.call-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
+.call-row:hover{background:var(--surface2)}
+.call-row:last-child{border-bottom:none}
+.call-dir{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.call-dir.in{background:var(--green-dim);color:var(--green)}
+.call-dir.out{background:var(--blue-dim);color:var(--blue)}
+.call-dir.missed{background:rgba(255,59,48,.12);color:#ff5146}
+.call-info{flex:1;min-width:0}
+.call-name{font-size:14px;font-weight:500}
+.call-meta{font-size:11px;color:var(--text3)}
+.call-outcome{text-align:right}
+.call-time{font-size:11px;color:var(--text3);margin-top:3px}
+/* detail panel */
+.detail{padding:20px}
+.detail-orb{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;font-size:22px;color:#fff;margin-bottom:14px}
+.detail-title{font-size:16px;font-weight:600;margin-bottom:2px}
+.detail-sub{font-size:12px;color:var(--text3);margin-bottom:18px}
+.transcript{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.t-line{font-size:13px;line-height:1.5}
+.t-line .who{font-weight:600;color:var(--pink2)}
+.t-line.caller .who{color:var(--text2)}
+.detail-stat{display:flex;justify-content:space-between;font-size:12px;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.detail-stat-label{color:var(--text3)}
+</style>
+</head>
+<body data-page="calls">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Calls</h1>
+        <p class="page-sub">Every call Lola answered — so you never miss one.</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="location.href='numbers.html'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/></svg>Manage numbers</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-val">47</div><div class="kpi-label">Calls today</div><div class="kpi-sub">Lola answered all</div></div>
+      <div class="kpi"><div class="kpi-val green">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
+      <div class="kpi"><div class="kpi-val">2m 14s</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick & warm</div></div>
+      <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lost to voicemail</div><div class="kpi-sub">Lola never sleeps</div></div>
+    </div>
+
+    <div class="call-layout">
+      <div class="card">
+        <div class="card-head"><div class="card-title">Recent calls</div></div>
+        <div id="callList"></div>
+      </div>
+      <div class="card" id="detailCard">
+        <div class="card-head"><div class="card-title">Call detail</div></div>
+        <div class="detail" id="detail"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="sidebar.js"></script>
+<script>
+const CALLS = [
+  { name:'Sarah Johnson', num:'+1 (305) 555-0142', dir:'in', outcome:'Booked', service:'Balayage consultation', time:'2m ago', dur:'2:18', prob:92,
+    transcript:[['caller','Hi, I\'m looking to get a balayage.'],['lola','I can definitely help with that! Are you thinking soft and natural, or more of a bold transformation?'],['caller','Soft and natural.'],['lola','Perfect — I have Thursday at 2pm or Saturday at 11am with Meddy. Which works better?'],['caller','Saturday please.'],['lola','Booked! I\'ll text you the confirmation. See you Saturday!']] },
+  { name:'+1 (310) 555-0189', num:'+1 (310) 555-0189', dir:'in', outcome:'Booked', service:'Extensions consult', time:'18m ago', dur:'3:02', prob:88, transcript:[['caller','Do you do hair extensions?'],['lola','We do! We\'re Hairdreams certified. Extensions start at $800 and include a free consultation. Want me to book yours?'],['caller','Yes please.'],['lola','Done — I\'ll text you the details!']] },
+  { name:'Rachel Smith', num:'+1 (305) 555-0177', dir:'in', outcome:'Booked', service:'Rebooking', time:'45m ago', dur:'1:41', prob:95, transcript:[['lola','Hi Rachel! It\'s been about 8 weeks since your last balayage — want to keep your color fresh?'],['caller','Oh yes, I was just thinking about that.'],['lola','I have Friday at 3pm. Shall I lock it in?'],['caller','Perfect.']] },
+  { name:'Unknown caller', num:'+1 (786) 555-0203', dir:'missed', outcome:'Texted back', service:'Auto text-back', time:'1h ago', dur:'—', prob:0, transcript:[['lola','(Missed call → Lola automatically texted) Hi! Sorry we missed you at MMA Salon. This is Lola — how can I help you book today?']] },
+  { name:'Camila Santos', num:'+1 (305) 555-0156', dir:'out', outcome:'Booked', service:'Win-back call', time:'2h ago', dur:'2:55', prob:78, transcript:[['lola','Hi Camila! We miss you at MMA Salon. We\'d love to have you back — can I offer you a fresh keratin treatment?'],['caller','That sounds great actually.'],['lola','Wonderful! Booking you now.']] }
+];
+
+function dirIcon(d){
+  if(d==='in') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9" transform="rotate(180 12 12)"/></svg>';
+  if(d==='out') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>';
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 5l18 14M21 5L3 19" opacity="0"/><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
+}
+function render(){
+  document.getElementById('callList').innerHTML = CALLS.map((c,i)=>`
+    <div class="call-row" onclick="showDetail(${i})">
+      <div class="call-dir ${c.dir}">${dirIcon(c.dir)}</div>
+      <div class="call-info">
+        <div class="call-name">${c.name}</div>
+        <div class="call-meta">${c.service} · ${c.dur}</div>
+      </div>
+      <div class="call-outcome">
+        <span class="pill ${c.outcome==='Booked'?'green':c.outcome.includes('text')?'blue':'gray'}">${c.outcome}</span>
+        <div class="call-time">${c.time}</div>
+      </div>
+    </div>`).join('');
+  showDetail(0);
+}
+function showDetail(i){
+  const c = CALLS[i];
+  document.getElementById('detail').innerHTML = `
+    <div class="detail-orb">L</div>
+    <div class="detail-title">${c.name}</div>
+    <div class="detail-sub">${c.num} · ${c.time}</div>
+    <div class="transcript">
+      ${c.transcript.map(([who,txt])=>`<div class="t-line ${who}"><span class="who">${who==='lola'?'Lola':'Caller'}:</span> ${txt}</div>`).join('')}
+    </div>
+    <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${c.outcome}</span></div>
+    <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${c.dur}</span></div>
+    ${c.prob?`<div class="detail-stat"><span class="detail-stat-label">Booking probability</span><span style="color:var(--green);font-weight:600">${c.prob}%</span></div>`:''}
+    <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service}</span></div>`;
+}
+render();
+</script>
+</body>
+</html>
