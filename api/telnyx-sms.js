@@ -1,42 +1,33 @@
 /**
- * /api/telnyx-sms — Telnyx Messaging webhook + send
+ * /api/telnyx-sms — Telnyx Messaging webhook + send · MULTI-TENANT
  * ════════════════════════════════════════════════════════════════
  * Inbound: when a client texts a salon's Lola number, Telnyx POSTs
- * here. We ask Lola and text the reply back.
- * Outbound: other code can POST { to, text, from } to this same
- * endpoint to send a message (e.g. booking confirmations).
- *
- * SETUP:
- *   1. Telnyx Portal → Messaging → create a Messaging Profile (API v2)
- *   2. Set its inbound webhook URL to:
- *        https://YOUR-APP.vercel.app/api/telnyx-sms
- *   3. Assign your number to that messaging profile
+ * here. We resolve the tenant by called number, load conversation
+ * memory from Supabase, ask Lola, persist the reply, and text back.
+ * Outbound: POST { to, text, from } here to send a message.
  *
  * ENV VARS:
  *   ANTHROPIC_API_KEY
  *   TELNYX_API_KEY
+ *   SUPABASE_URL · SUPABASE_SERVICE_KEY
  */
 
-// Simple per-number memory (resets on cold start; use Redis/DB in prod)
-const memory = globalThis.__lolaSmsMemory || (globalThis.__lolaSmsMemory = new Map());
+import {
+  getTenantByPhone, upsertClient, getOrStartConversation,
+  logMessage, getConversationHistory, logUsage, e164
+} from './lib/db.js';
 
-function resolveTenant(toNumber){
+function shapeTenant(t){
   return {
-    name: 'MMΛ Salon',
-    location: 'Miami Beach',
-    bookingUrl: 'https://www.mmasalon.com/book',
-    services: [
-      { name:'Balayage', price:395 },
-      { name:'Extensions', price:800 },
-      { name:'Hair Botox', price:325 },
-      { name:'Cut and Gloss', price:225 },
-      { name:'Blowout', price:95 }
-    ]
+    name: t.name,
+    location: t.location,
+    bookingUrl: t.booking_url,
+    services: t.services || []
   };
 }
 
 function systemPrompt(tenant){
-  const svc = tenant.services.map(s=>`${s.name} $${s.price}`).join('; ');
+  const svc = (tenant.services||[]).map(s=>`${s.name} $${s.price}`).join('; ');
   return `You are Lola, the AI receptionist replying to a TEXT message for ${tenant.name}.
 Be warm, brief (1-3 sentences, like real texting), and always move toward booking.
 Services: ${svc}. Booking link: ${tenant.bookingUrl}.
@@ -58,12 +49,7 @@ export async function sendSMS({ from, to, text, profileId }){
   const res = await fetch('https://api.telnyx.com/v2/messages', {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${process.env.TELNYX_API_KEY}` },
-    body: JSON.stringify({
-      from,                              // your Telnyx number, E.164
-      to,                                // recipient, E.164
-      text,
-      messaging_profile_id: profileId    // optional
-    })
+    body: JSON.stringify({ from, to, text, messaging_profile_id: profileId })
   });
   return res.json();
 }
@@ -80,6 +66,11 @@ export default async function handler(req, res){
   if(body.to && body.text && body.from && !body.data){
     try{
       const result = await sendSMS(body);
+      // log outbound usage if we can resolve the tenant
+      try{
+        const t = await getTenantByPhone(body.from);
+        await logUsage(t.id, 'sms_sent', 1, { to: e164(body.to) });
+      }catch{}
       return res.status(200).json({ ok:true, result });
     }catch(e){
       return res.status(500).json({ ok:false, error:String(e) });
@@ -87,7 +78,6 @@ export default async function handler(req, res){
   }
 
   // ── INBOUND: Telnyx delivers an inbound message webhook ──
-  // Telnyx v2 webhook shape: { data: { event_type, payload: { from:{phone_number}, to:[{phone_number}], text } } }
   const evt = body.data;
   if(evt && evt.event_type === 'message.received'){
     const payload = evt.payload || {};
@@ -95,22 +85,42 @@ export default async function handler(req, res){
     const toNum = Array.isArray(payload.to) ? payload.to[0]?.phone_number : payload.to?.phone_number;
     const text = payload.text || '';
 
-    const tenant = resolveTenant(toNum);
-    const key = `${toNum}:${fromNum}`;
-    const history = memory.get(key) || [];
-    history.push({ role:'user', content:text });
+    // 1. Multi-tenant resolution by the receiving number
+    const tenantRow = await getTenantByPhone(toNum);
+    const tenant = shapeTenant(tenantRow);
 
+    // 2. Upsert client + find/start conversation thread
+    let client = null, conv = null, history = [{ role:'user', content:text }];
+    try{
+      client = await upsertClient(tenantRow.id, { phone: fromNum });
+      conv = await getOrStartConversation(tenantRow.id, {
+        clientId: client?.id, channel: 'sms', agent: 'lola'
+      });
+      // Pull prior turns for context
+      if(conv?.id){
+        const past = await getConversationHistory(conv.id, 10);
+        history = [...past, { role:'user', content:text }];
+      }
+    }catch(e){ /* DB optional — keep going */ }
+
+    // 3. Ask Lola
     const reply = await askLola(history, tenant);
-    history.push({ role:'assistant', content:reply });
-    if(history.length > 12) history.splice(0, history.length-12);
-    memory.set(key, history);
 
-    // text the reply back (Lola's number = the number they texted = toNum)
+    // 4. Persist this exchange
+    if(conv?.id){
+      try{
+        await logMessage({ conversationId: conv.id, tenantId: tenantRow.id, role:'user', agent:'lola', content: text });
+        await logMessage({ conversationId: conv.id, tenantId: tenantRow.id, role:'assistant', agent:'lola', content: reply });
+        await logUsage(tenantRow.id, 'sms_received', 1);
+        await logUsage(tenantRow.id, 'sms_sent', 1);
+      }catch{}
+    }
+
+    // 5. Text the reply back
     try{ await sendSMS({ from: toNum, to: fromNum, text: reply }); }catch(e){}
 
     return res.status(200).json({ ok:true });
   }
 
-  // delivery receipts / other events
   return res.status(200).json({ ok:true, ignored:true });
 }
