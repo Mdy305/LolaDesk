@@ -1,23 +1,26 @@
 /**
- * /api/telnyx-voice — Telnyx Voice (TeXML) webhook
+ * /api/telnyx-voice — Telnyx Voice (TeXML) webhook · MULTI-TENANT
  * ════════════════════════════════════════════════════════════════
  * When someone calls a salon's Lola number, Telnyx hits this URL.
- * We return TeXML (XML) that makes Lola speak, listen, and book.
- *
- * SETUP (once):
- *   1. Telnyx Portal → Voice → Programmable Voice → Create TeXML App
- *   2. Set the Voice URL to:  https://YOUR-APP.vercel.app/api/telnyx-voice
- *   3. Method: POST
- *   4. Assign your purchased number to this TeXML app
+ * We look up which salon owns the called number, load context, ask
+ * Claude, and reply with TeXML.
  *
  * ENV VARS (Vercel → Settings → Environment Variables):
- *   ANTHROPIC_API_KEY   (Lola's brain)
- *   TELNYX_API_KEY      (for outbound actions, optional here)
+ *   ANTHROPIC_API_KEY        Lola's brain
+ *   TELNYX_API_KEY           for outbound actions
+ *   SUPABASE_URL             multi-tenant lookup
+ *   SUPABASE_SERVICE_KEY     server-side
  *
- * This handler is stateless across turns; conversation state rides
- * in the TeXML <Gather> "action" loop. Each caller turn POSTs the
- * transcribed speech back here, we ask Claude, and reply with TeXML.
+ * Conversation memory now persists to Supabase: Lola REMEMBERS every
+ * caller across calls. State per-turn still rides in client_state for
+ * speed; we mirror to DB at the end of each turn.
  */
+
+import {
+  getTenantByPhone, upsertClient, getOrStartConversation,
+  endConversation, logMessage, getConversationHistory,
+  logCall, logUsage, e164
+} from './lib/db.js';
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>';
 
@@ -72,21 +75,14 @@ async function askLola(history, tenant){
 }
 
 // Resolve which salon this number belongs to.
-// In production: look up tenant by the called number (To) in your DB.
-// For now we return a default; wire your lookup here.
-function resolveTenant(toNumber){
+// Map a tenant row (from DB) into the prompt-friendly shape buildSystemPrompt expects.
+function shapeTenant(t){
   return {
-    name: 'MMΛ Salon',
-    location: 'Miami Beach',
-    hours: 'Tuesday to Saturday, noon to 8pm',
-    bookingUrl: 'https://www.mmasalon.com/book',
-    services: [
-      { name:'Balayage', price:395, duration:'2h30' },
-      { name:'Extensions', price:800, duration:'consult' },
-      { name:'Hair Botox', price:325, duration:'2h' },
-      { name:'Cut and Gloss', price:225, duration:'1h15' },
-      { name:'Blowout', price:95, duration:'1h' }
-    ]
+    name: t.name,
+    location: t.location,
+    hours: t.hours,
+    bookingUrl: t.booking_url,
+    services: t.services || []
   };
 }
 
@@ -98,17 +94,44 @@ export default async function handler(req, res){
   const callStatus = body.CallStatus || body.call_status;
   const speech = body.SpeechResult || body.Digits || '';
   const toNumber = body.To || body.to || '';
+  const fromNumber = body.From || body.from || '';
+  const telnyxCallId = body.CallSid || body.call_control_id || '';
   const actionUrl = '/api/telnyx-voice';
 
-  const tenant = resolveTenant(toNumber);
+  // ── 1. Resolve tenant by the called number (multi-tenant entry point) ──
+  const tenantRow = await getTenantByPhone(toNumber);
+  const tenant = shapeTenant(tenantRow);
+
+  // ── 2. Find or create the client by caller number, get the open conversation ──
+  let client = null, conversation = null;
+  try{
+    client = await upsertClient(tenantRow.id, { phone: fromNumber });
+    conversation = await getOrStartConversation(tenantRow.id, {
+      clientId: client?.id, channel: 'voice', agent: 'lola'
+    });
+  }catch(e){ /* DB optional — proceed with in-memory */ }
+
+  // ── 3. Decode per-turn state (history fast-path) ──
   let state = decodeState(body.client_state);
   if(!state.history) state.history = [];
+  if(!state.convId && conversation?.id) state.convId = conversation.id;
+
+  // If first turn AND we have a DB, pull persistent memory from past calls
+  if(state.history.length === 0 && conversation?.id){
+    try{
+      const past = await getConversationHistory(conversation.id, 8);
+      if(past.length) state.history = past;
+    }catch(e){}
+  }
 
   // ── First contact: greet, then gather speech ──
   if(!speech && (!callStatus || callStatus === 'ringing' || state.history.length === 0)){
-    const greeting = `Hi, thanks for calling ${tenant.name}! This is Lola. How can I help you today?`;
+    const known = client?.name ? `, ${client.name.split(' ')[0]}` : '';
+    const greeting = state.history.length > 0
+      ? `Welcome back${known}! It's Lola. What can I help you with today?`
+      : `Hi, thanks for calling ${tenant.name}! This is Lola. How can I help you today?`;
     const xml = texml(
-      `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US">` +
+      `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${encodeState(state)}">` +
       `<Say voice="${LOLA_VOICE}">${xmlEscape(greeting)}</Say>` +
       `</Gather>` +
       `<Say voice="${LOLA_VOICE}">I didn't catch that. Please call back anytime!</Say>`
@@ -121,12 +144,18 @@ export default async function handler(req, res){
   const reply = await askLola(state.history, tenant);
   state.history.push({ role:'assistant', content: reply });
 
+  // Persist this turn to DB
+  if(state.convId){
+    try{
+      await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'user', agent:'lola', content: speech || '(no response)' });
+      await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'assistant', agent:'lola', content: reply });
+      await logUsage(tenantRow.id, 'ai_token', 1, { source:'voice' });
+    }catch(e){}
+  }
+
   // keep history small for latency
   if(state.history.length > 12) state.history = state.history.slice(-12);
   const nextState = encodeState(state);
-
-  // If Lola signaled a booking, we could fire an SMS here with the link.
-  // (see /api/telnyx-sms — call it server-side to text the caller.)
 
   const xml = texml(
     `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${nextState}">` +
