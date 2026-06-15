@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LolaDesk — The AI Concierge That Runs Your Front Desk</title>
+<meta name="description" content="Lola answers every call, books every client, and never sleeps. The AI front desk concierge for salons, spas, and med spas."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;--bg2:#070708;--surface:#101012;--surface2:#16161a;
+  --border:#1c1c20;--border2:#28282e;
+  --text:#f4f4f7;--text2:#9a9aa2;--text3:#56565e;
+  --pink:#ff2d8e;--pink2:#ff6bb0;--pink3:#ffa8d2;--pink-dim:rgba(255,45,142,.12);--pink-glow:rgba(255,45,142,.5);
+  --ff-serif:'Cormorant Garamond',Georgia,serif;
+  --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;overflow-x:hidden}
+::-webkit-scrollbar{width:0}*{scrollbar-width:none}
+a{color:inherit;text-decoration:none}
+button{font-family:var(--ff);cursor:pointer;border:none}
+
+/* NAV */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:20px 40px;display:flex;align-items:center;justify-content:space-between;transition:all .4s}
+.nav.scrolled{background:rgba(0,0,0,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:0.5px solid var(--border);padding:14px 40px}
+@media(max-width:640px){.nav,.nav.scrolled{padding:14px 20px}}
+.nav-logo{font-size:17px;font-weight:600;letter-spacing:.18em}
+.nav-actions{display:flex;align-items:center;gap:10px}
+.nav-link{font-size:13px;color:var(--text2);padding:8px 14px;transition:color .2s}
+.nav-link:hover{color:var(--text)}
+.nav-cta{background:var(--pink);color:#fff;padding:9px 18px;border-radius:100px;font-size:13px;font-weight:500;transition:all .2s}
+.nav-cta:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
+
+/* HERO */
+.hero{height:100vh;min-height:680px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;text-align:center;overflow:hidden}
+.hero-orb-canvas{position:absolute;top:50%;left:50%;transform:translate(-50%,-54%);width:680px;height:680px;pointer-events:none;opacity:.9}
+@media(max-width:640px){.hero-orb-canvas{width:420px;height:420px}}
+.hero-content{position:relative;z-index:2}
+.hero-eyebrow{font-size:13px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--pink2);margin-bottom:24px;opacity:0;animation:rise 1s .3s forwards}
+.hero-title{font-size:clamp(48px,9vw,108px);font-weight:600;letter-spacing:-.04em;line-height:.95;margin-bottom:28px;opacity:0;animation:rise 1.1s .5s forwards}
+.hero-title em{display:block;font-family:var(--ff-serif);font-style:italic;font-weight:200;color:var(--pink2)}
+.hero-sub{font-size:clamp(17px,2.4vw,22px);font-weight:300;color:var(--text2);max-width:560px;margin:0 auto 40px;line-height:1.55;opacity:0;animation:rise 1.1s .7s forwards}
+.hero-ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;opacity:0;animation:rise 1.1s .9s forwards}
+@keyframes rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+.btn-primary{background:var(--pink);color:#fff;padding:16px 34px;border-radius:100px;font-size:16px;font-weight:600;transition:all .25s;display:inline-flex;align-items:center;gap:10px}
+.btn-primary:hover{background:var(--pink2);box-shadow:0 8px 36px var(--pink-glow);transform:translateY(-2px)}
+.btn-ghost{background:rgba(255,255,255,.04);color:var(--text);padding:16px 30px;border-radius:100px;font-size:16px;font-weight:500;border:0.5px solid var(--border2);transition:all .25s;backdrop-filter:blur(10px)}
+.btn-ghost:hover{border-color:var(--text3);background:rgba(255,255,255,.08)}
+.hero-scroll{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);opacity:0;animation:rise 1s 1.4s forwards;display:flex;flex-direction:column;align-items:center;gap:10px}
+.hero-scroll-line{width:1px;height:40px;background:linear-gradient(var(--text3),transparent);animation:scrollpulse 2s ease-in-out infinite}
+@keyframes scrollpulse{0%,100%{opacity:.3;transform:scaleY(.7)}50%{opacity:1;transform:scaleY(1)}}
+
+/* REVEAL */
+.reveal{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 24px;text-align:center;position:relative}
+.reveal-inner{max-width:880px;opacity:0;transform:translateY(40px);transition:all 1s cubic-bezier(.16,1,.3,1)}
+.reveal.visible .reveal-inner{opacity:1;transform:none}
+.reveal-tag{font-size:12px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--pink2);margin-bottom:20px}
+.reveal-title{font-size:clamp(34px,6vw,68px);font-weight:600;letter-spacing:-.03em;line-height:1.04;margin-bottom:24px}
+.reveal-title em{font-family:var(--ff-serif);font-style:italic;font-weight:200;color:var(--pink2)}
+.reveal-text{font-size:clamp(17px,2.2vw,21px);font-weight:300;color:var(--text2);max-width:600px;margin:0 auto;line-height:1.6}
+.big-stat{font-size:clamp(80px,16vw,200px);font-weight:700;letter-spacing:-.05em;line-height:1;background:linear-gradient(180deg,#fff,var(--pink2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:16px}
+
+/* TRIPTYCH */
+.triptych{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1100px;margin:60px auto 0;width:100%}
+@media(max-width:880px){.triptych{grid-template-columns:1fr;gap:16px}}
+.tri-card{background:var(--surface);border:0.5px solid var(--border);border-radius:24px;padding:36px 28px;text-align:left;opacity:0;transform:translateY(30px);transition:opacity .8s,transform .8s,border-color .3s}
+.reveal.visible .tri-card{opacity:1;transform:none}
+.reveal.visible .tri-card:nth-child(2){transition-delay:.12s}
+.reveal.visible .tri-card:nth-child(3){transition-delay:.24s}
+.tri-card:hover{border-color:var(--border2)}
+.tri-icon{width:52px;height:52px;border-radius:14px;background:var(--pink-dim);display:flex;align-items:center;justify-content:center;color:var(--pink2);margin-bottom:22px}
+.tri-title{font-size:20px;font-weight:600;margin-bottom:10px}
+.tri-text{font-size:14px;font-weight:300;color:var(--text2);line-height:1.6}
+
+/* CHANNELS */
+.channels{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:44px}
+.channel-pill{background:var(--surface);border:0.5px solid var(--border);border-radius:100px;padding:12px 22px;font-size:14px;font-weight:400;color:var(--text2);display:flex;align-items:center;gap:9px}
+.channel-pill svg{color:var(--pink2)}
+
+/* PRICING */
+.pricing-sec{padding:120px 24px;text-align:center}
+.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:1040px;margin:56px auto 0;align-items:stretch}
+@media(max-width:880px){.pricing{grid-template-columns:1fr;max-width:400px}}
+.price-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:34px 30px;display:flex;flex-direction:column;text-align:left;transition:all .3s}
+.price-card:hover{border-color:var(--border2);transform:translateY(-4px)}
+.price-card.featured{border-color:var(--pink);background:linear-gradient(180deg,var(--pink-dim),var(--surface) 45%);position:relative}
+.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10px;font-weight:600;letter-spacing:.12em;padding:5px 16px;border-radius:100px}
+.price-name{font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--text2);margin-bottom:10px}
+.price-tag{display:flex;align-items:baseline;gap:5px;margin-bottom:8px}
+.price-amount{font-size:46px;font-weight:700;letter-spacing:-.03em}
+.price-per{font-size:15px;color:var(--text3)}
+.price-desc{font-size:13px;font-weight:300;color:var(--text2);margin-bottom:24px;min-height:40px}
+.price-features{list-style:none;display:flex;flex-direction:column;gap:13px;margin-bottom:28px;flex:1}
+.price-features li{font-size:14px;font-weight:300;color:var(--text2);display:flex;align-items:flex-start;gap:10px}
+.price-features li svg{color:var(--pink2);flex-shrink:0;margin-top:3px}
+.price-btn{width:100%;padding:14px;border-radius:100px;font-size:14px;font-weight:600;text-align:center;transition:all .2s}
+.price-btn.primary{background:var(--pink);color:#fff}
+.price-btn.primary:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
+.price-btn.ghost{background:var(--surface2);color:var(--text);border:0.5px solid var(--border2)}
+.price-btn.ghost:hover{border-color:var(--text3)}
+
+/* FINAL */
+.final{min-height:90vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 24px;position:relative;overflow:hidden}
+.final-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;height:560px;pointer-events:none;opacity:.5}
+.final-content{position:relative;z-index:2}
+.final-title{font-size:clamp(40px,7vw,84px);font-weight:600;letter-spacing:-.03em;line-height:1;margin-bottom:24px}
+.final-title em{font-family:var(--ff-serif);font-style:italic;font-weight:200;color:var(--pink2)}
+.final-sub{font-size:18px;font-weight:300;color:var(--text2);max-width:480px;margin:0 auto 36px}
+
+/* FOOTER */
+.footer{border-top:0.5px solid var(--border);padding:50px 40px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px}
+@media(max-width:640px){.footer{padding:40px 20px;flex-direction:column;text-align:center}}
+.footer-logo{font-size:16px;font-weight:600;letter-spacing:.18em}
+.footer-links{display:flex;gap:26px;font-size:13px;color:var(--text3);flex-wrap:wrap;justify-content:center}
+.footer-links a:hover{color:var(--text2)}
+.footer-copy{font-size:12px;color:var(--text3)}
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-logo">LOLADESK</div>
+  <div class="nav-actions">
+    <a href="login.html" class="nav-link">Sign in</a>
+    <a href="onboarding.html" class="nav-cta">Start free</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <canvas class="hero-orb-canvas" id="heroOrb" width="680" height="680"></canvas>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Meet Lola</div>
+    <h1 class="hero-title">Your front desk<em>never sleeps.</em></h1>
+    <p class="hero-sub">Lola is the AI concierge that answers every call, books every client, and turns missed calls into revenue — 24 hours a day.</p>
+    <div class="hero-ctas">
+      <a href="onboarding.html" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="login.html" class="btn-ghost">Talk to Lola</a>
+    </div>
+  </div>
+  <div class="hero-scroll"><span>Scroll</span><div class="hero-scroll-line"></div></div>
+</header>
+
+<section class="reveal">
+  <div class="reveal-inner">
+    <div class="big-stat">62%</div>
+    <h2 class="reveal-title">of calls go <em>unanswered.</em></h2>
+    <p class="reveal-text">Every missed call is a client who booked somewhere else. While you're with a client, the phone rings — and rings out. Lola picks up every single time.</p>
+  </div>
+</section>
+
+<section class="reveal">
+  <div class="reveal-inner">
+    <div class="reveal-tag">Real voice. Real conversations.</div>
+    <h2 class="reveal-title">She doesn't sound<br>like a <em>robot.</em></h2>
+    <p class="reveal-text">Powered by Telnyx voice and the most advanced AI on earth, Lola talks like your best receptionist — warm, quick, and impossibly smart. Callers won't know they're talking to AI.</p>
+    <div class="channels">
+      <div class="channel-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>Phone</div>
+      <div class="channel-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>SMS</div>
+      <div class="channel-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/></svg>Instagram</div>
+      <div class="channel-pill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 11.5a8.4 8.4 0 01-12 7.6L3 21l1.9-5.6A8.4 8.4 0 1121 11.5z"/></svg>WhatsApp</div>
+    </div>
+  </div>
+</section>
+
+<section class="reveal">
+  <div class="reveal-inner">
+    <div class="reveal-tag">One AI. Everything handled.</div>
+    <h2 class="reveal-title">More than a receptionist.<br>A <em>revenue engine.</em></h2>
+    <div class="triptych">
+      <div class="tri-card">
+        <div class="tri-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div>
+        <div class="tri-title">Books instantly</div>
+        <div class="tri-text">Connects to Square, Mindbody, Vagaro, and Fresha. Lola checks real availability and books the right service in seconds.</div>
+      </div>
+      <div class="tri-card">
+        <div class="tri-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2"/><circle cx="12" cy="12" r="4"/></svg></div>
+        <div class="tri-title">Finds money</div>
+        <div class="tri-text">"3 clients due for rebooking." "Thursday has a $400 gap." Lola spots revenue you'd otherwise miss and acts on it.</div>
+      </div>
+      <div class="tri-card">
+        <div class="tri-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg></div>
+        <div class="tri-title">Remembers everyone</div>
+        <div class="tri-text">Preferences, history, VIP status, birthdays. Lola treats every client like a regular — because she never forgets one.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="reveal">
+  <div class="reveal-inner">
+    <h2 class="reveal-title">The best concierge<br>on the <em>planet.</em></h2>
+    <p class="reveal-text">Not an app you check. A team member who works while you sleep — answering, booking, following up, and growing your business every hour of every day.</p>
+  </div>
+</section>
+
+<section class="pricing-sec reveal" id="pricing">
+  <div class="reveal-inner" style="max-width:1040px">
+    <div class="reveal-tag">Pricing</div>
+    <h2 class="reveal-title">Less than one <em>lost client.</em></h2>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="price-name">SOLO</div>
+        <div class="price-tag"><span class="price-amount">$99</span><span class="price-per">/mo</span></div>
+        <div class="price-desc">For solo stylists and single chairs.</div>
+        <ul class="price-features">
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Web chat + SMS</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>1 booking platform</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>500 messages/mo</li>
+        </ul>
+        <a href="onboarding.html" class="price-btn ghost">Start free</a>
+      </div>
+      <div class="price-card featured">
+        <div class="price-badge">MOST POPULAR</div>
+        <div class="price-name">PRO</div>
+        <div class="price-tag"><span class="price-amount">$399</span><span class="price-per">/mo</span></div>
+        <div class="price-desc">For salons that want the phone answered.</div>
+        <ul class="price-features">
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Solo</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>AI voice phone (Telnyx)</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Instagram + WhatsApp</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>CRM + revenue insights</li>
+        </ul>
+        <a href="onboarding.html" class="price-btn primary">Start free</a>
+      </div>
+      <div class="price-card">
+        <div class="price-name">MED SPA</div>
+        <div class="price-tag"><span class="price-amount">$599</span><span class="price-per">/mo</span></div>
+        <div class="price-desc">For med spas & aesthetic practices.</div>
+        <ul class="price-features">
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Pro</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>HIPAA-aware flow</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>High-ticket qualifying</li>
+        </ul>
+        <a href="onboarding.html" class="price-btn ghost">Start free</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <canvas class="final-orb" id="finalOrb" width="560" height="560"></canvas>
+  <div class="final-content">
+    <h1 class="final-title">Meet your<br><em>Lola.</em></h1>
+    <p class="final-sub">Set her up in five minutes. Watch her answer your first call today.</p>
+    <a href="onboarding.html" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-logo">LOLADESK</div>
+  <div class="footer-links">
+    <a href="#pricing">Pricing</a>
+    <a href="login.html">Sign in</a>
+    <a href="onboarding.html">Get started</a>
+    <a href="dashboard.html">Demo</a>
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+  </div>
+  <div class="footer-copy">© 2026 LolaDesk · The AI front desk concierge</div>
+</footer>
+
+<script>
+const nav = document.getElementById('nav');
+addEventListener('scroll', ()=> nav.classList.toggle('scrolled', scrollY > 40));
+const obs = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.18 });
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+
+function makeOrb(canvas, size){
+  const x = canvas.getContext('2d');
+  const c = size/2;
+  let t = Math.random()*10;
+  const R = size*0.27;
+  (function loop(){
+    x.clearRect(0,0,size,size);
+    const breath = 0.5 + Math.sin(t*1.3)*0.5;
+    x.globalCompositeOperation = 'lighter';
+    const halo = x.createRadialGradient(c,c,size*0.04,c,c,size*0.49);
+    const hA = 0.10 + breath*0.10;
+    halo.addColorStop(0,`rgba(255,45,142,${hA})`);
+    halo.addColorStop(0.5,`rgba(255,45,142,${hA*0.35})`);
+    halo.addColorStop(1,'rgba(255,45,142,0)');
+    x.fillStyle=halo; x.fillRect(0,0,size,size);
+    const core = x.createRadialGradient(c,c,0,c,c,size*0.26);
+    const cA = 0.22 + breath*0.18;
+    core.addColorStop(0,`rgba(255,130,195,${cA})`);
+    core.addColorStop(0.5,`rgba(255,45,142,${cA*0.5})`);
+    core.addColorStop(1,'rgba(255,45,142,0)');
+    x.fillStyle=core; x.fillRect(0,0,size,size);
+    for(let i=0;i<72;i++){
+      const a=(i/72)*Math.PI*2;
+      const r=R + Math.sin(t*.8+i*.4)*size*0.03 + Math.sin(t*1.4+i*.85)*size*0.016 + breath*size*0.012;
+      const px=c+Math.cos(a)*r, py=c+Math.sin(a)*r;
+      const al=0.25+Math.abs(Math.sin(t*.6+i*.3))*0.4;
+      const sz=size*0.006 + Math.abs(Math.sin(t*.9+i))*size*0.005;
+      x.beginPath(); x.arc(px,py,sz,0,Math.PI*2);
+      x.fillStyle=`rgba(255,${90+Math.sin(t+i*.2)*60},${175+Math.sin(t+i)*30},${al})`;
+      x.fill();
+    }
+    for(let i=0;i<44;i++){
+      const a=(i/44)*Math.PI*2 - t*.35;
+      const r=R*0.62 + Math.sin(t*1.1+i*.5)*size*0.035 + breath*size*0.015;
+      const px=c+Math.cos(a)*r, py=c+Math.sin(a)*r;
+      const al=0.18+Math.abs(Math.sin(t*.75+i*.4))*0.3;
+      x.beginPath(); x.arc(px,py,size*0.005,0,Math.PI*2);
+      x.fillStyle=`rgba(255,150,205,${al})`;
+      x.fill();
+    }
+    for(let i=0;i<32;i++){
+      const a=(i/32)*Math.PI*2 + t*.25;
+      const r=R*0.3 + Math.sin(t*1.2+i*.55)*size*0.035;
+      const px=c+Math.cos(a)*r, py=c+Math.sin(a)*r;
+      const al=0.2+Math.abs(Math.sin(t*.9+i))*0.32;
+      x.beginPath(); x.arc(px,py,size*0.0045,0,Math.PI*2);
+      x.fillStyle=`rgba(255,185,218,${al})`;
+      x.fill();
+    }
+    x.globalCompositeOperation='source-over';
+    t+=0.015;
+    requestAnimationFrame(loop);
+  })();
+}
+makeOrb(document.getElementById('heroOrb'), 680);
+makeOrb(document.getElementById('finalOrb'), 560);
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Settings — LolaDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.settings-grid{grid-template-columns:1fr}}
+.set-section{padding:22px}
+.set-label{font-size:12px;color:var(--text2);margin-bottom:7px;display:block;font-weight:500}
+.set-input{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:14px;transition:border-color .15s}
+.set-input:focus{border-color:var(--pink)}
+.persona-opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
+.persona-opt{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:13px;cursor:pointer;transition:all .15s}
+.persona-opt.sel{border-color:var(--pink);background:var(--pink-dim)}
+.persona-opt-name{font-size:13px;font-weight:600;margin-bottom:3px}
+.persona-opt-ex{font-size:11px;font-style:italic;color:var(--pink2);font-family:var(--ff-serif)}
+.integration{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:0.5px solid var(--border)}
+.integration:last-child{border-bottom:none}
+.int-logo{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.int-info{flex:1}
+.int-name{font-size:14px;font-weight:500}
+.int-status{font-size:11px;color:var(--text3)}
+.connect-btn{padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;transition:all .15s}
+.connect-btn.connected{background:var(--green-dim);color:var(--green)}
+.connect-btn.connect{background:var(--pink);color:#fff}
+.plan-card{background:linear-gradient(135deg,var(--pink-dim),var(--surface));border:0.5px solid var(--pink);border-radius:var(--r);padding:22px;margin-top:0}
+.plan-name{font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--pink2);margin-bottom:6px}
+.plan-price{font-size:30px;font-weight:600;margin-bottom:4px}
+.plan-price span{font-size:14px;color:var(--text3);font-weight:400}
+.plan-feat{font-size:12px;color:var(--text2);margin-top:10px;line-height:1.7}
+</style>
+</head>
+<body data-page="settings">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Settings</h1>
+        <p class="page-sub">Your salon, Lola's personality, and connections.</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary">Save changes</button>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">Salon details</div></div>
+        <div class="set-section">
+          <label class="set-label">Salon name</label>
+          <input class="set-input" value="MMΛ Salon"/>
+          <label class="set-label">Phone (your Lola line)</label>
+          <input class="set-input" value="+1 (929) 456-8227"/>
+          <label class="set-label">Location</label>
+          <input class="set-input" value="1500 Alton Road, 2nd Floor, Miami Beach FL"/>
+          <label class="set-label">Hours</label>
+          <input class="set-input" value="Tuesday – Saturday, Noon – 8pm"/>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Lola's personality</div></div>
+        <div class="set-section">
+          <label class="set-label">How should Lola sound?</label>
+          <div class="persona-opts" id="personas">
+            <div class="persona-opt sel" onclick="selPersona(this)"><div class="persona-opt-name">Warm & Playful</div><div class="persona-opt-ex">"Obsessed — let's book you babe!"</div></div>
+            <div class="persona-opt" onclick="selPersona(this)"><div class="persona-opt-name">Quiet Luxury</div><div class="persona-opt-ex">"It would be my pleasure."</div></div>
+            <div class="persona-opt" onclick="selPersona(this)"><div class="persona-opt-name">Calm & Clinical</div><div class="persona-opt-ex">"I'll walk you through it."</div></div>
+            <div class="persona-opt" onclick="selPersona(this)"><div class="persona-opt-name">Bright & Energetic</div><div class="persona-opt-ex">"Yes! Let's make it amazing ✨"</div></div>
+          </div>
+          <label class="set-label" style="margin-top:16px">Lola's voice</label>
+          <select class="set-input">
+            <option>Samantha — warm American</option>
+            <option>Karen — calm Australian</option>
+            <option>Moira — friendly Irish</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Integrations</div></div>
+        <div class="set-section" style="padding-top:6px">
+          <div class="integration">
+            <div class="int-logo" style="background:#fff;color:#000">□</div>
+            <div class="int-info"><div class="int-name">Square</div><div class="int-status">Booking & payments</div></div>
+            <button class="connect-btn connected">Connected</button>
+          </div>
+          <div class="integration">
+            <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
+            <div class="int-info"><div class="int-name">Telnyx</div><div class="int-status">Voice & SMS · 3 numbers active</div></div>
+            <button class="connect-btn connected">Connected</button>
+          </div>
+          <div class="integration">
+            <div class="int-logo" style="background:linear-gradient(135deg,#e1306c,#fd1d1d);color:#fff">◙</div>
+            <div class="int-info"><div class="int-name">Instagram</div><div class="int-status">DM auto-replies</div></div>
+            <button class="connect-btn connected">Connected</button>
+          </div>
+          <div class="integration">
+            <div class="int-logo" style="background:#25d366;color:#fff">✆</div>
+            <div class="int-info"><div class="int-name">WhatsApp</div><div class="int-status">Not connected</div></div>
+            <button class="connect-btn connect">Connect</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">Your plan</div></div>
+        <div class="set-section">
+          <div class="plan-card">
+            <div class="plan-name">PRO</div>
+            <div class="plan-price">$399<span>/month</span></div>
+            <div class="plan-feat">✓ AI voice phone answering<br>✓ Instagram + WhatsApp + SMS<br>✓ CRM + revenue insights<br>✓ Up to 3 numbers</div>
+          </div>
+          <button class="btn btn-ghost" style="width:100%;margin-top:14px;justify-content:center">Manage billing</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="sidebar.js"></script>
+<script>
+function selPersona(el){
+  document.querySelectorAll('.persona-opt').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel');
+}
+</script>
+</body>
+</html>

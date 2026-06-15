@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Bookings — LolaDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.day-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.day-tab{padding:10px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s;text-align:center;min-width:74px}
+.day-tab.active{background:var(--pink-dim);border-color:transparent}
+.day-tab-dow{font-size:11px;color:var(--text3)}
+.day-tab.active .day-tab-dow{color:var(--pink2)}
+.day-tab-num{font-size:18px;font-weight:600}
+.booking{display:flex;align-items:center;gap:16px;padding:16px 18px;border-bottom:0.5px solid var(--border);transition:background .12s;cursor:pointer}
+.booking:hover{background:var(--surface2)}
+.booking:last-child{border-bottom:none}
+.booking-time{width:80px;flex-shrink:0}
+.booking-time-start{font-size:14px;font-weight:600}
+.booking-time-dur{font-size:11px;color:var(--text3)}
+.booking-info{flex:1}
+.booking-service{font-size:14px;font-weight:500}
+.booking-client{font-size:12px;color:var(--text3)}
+.booking-price{font-size:14px;font-weight:600;color:var(--text2)}
+.booking-bar{width:3px;align-self:stretch;border-radius:3px;background:var(--pink)}
+</style>
+</head>
+<body data-page="bookings">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Bookings</h1>
+        <p class="page-sub">Every appointment Lola booked for you.</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New booking</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-val">7</div><div class="kpi-label">Today</div><div class="kpi-sub">$2,850 potential</div></div>
+      <div class="kpi"><div class="kpi-val">31</div><div class="kpi-label">This week</div><div class="kpi-sub">↑ 12%</div></div>
+      <div class="kpi"><div class="kpi-val green">94%</div><div class="kpi-label">Show rate</div><div class="kpi-sub">Lola sends reminders</div></div>
+      <div class="kpi"><div class="kpi-val pink">$320</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub">↑ 8%</div></div>
+    </div>
+
+    <div class="day-tabs" id="dayTabs"></div>
+
+    <div class="card">
+      <div class="card-head"><div class="card-title" id="dayTitle">Today's Schedule</div></div>
+      <div id="bookingList"></div>
+    </div>
+  </main>
+</div>
+
+<script src="sidebar.js"></script>
+<script>
+const DAYS = [
+  { dow:'Tue', num:10, label:'Tuesday, Jun 10' },
+  { dow:'Wed', num:11, label:'Wednesday, Jun 11' },
+  { dow:'Thu', num:12, label:'Thursday, Jun 12' },
+  { dow:'Fri', num:13, label:'Friday, Jun 13' },
+  { dow:'Sat', num:14, label:'Saturday, Jun 14' }
+];
+const BOOKINGS = {
+  3: [
+    { start:'9:00 AM', dur:'2h 30m', service:'Balayage', client:'Amanda Davis', price:395 },
+    { start:'10:30 AM', dur:'consult', service:'Extensions Consult', client:'Rachel Smith', price:0 },
+    { start:'12:00 PM', dur:'1h 15m', service:'Cut & Style', client:'Olivia Brown', price:225 },
+    { start:'2:00 PM', dur:'2h', service:'Color Correction', client:'Emily Johnson', price:350 },
+    { start:'4:00 PM', dur:'1h', service:'Blowout', client:'Sophie Wilson', price:95 }
+  ],
+  4: [
+    { start:'11:00 AM', dur:'2h 30m', service:'Balayage', client:'Sarah Johnson', price:395 },
+    { start:'2:00 PM', dur:'2h', service:'Hair Botox', client:'Camila Santos', price:325 },
+    { start:'5:00 PM', dur:'2h 30m', service:'Keratin', client:'Valentina Rossi', price:450 }
+  ]
+};
+let activeDay = 3;
+function renderTabs(){
+  document.getElementById('dayTabs').innerHTML = DAYS.map((d,i)=>`
+    <div class="day-tab ${i===activeDay?'active':''}" onclick="selectDay(${i})">
+      <div class="day-tab-dow">${d.dow}</div>
+      <div class="day-tab-num">${d.num}</div>
+    </div>`).join('');
+}
+function selectDay(i){ activeDay=i; renderTabs(); renderBookings(); }
+function renderBookings(){
+  document.getElementById('dayTitle').textContent = DAYS[activeDay].label;
+  const list = BOOKINGS[activeDay] || [];
+  document.getElementById('bookingList').innerHTML = list.length ? list.map(b=>`
+    <div class="booking">
+      <div class="booking-bar"></div>
+      <div class="booking-time"><div class="booking-time-start">${b.start}</div><div class="booking-time-dur">${b.dur}</div></div>
+      <div class="booking-info"><div class="booking-service">${b.service}</div><div class="booking-client">${b.client}</div></div>
+      <div class="booking-price">${b.price?'$'+b.price:'Free'}</div>
+    </div>`).join('') : '<div class="empty">No bookings this day yet. Lola is standing by.</div>';
+}
+renderTabs(); renderBookings();
+</script>
+</body>
+</html>
