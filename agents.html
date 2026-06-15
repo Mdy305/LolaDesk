@@ -75,7 +75,7 @@
     <div class="topbar">
       <div class="page-head">
         <h1 class="page-title">Lola's Team</h1>
-        <p class="page-sub">Seven specialized AI agents working together as one front desk.</p>
+        <p class="page-sub">Eight specialized AI agents working together as one front desk.</p>
       </div>
       <div class="topbar-actions">
         <button class="btn btn-ghost" onclick="copyTelnyxConfig()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Export Telnyx config</button>
@@ -93,9 +93,9 @@
           <div class="hub-title">The orchestrator.</div>
           <div class="hub-sub">Lola greets every caller, reads what they need, and hands off to the right specialist — seamlessly, in under a second.</div>
           <div class="hub-stats">
-            <div><div class="hub-stat-val">7</div><div class="hub-stat-label">AGENTS</div></div>
-            <div><div class="hub-stat-val">142</div><div class="hub-stat-label">HANDOFFS TODAY</div></div>
-            <div><div class="hub-stat-val" style="color:var(--green)">98%</div><div class="hub-stat-label">SUCCESS</div></div>
+            <div><div class="hub-stat-val">8</div><div class="hub-stat-label">AGENTS</div></div>
+            <div><div class="hub-stat-val">160</div><div class="hub-stat-label">HANDOFFS TODAY</div></div>
+            <div><div class="hub-stat-val" style="color:var(--green)">97%</div><div class="hub-stat-label">SUCCESS</div></div>
           </div>
         </div>
       </div>
@@ -187,7 +187,10 @@ const AGENTS = [
     prompt:`You are Support at {{salon_name}}. You handle:\n- Cancellations and reschedules\n- Complaints (always with empathy first)\n- Lost items, billing questions\nFlow for complaints: 1) acknowledge feelings, 2) get the facts, 3) propose a fix. If you can't resolve, hand off to Handoff with full context.\nNever defensive. Always solution-focused.` },
   { id:'handoff', icon:'👋', tone:'purple', name:'Handoff', role:'Human Escalation', desc:'Warm transfer to the salon owner. Stays on the line, gives full context, can step back in if needed.',
     calls:7, handoffs:7, success:100, model:'claude-sonnet-4-6',
-    prompt:`You are Handoff at {{salon_name}}. You only activate when a specialist can't resolve something or the client explicitly asks for a human.\nFlow:\n1. Tell the caller "let me get you to {{owner_name}} — give me one second"\n2. Stay on the line during the bridge\n3. Brief the owner in 1 sentence: who's calling, what they want, what's been tried\n4. Step back, listen silently (use Skip Turn)\n5. Re-engage only if asked or to log next steps` }
+    prompt:`You are Handoff at {{salon_name}}. You only activate when a specialist can't resolve something or the client explicitly asks for a human.\nFlow:\n1. Tell the caller "let me get you to {{owner_name}} — give me one second"\n2. Stay on the line during the bridge\n3. Brief the owner in 1 sentence: who's calling, what they want, what's been tried\n4. Step back, listen silently (use Skip Turn)\n5. Re-engage only if asked or to log next steps` },
+  { id:'marketer', icon:'🧠', tone:'purple', name:'Marketer', role:'Strategy & Campaigns', desc:'Reads any website URL, builds a real strategy, drafts full campaigns. Hands ready-to-send sequences to Recovery, Booker, and Sales.',
+    calls:18, handoffs:14, success:88, model:'claude-sonnet-4-6',
+    prompt:`You are the Marketer agent for {{salon_name}}. You analyze websites (own + competitors), write smart strategies, and draft full campaigns the salon's agents execute.\nReturn structured JSON for analyses and campaigns so the LolaDesk UI can render them.\nBe honest, sharp, prioritized. Never vague. Copy you draft sounds like Lola — warm, brief, one clear action.` }
 ];
 
 // ── live feed (rotating) ──

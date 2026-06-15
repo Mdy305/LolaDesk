@@ -17,12 +17,13 @@
     revenue:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     team:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/>',
     marketing:'<path d="M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 11-5.8-1.6"/>',
+    marketer:'<path d="M12 2a4 4 0 014 4v1a5 5 0 013 4.6V14a5 5 0 01-3 4.6V20a4 4 0 11-8 0v-1.4A5 5 0 015 14v-2.4A5 5 0 018 7V6a4 4 0 014-4z"/><path d="M9 11h.01M15 11h.01"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };
 
   const items = [
     { id:'overview', label:'Overview', href:'dashboard.html' },
-    { id:'agents',   label:'Agents',   href:'agents.html', badge:'7', pink:true },
+    { id:'agents',   label:'Agents',   href:'agents.html', badge:'8', pink:true },
     { id:'clients',  label:'Clients',  href:'clients.html' },
     { id:'calls',    label:'Calls',    href:'calls.html', badge:'12' },
     { id:'inbox',    label:'Inbox',    href:'inbox.html', badge:'8' },
@@ -31,6 +32,7 @@
     { id:'revenue',  label:'Revenue',  href:'revenue.html' },
     { id:'team',     label:'Team',     href:'team.html' },
     { id:'marketing',label:'Marketing',href:'marketing.html' },
+    { id:'marketer', label:'Marketer', href:'marketer.html', badge:'AI', pink:true },
     { id:'settings', label:'Settings', href:'settings.html' }
   ];
 
