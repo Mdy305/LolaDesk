@@ -131,7 +131,9 @@ function renderInsights(){
 }
 
 function renderInbox(){
-  document.getElementById('inboxList').innerHTML = DATA.inbox.map(m => `
+  const el = document.getElementById('inboxList');
+  if(!el) return;
+  el.innerHTML = DATA.inbox.map(m => `
     <div class="inbox-item" onclick="askLola('Help me reply to ${m.name} who messaged: ${m.msg.replace(/'/g,"\\'")}')">
       ${avatar(m.name, m.img, 'inbox-av')}
       <div class="inbox-info">
@@ -147,7 +149,9 @@ function renderInbox(){
 }
 
 function renderTeam(){
-  document.getElementById('teamList').innerHTML = TENANT.team.map(t => `
+  const el = document.getElementById('teamList');
+  if(!el) return;
+  el.innerHTML = TENANT.team.map(t => `
     <div class="team-item">
       ${avatar(t.name, t.img, 'team-av')}
       <div class="team-info">

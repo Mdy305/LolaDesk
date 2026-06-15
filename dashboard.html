@@ -184,10 +184,21 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .legend-val{color:var(--text);font-weight:500}
 
 /* ─── BOTTOM PANELS ─── */
-.panels-row{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:16px}
-@media(max-width:1500px){.panels-row{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:900px){.panels-row{grid-template-columns:1fr 1fr}}
-@media(max-width:640px){.panels-row{grid-template-columns:1fr}}
+/* ─── QUICK GRID (links to interior pages) ─── */
+.quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}
+@media(max-width:1200px){.quick-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.quick-grid{grid-template-columns:1fr}}
+.quick-tile{display:flex;align-items:center;gap:14px;padding:18px 20px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);text-decoration:none;color:inherit;transition:all .18s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+.quick-tile:hover{background:var(--surface2);border-color:var(--border2);transform:translateY(-1px)}
+.quick-tile:hover .quick-arrow{transform:translateX(3px);color:var(--pink2)}
+.quick-icon{width:42px;height:42px;border-radius:11px;background:var(--pink-dim);color:var(--pink2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.quick-body{flex:1;min-width:0}
+.quick-label{font-size:13px;font-weight:500;color:var(--text);margin-bottom:3px;display:flex;align-items:center;gap:7px}
+.quick-val{font-size:12.5px;font-weight:300;color:var(--text2)}
+.quick-delta{color:var(--text3);margin-left:4px;font-size:11px}
+.quick-pill{font-size:9px;font-weight:600;background:var(--pink-dim);color:var(--pink2);padding:2px 7px;border-radius:20px;letter-spacing:.04em}
+.quick-pill.green{background:var(--green-dim);color:var(--green)}
+.quick-arrow{color:var(--text3);transition:all .18s cubic-bezier(.4,0,.2,1);flex-shrink:0}
 .panel-tag{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;color:var(--text2);padding:14px 16px 10px;letter-spacing:.04em}
 .panel-tag-icon{color:var(--pink2)}
 
@@ -510,134 +521,79 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     </div>
 
     <!-- BOTTOM PANELS -->
-    <div class="panels-row">
+    <div class="quick-grid">
 
-      <!-- CLIENT -->
-      <div class="client-card">
-        <div class="panel-tag"><svg class="panel-tag-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg>Clients</div>
-        <img class="client-photo" src="https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&q=80" alt="Jennifer Adams"/>
-        <div class="client-body">
-          <div class="client-name-row"><span class="client-name">Jennifer Adams</span><span class="vip-badge">VIP</span></div>
-          <div class="client-tag">VIP Blonde Client</div>
-          <div class="client-stat"><span class="client-stat-label">Lifetime Value</span><span class="client-stat-val">$14,250</span></div>
-          <div class="client-stat"><span class="client-stat-label">Last Visit</span><span class="client-stat-val">May 22, 2024</span></div>
-          <div class="client-stat"><span class="client-stat-label">Next Visit</span><span class="client-stat-val">Jun 18, 2024</span></div>
-          <div class="client-notes">
-            <div class="client-notes-title">AI Notes</div>
-            <div class="client-note">Prefers cool blonde tones</div>
-            <div class="client-note">Always books Friday afternoons</div>
-            <div class="client-note">Tips above average · loves scalp treatments</div>
-          </div>
-          <div class="client-actions">
-            <button class="btn btn-ghost" onclick="askLola('Draft a message to Jennifer Adams about her June 18 balayage appointment')">Message</button>
-            <button class="btn btn-primary" onclick="askLola('Book Jennifer Adams for her usual balayage')">Book</button>
-          </div>
+      <a class="quick-tile" href="clients.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Clients</div>
+          <div class="quick-val">1,284 <span class="quick-delta">↑ 42 this month</span></div>
         </div>
-      </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
 
-      <!-- LIVE CALL -->
-      <div class="call-card">
-        <div class="panel-tag"><svg class="panel-tag-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>Live Call</div>
-        <div class="call-head">
-          <span class="call-status">Lola is handling</span>
-          <span class="call-rec"><span class="call-rec-dot"></span>REC 02:18</span>
+      <a class="quick-tile" href="calls.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Calls</div>
+          <div class="quick-val">47 today <span class="quick-delta">38 booked · 81%</span></div>
         </div>
-        <div class="call-avatar"><span class="call-avatar-letter">L</span></div>
-        <div class="call-name">Lola AI</div>
-        <div class="call-sub">Talking to Sarah Johnson</div>
-        <div class="call-intent">
-          <div class="call-intent-label">Detected intent</div>
-          <div class="call-intent-val">Balayage consultation</div>
-        </div>
-        <div class="call-prob">
-          <div class="call-prob-head"><span class="call-prob-label">Probability to book</span><span class="call-prob-val">92%</span></div>
-          <div class="call-prob-track"><div class="call-prob-fill" style="width:92%"></div></div>
-        </div>
-        <div class="call-waveform" id="callWave"></div>
-        <div class="call-transcript">
-          <b>Sarah:</b> Hi, I'm looking to get a balayage…<br>
-          <b>Lola:</b> I can definitely help with that! Are you thinking soft and natural or more of a bold transformation?
-        </div>
-        <div class="call-controls">
-          <button class="call-ctrl" aria-label="Mute"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2"/></svg></button>
-          <button class="call-ctrl" aria-label="Hold"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
-          <button class="call-ctrl end" aria-label="End"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15.5c-1.2 0-2.4-.2-3.6-.6a1 1 0 00-1 .2l-2 2a15 15 0 01-6.6-6.6l2-2a1 1 0 00.2-1A11 11 0 018.5 4a1 1 0 00-1-1H4a1 1 0 00-1 1 18 18 0 0018 18 1 1 0 001-1v-3.5a1 1 0 00-1-1z"/></svg></button>
-          <button class="call-ctrl" aria-label="Transfer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 3l5 5-5 5M21 8H9M8 21l-5-5 5-5M3 16h12"/></svg></button>
-        </div>
-      </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
 
-      <!-- INBOX -->
-      <div class="card">
-        <div class="panel-tag"><svg class="panel-tag-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Inbox</div>
-        <div class="inbox-tabs">
-          <span class="inbox-tab active">All</span>
-          <span class="inbox-tab">Instagram</span>
-          <span class="inbox-tab">SMS</span>
-          <span class="inbox-tab">WhatsApp</span>
+      <a class="quick-tile" href="inbox.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Inbox <span class="quick-pill">8 new</span></div>
+          <div class="quick-val">All channels in one place</div>
         </div>
-        <div id="inboxList"></div>
-      </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
 
-      <!-- REVENUE DETAIL -->
-      <div class="card">
-        <div class="panel-tag"><svg class="panel-tag-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Revenue</div>
-        <div style="padding:14px 16px">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:8px">This month</div>
-          <div style="font-size:26px;font-weight:600;margin-bottom:4px">$38,200</div>
-          <div class="rev-change" style="margin-bottom:14px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>24% vs last month</div>
-          <canvas id="revBars" width="280" height="70"></canvas>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px">
-            <div><div style="font-size:10px;color:var(--text3)">Avg Ticket</div><div style="font-size:14px;font-weight:600">$320</div><div style="font-size:10px;color:var(--green)">↑12%</div></div>
-            <div><div style="font-size:10px;color:var(--text3)">Appts</div><div style="font-size:14px;font-weight:600">119</div><div style="font-size:10px;color:var(--green)">↑8%</div></div>
-            <div><div style="font-size:10px;color:var(--text3)">New</div><div style="font-size:14px;font-weight:600">27</div><div style="font-size:10px;color:var(--green)">↑10%</div></div>
-          </div>
+      <a class="quick-tile" href="bookings.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Bookings</div>
+          <div class="quick-val">31 this week <span class="quick-delta">94% show rate</span></div>
         </div>
-      </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
 
-      <!-- TEAM -->
-      <div class="card">
-        <div class="panel-tag"><svg class="panel-tag-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/></svg>Team</div>
-        <div id="teamList"></div>
-        <div style="padding:12px 16px"><button class="btn btn-ghost" style="width:100%" onclick="askLola('Show me detailed team performance this month')">View performance</button></div>
-      </div>
-
-      <!-- MOBILE APP -->
-      <div class="phone-panel">
-        <div class="phone-tag">Mobile App</div>
-        <div class="phone">
-          <div class="phone-notch"></div>
-          <div class="phone-status">
-            <span>9:41</span>
-            <span class="phone-status-icons">
-              <svg width="15" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
-              <svg width="15" height="11" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.5c2.2 0 4.2.9 5.7 2.3l1.4-1.4A10 10 0 008 0a10 10 0 00-7.1 3.4l1.4 1.4A8 8 0 018 2.5z" opacity=".5"/><path d="M8 6c1.1 0 2.1.4 2.8 1.2l1.4-1.4A6 6 0 008 4a6 6 0 00-4.2 1.8l1.4 1.4A4 4 0 018 6z"/><circle cx="8" cy="10" r="1.5"/></svg>
-              <svg width="22" height="11" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="20" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="21.5" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".4"/></svg>
-            </span>
-          </div>
-          <div class="phone-greeting">
-            <div class="phone-greeting-label">Good morning,</div>
-            <div class="phone-greeting-name">Meddy 👋</div>
-          </div>
-          <div class="phone-orb">
-            <canvas id="phoneOrb" width="150" height="150"></canvas>
-            <div class="phone-orb-label">LOLA</div>
-          </div>
-          <div class="phone-prompt">
-            <div class="phone-prompt-title">Hey Lola…</div>
-            <div class="phone-prompt-sub">Tap to speak</div>
-          </div>
-          <div class="phone-mic">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
-          </div>
-          <div class="phone-nav">
-            <div class="phone-nav-item active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/></svg></div>
-            <div class="phone-nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg></div>
-            <div class="phone-nav-orb">L</div>
-            <div class="phone-nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div>
-            <div class="phone-nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="6" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="18" r="1"/></svg></div>
-          </div>
+      <a class="quick-tile" href="revenue.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Revenue</div>
+          <div class="quick-val">$38,200 <span class="quick-delta" style="color:var(--green)">↑ 24%</span></div>
         </div>
-      </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <a class="quick-tile" href="team.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Team</div>
+          <div class="quick-val">4 stylists <span class="quick-delta">87% utilization</span></div>
+        </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <a class="quick-tile" href="numbers.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Numbers <span class="quick-pill green">New</span></div>
+          <div class="quick-val">Get your Lola line</div>
+        </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <a class="quick-tile" href="marketing.html">
+        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 11-5.8-1.6"/></svg></div>
+        <div class="quick-body">
+          <div class="quick-label">Marketing</div>
+          <div class="quick-val">3 campaigns running</div>
+        </div>
+        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
 
     </div>
 
