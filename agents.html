@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Agents — LolaDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,200;1,300&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.agents-head{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:22px}
+@media(max-width:1000px){.agents-head{grid-template-columns:1fr}}
+
+/* ORCHESTRATOR HERO */
+.lola-hub{background:radial-gradient(ellipse 100% 90% at 50% 50%,rgba(255,45,142,.08),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:28px;position:relative;overflow:hidden;display:flex;align-items:center;gap:24px}
+.hub-orb{width:120px;height:120px;position:relative;flex-shrink:0}
+.hub-orb canvas{position:absolute;inset:0}
+.hub-orb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;letter-spacing:.24em;text-indent:.24em}
+.hub-info{flex:1;min-width:0}
+.hub-title{font-family:var(--ff-serif);font-size:30px;font-style:italic;font-weight:300;margin-bottom:6px;line-height:1.1}
+.hub-sub{font-size:13px;color:var(--text2);font-weight:300;line-height:1.5;margin-bottom:14px}
+.hub-stats{display:flex;gap:22px}
+.hub-stat-val{font-size:22px;font-weight:600}
+.hub-stat-label{font-size:10px;color:var(--text3);letter-spacing:.04em}
+
+/* live activity */
+.live-card{display:flex;flex-direction:column}
+.live-feed{padding:8px 0;flex:1;display:flex;flex-direction:column;gap:6px}
+.live-event{display:flex;align-items:center;gap:10px;padding:10px 18px;font-size:12.5px}
+.live-time{font-size:10px;color:var(--text3);width:42px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.live-agent{font-weight:600;color:var(--pink2)}
+.live-event .pip{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);flex-shrink:0}
+
+/* AGENT GRID */
+.agent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.agent{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:22px;transition:all .2s;position:relative;cursor:pointer;display:flex;flex-direction:column}
+.agent:hover{border-color:var(--border2);transform:translateY(-2px)}
+.agent.active{border-color:var(--pink)}
+.agent.active::before{content:'';position:absolute;top:14px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.agent-icon{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
+.agent-name{font-size:16px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+.agent-role{font-size:11px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px}
+.agent-desc{font-size:13px;font-weight:300;color:var(--text2);line-height:1.55;margin-bottom:16px;flex:1}
+.agent-stats{display:flex;gap:14px;margin-bottom:14px;padding-top:14px;border-top:0.5px solid var(--border)}
+.agent-stat-val{font-size:15px;font-weight:600}
+.agent-stat-label{font-size:10px;color:var(--text3);letter-spacing:.04em}
+.agent-foot{display:flex;align-items:center;justify-content:space-between;font-size:11px}
+.agent-status{display:flex;align-items:center;gap:6px;color:var(--green)}
+.agent-status .ldot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green)}
+.agent-cfg{color:var(--pink2);font-weight:500;cursor:pointer}
+
+/* SECTION HEADER */
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:30px 0 14px}
+.section-title{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.section-sub{font-size:12px;color:var(--text3);margin-top:2px}
+
+/* FLOW DIAGRAM */
+.flow{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:30px;margin-top:22px;overflow-x:auto}
+.flow-svg{min-width:760px;width:100%;height:auto;display:block;margin:0 auto}
+
+/* color variants */
+.tone-pink{background:var(--pink-dim);color:var(--pink2)}
+.tone-blue{background:var(--blue-dim);color:var(--blue)}
+.tone-green{background:var(--green-dim);color:var(--green)}
+.tone-amber{background:var(--amber-dim);color:var(--amber)}
+.tone-purple{background:rgba(168,85,247,.12);color:#c084fc}
+.tone-rose{background:rgba(244,114,182,.12);color:#f472b6}
+.tone-sky{background:rgba(56,189,248,.12);color:#7dd3fc}
+</style>
+</head>
+<body data-page="agents">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Lola's Team</h1>
+        <p class="page-sub">Seven specialized AI agents working together as one front desk.</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="copyTelnyxConfig()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Export Telnyx config</button>
+        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>Add agent</button>
+      </div>
+    </div>
+
+    <div class="agents-head">
+      <div class="lola-hub">
+        <div class="hub-orb">
+          <canvas id="hubOrb" width="120" height="120"></canvas>
+          <div class="hub-orb-label">LOLA</div>
+        </div>
+        <div class="hub-info">
+          <div class="hub-title">The orchestrator.</div>
+          <div class="hub-sub">Lola greets every caller, reads what they need, and hands off to the right specialist — seamlessly, in under a second.</div>
+          <div class="hub-stats">
+            <div><div class="hub-stat-val">7</div><div class="hub-stat-label">AGENTS</div></div>
+            <div><div class="hub-stat-val">142</div><div class="hub-stat-label">HANDOFFS TODAY</div></div>
+            <div><div class="hub-stat-val" style="color:var(--green)">98%</div><div class="hub-stat-label">SUCCESS</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card live-card">
+        <div class="card-head"><div class="card-title"><span class="dot pink"></span>Live activity</div></div>
+        <div class="live-feed" id="liveFeed"></div>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <div class="section-title">The specialists</div>
+        <div class="section-sub">Each agent is world-class at one job.</div>
+      </div>
+    </div>
+
+    <div class="agent-grid" id="agentGrid"></div>
+
+    <div class="section-head">
+      <div>
+        <div class="section-title">Handoff flow</div>
+        <div class="section-sub">How Lola routes each conversation.</div>
+      </div>
+    </div>
+
+    <div class="flow">
+      <svg class="flow-svg" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lgrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#ff2d8e"/><stop offset="1" stop-color="#ff6bb0"/>
+          </linearGradient>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0 0L10 5L0 10z" fill="#52525a"/>
+          </marker>
+        </defs>
+        <!-- caller -->
+        <circle cx="60" cy="140" r="30" fill="#16161a" stroke="#28282e"/>
+        <text x="60" y="145" text-anchor="middle" fill="#8a8a92" font-size="11" font-family="Inter">Caller</text>
+        <!-- Lola center -->
+        <circle cx="200" cy="140" r="40" fill="url(#lgrad)" opacity=".9"/>
+        <text x="200" y="146" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="Inter" letter-spacing="2">LOLA</text>
+        <!-- specialists right -->
+        <g font-family="Inter" font-size="11" fill="#f2f2f5">
+          <rect x="380" y="20" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="44" text-anchor="middle">💇 Booker</text>
+          <rect x="380" y="72" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="96" text-anchor="middle">💰 Sales</text>
+          <rect x="380" y="124" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="148" text-anchor="middle">🌸 Concierge</text>
+          <rect x="380" y="176" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="200" text-anchor="middle">🎯 Recovery</text>
+          <rect x="380" y="228" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="252" text-anchor="middle">📋 Support</text>
+        </g>
+        <!-- handoff far right -->
+        <rect x="600" y="124" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e" font-family="Inter"/>
+        <text x="660" y="148" text-anchor="middle" fill="#f2f2f5" font-size="11" font-family="Inter">👋 Handoff</text>
+        <!-- arrows -->
+        <path d="M90 140 L160 140" stroke="#ff2d8e" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+        <path d="M240 140 Q310 40 380 40" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+        <path d="M240 140 Q310 92 380 92" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+        <path d="M240 140 L380 144" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+        <path d="M240 140 Q310 196 380 196" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+        <path d="M240 140 Q310 248 380 248" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+        <path d="M500 144 L600 144" stroke="#52525a" stroke-width="1" fill="none" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+        <text x="550" y="138" fill="#52525a" font-size="9" font-family="Inter" text-anchor="middle">if needed</text>
+      </svg>
+    </div>
+  </main>
+</div>
+
+<script src="sidebar.js"></script>
+<script>
+// ── AGENT ROSTER ──
+const AGENTS = [
+  { id:'lola', icon:'🎀', tone:'pink', name:'Lola', role:'Orchestrator', desc:'The voice every caller hears first. Warmly greets, listens, detects intent, and hands off to the right specialist in under a second.',
+    calls:142, handoffs:142, success:98, model:'claude-sonnet-4-6 / Qwen3-235B', active:true,
+    prompt:`You are Lola, the front-desk AI for {{salon_name}}. You are warm, surgically smart, and brief — like the best receptionist in the world.\nYour job is to greet, listen for intent, then hand off to the right specialist:\n- "Booker" → wants to book, schedule, reschedule\n- "Sales" → asking about services, prices, packages (new clients)\n- "Concierge" → returning VIP client, wants their stylist\n- "Recovery" → missed an appointment, hasn't been in a while\n- "Support" → cancel, complaint, change\nIf a human is required, hand off to "Handoff".\nAlways stay warm. Never say "I'll transfer you" — say "let me get you to someone who can help with that".` },
+  { id:'booker', icon:'💇', tone:'blue', name:'Booker', role:'Booking Specialist', desc:'Owns the calendar. Checks live availability, books the right service with the right stylist, sends the confirmation text.',
+    calls:64, handoffs:0, success:94, model:'claude-sonnet-4-6',
+    prompt:`You are Booker, the booking specialist at {{salon_name}}. You ONLY book appointments — you do not chat, sell, or handle complaints.\nServices and prices: {{services}}\nStylists: {{team}}\nHours: {{hours}}\nFlow:\n1. Confirm what service they want\n2. Offer 2-3 real time slots\n3. Get their name + phone\n4. Confirm and tell them the booking link will be texted\nBe brief, decisive, kind.` },
+  { id:'sales', icon:'💰', tone:'green', name:'Sales', role:'New Client Closer', desc:'For first-time callers. Explains services and prices with confidence, qualifies the lead, hands them to Booker to close.',
+    calls:31, handoffs:28, success:90, model:'claude-sonnet-4-6',
+    prompt:`You are Sales, the new-client specialist at {{salon_name}}. Your job is to make a first-time caller fall in love with the salon and want to book.\nServices: {{services}}\nWhat makes us special: {{usp}}\nApproach: be warm, build excitement, anchor to the result they want, give the price confidently, then hand off to Booker.\nNever apologize for prices.` },
+  { id:'concierge', icon:'🌸', tone:'rose', name:'Concierge', role:'VIP Specialist', desc:'For returning VIPs. Remembers their preferences, their stylist, their last service. Treats every regular like family.',
+    calls:24, handoffs:18, success:96, model:'claude-sonnet-4-6',
+    prompt:`You are Concierge, the VIP specialist at {{salon_name}}. The caller is a returning client — you already know:\nLast service: {{last_service}}\nPreferred stylist: {{preferred_stylist}}\nNotes: {{client_notes}}\nGreet them by name. Reference their history naturally. Ask if they want their usual or something new. Hand off to Booker to schedule.\nWarm, familiar, never robotic.` },
+  { id:'recovery', icon:'🎯', tone:'amber', name:'Recovery', role:'Win-back & Rebooking', desc:'Outbound calls and texts. Reaches clients who missed their appointment or are overdue. Brings them back.',
+    calls:38, handoffs:31, success:78, model:'claude-sonnet-4-6',
+    prompt:`You are Recovery at {{salon_name}}. You make warm outbound calls and texts to clients who haven't been in for {{days_since_last_visit}} days or missed an appointment.\nBe gentle, never pushy. Reference what they got last time. Offer a specific time slot. If they want to rebook, hand off to Booker.\nIf they want to cancel/never return, gracefully accept and hand off to Support.` },
+  { id:'support', icon:'📋', tone:'sky', name:'Support', role:'Changes & Resolution', desc:'Handles cancellations, reschedules, complaints. Calm, precise, de-escalates and resolves in one call.',
+    calls:19, handoffs:11, success:92, model:'claude-sonnet-4-6',
+    prompt:`You are Support at {{salon_name}}. You handle:\n- Cancellations and reschedules\n- Complaints (always with empathy first)\n- Lost items, billing questions\nFlow for complaints: 1) acknowledge feelings, 2) get the facts, 3) propose a fix. If you can't resolve, hand off to Handoff with full context.\nNever defensive. Always solution-focused.` },
+  { id:'handoff', icon:'👋', tone:'purple', name:'Handoff', role:'Human Escalation', desc:'Warm transfer to the salon owner. Stays on the line, gives full context, can step back in if needed.',
+    calls:7, handoffs:7, success:100, model:'claude-sonnet-4-6',
+    prompt:`You are Handoff at {{salon_name}}. You only activate when a specialist can't resolve something or the client explicitly asks for a human.\nFlow:\n1. Tell the caller "let me get you to {{owner_name}} — give me one second"\n2. Stay on the line during the bridge\n3. Brief the owner in 1 sentence: who's calling, what they want, what's been tried\n4. Step back, listen silently (use Skip Turn)\n5. Re-engage only if asked or to log next steps` }
+];
+
+// ── live feed (rotating) ──
+const EVENTS = [
+  ['12s', 'Lola', 'Greeted caller from +1 (305) 555-0142'],
+  ['10s', 'Lola', 'Intent: balayage consult → handing off to Booker'],
+  ['7s', 'Booker', 'Offered Thu 2pm or Sat 11am'],
+  ['3s', 'Booker', 'Booked Sarah Johnson — Sat 11am ✓'],
+  ['1m', 'Concierge', 'Welcomed back Jennifer Adams (VIP)'],
+  ['2m', 'Recovery', 'Outbound: Camila Santos rebooked ✓'],
+  ['4m', 'Sales', 'Quoted extensions to first-time caller'],
+  ['6m', 'Support', 'Resolved Olivia Brown reschedule'],
+  ['8m', 'Lola', 'Auto-text after missed call to +1 (786) 555-0203']
+];
+function renderFeed(){
+  document.getElementById('liveFeed').innerHTML = EVENTS.map(([t,a,e])=>`
+    <div class="live-event"><span class="pip"></span><span class="live-time">${t}</span><span class="live-agent">${a}</span><span style="color:var(--text2)">${e}</span></div>`).join('');
+}
+renderFeed();
+
+// ── render agents ──
+function renderAgents(){
+  document.getElementById('agentGrid').innerHTML = AGENTS.map(a=>`
+    <div class="agent ${a.active?'active':''}" onclick="openAgent('${a.id}')">
+      <div class="agent-icon tone-${a.tone}">${a.icon}</div>
+      <div class="agent-name">${a.name} ${a.id==='lola'?'<span class="pill pink">Orchestrator</span>':''}</div>
+      <div class="agent-role">${a.role}</div>
+      <div class="agent-desc">${a.desc}</div>
+      <div class="agent-stats">
+        <div><div class="agent-stat-val">${a.calls}</div><div class="agent-stat-label">Today</div></div>
+        <div><div class="agent-stat-val">${a.handoffs}</div><div class="agent-stat-label">Handoffs</div></div>
+        <div><div class="agent-stat-val" style="color:var(--green)">${a.success}%</div><div class="agent-stat-label">Success</div></div>
+      </div>
+      <div class="agent-foot">
+        <span class="agent-status"><span class="ldot"></span>Active</span>
+        <span class="agent-cfg">Configure →</span>
+      </div>
+    </div>`).join('');
+}
+renderAgents();
+
+function openAgent(id){
+  const a = AGENTS.find(x=>x.id===id);
+  if(!a) return;
+  alert(`${a.name} — ${a.role}\n\nModel: ${a.model}\n\nSystem prompt:\n${a.prompt}\n\n(Configure UI lands here next.)`);
+}
+
+// ── Telnyx config export ──
+function copyTelnyxConfig(){
+  const config = {
+    orchestrator: {
+      name: 'Lola',
+      model: 'Qwen/Qwen3-235B-A22B',
+      voice: 'Polly.Joanna-Neural',
+      instructions: AGENTS[0].prompt,
+      handoff_targets: AGENTS.slice(1).map(a=>a.name)
+    },
+    specialists: AGENTS.slice(1).map(a=>({
+      name: a.name,
+      role: a.role,
+      model: 'Qwen/Qwen3-235B-A22B',
+      voice: 'Polly.Joanna-Neural',
+      instructions: a.prompt,
+      can_handoff_to: ['Lola','Handoff'].concat(AGENTS.filter(x=>x.id!==a.id&&x.id!=='lola'&&x.id!=='handoff').map(x=>x.name))
+    }))
+  };
+  const text = JSON.stringify(config, null, 2);
+  navigator.clipboard.writeText(text).then(()=>{
+    alert('Telnyx multi-agent config copied to clipboard.\n\nPaste it into Telnyx Portal → AI → Assistant Builder → Import.');
+  }).catch(()=>{
+    const w = window.open(); w.document.write('<pre>'+text.replace(/</g,'&lt;')+'</pre>');
+  });
+}
+
+// ── orb (shared mini renderer) ──
+function makeOrb(canvas, size){
+  const x=canvas.getContext('2d'); const c=size/2; let t=Math.random()*10; const R=size*0.3;
+  (function loop(){
+    x.clearRect(0,0,size,size);
+    const breath=0.5+Math.sin(t*1.3)*0.5;
+    x.globalCompositeOperation='lighter';
+    const halo=x.createRadialGradient(c,c,size*0.04,c,c,size*0.49);
+    const hA=0.10+breath*0.12;
+    halo.addColorStop(0,`rgba(255,45,142,${hA})`);halo.addColorStop(0.5,`rgba(255,45,142,${hA*0.4})`);halo.addColorStop(1,'rgba(255,45,142,0)');
+    x.fillStyle=halo;x.fillRect(0,0,size,size);
+    const core=x.createRadialGradient(c,c,0,c,c,size*0.26);
+    const cA=0.25+breath*0.2;
+    core.addColorStop(0,`rgba(255,130,195,${cA})`);core.addColorStop(1,'rgba(255,45,142,0)');
+    x.fillStyle=core;x.fillRect(0,0,size,size);
+    for(let i=0;i<48;i++){
+      const a=(i/48)*Math.PI*2;
+      const r=R+Math.sin(t*.8+i*.4)*size*0.03+breath*size*0.012;
+      const px=c+Math.cos(a)*r,py=c+Math.sin(a)*r;
+      const al=0.25+Math.abs(Math.sin(t*.6+i*.3))*0.35;
+      x.beginPath();x.arc(px,py,size*0.007,0,Math.PI*2);
+      x.fillStyle=`rgba(255,${90+Math.sin(t+i*.2)*60},${175+Math.sin(t+i)*30},${al})`;x.fill();
+    }
+    x.globalCompositeOperation='source-over';
+    t+=0.015;requestAnimationFrame(loop);
+  })();
+}
+makeOrb(document.getElementById('hubOrb'),120);
+</script>
+</body>
+</html>
