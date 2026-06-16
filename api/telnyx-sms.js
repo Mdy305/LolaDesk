@@ -16,6 +16,7 @@ import {
   getTenantByPhone, upsertClient, getOrStartConversation,
   logMessage, getConversationHistory, logUsage, e164
 } from './lib/db.js';
+import { chat } from './lib/llm.js';
 
 function shapeTenant(t){
   return {
@@ -35,13 +36,17 @@ When someone wants to book, share the booking link and confirm the service. Neve
 }
 
 async function askLola(history, tenant){
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', 'x-api-key':process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:200, system:systemPrompt(tenant), messages:history })
+  const result = await chat({
+    system: systemPrompt(tenant),
+    messages: history,
+    maxTokens: 200,
+    temperature: 0.7
   });
-  const data = await res.json();
-  return data.content?.[0]?.text || "Thanks for texting! How can I help you book today?";
+  if(!result.ok){
+    console.error('[sms] LLM failed:', result.error);
+    return "Thanks for texting! How can I help you book today?";
+  }
+  return result.text || "Thanks for texting! How can I help you book today?";
 }
 
 // Send an SMS via Telnyx

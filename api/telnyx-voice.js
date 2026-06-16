@@ -21,6 +21,7 @@ import {
   endConversation, logMessage, getConversationHistory,
   logCall, logUsage, e164
 } from './lib/db.js';
+import { chat } from './lib/llm.js';
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>';
 
@@ -56,22 +57,17 @@ function encodeState(obj){
 }
 
 async function askLola(history, tenant){
-  try{
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'x-api-key':process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
-      body: JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens: 150,
-        system: buildSystemPrompt(tenant),
-        messages: history
-      })
-    });
-    const data = await res.json();
-    return data.content?.[0]?.text || "I'm sorry, could you say that again?";
-  }catch(e){
+  const result = await chat({
+    system: buildSystemPrompt(tenant),
+    messages: history,
+    maxTokens: 150,
+    temperature: 0.7
+  });
+  if(!result.ok){
+    console.error('[voice] LLM failed:', result.error);
     return "I'm having trouble hearing you — let me have someone call you right back.";
   }
+  return result.text || "I'm sorry, could you say that again?";
 }
 
 // Resolve which salon this number belongs to.
