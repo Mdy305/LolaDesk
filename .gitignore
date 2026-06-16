@@ -6,12 +6,10 @@ node_modules/
 .DS_Store
 *.log
 
-# Unfinished enterprise scaffold — push when ready
+# Block only the genuine unfinished scaffolds — NOT the real API files
 LolaDesk/
 api/orchestrator.js
-api/oauth/
 api/v2/
-lib/
-schema.sql
 Integral_Full_iCloud_Export.html
 *.icloud-export.html
+lib/stripe.js
