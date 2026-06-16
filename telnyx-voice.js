@@ -1,0 +1,164 @@
+/**
+ * /api/telnyx-voice — Telnyx Voice (TeXML) webhook · MULTI-TENANT
+ * ════════════════════════════════════════════════════════════════
+ * When someone calls a salon's Lola number, Telnyx hits this URL.
+ * We look up which salon owns the called number, load context, ask
+ * Claude, and reply with TeXML.
+ *
+ * ENV VARS (Vercel → Settings → Environment Variables):
+ *   ANTHROPIC_API_KEY        Lola's brain
+ *   TELNYX_API_KEY           for outbound actions
+ *   SUPABASE_URL             multi-tenant lookup
+ *   SUPABASE_SERVICE_KEY     server-side
+ *
+ * Conversation memory now persists to Supabase: Lola REMEMBERS every
+ * caller across calls. State per-turn still rides in client_state for
+ * speed; we mirror to DB at the end of each turn.
+ */
+
+import {
+  getTenantByPhone, upsertClient, getOrStartConversation,
+  endConversation, logMessage, getConversationHistory,
+  logCall, logUsage, e164
+} from './lib/db.js';
+import { chat } from './lib/llm.js';
+
+const XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>';
+
+function texml(inner){
+  return `${XML_HEADER}\n<Response>${inner}</Response>`;
+}
+
+function xmlEscape(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Lola's voice persona for the phone. Telnyx supports many TTS voices;
+// "Polly.Joanna-Neural" is a warm US female. Swap per-tenant if you like.
+const LOLA_VOICE = 'Polly.Joanna-Neural';
+
+function buildSystemPrompt(tenant){
+  const svc = (tenant.services||[]).map(s=>`${s.name} $${s.price} (${s.duration||''})`).join('; ');
+  return `You are Lola, the AI receptionist answering the phone for ${tenant.name}, a salon at ${tenant.location||''}.
+You are warm, quick, and human — never robotic. Keep EVERY reply under 2 sentences because this is a live phone call. Always move toward booking.
+Services: ${svc}.
+Hours: ${tenant.hours||'Tue–Sat, Noon–8pm'}. Booking link: ${tenant.bookingUrl||''}.
+If the caller wants to book, collect: service, day, and name — then confirm you'll text them the booking link. If they ask something you can't do, offer to take a message.
+Never say you are an AI unless asked directly. Speak naturally, like the salon's best receptionist.`;
+}
+
+// Minimal in-call history is passed via Gather's "client_state" base64.
+function decodeState(s){
+  try { return JSON.parse(Buffer.from(s||'', 'base64').toString('utf8')); }
+  catch { return { history: [] }; }
+}
+function encodeState(obj){
+  return Buffer.from(JSON.stringify(obj)).toString('base64');
+}
+
+async function askLola(history, tenant){
+  const result = await chat({
+    system: buildSystemPrompt(tenant),
+    messages: history,
+    maxTokens: 150,
+    temperature: 0.7
+  });
+  if(!result.ok){
+    console.error('[voice] LLM failed:', result.error);
+    return "I'm having trouble hearing you — let me have someone call you right back.";
+  }
+  return result.text || "I'm sorry, could you say that again?";
+}
+
+// Resolve which salon this number belongs to.
+// Map a tenant row (from DB) into the prompt-friendly shape buildSystemPrompt expects.
+function shapeTenant(t){
+  return {
+    name: t.name,
+    location: t.location,
+    hours: t.hours,
+    bookingUrl: t.booking_url,
+    services: t.services || []
+  };
+}
+
+export default async function handler(req, res){
+  res.setHeader('Content-Type', 'application/xml');
+
+  // Telnyx posts application/x-www-form-urlencoded for TeXML
+  const body = req.body || {};
+  const callStatus = body.CallStatus || body.call_status;
+  const speech = body.SpeechResult || body.Digits || '';
+  const toNumber = body.To || body.to || '';
+  const fromNumber = body.From || body.from || '';
+  const telnyxCallId = body.CallSid || body.call_control_id || '';
+  const actionUrl = '/api/telnyx-voice';
+
+  // ── 1. Resolve tenant by the called number (multi-tenant entry point) ──
+  const tenantRow = await getTenantByPhone(toNumber);
+  const tenant = shapeTenant(tenantRow);
+
+  // ── 2. Find or create the client by caller number, get the open conversation ──
+  let client = null, conversation = null;
+  try{
+    client = await upsertClient(tenantRow.id, { phone: fromNumber });
+    conversation = await getOrStartConversation(tenantRow.id, {
+      clientId: client?.id, channel: 'voice', agent: 'lola'
+    });
+  }catch(e){ /* DB optional — proceed with in-memory */ }
+
+  // ── 3. Decode per-turn state (history fast-path) ──
+  let state = decodeState(body.client_state);
+  if(!state.history) state.history = [];
+  if(!state.convId && conversation?.id) state.convId = conversation.id;
+
+  // If first turn AND we have a DB, pull persistent memory from past calls
+  if(state.history.length === 0 && conversation?.id){
+    try{
+      const past = await getConversationHistory(conversation.id, 8);
+      if(past.length) state.history = past;
+    }catch(e){}
+  }
+
+  // ── First contact: greet, then gather speech ──
+  if(!speech && (!callStatus || callStatus === 'ringing' || state.history.length === 0)){
+    const known = client?.name ? `, ${client.name.split(' ')[0]}` : '';
+    const greeting = state.history.length > 0
+      ? `Welcome back${known}! It's Lola. What can I help you with today?`
+      : `Hi, thanks for calling ${tenant.name}! This is Lola. How can I help you today?`;
+    const xml = texml(
+      `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${encodeState(state)}">` +
+      `<Say voice="${LOLA_VOICE}">${xmlEscape(greeting)}</Say>` +
+      `</Gather>` +
+      `<Say voice="${LOLA_VOICE}">I didn't catch that. Please call back anytime!</Say>`
+    );
+    return res.status(200).send(xml);
+  }
+
+  // ── Caller said something: ask Lola, reply, gather again ──
+  state.history.push({ role:'user', content: speech || '(no response)' });
+  const reply = await askLola(state.history, tenant);
+  state.history.push({ role:'assistant', content: reply });
+
+  // Persist this turn to DB
+  if(state.convId){
+    try{
+      await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'user', agent:'lola', content: speech || '(no response)' });
+      await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'assistant', agent:'lola', content: reply });
+      await logUsage(tenantRow.id, 'ai_token', 1, { source:'voice' });
+    }catch(e){}
+  }
+
+  // keep history small for latency
+  if(state.history.length > 12) state.history = state.history.slice(-12);
+  const nextState = encodeState(state);
+
+  const xml = texml(
+    `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${nextState}">` +
+    `<Say voice="${LOLA_VOICE}">${xmlEscape(reply)}</Say>` +
+    `</Gather>` +
+    `<Say voice="${LOLA_VOICE}">Thanks for calling ${xmlEscape(tenant.name)}. Talk soon!</Say>` +
+    `<Hangup/>`
+  );
+  return res.status(200).send(xml);
+}
