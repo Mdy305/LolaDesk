@@ -1,6 +1,3 @@
-/**
- * api/lib/llm.js — Shared LLM client (Telnyx Inference default)
- */
 const TELNYX_INFERENCE = 'https://api.telnyx.com/v2/ai/chat/completions';
 const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_TELNYX_MODEL    = 'moonshotai/Kimi-K2.6';
@@ -22,7 +19,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model, jso
   if(system) oaiMessages.push({ role:'system', content: system });
   for(const m of messages) oaiMessages.push({ role: m.role, content: m.content });
   const body = { model: model || process.env.LLM_MODEL || DEFAULT_TELNYX_MODEL, messages: oaiMessages, max_tokens: maxTokens, temperature };
-  if(jsonMode) body.response_format = { type: 'json_object' };
+  // NOTE: deliberately NOT sending response_format — Kimi-K2.6 returns empty with it.
   try{
     const r = await fetch(TELNYX_INFERENCE, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${process.env.TELNYX_API_KEY}` }, body: JSON.stringify(body) });
     const data = await r.json();
