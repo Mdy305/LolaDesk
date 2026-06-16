@@ -50,7 +50,7 @@ async function analyze(body){
   const user = `URL: ${url}\nTitle: ${site.title||''}\nContent: ${content}`;
   let result;
   try{
-    result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:900, model:POWER_MODEL });
+    result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:900 });
   }catch(e){
     return { ok:false, error:'LLM error: '+String(e&&e.message||e), url };
   }
@@ -65,7 +65,7 @@ async function strategy(body){
   const system = `You are the Marketer for LolaDesk. Write a concrete salon marketing strategy. Reply with ONLY valid JSON, start { end }. Shape: {"headline":"","positioning_shift":"","top_priorities":[{"title":"","why":"","first_action":""}],"campaigns_to_run":[{"name":"","audience":"","channel":"sms","expected_roi":"","frequency":""}],"do_not_do":["2-3"],"north_star_metric":""}`;
   const user = `Salon: ${JSON.stringify(salon||{})}\nGoals: ${goals||'Grow revenue, retain VIPs'}\nAnalysis: ${JSON.stringify(analysis||{}).slice(0,1500)}`;
   let result;
-  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100, model:POWER_MODEL }); }
+  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100 }); }
   catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
   if(!result||!result.ok) return { ok:false, error:(result&&result.error)||'failed' };
   const parsed = tryJSON(result.text);
@@ -77,7 +77,7 @@ async function campaign(body){
   const system = `You are the Marketer for LolaDesk. Draft a campaign salon agents can send. Warm, brief, booking-focused. Reply with ONLY valid JSON, start { end }. Shape: {"name":"","audience_description":"","channel":"sms","send_window":"","messages":[{"sequence":1,"delay":"immediate","channel":"sms","copy":""},{"sequence":2,"delay":"+3 days","channel":"sms","copy":""}],"success_metric":"","expected_lift":""}`;
   const user = `Type: ${type||'rebooking'}\nSalon: ${JSON.stringify(tenant||{name:'salon'}).slice(0,800)}\nAudience: ${audience||'overdue clients'}\nChannel: ${channel||'sms'}\nGoal: ${customGoal||''}`;
   let result;
-  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100, model:POWER_MODEL }); }
+  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100 }); }
   catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
   if(!result||!result.ok) return { ok:false, error:(result&&result.error)||'failed' };
   const parsed = tryJSON(result.text);
