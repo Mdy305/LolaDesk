@@ -196,3 +196,65 @@ export async function logUsage(tenantId, kind, units=1, metadata={}){
     tenant_id: tenantId, kind, units, metadata
   });
 }
+
+// ── ONBOARDING: create / update a tenant ──
+export async function upsertTenant({ slug, name, ownerName, ownerEmail, location, hours, bookingUrl, phoneNumber, plan, services, team, persona, websiteUrl, businessMode }){
+  const c = db();
+  if(!c) return null;
+  const row = {
+    slug, name,
+    owner_name: ownerName, owner_email: ownerEmail,
+    location, hours, booking_url: bookingUrl,
+    phone_number: phoneNumber ? e164(phoneNumber) : null,
+    plan: plan || 'starter',
+    persona: persona || 'warm',
+    website_url: websiteUrl || null,
+    business_mode: businessMode || 'salon'
+  };
+  if(services) row.services = services;
+  if(team) row.team = team;
+  const { data } = await c.from('tenants')
+    .upsert(row, { onConflict: 'slug' })
+    .select().maybeSingle();
+  return data;
+}
+
+// ── Save the Marketer's website analysis as this tenant's knowledge base ──
+export async function saveTenantKnowledge(tenantId, knowledge){
+  const c = db();
+  if(!c) return null;
+  // Merge services detected by the analysis into the tenant's services if empty
+  const patch = { knowledge };
+  if(knowledge?.services_detected?.length){
+    // only set if tenant has no services yet
+    const { data: t } = await c.from('tenants').select('services').eq('id', tenantId).maybeSingle();
+    if(t && (!t.services || t.services.length === 0)){
+      patch.services = knowledge.services_detected.map(s => {
+        // try to parse "Balayage $395" style strings
+        const m = String(s).match(/^(.*?)\s*\$?(\d+)?/);
+        return { name: (m?.[1]||s).trim(), price: m?.[2] ? Number(m[2]) : null };
+      });
+    }
+  }
+  const { data } = await c.from('tenants').update(patch).eq('id', tenantId).select().maybeSingle();
+  return data;
+}
+
+// ── Build the knowledge text block Lola uses on calls for this tenant ──
+export function tenantKnowledgePrompt(tenant){
+  if(!tenant) return '';
+  const k = tenant.knowledge || {};
+  const lines = [];
+  if(tenant.name) lines.push(`Business: ${tenant.name}`);
+  if(tenant.business_mode) lines.push(`Type: ${tenant.business_mode}`);
+  if(tenant.location) lines.push(`Location: ${tenant.location}`);
+  if(tenant.hours) lines.push(`Hours: ${tenant.hours}`);
+  const svc = (tenant.services||[]).map(s=>`${s.name}${s.price?` $${s.price}`:''}${s.duration?` (${s.duration})`:''}`).join('; ');
+  if(svc) lines.push(`Services: ${svc}`);
+  if(tenant.booking_url) lines.push(`Booking link: ${tenant.booking_url}`);
+  if(k.positioning) lines.push(`Positioning: ${k.positioning}`);
+  if(k.tone) lines.push(`Brand voice: ${k.tone}`);
+  if(k.summary) lines.push(`About: ${k.summary}`);
+  if(k.audience) lines.push(`Typical clients: ${k.audience}`);
+  return lines.join('\n');
+}
