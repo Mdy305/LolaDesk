@@ -198,8 +198,19 @@ input,select,textarea{font-family:var(--ff)}
           <label class="ob-label">Location</label>
           <input class="ob-input" id="f-location" placeholder="1500 Alton Road, Miami Beach"/>
         </div>
+        <div class="ob-row">
+          <div class="ob-field">
+            <label class="ob-label">Your email</label>
+            <input class="ob-input" id="f-email" type="email" placeholder="you@salon.com"/>
+          </div>
+          <div class="ob-field">
+            <label class="ob-label">Create a password</label>
+            <input class="ob-input" id="f-password" type="password" placeholder="At least 8 characters"/>
+          </div>
+        </div>
+        <div class="ob-err" id="ob-err0" style="color:#ff7a7a;font-size:12.5px;min-height:16px;margin-bottom:4px"></div>
         <div class="ob-nav">
-          <button class="ob-btn ob-btn-primary full" onclick="next()">Continue</button>
+          <button class="ob-btn ob-btn-primary full" onclick="validateStep0()">Continue</button>
         </div>
       </div>
 
@@ -350,7 +361,7 @@ input,select,textarea{font-family:var(--ff)}
 <script>
 const state = {
   step: 0,
-  name:'', owner:'', phone:'', type:'Hair Salon', location:'',
+  name:'', owner:'', phone:'', type:'Hair Salon', location:'', email:'', password:'',
   platform:'square',
   services:[
     {name:'Balayage', price:'395', dur:'2h 30m'},
@@ -413,11 +424,25 @@ function saveStep(){
     state.phone=document.getElementById('f-phone').value;
     state.type=document.getElementById('f-type').value;
     state.location=document.getElementById('f-location').value;
+    state.email=document.getElementById('f-email').value.trim();
+    state.password=document.getElementById('f-password').value;
   }
   if(state.step===3){
     state.voice=document.getElementById('f-voice').value;
   }
 }
+
+// validate the account fields before leaving step 0
+window.validateStep0=()=>{
+  const email=document.getElementById('f-email').value.trim();
+  const pw=document.getElementById('f-password').value;
+  const err=document.getElementById('ob-err0');
+  const okEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  if(!okEmail){ err.textContent='Please enter a valid email.'; return; }
+  if(pw.length<8){ err.textContent='Password must be at least 8 characters.'; return; }
+  err.textContent='';
+  next();
+};
 
 function showStep(n){
   document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
@@ -508,10 +533,42 @@ window.goLive=()=>{
   addNext();
 };
 
-function finishLive(){
+async function finishLive(){
+  // Actually create the account + tenant + trial in the backend
+  let created = null;
+  try{
+    const r = await fetch('/api/auth/signup', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        email: state.email,
+        password: state.password,
+        name: state.owner,
+        salonName: state.name,
+        location: state.location,
+        plan: state.plan,
+        businessMode: (state.type||'').toLowerCase().includes('med') ? 'medspa'
+                     : (state.type||'').toLowerCase().includes('spa') ? 'spa' : 'salon'
+      })
+    });
+    created = await r.json();
+    if(!r.ok) throw new Error(created.error||'Signup failed');
+    // store the session so the dashboard knows who is logged in
+    if(created.session){
+      try{
+        localStorage.setItem('loladesk_token', created.session.access_token||'');
+        localStorage.setItem('loladesk_refresh', created.session.refresh_token||'');
+        if(created.tenant) localStorage.setItem('loladesk_tenant_id', created.tenant.id||'');
+      }catch(e){}
+    }
+  }catch(e){
+    // surface the error but still show completion (account may exist)
+    document.getElementById('liveSub').textContent = 'Note: '+(e.message||e)+'  You can log in from the login page.';
+  }
   document.getElementById('liveCheck').style.display='flex';
   document.getElementById('liveTitle').textContent='Lola is live. 🎉';
-  document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. She's ready to answer calls and book clients.`;
+  if(created && !created.error){
+    document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. Your 14-day trial has started.`;
+  }
   document.getElementById('liveNav').style.display='flex';
 }
 

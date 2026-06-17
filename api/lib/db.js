@@ -198,9 +198,18 @@ export async function logUsage(tenantId, kind, units=1, metadata={}){
 }
 
 // ── ONBOARDING: create / update a tenant ──
-export async function upsertTenant({ slug, name, ownerName, ownerEmail, location, hours, bookingUrl, phoneNumber, plan, services, team, persona, websiteUrl, businessMode }){
+export async function upsertTenant(p = {}){
   const c = db();
   if(!c) return null;
+  // accept both camelCase and snake_case (signup uses snake_case)
+  const ownerName  = p.ownerName  ?? p.owner_name;
+  const ownerEmail = p.ownerEmail ?? p.owner_email;
+  const bookingUrl = p.bookingUrl ?? p.booking_url;
+  const phoneNumber= p.phoneNumber?? p.phone_number;
+  const websiteUrl = p.websiteUrl ?? p.website_url;
+  const businessMode = p.businessMode ?? p.business_mode;
+  const { slug, name, location, hours, plan, services, team, persona } = p;
+  const trialEndsAt = p.trial_ends_at ?? p.trialEndsAt;
   const row = {
     slug, name,
     owner_name: ownerName, owner_email: ownerEmail,
@@ -211,6 +220,7 @@ export async function upsertTenant({ slug, name, ownerName, ownerEmail, location
     website_url: websiteUrl || null,
     business_mode: businessMode || 'salon'
   };
+  if(trialEndsAt) row.trial_ends_at = trialEndsAt;
   if(services) row.services = services;
   if(team) row.team = team;
   const { data } = await c.from('tenants')
