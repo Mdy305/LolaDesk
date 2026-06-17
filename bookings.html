@@ -6,101 +6,344 @@
 <title>Bookings — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,200;1,300&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
-.day-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
-.day-tab{padding:10px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .15s;text-align:center;min-width:74px}
-.day-tab.active{background:var(--pink-dim);border-color:transparent}
-.day-tab-dow{font-size:11px;color:var(--text3)}
-.day-tab.active .day-tab-dow{color:var(--pink2)}
-.day-tab-num{font-size:18px;font-weight:600}
-.booking{display:flex;align-items:center;gap:16px;padding:16px 18px;border-bottom:0.5px solid var(--border);transition:background .12s;cursor:pointer}
-.booking:hover{background:var(--surface2)}
-.booking:last-child{border-bottom:none}
-.booking-time{width:80px;flex-shrink:0}
-.booking-time-start{font-size:14px;font-weight:600}
-.booking-time-dur{font-size:11px;color:var(--text3)}
-.booking-info{flex:1}
-.booking-service{font-size:14px;font-weight:500}
-.booking-client{font-size:12px;color:var(--text3)}
-.booking-price{font-size:14px;font-weight:600;color:var(--text2)}
-.booking-bar{width:3px;align-self:stretch;border-radius:3px;background:var(--pink)}
+.bk-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px 20px;flex-wrap:wrap}
+.bk-when{display:flex;align-items:baseline;gap:12px}
+.bk-date{font-family:var(--ff-serif);font-size:34px;font-style:italic;font-weight:300;letter-spacing:-.015em;line-height:1}
+.bk-sub{font-size:13px;color:var(--text3)}
+.bk-nav{display:flex;align-items:center;gap:2px}
+.bk-nav button{width:34px;height:34px;border-radius:9px;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:all .15s}
+.bk-nav button:hover{background:var(--surface);color:var(--text)}
+.bk-today{padding:8px 13px;border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;border:.5px solid var(--border)}
+.bk-today:hover{border-color:var(--border2)}
+
+/* KPI strip */
+.bk-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:900px){.bk-kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:16px 18px}
+.kpi .v{font-size:26px;font-weight:300;letter-spacing:-.02em}
+.kpi .v.green{color:var(--green)}.kpi .v.pink{color:var(--pink2)}
+.kpi .l{font-size:11px;color:var(--text3);margin-top:3px}
+
+/* RESOURCE CALENDAR */
+.cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.cal-scroll{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 320px)}
+.res-grid{display:grid;min-width:760px;position:relative}
+/* columns set inline by JS: 64px + N stylists */
+
+.res-corner{position:sticky;top:0;left:0;z-index:30;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border)}
+.res-head{position:sticky;top:0;z-index:20;background:var(--bg2);border-bottom:.5px solid var(--border);border-right:.5px solid var(--border);padding:12px 10px;text-align:center}
+.res-head:last-child{border-right:none}
+.res-head .av{width:32px;height:32px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
+.res-head .nm{font-size:12.5px;font-weight:500}
+.res-head .ro{font-size:10px;color:var(--text3);margin-top:1px}
+
+.res-time{position:sticky;left:0;z-index:10;background:var(--surface);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:5px 8px;text-align:right;font-size:10.5px;color:var(--text3);font-variant-numeric:tabular-nums}
+.res-cell{border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;position:relative;cursor:pointer;transition:background .1s}
+.res-cell:last-child{border-right:none}
+.res-cell:hover{background:rgba(255,45,142,.04)}
+.res-cell:hover::after{content:'+ book';position:absolute;top:6px;left:8px;font-size:10px;color:var(--pink2);font-weight:500}
+
+.appt{position:absolute;left:3px;right:3px;border-radius:7px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;overflow:hidden;border-left:3px solid;z-index:5;transition:transform .12s,box-shadow .12s}
+.appt:hover{transform:scale(1.01);box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:15}
+.appt .t{font-size:9.5px;color:var(--text3);font-weight:500}
+.appt .s{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appt .c{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
+.appt.pink{border-color:#ff2d8e;background:rgba(255,45,142,.13)}
+.appt.blue{border-color:#5ac8fa;background:rgba(90,200,250,.13)}
+.appt.amber{border-color:#ffb020;background:rgba(255,176,32,.13)}
+.appt.green{border-color:#34d171;background:rgba(52,209,113,.13)}
+.appt.rose{border-color:#f472b6;background:rgba(244,114,182,.13)}
+
+.now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--pink);box-shadow:0 0 8px var(--pink-glow);z-index:8;pointer-events:none}
+
+/* modal */
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw.open{display:flex}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width:420px;width:100%}
+.modal h3{font-family:var(--ff-serif);font-size:23px;font-style:italic;font-weight:300;margin-bottom:16px}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+.fld label{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.04em;text-transform:uppercase}
+.fld input,.fld select{background:var(--surface);border:.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family:var(--ff)}
+.fld input:focus,.fld select:focus{border-color:var(--pink)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.macts{display:flex;gap:10px;margin-top:6px}
+.macts .btn{flex:1;justify-content:center}
+.appt-detail{font-size:13px;line-height:1.7;color:var(--text2)}
+.appt-detail strong{color:var(--text);font-weight:500}
 </style>
 </head>
 <body data-page="bookings">
 <div class="app">
   <main class="main">
-    <div class="topbar">
-      <div class="page-head">
-        <h1 class="page-title">Bookings</h1>
-        <p class="page-sub">Every appointment Lola booked for you.</p>
+    <div class="bk-bar">
+      <div class="bk-when">
+        <div class="bk-date" id="bkDate">Friday, Jun 13</div>
+        <div class="bk-sub" id="bkSub"></div>
       </div>
-      <div class="topbar-actions">
-        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New booking</button>
+      <div class="bk-nav">
+        <button onclick="nav(-1)" aria-label="Prev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button onclick="goToday()" class="bk-today">Today</button>
+        <button onclick="nav(1)" aria-label="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg></button>
       </div>
+      <button class="btn btn-primary" onclick="openBook()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New booking</button>
     </div>
 
-    <div class="kpis">
-      <div class="kpi"><div class="kpi-val">7</div><div class="kpi-label">Today</div><div class="kpi-sub">$2,850 potential</div></div>
-      <div class="kpi"><div class="kpi-val">31</div><div class="kpi-label">This week</div><div class="kpi-sub">↑ 12%</div></div>
-      <div class="kpi"><div class="kpi-val green">94%</div><div class="kpi-label">Show rate</div><div class="kpi-sub">Lola sends reminders</div></div>
-      <div class="kpi"><div class="kpi-val pink">$320</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub">↑ 8%</div></div>
+    <div class="bk-kpis">
+      <div class="kpi"><div class="v" id="kToday">0</div><div class="l">Appointments today</div></div>
+      <div class="kpi"><div class="v green" id="kRev">$0</div><div class="l">Booked revenue</div></div>
+      <div class="kpi"><div class="v" id="kOpen">0</div><div class="l">Open slots</div></div>
+      <div class="kpi"><div class="v pink" id="kUtil">0%</div><div class="l">Chair utilization</div></div>
     </div>
 
-    <div class="day-tabs" id="dayTabs"></div>
-
-    <div class="card">
-      <div class="card-head"><div class="card-title" id="dayTitle">Today's Schedule</div></div>
-      <div id="bookingList"></div>
+    <div class="cal-wrap">
+      <div class="cal-scroll">
+        <div class="res-grid" id="resGrid"></div>
+      </div>
     </div>
   </main>
 </div>
 
+<!-- Book modal -->
+<div class="mw" id="bookModal">
+  <div class="modal">
+    <h3 id="modalTitle">New booking</h3>
+    <div id="modalBody">
+      <div class="fld"><label>Client</label><input id="bkClient" placeholder="Name or phone"/></div>
+      <div class="fld"><label>Service</label>
+        <select id="bkService">
+          <option data-dur="150" data-price="395" data-color="pink">Balayage — $395 · 2h30</option>
+          <option data-dur="30" data-price="0" data-color="blue">Extensions Consult — free · 30m</option>
+          <option data-dur="120" data-price="325" data-color="amber">Hair Botox — $325 · 2h</option>
+          <option data-dur="150" data-price="450" data-color="green">Keratin — $450 · 2h30</option>
+          <option data-dur="75" data-price="225" data-color="rose">Cut &amp; Gloss — $225 · 1h15</option>
+          <option data-dur="60" data-price="95" data-color="pink">Blowout — $95 · 1h</option>
+          <option data-dur="120" data-price="350" data-color="amber">Color Correction — $350 · 2h</option>
+        </select>
+      </div>
+      <div class="row2">
+        <div class="fld"><label>Stylist</label><select id="bkStylist"></select></div>
+        <div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div>
+      </div>
+      <div class="macts">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveBook()">Book it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="sidebar.js"></script>
 <script>
-const DAYS = [
-  { dow:'Tue', num:10, label:'Tuesday, Jun 10' },
-  { dow:'Wed', num:11, label:'Wednesday, Jun 11' },
-  { dow:'Thu', num:12, label:'Thursday, Jun 12' },
-  { dow:'Fri', num:13, label:'Friday, Jun 13' },
-  { dow:'Sat', num:14, label:'Saturday, Jun 14' }
+const STYLISTS = [
+  { id:'meddy', name:'Meddy', role:'Master Colorist', color:'#ff2d8e' },
+  { id:'michelle', name:'Michelle', role:'Senior Stylist', color:'#5ac8fa' },
+  { id:'alice', name:'Alice', role:'Senior Stylist', color:'#ffb020' },
+  { id:'samantha', name:'Samantha', role:'Stylist', color:'#34d171' }
 ];
-const BOOKINGS = {
-  3: [
-    { start:'9:00 AM', dur:'2h 30m', service:'Balayage', client:'Amanda Davis', price:395 },
-    { start:'10:30 AM', dur:'consult', service:'Extensions Consult', client:'Rachel Smith', price:0 },
-    { start:'12:00 PM', dur:'1h 15m', service:'Cut & Style', client:'Olivia Brown', price:225 },
-    { start:'2:00 PM', dur:'2h', service:'Color Correction', client:'Emily Johnson', price:350 },
-    { start:'4:00 PM', dur:'1h', service:'Blowout', client:'Sophie Wilson', price:95 }
-  ],
-  4: [
-    { start:'11:00 AM', dur:'2h 30m', service:'Balayage', client:'Sarah Johnson', price:395 },
-    { start:'2:00 PM', dur:'2h', service:'Hair Botox', client:'Camila Santos', price:325 },
-    { start:'5:00 PM', dur:'2h 30m', service:'Keratin', client:'Valentina Rossi', price:450 }
-  ]
-};
-let activeDay = 3;
-function renderTabs(){
-  document.getElementById('dayTabs').innerHTML = DAYS.map((d,i)=>`
-    <div class="day-tab ${i===activeDay?'active':''}" onclick="selectDay(${i})">
-      <div class="day-tab-dow">${d.dow}</div>
-      <div class="day-tab-num">${d.num}</div>
-    </div>`).join('');
+const SERVICES = [
+  { name:'Balayage', dur:150, price:395, color:'pink' },
+  { name:'Extensions Consult', dur:30, price:0, color:'blue' },
+  { name:'Hair Botox', dur:120, price:325, color:'amber' },
+  { name:'Keratin', dur:150, price:450, color:'green' },
+  { name:'Cut & Gloss', dur:75, price:225, color:'rose' },
+  { name:'Blowout', dur:60, price:95, color:'pink' },
+  { name:'Color Correction', dur:120, price:350, color:'amber' }
+];
+const CLIENTS = ['Amanda Davis','Rachel Smith','Olivia Brown','Emily Johnson','Sophie Wilson','Valentina Rossi','Jennifer Adams','Camila Santos','Sarah Johnson','Jessica Lee'];
+const START_HOUR = 9, END_HOUR = 20, SLOT_H = 64; // px per hour
+
+let cursor = new Date(); cursor.setHours(0,0,0,0);
+let APPTS = {}; // key: dateKey -> [{stylistId, startMin(from START_HOUR*60), dur, service, client, price, color, id}]
+
+function dKey(d){ return d.toISOString().slice(0,10); }
+function seed(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  for(let off=-7; off<=21; off++){
+    const day = new Date(today); day.setDate(day.getDate()+off);
+    const dow = day.getDay();
+    if(dow===0||dow===1){ APPTS[dKey(day)]=[]; continue; } // closed Sun/Mon
+    const key = dKey(day);
+    const list = [];
+    STYLISTS.forEach((st,si)=>{
+      let mins = (9 + si%2)*60; // staggered starts
+      const count = 2 + ((Math.abs(off)+si)%3);
+      for(let i=0;i<count;i++){
+        const svc = SERVICES[(off+si+i+7*100)%SERVICES.length];
+        const startMin = mins - START_HOUR*60;
+        if(startMin + svc.dur > (END_HOUR-START_HOUR)*60) break;
+        list.push({
+          id:`${key}-${st.id}-${i}`,
+          stylistId:st.id, startMin, dur:svc.dur,
+          service:svc.name, color:svc.color, price:svc.price,
+          client: CLIENTS[(off*2+si*3+i+1000)%CLIENTS.length]
+        });
+        mins += svc.dur + 30;
+        if(mins > END_HOUR*60) break;
+      }
+    });
+    APPTS[key] = list;
+  }
 }
-function selectDay(i){ activeDay=i; renderTabs(); renderBookings(); }
-function renderBookings(){
-  document.getElementById('dayTitle').textContent = DAYS[activeDay].label;
-  const list = BOOKINGS[activeDay] || [];
-  document.getElementById('bookingList').innerHTML = list.length ? list.map(b=>`
-    <div class="booking">
-      <div class="booking-bar"></div>
-      <div class="booking-time"><div class="booking-time-start">${b.start}</div><div class="booking-time-dur">${b.dur}</div></div>
-      <div class="booking-info"><div class="booking-service">${b.service}</div><div class="booking-client">${b.client}</div></div>
-      <div class="booking-price">${b.price?'$'+b.price:'Free'}</div>
-    </div>`).join('') : '<div class="empty">No bookings this day yet. Lola is standing by.</div>';
+seed();
+
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOWS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function nav(dir){ cursor.setDate(cursor.getDate()+dir); render(); }
+function goToday(){ cursor = new Date(); cursor.setHours(0,0,0,0); render(); }
+
+function render(){
+  const key = dKey(cursor);
+  const list = APPTS[key] || [];
+  document.getElementById('bkDate').textContent = `${DOWS[cursor.getDay()]}, ${MONTHS[cursor.getMonth()].slice(0,3)} ${cursor.getDate()}`;
+  const closed = cursor.getDay()===0 || cursor.getDay()===1;
+  document.getElementById('bkSub').textContent = closed ? 'Closed' : `${STYLISTS.length} stylists working`;
+
+  // KPIs
+  const rev = list.reduce((s,a)=>s+(a.price||0),0);
+  const hoursAvail = STYLISTS.length * (END_HOUR-START_HOUR);
+  const hoursBooked = list.reduce((s,a)=>s+a.dur,0)/60;
+  document.getElementById('kToday').textContent = list.length;
+  document.getElementById('kRev').textContent = '$'+rev.toLocaleString();
+  document.getElementById('kOpen').textContent = Math.max(0, Math.round(hoursAvail - hoursBooked));
+  document.getElementById('kUtil').textContent = Math.round(hoursBooked/hoursAvail*100)+'%';
+
+  // Build grid
+  const grid = document.getElementById('resGrid');
+  grid.style.gridTemplateColumns = `64px repeat(${STYLISTS.length}, minmax(150px, 1fr))`;
+  const hours = END_HOUR - START_HOUR;
+  grid.style.gridTemplateRows = `auto repeat(${hours}, ${SLOT_H}px)`;
+
+  let html = `<div class="res-corner"></div>`;
+  // header row: stylist columns
+  STYLISTS.forEach(st=>{
+    html += `<div class="res-head">
+      <div class="av" style="background:${st.color}">${st.name[0]}</div>
+      <div class="nm">${st.name}</div><div class="ro">${st.role}</div>
+    </div>`;
+  });
+  // time rows
+  for(let h=0; h<hours; h++){
+    const hr = START_HOUR + h;
+    const lbl = hr>12?(hr-12)+' PM':(hr===12?'12 PM':hr+' AM');
+    html += `<div class="res-time">${lbl}</div>`;
+    STYLISTS.forEach(st=>{
+      html += `<div class="res-cell" data-stylist="${st.id}" data-hour="${hr}" onclick="quickBook('${st.id}',${hr})"></div>`;
+    });
+  }
+  grid.innerHTML = html;
+
+  // place appointments (absolute over their stylist column)
+  // Each stylist column width is dynamic, so we position appts inside cells via a per-column overlay.
+  // Simpler: append appts into the first cell of each stylist column with absolute top offset.
+  list.forEach(a=>{
+    const colIndex = STYLISTS.findIndex(s=>s.id===a.stylistId);
+    if(colIndex<0) return;
+    // find the cell at this stylist's column, row 0 (first hour) to anchor
+    const firstCell = grid.querySelector(`.res-cell[data-stylist="${a.stylistId}"][data-hour="${START_HOUR}"]`);
+    if(!firstCell) return;
+    const top = (a.startMin/60)*SLOT_H;
+    const height = Math.max(28,(a.dur/60)*SLOT_H - 4);
+    const startH = START_HOUR + Math.floor(a.startMin/60);
+    const startM = a.startMin%60;
+    const endTotal = a.startMin + a.dur;
+    const endH = START_HOUR + Math.floor(endTotal/60), endM = endTotal%60;
+    const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
+    const el = document.createElement('div');
+    el.className = `appt ${a.color}`;
+    el.style.top = top+'px';
+    el.style.height = height+'px';
+    el.innerHTML = `<div class="t">${fmt(startH,startM)}–${fmt(endH,endM)}</div><div class="s">${a.service}</div><div class="c">${a.client}</div>`;
+    el.onclick = (e)=>{ e.stopPropagation(); showAppt(a); };
+    firstCell.appendChild(el);
+  });
+
+  // now-line if today
+  const now = new Date();
+  if(now.toDateString()===cursor.toDateString()){
+    const mins = (now.getHours()-START_HOUR)*60 + now.getMinutes();
+    if(mins>0 && mins < hours*60){
+      STYLISTS.forEach(st=>{
+        const c = grid.querySelector(`.res-cell[data-stylist="${st.id}"][data-hour="${START_HOUR}"]`);
+        if(c){ const nl=document.createElement('div'); nl.className='now-line'; nl.style.top=(mins/60*SLOT_H)+'px'; c.appendChild(nl); }
+      });
+    }
+  }
 }
-renderTabs(); renderBookings();
+
+function showAppt(a){
+  const st = STYLISTS.find(s=>s.id===a.stylistId);
+  document.getElementById('modalTitle').textContent = a.service;
+  const startH = START_HOUR + Math.floor(a.startMin/60), startM=a.startMin%60;
+  const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
+  document.getElementById('modalBody').innerHTML = `
+    <div class="appt-detail">
+      <strong>${a.client}</strong><br>
+      ${fmt(startH,startM)} · ${a.dur} min<br>
+      With <strong>${st?st.name:''}</strong><br>
+      ${a.price?'$'+a.price:'Complimentary'}
+    </div>
+    <div class="macts" style="margin-top:18px">
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="closeModal()">Text client</button>
+    </div>`;
+  document.getElementById('bookModal').classList.add('open');
+}
+
+function populateStylistSelect(){
+  document.getElementById('bkStylist').innerHTML = STYLISTS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+}
+function openBook(){
+  document.getElementById('modalTitle').textContent='New booking';
+  document.getElementById('modalBody').innerHTML = bookFormHTML();
+  populateStylistSelect();
+  document.getElementById('bookModal').classList.add('open');
+}
+function quickBook(stylistId, hour){
+  document.getElementById('modalTitle').textContent='New booking';
+  document.getElementById('modalBody').innerHTML = bookFormHTML();
+  populateStylistSelect();
+  document.getElementById('bkStylist').value = stylistId;
+  document.getElementById('bkTime').value = String(hour).padStart(2,'0')+':00';
+  document.getElementById('bookModal').classList.add('open');
+}
+function bookFormHTML(){
+  return `
+    <div class="fld"><label>Client</label><input id="bkClient" placeholder="Name or phone"/></div>
+    <div class="fld"><label>Service</label>
+      <select id="bkService">
+        ${SERVICES.map(s=>`<option data-dur="${s.dur}" data-price="${s.price}" data-color="${s.color}">${s.name} — ${s.price?'$'+s.price:'free'} · ${Math.floor(s.dur/60)?Math.floor(s.dur/60)+'h':''}${s.dur%60?(s.dur%60)+'m':''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="row2">
+      <div class="fld"><label>Stylist</label><select id="bkStylist"></select></div>
+      <div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div>
+    </div>
+    <div class="macts"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBook()">Book it</button></div>`;
+}
+function closeModal(){ document.getElementById('bookModal').classList.remove('open'); }
+function saveBook(){
+  const client = document.getElementById('bkClient').value || 'New Client';
+  const sel = document.getElementById('bkService');
+  const opt = sel.options[sel.selectedIndex];
+  const stylistId = document.getElementById('bkStylist').value;
+  const time = document.getElementById('bkTime').value || '10:00';
+  const [h,m] = time.split(':').map(Number);
+  const startMin = (h-START_HOUR)*60 + m;
+  const key = dKey(cursor);
+  if(!APPTS[key]) APPTS[key]=[];
+  APPTS[key].push({
+    id:'new-'+Date.now(), stylistId, startMin,
+    dur:Number(opt.dataset.dur), service:opt.textContent.split(' — ')[0],
+    color:opt.dataset.color, price:Number(opt.dataset.price), client
+  });
+  closeModal(); render();
+}
+
+render();
 </script>
 </body>
 </html>
