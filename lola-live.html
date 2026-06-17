@@ -65,6 +65,7 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
 <script src="sidebar.js"></script>
 <script>
 // ════════ ATMOSPHERE: drifting particle field ════════
@@ -206,7 +207,21 @@ function wake(){ awake=true; liveEl.classList.add('awake'); setMode('listening')
 function sleep(){ awake=false; liveEl.classList.remove('awake'); setMode('asleep');
   setPrompt('Say “Hey Lola”'); saidEl.innerHTML=''; }
 
-const SYS="You are Lola — a warm, brilliant, emotionally attuned salon concierge. The most poised, intuitive front-desk presence imaginable, with quiet wit and genuine warmth. Replies are SHORT and spoken-natural: one or two sentences, never a monologue. You remember the conversation and gently move toward helping or booking. You are never robotic; you sound alive.";
+let SYS="You are Lola — a warm, brilliant, emotionally attuned salon concierge. The most poised, intuitive front-desk presence imaginable, with quiet wit and genuine warmth. Replies are SHORT and spoken-natural: one or two sentences, never a monologue. You remember the conversation and gently move toward helping or booking. You are never robotic; you sound alive.";
+
+// enrich Lola with the logged-in salon's identity (from auth-guard's window.LOLA)
+document.addEventListener('lola:ready', (e)=>{
+  const t = e.detail && e.detail.tenant;
+  if(!t) return;
+  const svc = Array.isArray(t.services) ? t.services.map(s=>`${s.name}${s.price?` $${s.price}`:''}`).join(', ') : '';
+  SYS = `You are Lola, the front-desk concierge for ${t.name||'this salon'}.`
+    + (t.location?` Location: ${t.location}.`:'')
+    + (t.hours?` Hours: ${t.hours}.`:'')
+    + (svc?` Services: ${svc}.`:'')
+    + ` You are warm, human, and brief — one or two sentences, never robotic.`
+    + ` You never drop the ball: every conversation ends booked, waitlisted, or with a clear next step.`
+    + ` If someone hesitates, offer a specific alternative rather than letting them go.`;
+});
 
 async function respondGreeting(){ setMode('speaking'); await speak("Mm — I’m here. What can I do for you?"); if(awake) setMode('listening'); }
 function resetIdle(){ clearTimeout(idleTimer); idleTimer=setTimeout(()=>{ if(awake) sleep(); },35000); }
