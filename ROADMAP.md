@@ -9,7 +9,9 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 **Real and working:**
 - Cinematic landing, voice login, onboarding wizard, dashboard, 9 interior pages, Agents page (7 specialists), live at loladesk.com
 - Telnyx voice + SMS + numbers (3 API handlers), with persistent multi-tenant memory in Supabase
-- Lola speaks in her real, consistent ElevenLabs voice on phone calls AND in the dashboard (not a generic TTS voice)
+- Lola speaks in her real, consistent ElevenLabs voice on phone calls AND in the dashboard (not a generic TTS voice) — same voice everywhere
+- Dashboard: ambient, always-on wake-word listening ("Lola, ...") in addition to tap-to-talk — mic stays passively open, only sends to the AI brain after hearing her name, with a visible mute/disable control and a one-time privacy disclosure
+- Phone call replies tightened to ~1 sentence by default for a snappier, less "monologuing" feel
 - SMS 10DLC compliance: STOP/HELP/START handled before any AI involvement, opt-out persisted and checked on every outbound send
 - OAuth tokens (Square, Boulevard, Shopify, Google Calendar) encrypted at rest (AES-256-GCM)
 - Anthropic Claude (or Telnyx Inference) as Lola's brain
@@ -17,6 +19,7 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 - Vercel hosting, GitHub repo, `vercel.json` with safe function limits + security headers
 
 **Not yet built:**
+- Real-time barge-in on phone calls (caller interrupting Lola mid-sentence) — see Phase E below, this is a genuinely larger architecture change
 - WhatsApp messaging (Meta Cloud API or Telnyx WhatsApp)
 - Usage-based billing enforcement (the `usage_events` table is logging `voice_call`, `ai_token`, `tts_chars`, `sms_sent`/`received` — Stripe metered billing on top of that data is the next step)
 - Square/Boulevard/Vagaro/Mindbody live calendar sync UI in Settings (the connectors and encrypted token storage exist; the "Connect" buttons and live status display in `settings.html` still need wiring to `/api/oauth/connect`)
@@ -90,7 +93,21 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 
 ---
 
-## What we're explicitly NOT building (yet)
+### Phase E — Real-time barge-in on phone calls · genuinely bigger project, not a quick fix
+**Why this is its own phase, not a quick toggle:** Telnyx's current TeXML `<Gather>` verb has no `bargeIn` attribute — there is no documented flag that lets a caller interrupt Lola mid-sentence. `<Gather>` only starts listening for speech after every nested `<Play>`/`<Say>` finishes playing. True barge-in (caller talks over Lola, she stops and listens immediately — what a real human receptionist does naturally) requires moving off the TeXML request/response model entirely, onto Telnyx's **Call Control API with real-time bidirectional media streaming** (WebSocket audio in both directions, live voice-activity detection, manually cancelling in-flight ElevenLabs playback the instant speech is detected).
+
+**What it would actually take:**
+- Rebuild `telnyx-voice.js` around Telnyx Call Control + Media Streaming (`/v2/calls` + WebSocket) instead of TeXML webhooks — a different request/response shape entirely, not an incremental change to the current file
+- Real-time VAD (voice activity detection) on the inbound audio stream to detect "caller started talking" within ~100-200ms
+- A cancellable playback pipeline: ElevenLabs audio currently plays to completion once started; barge-in needs the ability to kill in-flight playback the instant the caller's speech is detected
+- Almost certainly: streaming ElevenLabs synthesis (sentence-by-sentence) rather than synthesizing the full reply upfront, so there's less already-committed audio to interrupt
+- Careful testing against false-positive barge-in (background salon noise — dryers, music, other conversations — triggering interruption when the caller didn't actually mean to interrupt)
+
+**Why it's worth it eventually:** this is the single biggest remaining gap between "feels like a good IVR" and "feels like an actual human receptionist." Everything else about the call experience (natural language, no press-1 menus, persistent memory, her real voice) already works well — barge-in is the last mile.
+
+**Not started.** Revisit once Phases A–D are done and there's real call volume to justify the rebuild.
+
+---
 
 Listing them so we both know they're parked, not forgotten:
 

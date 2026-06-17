@@ -250,10 +250,13 @@ function setOrbState(s){
   const title = document.getElementById('orbTitle');
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
+  const stage = document.getElementById('orbStage');
   wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
   mic.classList.toggle('on', s==='listening');
+  if(stage) stage.classList.toggle('ambient', s==='ambient');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
+    ambient: ['Hey Lola…','Listening for her name — just say it'],
     listening: ['Listening…','Speak now, I\'m all ears'],
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
@@ -444,7 +447,7 @@ window.openChat = function(){
 
 window.closeChat = function(){
   document.getElementById('chatOverlay').classList.remove('show');
-  if(window.speechSynthesis) speechSynthesis.cancel();
+  stopSpeaking();
 };
 
 async function processMessage(text){
@@ -483,11 +486,38 @@ window.sendCmd = function(){
 };
 
 /* ─────────────────────────────────────────────────────────────
-   VOICE — input (Web Speech) + output (Speech Synthesis)
+   VOICE — input (Web Speech) + output (Lola's real ElevenLabs voice)
+   ════════════════════════════════════════════════════════════════
+   Two listening modes share one underlying SpeechRecognition object:
+
+   1. ACTIVE mode (tap-to-talk): unchanged from before. Tap the orb or
+      mic, say one thing, Lola answers. Used when the owner deliberately
+      starts a conversation.
+
+   2. AMBIENT mode (always-on, wake-word gated): toggled on via the
+      "Always listening for Lola" control. The mic stays passively open
+      continuously while the dashboard tab is active. Nothing is sent
+      to the AI brain UNLESS the transcript contains her name — only
+      the words AFTER "Lola" get sent. This is the same design Alexa/
+      Siri use (wake word gates what gets processed) and exists for
+      three real reasons: it avoids reacting to client conversations,
+      it avoids massive LLM/TTS cost from transcribing all-day shop
+      noise, and it avoids continuously transcribing third-party
+      conversations without their knowledge.
+
+   Ambient mode auto-restarts itself, since browsers stop continuous
+   recognition after periods of silence or certain errors — without
+   the restart loop, "always listening" would silently die after a
+   few minutes.
    ───────────────────────────────────────────────────────────── */
 let recognition = null;
-let listening = false;
-let voiceTarget = 'orb'; // orb | chat
+let listening = false;          // true while actively capturing a command (either mode)
+let voiceTarget = 'orb';        // orb | chat
+let ambientOn = false;          // user-toggled: is "always listening for Lola" enabled
+let ambientMuted = false;       // explicit mute, independent of ambientOn — see toggle below
+let ambientRecognizing = false; // is the passive wake-word recognizer currently running
+const WAKE_WORDS = ['lola'];
+const AMBIENT_STORAGE_KEY = 'loladesk_ambient_listening';
 
 function setupRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -514,10 +544,11 @@ function setupRecognition(){
 }
 
 function startListening(){
+  if(ambientRecognizing) stopAmbientListening(); // active tap always wins over passive ambient
   if(!recognition) setupRecognition();
   if(!recognition){ alert('Voice input needs Chrome, Edge, or Safari.'); return; }
   listening = true;
-  if(window.speechSynthesis) speechSynthesis.cancel();
+  stopSpeaking();
   if(voiceTarget==='orb') setOrbState('listening');
   if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
   try{ recognition.start(); }catch(e){}
@@ -526,9 +557,12 @@ function startListening(){
 function stopListening(){
   listening = false;
   if(recognition) try{ recognition.stop(); }catch(e){}
-  if(voiceTarget==='orb') setOrbState('idle');
+  if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle');
   document.getElementById('chatMic').classList.remove('on');
   setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
+  // Resume passive wake-word listening once the active command finishes,
+  // if ambient mode is on and not muted.
+  if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 400);
 }
 
 window.toggleVoice = function(){
@@ -540,22 +574,200 @@ window.toggleChatVoice = function(){
   listening ? stopListening() : startListening();
 };
 
-function speak(text){
-  if(!window.speechSynthesis) return;
-  speechSynthesis.cancel();
-  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').substring(0,500);
-  if(!clean) return;
-  const u = new SpeechSynthesisUtterance(clean);
-  u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
-  const voices = speechSynthesis.getVoices();
-  const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
-  for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
-  if(voiceTarget==='orb'){
-    setOrbState('speaking');
-    u.onend = ()=> setOrbState('idle');
-    u.onerror = ()=> setOrbState('idle');
+/* ── AMBIENT WAKE-WORD LISTENING ── */
+let ambientRecognition = null;
+
+function setupAmbientRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) return null;
+  const r = new SR();
+  r.continuous = true;       // keep listening across pauses, not just one utterance
+  r.interimResults = true;
+  r.lang = 'en-US';
+  r.onresult = (e)=>{
+    if(listening) return; // an active command is already in progress — ignore ambient input
+    let transcript = '';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      transcript += e.results[i][0].transcript;
+    }
+    const lower = transcript.toLowerCase();
+    // Word-boundary match — avoids false triggers on words that merely
+    // contain "lola" as a substring (rare, but it's the product's name).
+    const wakeRe = new RegExp('\\b(' + WAKE_WORDS.join('|') + ')\\b');
+    const m = wakeRe.exec(lower);
+    if(!m) return;
+    // Take only what comes AFTER the wake word as the actual command —
+    // mirrors how Alexa/Siri strip their own name before processing.
+    const command = transcript.slice(m.index + m[0].length).replace(/^[,.\s]+/, '').trim();
+    if(!command) return; // just "Lola" with nothing after it yet — wait for more
+    stopAmbientListening();
+    voiceTarget = 'orb';
+    askLola(command);
+  };
+  r.onerror = (e)=>{
+    ambientRecognizing = false;
+    // "no-speech" and "aborted" are routine in ambient mode (long silences,
+    // explicit stops) — just restart quietly rather than treating as fatal.
+    if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 1200);
+  };
+  r.onend = ()=>{
+    ambientRecognizing = false;
+    // Browsers auto-stop continuous recognition periodically — restart
+    // immediately so "always listening" actually stays always listening.
+    if(ambientOn && !ambientMuted && !listening) setTimeout(startAmbientListening, 300);
+  };
+  return r;
+}
+
+function startAmbientListening(){
+  if(!ambientOn || ambientMuted || listening || ambientRecognizing) return;
+  if(!ambientRecognition) ambientRecognition = setupAmbientRecognition();
+  if(!ambientRecognition) return;
+  try{
+    ambientRecognition.start();
+    ambientRecognizing = true;
+    if(voiceTarget==='orb' || document.getElementById('orbStage')) setOrbState('ambient');
+  }catch(e){ ambientRecognizing = false; }
+}
+
+function stopAmbientListening(){
+  ambientRecognizing = false;
+  if(ambientRecognition) try{ ambientRecognition.stop(); }catch(e){}
+}
+
+function updateAmbientToggleUI(){
+  const btn = document.getElementById('ambientToggle');
+  const label = document.getElementById('ambientToggleLabel');
+  const stage = document.getElementById('orbStage');
+  if(!btn) return;
+  btn.classList.toggle('on', ambientOn && !ambientMuted);
+  btn.classList.toggle('muted', ambientOn && ambientMuted);
+  if(stage) stage.classList.toggle('ambient', ambientOn && !ambientMuted && !listening);
+  if(label) label.textContent = !ambientOn ? 'Always listening for "Lola"'
+    : ambientMuted ? 'Muted — tap to resume, hold to turn off' : 'Listening for "Lola"… (hold to turn off)';
+}
+
+window.toggleAmbientListening = function(){
+  if(!ambientOn){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){ alert('Always-listening needs Chrome, Edge, or Safari.'); return; }
+    const confirmed = localStorage.getItem('loladesk_ambient_disclosure_ack') === '1' || confirm(
+      'Turning this on keeps this device\'s microphone passively open while the dashboard is open. ' +
+      'Nothing is sent anywhere unless someone says "Lola" — only what\'s said after her name is processed. ' +
+      'Let your staff and anyone nearby know this mic is on. You can mute or turn this off anytime (tap to mute, hold to turn off).\n\n' +
+      'Turn on always-listening for Lola?'
+    );
+    if(!confirmed) return;
+    localStorage.setItem('loladesk_ambient_disclosure_ack', '1');
+    ambientOn = true;
+    ambientMuted = false;
+    localStorage.setItem(AMBIENT_STORAGE_KEY, '1');
+    startAmbientListening();
+  } else if(!ambientMuted){
+    // tapping while on = mute, without fully turning the feature off
+    ambientMuted = true;
+    stopAmbientListening();
+    if(!listening) setOrbState('idle');
+  } else {
+    // tapping while muted = unmute and resume
+    ambientMuted = false;
+    startAmbientListening();
   }
-  speechSynthesis.speak(u);
+  updateAmbientToggleUI();
+};
+
+// Press-and-hold the toggle for ~800ms to fully turn ambient listening
+// off (not just mute) and forget the preference — for an owner who
+// decides this isn't for their salon, rather than a temporary mute.
+(function wireAmbientLongPress(){
+  let pressTimer = null;
+  let longPressFired = false;
+  const btn = document.getElementById('ambientToggle');
+  if(!btn) return;
+  const start = ()=>{
+    longPressFired = false;
+    pressTimer = setTimeout(()=>{
+      longPressFired = true;
+      ambientOn = false;
+      ambientMuted = false;
+      stopAmbientListening();
+      localStorage.removeItem(AMBIENT_STORAGE_KEY);
+      if(!listening) setOrbState('idle');
+      updateAmbientToggleUI();
+      pressTimer = null;
+    }, 800);
+  };
+  const cancel = ()=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; } };
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('touchstart', start, { passive:true });
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev => btn.addEventListener(ev, cancel));
+  // A long-press already handled the toggle fully — swallow the click
+  // that follows a mouseup/touchend so it doesn't also cycle on/mute.
+  btn.addEventListener('click', (e)=>{ if(longPressFired){ e.stopPropagation(); e.preventDefault(); longPressFired = false; } }, { capture:true });
+})();
+
+// Restore the owner's last preference on page load — ambient listening
+// is opt-in (off by default for a brand-new salon) but persists once chosen.
+(function restoreAmbientPreference(){
+  if(localStorage.getItem(AMBIENT_STORAGE_KEY) === '1'){
+    ambientOn = true;
+    // Don't auto-start the mic without a user gesture — most browsers
+    // block getUserMedia/SpeechRecognition until the page has had a
+    // real click/keypress, so we arm it and start on first interaction.
+    const arm = ()=>{ startAmbientListening(); updateAmbientToggleUI(); document.removeEventListener('click', arm); };
+    document.addEventListener('click', arm, { once:true });
+  }
+  updateAmbientToggleUI();
+})();
+
+/* ── SPEECH OUTPUT: Lola's real ElevenLabs voice, same as phone calls ──
+   Falls back to the browser's built-in voice only if /api/speak fails,
+   so the dashboard never goes silent — but normal operation should
+   always sound like the real, consistent Lola brand voice. */
+let currentAudio = null;
+
+function stopSpeaking(){
+  if(currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
+  if(window.speechSynthesis) speechSynthesis.cancel();
+}
+
+async function speak(text){
+  stopSpeaking();
+  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').trim().slice(0, 2500);
+  if(!clean) return;
+
+  const onStart = ()=>{ if(voiceTarget==='orb') setOrbState('speaking'); };
+  const onEnd = ()=>{ if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle'); };
+
+  try{
+    const res = await fetch('/api/speak', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ text: clean })
+    });
+    if(!res.ok) throw new Error('speak api failed: '+res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+    onStart();
+    currentAudio.onended = ()=>{ URL.revokeObjectURL(url); onEnd(); };
+    currentAudio.onerror = ()=>{ URL.revokeObjectURL(url); onEnd(); };
+    await currentAudio.play();
+  }catch(e){
+    // Fallback: the browser's built-in voice, only if ElevenLabs is
+    // unreachable or unconfigured — keeps the dashboard from going silent.
+    console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
+    if(!window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
+    const voices = speechSynthesis.getVoices();
+    const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
+    for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
+    onStart();
+    u.onend = onEnd;
+    u.onerror = onEnd;
+    speechSynthesis.speak(u);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────

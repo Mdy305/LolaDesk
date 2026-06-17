@@ -70,11 +70,13 @@ async function speakLine(text){
 function buildSystemPrompt(tenant){
   const svc = (tenant.services||[]).map(s=>`${s.name} $${s.price} (${s.duration||''})`).join('; ');
   return `You are Lola, the AI receptionist answering the phone for ${tenant.name}, a salon at ${tenant.location||''}.
-You are warm, quick, and human — never robotic. Keep EVERY reply under 2 sentences because this is a live phone call. Always move toward booking.
+You are warm, quick, and human — never robotic. This is a live phone call, not a chat — every extra word is time the caller is waiting.
+Default to ONE short sentence per reply. Only use a second short sentence when truly necessary (e.g. confirming a booking's service + day in the same breath). Never explain yourself, never pad with filler ("Sure thing!", "Of course!") before the actual content — just say the thing.
+Always move toward booking.
 Services: ${svc}.
 Hours: ${tenant.hours||'Tue–Sat, Noon–8pm'}. Booking link: ${tenant.bookingUrl||''}.
 If the caller wants to book, collect: service, day, and name — then confirm you'll text them the booking link. If they ask something you can't do, offer to take a message.
-Never say you are an AI unless asked directly. Speak naturally, like the salon's best receptionist.`;
+Never say you are an AI unless asked directly. Speak naturally, like the salon's best receptionist — fast, warm, no wasted words.`;
 }
 
 // Minimal in-call history is passed via Gather's "client_state" base64.
@@ -90,7 +92,7 @@ async function askLola(history, tenant){
   const result = await chat({
     system: buildSystemPrompt(tenant),
     messages: history,
-    maxTokens: 150,
+    maxTokens: 90,
     temperature: 0.7
   });
   if(!result.ok){

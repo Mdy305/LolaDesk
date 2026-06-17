@@ -128,6 +128,15 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .lola-prompt-sub{font-size:12px;font-weight:300;color:var(--text3)}
 .lola-mic{margin-top:14px;width:42px;height:42px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border2);display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all .2s}
 .lola-mic:hover,.lola-mic.on{background:var(--pink-dim);border-color:var(--pink);color:var(--pink2);box-shadow:0 0 20px var(--pink-glow)}
+/* Ambient wake-word listening: a slow, calm breathing ring — distinct from
+   the brighter "actively listening after wake word" state above */
+.lola-orb-stage.ambient .lring1{animation:lspin 11s linear infinite, lbreathe 4s ease-in-out infinite}
+@keyframes lbreathe{0%,100%{opacity:.5}50%{opacity:1}}
+.lola-ambient-toggle{display:flex;align-items:center;gap:8px;margin-top:10px;padding:6px 12px;border-radius:20px;background:var(--surface2);border:0.5px solid var(--border2);color:var(--text2);font-size:12px;cursor:pointer;transition:all .2s;user-select:none}
+.lola-ambient-toggle:hover{border-color:var(--pink)}
+.lola-ambient-toggle .dot{width:7px;height:7px;border-radius:50%;background:var(--text2);transition:all .2s}
+.lola-ambient-toggle.on .dot{background:#2ecc71;box-shadow:0 0 8px #2ecc71}
+.lola-ambient-toggle.muted .dot{background:#ff4d4d}
 .lola-transcript{position:absolute;bottom:10px;left:24px;right:24px;text-align:center;font-size:12px;font-style:italic;color:var(--pink2);min-height:16px}
 
 /* ─── CARD ─── */
@@ -438,7 +447,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
           <div class="kpi accent"><div class="kpi-val">$2,850</div><div class="kpi-label">Potential Revenue</div><div class="kpi-sub">Today</div></div>
         </div>
         <div class="lola-orb-zone">
-        <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Tap to speak with Lola">
+        <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Tap to speak with Lola, or just say her name">
           <canvas id="orbCanvas" width="240" height="240"></canvas>
           <div class="lola-rings">
             <div class="lring lring1"><div class="lelec le1"></div></div>
@@ -460,6 +469,10 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
         </button>
         <div class="lola-transcript" id="orbTranscript"></div>
+        <div class="lola-ambient-toggle" id="ambientToggle" onclick="toggleAmbientListening()" role="button" tabindex="0" aria-label="Tap to toggle always-listening for Lola, mute, or hold to turn off completely">
+          <span class="dot"></span>
+          <span id="ambientToggleLabel">Always listening for "Lola"</span>
+        </div>
         </div>
       </div>
 

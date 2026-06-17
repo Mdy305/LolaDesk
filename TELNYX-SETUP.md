@@ -18,6 +18,10 @@ Real callers hear Lola's actual ElevenLabs voice — the same one used in the da
 
 This trades a small amount of latency (~0.5–1.5s per turn for ElevenLabs synthesis + fetch, vs. instant for Telnyx's built-in `<Say>`) for full brand-voice consistency. That's intentional.
 
+## Reply length and barge-in
+
+Lola's call replies default to one short sentence (`buildSystemPrompt` in `telnyx-voice.js`, `maxTokens: 90`) — calls feel snappier when there's less to sit through before she's done talking and listening again. This is a meaningful but partial fix for "feels robotic": **callers still can't interrupt her mid-sentence.** Telnyx's TeXML `<Gather>` has no documented `bargeIn` attribute — true interruption requires Telnyx's Call Control + real-time media streaming API, a genuinely larger rebuild tracked as Phase E in `ROADMAP.md`. Don't be surprised this isn't there yet; it's a known, deliberately deferred gap, not an oversight.
+
 ## Environment variables (Vercel → Settings → Environment Variables)
 
 See `.env.example` for the complete, current list — that file is the source of truth. The ones specific to Telnyx + voice:

@@ -24,7 +24,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 |------|---------|
 | `index.html` | **Marketing homepage** — what loladesk.com serves at `/`. |
 | `onboarding.html` | **Setup wizard** — salon details → connect platform → services → Lola's personality → plan → live. Calls `/api/auth/signup` and `/api/onboard`. |
-| `dashboard.html` | **The dashboard** — what each salon logs into daily. Reads real data via `/api/data`. |
+| `dashboard.html` | **The dashboard** — what each salon logs into daily. Reads real data via `/api/data`. Lola can be talked to two ways: tap-to-talk, or enable "always listening for Lola" for hands-free, ambient wake-word activation (mic stays passively open; nothing is sent to the AI brain until her name is said). |
 | `clients.html`, `calls.html`, `inbox.html`, `bookings.html`, `revenue.html`, `team.html`, `numbers.html`, `marketing.html`, `settings.html`, `agents.html` | Interior dashboard pages, each tenant-scoped via `/api/data`. |
 | `login.html` | Returning owner sign-in. |
 | `landing.html` | Alternate marketing page (not currently linked from main nav). |
@@ -41,7 +41,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `telnyx-agents.js` | **Experimental, not yet wired to live calls.** Provisions a 7-agent team (Lola + 6 specialists) directly inside Telnyx's own AI Assistant product, as an alternative architecture to the custom TeXML+Claude loop above. No phone number currently routes to it — `agents.html`'s "copy Telnyx config" button exports this for manual import if you want to experiment with it. |
 | `lola-tools.js` | The skill layer (check availability, book, quote pricing, capture leads, escalate) — what Lola's brain calls into to actually do things. |
 | `lola.js` | Proxy the dashboard's browser-side chat uses to talk to the LLM without exposing API keys. |
-| `speak.js`, `lib/elevenlabs.js` | Lola's real voice — shared between the dashboard chat and phone calls so she sounds identical everywhere. |
+| `speak.js`, `lib/elevenlabs.js` | Lola's real voice — shared between the dashboard chat and phone calls so she sounds identical everywhere. The dashboard's `app.js` calls `speak.js` for both tap-to-talk replies and ambient wake-word replies (see `dashboard.html`'s "always listening for Lola" toggle). |
 | `voice-audio.js`, `lib/tts-cache.js` | Serves the synthesized ElevenLabs audio at a URL Telnyx's `<Play>` can fetch. |
 | `data.js` | Unified read API every dashboard page calls — tenant-scoped, with a small demo dataset fallback so the UI is never blank during setup. |
 | `billing/checkout.js`, `billing/portal.js`, `billing/webhook.js`, `lib/stripe.js` | Stripe subscriptions — Checkout, customer portal, and a signature-verified webhook that activates/suspends tenants. |
