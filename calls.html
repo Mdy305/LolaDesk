@@ -69,23 +69,20 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const CALLS = [
-  { name:'Sarah Johnson', num:'+1 (305) 555-0142', dir:'in', outcome:'Booked', service:'Balayage consultation', time:'2m ago', dur:'2:18', prob:92,
-    transcript:[['caller','Hi, I\'m looking to get a balayage.'],['lola','I can definitely help with that! Are you thinking soft and natural, or more of a bold transformation?'],['caller','Soft and natural.'],['lola','Perfect — I have Thursday at 2pm or Saturday at 11am with Meddy. Which works better?'],['caller','Saturday please.'],['lola','Booked! I\'ll text you the confirmation. See you Saturday!']] },
-  { name:'+1 (310) 555-0189', num:'+1 (310) 555-0189', dir:'in', outcome:'Booked', service:'Extensions consult', time:'18m ago', dur:'3:02', prob:88, transcript:[['caller','Do you do hair extensions?'],['lola','We do! We\'re Hairdreams certified. Extensions start at $800 and include a free consultation. Want me to book yours?'],['caller','Yes please.'],['lola','Done — I\'ll text you the details!']] },
-  { name:'Rachel Smith', num:'+1 (305) 555-0177', dir:'in', outcome:'Booked', service:'Rebooking', time:'45m ago', dur:'1:41', prob:95, transcript:[['lola','Hi Rachel! It\'s been about 8 weeks since your last balayage — want to keep your color fresh?'],['caller','Oh yes, I was just thinking about that.'],['lola','I have Friday at 3pm. Shall I lock it in?'],['caller','Perfect.']] },
-  { name:'Unknown caller', num:'+1 (786) 555-0203', dir:'missed', outcome:'Texted back', service:'Auto text-back', time:'1h ago', dur:'—', prob:0, transcript:[['lola','(Missed call → Lola automatically texted) Hi! Sorry we missed you at MMA Salon. This is Lola — how can I help you book today?']] },
-  { name:'Camila Santos', num:'+1 (305) 555-0156', dir:'out', outcome:'Booked', service:'Win-back call', time:'2h ago', dur:'2:55', prob:78, transcript:[['lola','Hi Camila! We miss you at MMA Salon. We\'d love to have you back — can I offer you a fresh keratin treatment?'],['caller','That sounds great actually.'],['lola','Wonderful! Booking you now.']] }
-];
+let CALLS = [];
 
 function dirIcon(d){
   if(d==='in') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9" transform="rotate(180 12 12)"/></svg>';
   if(d==='out') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>';
-  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 5l18 14M21 5L3 19" opacity="0"/><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
 }
+function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return m+':'+String(s).padStart(2,'0'); }
 function render(){
+  if(!CALLS.length){ document.getElementById('callList').innerHTML='<div class="empty" style="padding:40px;text-align:center;color:var(--text3)">No calls yet — they\'ll appear here as Lola answers.</div>'; document.getElementById('detail').innerHTML=''; return; }
   document.getElementById('callList').innerHTML = CALLS.map((c,i)=>`
     <div class="call-row" onclick="showDetail(${i})">
       <div class="call-dir ${c.dir}">${dirIcon(c.dir)}</div>
@@ -101,20 +98,28 @@ function render(){
   showDetail(0);
 }
 function showDetail(i){
-  const c = CALLS[i];
+  const c = CALLS[i]; if(!c) return;
   document.getElementById('detail').innerHTML = `
     <div class="detail-orb">L</div>
     <div class="detail-title">${c.name}</div>
     <div class="detail-sub">${c.num} · ${c.time}</div>
-    <div class="transcript">
-      ${c.transcript.map(([who,txt])=>`<div class="t-line ${who}"><span class="who">${who==='lola'?'Lola':'Caller'}:</span> ${txt}</div>`).join('')}
-    </div>
+    ${c.summary?`<div class="transcript"><div class="t-line lola">${c.summary}</div></div>`:''}
     <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${c.outcome}</span></div>
     <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${c.dur}</span></div>
-    ${c.prob?`<div class="detail-stat"><span class="detail-stat-label">Booking probability</span><span style="color:var(--green);font-weight:600">${c.prob}%</span></div>`:''}
-    <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service}</span></div>`;
+    <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service||'—'}</span></div>`;
 }
-render();
+
+(async ()=>{
+  const data = await LolaData.load('calls');
+  const list = (data && data.calls) || [];
+  CALLS = list.map(c=>({
+    name: c.from || 'Caller', num: c.from || '', dir: c.booked?'in':'in',
+    outcome: c.booked?'Booked':(c.outcome||'Handled'),
+    service: c.summary ? '' : '', summary: c.summary||'',
+    time: c.when||'', dur: fmtDur(c.durationSec)
+  }));
+  render();
+})();
 </script>
 </body>
 </html>

@@ -61,47 +61,61 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const CLIENTS = [
-  { name:'Jennifer Adams', img:'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=80&q=80', service:'Balayage, Extensions', ltv:14250, last:'May 22', vip:true, due:false },
-  { name:'Valentina Rossi', img:'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&q=80', service:'Balayage', ltv:9820, last:'Apr 2', vip:true, due:true },
-  { name:'Amanda Davis', img:'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&q=80', service:'Color Correction', ltv:6400, last:'Jun 1', vip:false, due:false },
-  { name:'Sophie Wilson', img:'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=80&q=80', service:'Blowout', ltv:3120, last:'May 28', vip:false, due:false },
-  { name:'Rachel Smith', img:'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&q=80', service:'Extensions', ltv:11200, last:'Mar 15', vip:true, due:true },
-  { name:'Emily Johnson', img:'https://images.unsplash.com/photo-1554151228-14d9def656e4?w=80&q=80', service:'Hair Botox', ltv:4750, last:'May 12', vip:false, due:false },
-  { name:'Olivia Brown', img:'', service:'Cut & Style', ltv:2890, last:'Jun 8', vip:false, due:false },
-  { name:'Camila Santos', img:'', service:'Keratin', ltv:5240, last:'Apr 20', vip:false, due:true }
-];
+let CLIENTS = [];
 
 let activeFilter = 'all';
 function initial(n){ return (n.match(/[A-Za-z]/)||['?'])[0].toUpperCase(); }
 function avatar(c){
-  return `<span class="av"><span class="av-initial">${initial(c.name)}</span>${c.img?`<img src="${c.img}" alt="" onerror="this.style.opacity=0">`:''}</span>`;
+  return `<span class="av"><span class="av-initial">${initial(c.name)}</span></span>`;
 }
+function daysSince(d){ if(!d) return null; return Math.floor((Date.now()-new Date(d))/86400000); }
+function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }catch(e){ return d; } }
 function render(){
   const q = (document.getElementById('search').value||'').toLowerCase();
   const rows = CLIENTS.filter(c=>{
     if(activeFilter==='vip' && !c.vip) return false;
     if(activeFilter==='due' && !c.due) return false;
-    return c.name.toLowerCase().includes(q) || c.service.toLowerCase().includes(q);
+    return (c.name||'').toLowerCase().includes(q) || (c.service||'').toLowerCase().includes(q);
   });
   document.getElementById('rows').innerHTML = rows.length ? rows.map(c=>`
-    <tr onclick="openClient('${c.name.replace(/'/g,'')}')">
-      <td><div class="cell-name">${avatar(c)}<div><div class="cell-name-txt">${c.name}</div></div>${c.vip?'<span class="pill vip" style="margin-left:4px">VIP</span>':''}</div></td>
-      <td style="color:var(--text2)">${c.service}</td>
-      <td style="font-weight:500">$${c.ltv.toLocaleString()}</td>
-      <td style="color:var(--text2)">${c.last}</td>
+    <tr onclick="openClient('${(c.name||'').replace(/'/g,'')}')">
+      <td><div class="cell-name">${avatar(c)}<div><div class="cell-name-txt">${c.name}</div>${c.phone?`<div class="cell-sub">${c.phone}</div>`:''}</div>${c.vip?'<span class="pill vip" style="margin-left:4px">VIP</span>':''}</div></td>
+      <td style="color:var(--text2)">${c.service||'—'}</td>
+      <td style="font-weight:500">$${(c.ltv||0).toLocaleString()}</td>
+      <td style="color:var(--text2)">${fmtDate(c.lastVisit)}</td>
       <td>${c.due?'<span class="pill amber">Due to rebook</span>':'<span class="pill green">Active</span>'}</td>
-    </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No clients match.</div></td></tr>';
+    </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No clients yet — Lola will add them as she handles calls.</div></td></tr>';
 }
 function filterBy(el, f){
   document.querySelectorAll('.filter-pill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active'); activeFilter=f; render();
 }
-function openClient(name){ window.location.href='dashboard.html'; }
+function openClient(name){ /* future: client detail */ }
 document.getElementById('search').addEventListener('input', render);
-render();
+
+// load REAL data
+(async ()=>{
+  const data = await LolaData.load('clients');
+  const list = (data && data.clients) || [];
+  CLIENTS = list.map(c=>({
+    name:c.name, phone:c.phone, service:c.lastService, ltv:c.ltv,
+    lastVisit:c.lastVisit, vip:c.vip,
+    due: (()=>{ const d=daysSince(c.lastVisit); return d!=null && d>60; })()
+  }));
+  // update KPIs from real data
+  const total=CLIENTS.length;
+  const vips=CLIENTS.filter(c=>c.vip).length;
+  const due=CLIENTS.filter(c=>c.due).length;
+  const k=document.querySelectorAll('.kpi-val');
+  if(k[0]) k[0].textContent=total.toLocaleString();
+  if(k[1]) k[1].textContent=vips;
+  if(k[3]) k[3].textContent=due;
+  render();
+})();
 </script>
 </body>
 </html>

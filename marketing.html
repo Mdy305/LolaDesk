@@ -78,9 +78,19 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
 document.querySelectorAll('.toggle').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('off')));
+(async ()=>{
+  const data = await LolaData.load('marketing');
+  if(!data||!data.segments) return;
+  const winback = data.segments.find(x=>x.id==='winback');
+  // update the win-back card count if present (first .camp-stat-val in last card)
+  const cards=document.querySelectorAll('.camp');
+  if(winback && cards.length){ const last=cards[cards.length-1]; const v=last.querySelector('.camp-stat-val'); if(v)v.textContent=winback.count; }
+})();
 </script>
 </body>
 </html>

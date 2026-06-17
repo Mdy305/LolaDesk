@@ -63,20 +63,11 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const THREADS = [
-  { name:'Sarah Johnson', ch:'instagram', img:'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&q=80', time:'2m', preview:'Hi! Do you have any availability…',
-    msgs:[['them','Hi! Do you have any availability this week?','2m'],['us','Hey Sarah! Yes — I have Thursday 2pm or Saturday 11am open for balayage. Which works?','1m',true],['them','Saturday is perfect!','30s'],['us','Booked you for Saturday 11am with Meddy. I\'ll send a reminder. 💕','just now',true]] },
-  { name:'+1 (310) 555-0189', ch:'sms', img:'', time:'8m', preview:'I\'m interested in booking…',
-    msgs:[['them','I\'m interested in booking an extensions consult','8m'],['us','Wonderful! Our extensions start at $800 and the consult is free. Here\'s the link to pick your time: mmasalon.com/book','7m',true]] },
-  { name:'Rachel Smith', ch:'whatsapp', img:'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&q=80', time:'15m', preview:'Perfect! Thank you so much ✨',
-    msgs:[['us','Hi Rachel! Time to refresh your balayage? I have Friday 3pm 🌸','20m',true],['them','Perfect! Thank you so much ✨','15m']] },
-  { name:'Jessica Brown', ch:'instagram', img:'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&q=80', time:'25m', preview:'Do you offer extensions?',
-    msgs:[['them','Do you offer extensions?','25m'],['us','We do! Hairdreams certified, from $800 with a free consult. Want me to book you in?','24m',true]] },
-  { name:'Olivia Davis', ch:'email', img:'', time:'1h', preview:'What are your prices for…',
-    msgs:[['them','What are your prices for keratin treatments?','1h'],['us','Hi Olivia! Our keratin smoothing is $450 and takes about 2.5 hours. Would you like to book?','1h',true]] }
-];
+let THREADS = [];
 
 let active = 0;
 function initial(n){ return (n.match(/[A-Za-z]/)||['#'])[0].toUpperCase(); }
@@ -109,7 +100,13 @@ function sendReply(){
   inp.value=''; renderConv();
 }
 document.getElementById('reply').addEventListener('keydown',e=>{ if(e.key==='Enter') sendReply(); });
-renderThreads(); renderConv();
+(async ()=>{
+  const data = await LolaData.load('inbox');
+  const list = (data && data.threads) || [];
+  THREADS = list.map(t=>({ name:t.who||'Client', ch:t.channel||'sms', time:t.when||'', preview:t.preview||'', img:'', msgs: t.preview?[['them',t.preview,t.when||'',false]]:[] }));
+  if(!THREADS.length){ document.getElementById('threads').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No messages yet.</div>'; }
+  else { renderThreads(); renderConv(); }
+})();
 </script>
 </body>
 </html>

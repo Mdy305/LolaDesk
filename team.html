@@ -49,17 +49,14 @@
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const TEAM = [
-  { name:'Meddy', role:'Owner · Master Colorist', img:'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=120&q=80', rev:22800, change:18, pct:100, clients:94, rating:4.9 },
-  { name:'Alice', role:'Senior Stylist', img:'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=120&q=80', rev:13200, change:14, pct:58, clients:67, rating:4.8 },
-  { name:'Michelle', role:'Color Specialist', img:'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80', rev:9400, change:11, pct:41, clients:52, rating:4.9 },
-  { name:'Samantha', role:'Stylist', img:'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&q=80', rev:7800, change:9, pct:34, clients:41, rating:4.7 }
-];
+let TEAM = [];
 function initial(n){ return (n.match(/[A-Za-z]/)||['?'])[0].toUpperCase(); }
 function av(m){ return `<span class="av lg"><span class="av-initial">${initial(m.name)}</span>${m.img?`<img src="${m.img}" onerror="this.style.opacity=0">`:''}</span>`; }
-document.getElementById('teamGrid').innerHTML = TEAM.map(m=>`
+function renderTeam(){ document.getElementById('teamGrid').innerHTML = TEAM.map(m=>`
   <div class="member">
     <div class="member-top">${av(m)}<div><div class="member-name">${m.name}</div><div class="member-role">${m.role}</div></div></div>
     <div class="member-rev">$${m.rev.toLocaleString()}</div>
@@ -69,7 +66,13 @@ document.getElementById('teamGrid').innerHTML = TEAM.map(m=>`
       <div><div class="member-stat-val">${m.clients}</div><div class="member-stat-label">Clients</div></div>
       <div><div class="member-stat-val">★ ${m.rating}</div><div class="member-stat-label">Rating</div></div>
     </div>
-  </div>`).join('');
+  </div>`).join(''); }
+(async ()=>{
+  const data = await LolaData.load('team');
+  const list = (data && data.team) || [];
+  TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct||(100-i*20), clients:m.clients||0, rating:m.rating||4.8 }));
+  renderTeam();
+})();
 </script>
 </body>
 </html>
