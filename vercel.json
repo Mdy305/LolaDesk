@@ -6,7 +6,8 @@
   },
   "rewrites": [
     { "source": "/start", "destination": "/onboarding.html" },
-    { "source": "/dashboard", "destination": "/dashboard.html" }
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/settings", "destination": "/settings.html" }
   ],
   "headers": [
     {

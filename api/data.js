@@ -12,8 +12,9 @@
  * Auth: pass Authorization: Bearer <token> (preferred) OR ?tenant=slug.
  * Degrades to a small demo set if Supabase is empty, so the UI is never blank.
  */
-import { db, getTenantBySlug } from './lib/db.js';
+import { db, getTenantBySlug, getTenantIntegrations } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { listProviders } from './lib/aggregator.js';
 
 function ago(ts){
   if(!ts) return '';
@@ -109,6 +110,22 @@ export default async function handler(req,res){
           {id:'memory',name:'Client Memory',desc:'Recognizes returning clients',on:true}
         ]});
       }
+      case 'integrations': {
+        // Real connection status per provider, decrypted in-memory only
+        // long enough to know IF a token exists — never returned to the client.
+        const connected = await getTenantIntegrations(tid); // status:'connected' by default
+        const connectedByProvider = Object.fromEntries(connected.map(i => [i.provider, i]));
+        const providers = listProviders().map(p => {
+          const row = connectedByProvider[p.id];
+          return {
+            id: p.id, name: p.name, description: p.description,
+            status: row ? 'connected' : p.status,                 // 'connected' | 'available' | 'pending_partner_approval' | 'needs_credentials'
+            connectedAt: row?.created_at || null,
+            metadata: row?.metadata ? { shop: row.metadata.shop || null } : null // never leak tokens, only safe display fields
+          };
+        });
+        return res.status(200).json({ tenant: tenant.name, tenantSlug: tenant.slug, providers });
+      }
       case 'marketing': {
         const { data=[] } = await c.from('clients').select('last_visit,is_vip').eq('tenant_id',tid).limit(1000);
         const rows=data||[];
@@ -177,6 +194,7 @@ function demo(resource, tenant){
       {id:'vip',name:'VIP',count:8,desc:'Your best clients'},
       {id:'all',name:'All clients',count:165,desc:'Everyone'}
     ]},
+    integrations:{tenant:name, tenantSlug:'demo', providers: listProviders().map(p=>({ ...p, connectedAt:null, metadata:null }))},
     overview:{tenant:name,kpis:{clients:165,calls30:48,bookings30:62,revenue30:18450,revenue30Money:'$18,450'}}
   };
   return D[resource]||D.overview;

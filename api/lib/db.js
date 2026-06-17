@@ -292,6 +292,25 @@ export async function getTenantIntegrations(tenantId, { status='connected' } = {
   }));
 }
 
+// ── Partial update for an EXISTING tenant by id (used by Settings) ──
+// Unlike upsertTenant (which expects a full object and will null out
+// fields like phone_number if they're absent — fine for onboarding's
+// one-shot writes, unsafe for a settings form that only sends the
+// fields the owner is actually editing), this only touches fields
+// explicitly present in the patch. Never accepts slug/owner_email/
+// phone_number changes here — those have separate, more careful flows.
+export async function updateTenantFields(tenantId, patch = {}){
+  const c = db();
+  if(!c || !tenantId) return null;
+  const allowed = ['name','location','hours','booking_url','persona','services','team'];
+  const row = {};
+  for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
+  if(Object.keys(row).length === 0) return null;
+  const { data, error } = await c.from('tenants').update(row).eq('id', tenantId).select().maybeSingle();
+  if(error) throw new Error(error.message);
+  return data;
+}
+
 
 export async function saveTenantKnowledge(tenantId, knowledge){
   const c = db();

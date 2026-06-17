@@ -7,7 +7,7 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 ## Where we are today
 
 **Real and working:**
-- Cinematic landing, voice login, onboarding wizard, dashboard, 9 interior pages, Agents page (7 specialists), live at loladesk.com
+- Cinematic landing, onboarding wizard, dashboard, 9 interior pages, Agents page (7 specialists), live at loladesk.com
 - Telnyx voice + SMS + numbers (3 API handlers), with persistent multi-tenant memory in Supabase
 - Lola speaks in her real, consistent ElevenLabs voice on phone calls AND in the dashboard (not a generic TTS voice) — same voice everywhere
 - Dashboard: ambient, always-on wake-word listening ("Lola, ...") in addition to tap-to-talk — mic stays passively open, only sends to the AI brain after hearing her name, with a visible mute/disable control and a one-time privacy disclosure
@@ -17,8 +17,10 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 - Anthropic Claude (or Telnyx Inference) as Lola's brain
 - Stripe billing: Checkout, customer portal, signature-verified webhook
 - Vercel hosting, GitHub repo, `vercel.json` with safe function limits + security headers
+- Real email/password auth (Supabase Auth) — works correctly via `/api/auth/login` and `/api/auth/signup`
 
 **Not yet built:**
+- **Auth gating on most interior pages — see Phase F, flagged as a real security gap, not cosmetic.** `login.html`'s "voice login" is an explicit demo stub (its own code comment says so) that signs anyone in after any sound, with no real verification, and most pages don't check for a valid session at all.
 - Real-time barge-in on phone calls (caller interrupting Lola mid-sentence) — see Phase E below, this is a genuinely larger architecture change
 - WhatsApp messaging (Meta Cloud API or Telnyx WhatsApp)
 - Usage-based billing enforcement (the `usage_events` table is logging `voice_call`, `ai_token`, `tts_chars`, `sms_sent`/`received` — Stripe metered billing on top of that data is the next step)
@@ -109,6 +111,24 @@ Honest plan for LolaDesk's remaining infrastructure — built properly, with rea
 
 ---
 
+### Phase F — Real authentication gating on every interior page · security fix, do before scaling signups
+**Found while wiring Settings → Integrations (Phase A):** most interior pages (`dashboard.html`, `bookings.html`, `numbers.html`, `agents.html`) have **no login check at all** — `auth-guard.js` was referenced by 7 other pages (`calls.html`, `clients.html`, `inbox.html`, `lola-live.html`, `marketing.html`, `revenue.html`, `team.html`) but the file never existed in the repo, so those references silently 404'd and did nothing. Combined with `/api/data`'s fallback to the real seeded MMΛ Salon tenant when no auth token is present, **any interior page was viewable by anyone with the URL, showing real salon data.**
+
+A real `auth-guard.js` now exists (added while building Phase A) and is wired into `settings.html` only, since that page was being actively rebuilt at the same time this gap was found. It is **deliberately not yet added to the other pages** — that's the scope of this phase.
+
+**Separately, and more serious:** `login.html`'s "voice login" is an explicit demo stub — the code comment says so directly: *"any spoken phrase signs in (demo). In production: voice biometric / passphrase."* It sets no auth token and just redirects to `dashboard.html` after hearing any sound. Until `dashboard.html` itself enforces `auth-guard.js`, this means literally anyone speaking into the mic reaches the dashboard.
+
+**What this phase needs to do:**
+1. Add `<script src="auth-guard.js"></script>` (before `lola-data.js`/`sidebar.js`) to every interior page that shows real tenant data: `dashboard.html`, `bookings.html`, `numbers.html`, `agents.html`, and re-verify it now actually loads (not 404s) on the 7 pages that already referenced it
+2. Either implement real voice authentication (a genuinely hard problem — voice biometrics need enrollment + a real verification model, not just "speech was detected") or remove the voice option from `login.html` and keep only email/password until biometric login is properly built
+3. Audit `/api/data.js`'s `resolveTenant()` fallback — decide whether an unauthenticated request should get a 401 instead of silently falling back to the real MMΛ Salon tenant
+
+**Do this before any real marketing push or marketplace listing** — right now, every salon's booking, client, and revenue data is one URL away from anyone, not just their own pages.
+
+---
+
+## What we're explicitly NOT building (yet)
+
 Listing them so we both know they're parked, not forgotten:
 
 - **Redis distributed sessions** — Vercel cold starts are real but Supabase row reads are fast enough until you have 50+ concurrent calls
@@ -123,4 +143,6 @@ When/if any of these become real bottlenecks, add them. Not before.
 
 ## Recommended next step
 
-**Phase A (wire the Settings UI)** is the highest-leverage next step — the backend work for OAuth + encrypted storage is done; right now it's invisible to salon owners. That's ~2 hours to make real integrations actually usable from the dashboard, which directly supports the "Square App Marketplace listing" distribution goal in mind for LolaDesk.
+**Phase A (wire the Settings UI)** is the highest-leverage next step for revenue/distribution — the backend work for OAuth + encrypted storage is done; right now it's invisible to salon owners. That's ~2 hours to make real integrations actually usable from the dashboard, which directly supports the "Square App Marketplace listing" distribution goal in mind for LolaDesk.
+
+**Phase F (auth gating) should happen before any real marketing push, marketplace listing, or onboarding salons beyond friends-and-family testing.** It's a genuine security gap, not a nice-to-have — see the phase above for specifics.
