@@ -25,10 +25,9 @@
 
 import {
   getTenantByPhone, getTenantBySlug, upsertClient, getClientByPhone,
-  createBooking, logUsage, getOrStartConversation
+  createBooking, logUsage, getOrStartConversation, getTenantIntegrations
 } from './lib/db.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
-import { db } from './lib/db.js';
 
 // Resolve which salon this call is for
 async function resolveTenant(body){
@@ -83,18 +82,14 @@ function recommend_service(tenant, { goal }){
 
 // ── SKILL: check availability ──
 async function check_availability(tenant, { service, date }){
-  // Pull connected integrations for this tenant
+  // Pull connected integrations for this tenant (tokens decrypted in-memory here only)
   let appointments = [];
   try{
-    const c = db();
-    if(c){
-      const { data: integrations } = await c.from('integrations')
-        .select('*').eq('tenant_id', tenant.id).eq('status','connected');
-      if(integrations?.length){
-        const from = date ? new Date(date).toISOString() : new Date().toISOString();
-        const to = new Date(new Date(from).getTime()+7*24*3600*1000).toISOString();
-        appointments = await listAllAppointments(integrations, { from, to });
-      }
+    const integrations = await getTenantIntegrations(tenant.id);
+    if(integrations.length){
+      const from = date ? new Date(date).toISOString() : new Date().toISOString();
+      const to = new Date(new Date(from).getTime()+7*24*3600*1000).toISOString();
+      appointments = await listAllAppointments(integrations, { from, to });
     }
   }catch(e){ /* fall through to generic */ }
 
@@ -127,16 +122,12 @@ async function book_appointment(tenant, body){
     // Try writing to a connected booking platform first
     let external = null;
     try{
-      const c = db();
-      if(c){
-        const { data: integrations } = await c.from('integrations')
-          .select('*').eq('tenant_id', tenant.id).eq('status','connected');
-        if(integrations?.length){
-          external = await writeAppointment(integrations, {
-            starts_at: startsAt, duration_min: s?.durationMin || 60,
-            service: s?.name || service, client: { name: client_name, phone: client_phone }
-          });
-        }
+      const integrations = await getTenantIntegrations(tenant.id);
+      if(integrations.length){
+        external = await writeAppointment(integrations, {
+          starts_at: startsAt, duration_min: s?.durationMin || 60,
+          service: s?.name || service, client: { name: client_name, phone: client_phone }
+        });
       }
     }catch(e){ /* fall back to internal booking */ }
 

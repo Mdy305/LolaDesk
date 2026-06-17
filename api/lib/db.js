@@ -16,6 +16,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { encrypt, decrypt } from './crypto.js';
 
 let _client = null;
 export function db(){
@@ -110,6 +111,25 @@ export async function getClientByPhone(tenantId, phone){
     .eq('phone_number', e164(phone))
     .maybeSingle();
   return data;
+}
+
+// ── SMS COMPLIANCE (10DLC: STOP must be honored and persisted) ──
+export async function setOptOut(tenantId, phone, optedOut){
+  const c = db();
+  if(!c) return null;
+  const { data } = await c.from('clients').upsert(
+    { tenant_id: tenantId, phone_number: e164(phone), opted_out: optedOut, opted_out_at: optedOut ? new Date().toISOString() : null },
+    { onConflict: 'tenant_id,phone_number' }
+  ).select().maybeSingle();
+  return data;
+}
+
+export async function isOptedOut(tenantId, phone){
+  const c = db();
+  if(!c) return false; // demo mode: never block sends
+  const { data } = await c.from('clients').select('opted_out')
+    .eq('tenant_id', tenantId).eq('phone_number', e164(phone)).maybeSingle();
+  return !!data?.opted_out;
 }
 
 // ── CONVERSATIONS + MESSAGES ──
@@ -229,7 +249,50 @@ export async function upsertTenant(p = {}){
   return data;
 }
 
-// ── Save the Marketer's website analysis as this tenant's knowledge base ──
+// ── INTEGRATIONS (Square / Boulevard / Shopify / Google Calendar OAuth) ──
+// Tokens are encrypted at rest (see api/lib/crypto.js). ALWAYS use these
+// helpers instead of querying the `integrations` table directly, so
+// encryption/decryption can never accidentally be skipped.
+
+// Write (or update) an integration's tokens. Called from the OAuth callback.
+export async function upsertIntegration(tenantId, { provider, accessToken, refreshToken, expiresAt, metadata={} }){
+  const c = db();
+  if(!c) return null;
+  const row = {
+    tenant_id: tenantId,
+    provider,
+    access_token: accessToken != null ? encrypt(accessToken) : null,
+    refresh_token: refreshToken != null ? encrypt(refreshToken) : null,
+    expires_at: expiresAt || null,
+    status: 'connected',
+    metadata
+  };
+  const { data, error } = await c.from('integrations')
+    .upsert(row, { onConflict: 'tenant_id,provider' })
+    .select().maybeSingle();
+  if(error) throw new Error(error.message);
+  return data;
+}
+
+// Read all connected integrations for a tenant, decrypted and ready
+// to hand to a connector (square.js, boulevard.js, etc). This is the
+// ONLY place that should ever decrypt tokens — keep them in-memory,
+// server-side, for the duration of the request only.
+export async function getTenantIntegrations(tenantId, { status='connected' } = {}){
+  const c = db();
+  if(!c || !tenantId) return [];
+  let q = c.from('integrations').select('*').eq('tenant_id', tenantId);
+  if(status) q = q.eq('status', status);
+  const { data, error } = await q;
+  if(error || !data) return [];
+  return data.map(row => ({
+    ...row,
+    access_token: decrypt(row.access_token),
+    refresh_token: decrypt(row.refresh_token)
+  }));
+}
+
+
 export async function saveTenantKnowledge(tenantId, knowledge){
   const c = db();
   if(!c) return null;

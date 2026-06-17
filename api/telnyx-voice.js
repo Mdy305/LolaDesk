@@ -5,13 +5,20 @@
  * We look up which salon owns the called number, load context, ask
  * Claude, and reply with TeXML.
  *
- * ENV VARS (Vercel → Settings → Environment Variables):
- *   ANTHROPIC_API_KEY        Lola's brain
- *   TELNYX_API_KEY           for outbound actions
- *   SUPABASE_URL             multi-tenant lookup
- *   SUPABASE_SERVICE_KEY     server-side
+ * VOICE: Lola speaks in her real ElevenLabs voice on every call — the
+ * same voice as the dashboard's /api/speak — via TeXML's <Play>
+ * verb, which fetches audio we synthesize and cache at /api/voice-audio.
+ * If ElevenLabs is unreachable or misconfigured, we fall back to
+ * Telnyx's built-in <Say> so a caller never hears dead air — but
+ * normal operation should always use the real Lola voice.
  *
- * Conversation memory now persists to Supabase: Lola REMEMBERS every
+ * ENV VARS (Vercel → Settings → Environment Variables):
+ *   ANTHROPIC_API_KEY / LLM_PROVIDER  Lola's brain
+ *   TELNYX_API_KEY                   for outbound actions
+ *   SUPABASE_URL / SUPABASE_SERVICE_KEY   multi-tenant lookup
+ *   ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID   Lola's real voice
+ *
+ * Conversation memory persists to Supabase: Lola REMEMBERS every
  * caller across calls. State per-turn still rides in client_state for
  * speed; we mirror to DB at the end of each turn.
  */
@@ -22,6 +29,8 @@ import {
   logCall, logUsage, e164
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
+import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
+import { putAudio } from './lib/tts-cache.js';
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>';
 
@@ -33,9 +42,30 @@ function xmlEscape(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Lola's voice persona for the phone. Telnyx supports many TTS voices;
-// "Polly.Joanna-Neural" is a warm US female. Swap per-tenant if you like.
-const LOLA_VOICE = 'Polly.Joanna-Neural';
+// Fallback-only voice — used ONLY if ElevenLabs synthesis fails on a
+// live call, so a caller hears *something* instead of silence. This
+// is never Lola's "real" voice; it's a safety net.
+const FALLBACK_VOICE = 'Polly.Joanna-Neural';
+
+function appBaseUrl(){
+  return process.env.APP_URL || 'https://www.loladesk.com';
+}
+
+// Render one spoken line as TeXML: real Lola voice via <Play> when
+// possible, otherwise <Say> with the fallback voice. Never throws —
+// synthesis failures degrade gracefully instead of breaking the call.
+async function speakLine(text){
+  if(elevenLabsConfigured()){
+    try{
+      const buf = await synthesize(text);
+      const id = putAudio(buf);
+      return `<Play>${appBaseUrl()}/api/voice-audio?id=${id}</Play>`;
+    }catch(e){
+      console.error('[voice] ElevenLabs synthesis failed, falling back to Say:', String(e&&e.message||e));
+    }
+  }
+  return `<Say voice="${FALLBACK_VOICE}">${xmlEscape(text)}</Say>`;
+}
 
 function buildSystemPrompt(tenant){
   const svc = (tenant.services||[]).map(s=>`${s.name} $${s.price} (${s.duration||''})`).join('; ');
@@ -126,12 +156,15 @@ export default async function handler(req, res){
     const greeting = state.history.length > 0
       ? `Welcome back${known}! It's Lola. What can I help you with today?`
       : `Hi, thanks for calling ${tenant.name}! This is Lola. How can I help you today?`;
+    const greetingTag = await speakLine(greeting);
+    const noInputTag = await speakLine("I didn't catch that. Please call back anytime!");
     const xml = texml(
       `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${encodeState(state)}">` +
-      `<Say voice="${LOLA_VOICE}">${xmlEscape(greeting)}</Say>` +
+      greetingTag +
       `</Gather>` +
-      `<Say voice="${LOLA_VOICE}">I didn't catch that. Please call back anytime!</Say>`
+      noInputTag
     );
+    if(tenantRow?.id) try{ await logUsage(tenantRow.id, 'voice_call', 1, { source:'voice' }); }catch(e){}
     return res.status(200).send(xml);
   }
 
@@ -146,6 +179,7 @@ export default async function handler(req, res){
       await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'user', agent:'lola', content: speech || '(no response)' });
       await logMessage({ conversationId: state.convId, tenantId: tenantRow.id, role:'assistant', agent:'lola', content: reply });
       await logUsage(tenantRow.id, 'ai_token', 1, { source:'voice' });
+      await logUsage(tenantRow.id, 'tts_chars', reply.length, { source:'voice', provider: elevenLabsConfigured() ? 'elevenlabs' : 'polly' });
     }catch(e){}
   }
 
@@ -153,11 +187,13 @@ export default async function handler(req, res){
   if(state.history.length > 12) state.history = state.history.slice(-12);
   const nextState = encodeState(state);
 
+  const replyTag = await speakLine(reply);
+  const closingTag = await speakLine(`Thanks for calling ${tenant.name}. Talk soon!`);
   const xml = texml(
     `<Gather input="speech" action="${actionUrl}" method="POST" speechTimeout="auto" language="en-US" client_state="${nextState}">` +
-    `<Say voice="${LOLA_VOICE}">${xmlEscape(reply)}</Say>` +
+    replyTag +
     `</Gather>` +
-    `<Say voice="${LOLA_VOICE}">Thanks for calling ${xmlEscape(tenant.name)}. Talk soon!</Say>` +
+    closingTag +
     `<Hangup/>`
   );
   return res.status(200).send(xml);

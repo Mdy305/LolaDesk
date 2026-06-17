@@ -1,5 +1,5 @@
 import { getConnector } from '../lib/aggregator.js';
-import { db, getTenantBySlug } from '../lib/db.js';
+import { getTenantBySlug, upsertIntegration } from '../lib/db.js';
 
 export default async function handler(req, res){
   try{
@@ -16,12 +16,17 @@ export default async function handler(req, res){
     const tenantSlug = state.tenant || 'demo';
     const connector = getConnector(provider);
     const tokens = provider === 'shopify' ? await connector.exchangeCode(code, { shop }) : await connector.exchangeCode(code);
-    const c = db();
-    if(c){
-      const tenant = await getTenantBySlug(tenantSlug);
-      if(tenant?.id){
-        await c.from('integrations').upsert({ tenant_id:tenant.id, provider, access_token:tokens.access_token, refresh_token:tokens.refresh_token||null, expires_at:tokens.expires_at||null, status:'connected', metadata:{ shop:tokens.shop||shop||null, merchant_id:tokens.merchant_id||null } }, { onConflict:'tenant_id,provider' });
-      }
+    const tenant = await getTenantBySlug(tenantSlug);
+    if(tenant?.id){
+      // Tokens are encrypted at rest inside upsertIntegration — never
+      // write access_token/refresh_token to the DB any other way.
+      await upsertIntegration(tenant.id, {
+        provider,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresAt: tokens.expires_at || null,
+        metadata: { shop: tokens.shop || shop || null, merchant_id: tokens.merchant_id || null }
+      });
     }
     res.writeHead(302, { Location: `/settings?connect=success&provider=${provider}` });
     return res.end();

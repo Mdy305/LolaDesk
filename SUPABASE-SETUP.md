@@ -3,11 +3,12 @@
 LolaDesk is now multi-tenant. Each salon is a row in `tenants`, identified by the phone number they own. When a call or text comes in, we look up the tenant by the called number, load their context, and Lola handles the conversation with persistent memory.
 
 ## What changed
-- **New file:** `schema.sql` — the database schema (tenants, clients, conversations, messages, calls, bookings, usage)
-- **New file:** `api/lib/db.js` — shared Supabase client + tenant resolution helpers
-- **Updated:** `api/telnyx-voice.js` — resolves tenant by called number, loads/saves conversation memory
-- **Updated:** `api/telnyx-sms.js` — same multi-tenant flow for SMS
-- **Updated:** `package.json` — adds `@supabase/supabase-js` dependency
+- **New file:** `schema.sql` — the database schema (tenants, clients, conversations, messages, calls, bookings, integrations, usage_events) including `opted_out`/`opted_out_at` on `clients` for SMS compliance
+- **New file:** `api/lib/db.js` — shared Supabase client + tenant resolution helpers, encrypted integration read/write, opt-out helpers
+- **New file:** `api/lib/crypto.js` — AES-256-GCM encryption for OAuth tokens at rest (requires `INTEGRATION_ENCRYPTION_KEY` — see `.env.example`)
+- **Updated:** `api/telnyx-voice.js` — resolves tenant by called number, loads/saves conversation memory, speaks replies in Lola's real ElevenLabs voice
+- **Updated:** `api/telnyx-sms.js` — same multi-tenant flow for SMS, plus STOP/HELP/START compliance handling
+- **Updated:** `package.json` — adds `@supabase/supabase-js` dependency, pins Node engine
 
 ## One-time setup (10 minutes)
 
@@ -68,7 +69,8 @@ If `SUPABASE_URL` or `SUPABASE_SERVICE_KEY` aren't set, `db()` returns `null` an
 
 ## What's next
 
-After this works:
-- **Phase 2 of ROADMAP.md** — Stripe billing (5 plan tiers, usage metering against `usage_events`)
-- **Phase 3** — WhatsApp (already laid out)
-- **Phase 4** — OAuth to Square / Vagaro / Boulevard (writes to `integrations` table)
+After this works, see `ROADMAP.md` for what's left — Stripe billing, OAuth token encryption, and SMS compliance are now done; what remains is wiring the Settings UI to the already-built integrations, usage-based billing enforcement, and WhatsApp.
+
+## If you connect any booking platform (Square, Boulevard, Shopify, Google Calendar)
+
+Their OAuth tokens are encrypted before they ever reach this database — set `INTEGRATION_ENCRYPTION_KEY` in Vercel (see `.env.example` for how to generate one) before connecting your first integration. Without it, OAuth connections will fail loudly rather than silently storing plaintext tokens.

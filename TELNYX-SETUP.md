@@ -1,22 +1,34 @@
 # Telnyx Setup — Voice, Messaging & Numbers
 
-LolaDesk now has the full Telnyx suite. This is what powers the phone, the texting, and the number-selling revenue line.
+LolaDesk runs the full Telnyx suite. This is what powers the phone, the texting, and the number-selling revenue line.
 
 ## The three handlers
 
 | File | What it does |
-|------|--------------|
-| `api/telnyx-voice.js` | Lola **answers phone calls**. Telnyx hits this URL on every call; it returns TeXML that makes Lola speak, listen, and book. |
-| `api/telnyx-sms.js` | Lola **replies to texts**. Inbound SMS → Lola answers → texts back. Also exports `sendSMS()` for outbound (booking links, missed-call text-back). |
+|------|---------------|
+| `api/telnyx-voice.js` | Lola **answers phone calls**. Telnyx hits this URL on every call; it returns TeXML that makes Lola speak (in her real ElevenLabs voice — see below), listen, and book. Resolves which salon owns the called number and persists conversation memory to Supabase. |
+| `api/telnyx-sms.js` | Lola **replies to texts**. Inbound SMS → Lola answers → texts back. Handles STOP/HELP/START keywords for 10DLC compliance *before* any AI involvement. Also exports `sendSMS()` for outbound (booking links, missed-call text-back, future campaigns) — every send checks the opt-out flag first. |
 | `api/telnyx-numbers.js` | **Search & buy numbers**. Powers the `/numbers` marketplace where salons get their Lola line. Auto-attaches voice + SMS on purchase. |
+
+## Lola's voice on calls
+
+Real callers hear Lola's actual ElevenLabs voice — the same one used in the dashboard's voice chat (`api/speak.js`) — not a generic TTS voice. `telnyx-voice.js` synthesizes each reply through ElevenLabs (`api/lib/elevenlabs.js`), caches the audio briefly (`api/lib/tts-cache.js` + `api/voice-audio.js`), and points TeXML's `<Play>` verb at that cached URL.
+
+**Requires `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`.** If either is missing, or synthesis fails on a given turn, that turn falls back to Telnyx's built-in `Polly.Joanna-Neural` voice automatically — callers never hear dead air, but you also won't get the "real Lola" experience until those env vars are set correctly. If live calls sound like a generic voice, check those two vars first.
+
+This trades a small amount of latency (~0.5–1.5s per turn for ElevenLabs synthesis + fetch, vs. instant for Telnyx's built-in `<Say>`) for full brand-voice consistency. That's intentional.
 
 ## Environment variables (Vercel → Settings → Environment Variables)
 
+See `.env.example` for the complete, current list — that file is the source of truth. The ones specific to Telnyx + voice:
+
 ```
-ANTHROPIC_API_KEY          Lola's brain
+ANTHROPIC_API_KEY          Lola's brain (or set LLM_PROVIDER=telnyx to use Telnyx Inference instead)
 TELNYX_API_KEY             Voice, SMS, and number provisioning
 TELNYX_VOICE_APP_ID        Your TeXML app id (auto-attach voice to new numbers)
 TELNYX_MESSAGING_PROFILE   Your messaging profile id (auto-attach SMS)
+ELEVENLABS_API_KEY         Lola's real voice
+ELEVENLABS_VOICE_ID        Lola's specific cloned/custom voice id
 ```
 
 After adding these, **redeploy** so the functions pick them up.
@@ -32,6 +44,7 @@ After adding these, **redeploy** so the functions pick them up.
 - Portal → Messaging → **Create messaging profile** (API v2)
 - Inbound webhook URL: `https://YOUR-APP.vercel.app/api/telnyx-sms`
 - Copy the profile ID → that's your `TELNYX_MESSAGING_PROFILE`
+- **10DLC registration**: before sending meaningful SMS volume, register your messaging campaign/brand with Telnyx's 10DLC onboarding — carriers will filter or block unregistered traffic. STOP/HELP/START are handled in code (see above) but campaign registration is a separate, required step on Telnyx's side.
 
 **3. API key**
 - Portal → Auth → **Create API Key** → that's your `TELNYX_API_KEY`
@@ -42,7 +55,7 @@ After adding these, **redeploy** so the functions pick them up.
 2. Searches by area code → sees available local numbers
 3. Clicks **Get this number**
 4. `telnyx-numbers.js` orders it AND attaches your TeXML voice app + messaging profile
-5. Lola is instantly live on that number — answers calls and texts immediately
+5. Lola is instantly live on that number — answers calls and texts immediately, in her real voice
 
 ## The revenue model (this is the money part)
 
@@ -52,18 +65,19 @@ After adding these, **redeploy** so the functions pick them up.
 | Inbound voice | ~$0.012/min | bundled in plan | overage above bundle |
 | Outbound voice (rebooking calls) | ~$0.012/min | bundled | drives salon revenue |
 | SMS | ~$0.004/msg | bundled | overage above bundle |
+| ElevenLabs synthesis | per-character, varies by plan | bundled | factor into Pro/Med Spa pricing — voice minutes now cost both Telnyx AND ElevenLabs |
 
-Every salon needs a number → that's recurring rent from day one. Usage rides on top. The `RETAIL_MONTHLY` constant in `numbers.html` sets the number price; the proxy meter in `lola-proxy-worker.js` tracks AI usage per tenant for plan limits.
+Every salon needs a number → that's recurring rent from day one. Usage rides on top, tracked per-tenant in the `usage_events` table (`kind`: `voice_call`, `ai_token`, `tts_chars`, `sms_sent`, `sms_received`) — that's your billing/margin data source once you wire usage-based Stripe metering.
 
 ## Testing voice locally
 
 You can't fully test inbound voice without a real Telnyx number pointed at a public URL. Once deployed:
 1. Buy a number (via `/numbers` or the portal)
 2. Point its TeXML app at `/api/telnyx-voice`
-3. Call the number → Lola answers
+3. Call the number → Lola answers in her real voice
 
 ## Production notes
 
-- `resolveTenant()` in each handler currently returns a demo salon. Wire it to look up the salon by the **called number** (`To`) in your database so each number routes to the right salon's Lola.
-- In-call and in-text memory is in-process (resets on cold start). For production, move it to Redis or your DB keyed by caller number.
-- Add STOP/HELP keyword handling in `telnyx-sms.js` for 10DLC compliance before high-volume texting.
+- Conversation memory persists to Supabase (`getOrStartConversation` / `getConversationHistory` in `api/lib/db.js`) — Lola remembers callers across calls, not just within one call. Per-turn state also rides in TeXML's `client_state` for speed within a single call.
+- `/api/voice-audio` caches synthesized audio in a single serverless instance's memory for ~60 seconds — fine at current scale. If you see occasional fallback-voice turns under high concurrent call volume, that's a Vercel multi-instance cache miss; see the scaling note at the bottom of `api/lib/tts-cache.js` for the Supabase Storage upgrade path.
+- The 7-agent Telnyx-native system in `api/telnyx-agents.js` (and the "copy config" button in `agents.html`) is a **separate, experimental architecture** — no phone number currently routes to it. The live path is `telnyx-voice.js`'s custom TeXML + Claude/Telnyx-Inference loop described above. Don't be surprised these two systems both reference Lola; only one is wired to real calls today.

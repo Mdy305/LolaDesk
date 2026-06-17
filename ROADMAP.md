@@ -1,6 +1,6 @@
 # LolaDesk — Infrastructure Roadmap
 
-Honest plan for adding Stripe billing, WhatsApp, and platform OAuth (Square, Vagaro, Boulevard, Mindbody, Shopify) — built properly, with real env vars and real dependencies. **None of this exists yet.** This is what we'll build, in order, so each step works before the next starts.
+Honest plan for LolaDesk's remaining infrastructure — built properly, with real env vars and real dependencies. This file tracks what's done and what's next so nobody re-builds something that already exists.
 
 ---
 
@@ -8,68 +8,55 @@ Honest plan for adding Stripe billing, WhatsApp, and platform OAuth (Square, Vag
 
 **Real and working:**
 - Cinematic landing, voice login, onboarding wizard, dashboard, 9 interior pages, Agents page (7 specialists), live at loladesk.com
-- Telnyx voice + SMS + numbers + agents (4 API handlers)
-- Anthropic Claude as Lola's brain
-- Vercel hosting, GitHub repo
-- 4 env vars set: ANTHROPIC_API_KEY, TELNYX_API_KEY, TELNYX_VOICE_APP_ID, TELNYX_MESSAGING_PROFILE
+- Telnyx voice + SMS + numbers (3 API handlers), with persistent multi-tenant memory in Supabase
+- Lola speaks in her real, consistent ElevenLabs voice on phone calls AND in the dashboard (not a generic TTS voice)
+- SMS 10DLC compliance: STOP/HELP/START handled before any AI involvement, opt-out persisted and checked on every outbound send
+- OAuth tokens (Square, Boulevard, Shopify, Google Calendar) encrypted at rest (AES-256-GCM)
+- Anthropic Claude (or Telnyx Inference) as Lola's brain
+- Stripe billing: Checkout, customer portal, signature-verified webhook
+- Vercel hosting, GitHub repo, `vercel.json` with safe function limits + security headers
 
-**Not yet built (the additions):**
-- Database (persistent memory across calls/texts/sessions)
-- Stripe billing (so trials end, plans charge, usage meters)
+**Not yet built:**
 - WhatsApp messaging (Meta Cloud API or Telnyx WhatsApp)
-- OAuth to Square, Vagaro, Boulevard, Mindbody, Shopify
+- Usage-based billing enforcement (the `usage_events` table is logging `voice_call`, `ai_token`, `tts_chars`, `sms_sent`/`received` — Stripe metered billing on top of that data is the next step)
+- Square/Boulevard/Vagaro/Mindbody live calendar sync UI in Settings (the connectors and encrypted token storage exist; the "Connect" buttons and live status display in `settings.html` still need wiring to `/api/oauth/connect`)
 
 ---
 
-## The order that actually makes sense
+## What's next, in order
 
-Each step requires the one before it. Doing them in the wrong order means rebuilding.
-
-### Phase 1 — Database (Supabase) · ~2 hours
-**Why first:** every other addition writes/reads data. Without storage, Stripe customer IDs vanish, WhatsApp threads can't be looked up, OAuth tokens have nowhere to live.
+### Phase A — Wire the Settings → Integrations UI · ~2 hours
+**Why first:** the hard part (OAuth flows, encrypted token storage, the connector abstraction in `api/lib/connectors/`) is already built. What's missing is the visible "Connect Square" button in `settings.html` actually hitting `/api/oauth/connect?provider=square&tenant=<slug>` and showing real connection status afterward.
 
 **What to build:**
-- Supabase project (free tier is fine to start)
-- Schema: `tenants`, `users`, `clients`, `conversations`, `messages`, `calls`, `bookings`, `integrations`, `usage_events`
-- `/api/lib/db.js` — a tiny Supabase client wrapper
-- Refactor the in-memory `memory.set()` in `telnyx-sms.js` and the demo `resolveTenant()` in voice/sms/numbers to read from Supabase by called number
+- `settings.html`: replace the mock integration cards with a fetch to a new small endpoint (or extend `/api/data?resource=integrations`) that lists `getTenantIntegrations()` status per provider
+- Wire each "Connect" button to `GET /api/oauth/connect?provider=<id>&tenant=<slug>` (already exists, just needs a real link)
+- Show connected/pending/error state after the OAuth redirect lands back on `/settings?connect=success&provider=square`
 
-**Env vars added:**
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY` (server-side only)
-
-**Verification:** call your Lola number, hang up, call again — Lola remembers the previous conversation. Today she forgets on cold start.
+**Verification:** owner clicks "Connect Square" in Settings → Square consent screen → returns → Settings shows "Connected" → Bookings page shows their real Square appointments via `check_availability`/`book_appointment` in `lola-tools.js`.
 
 ---
 
-### Phase 2 — Stripe billing · ~3 hours
-**Why second:** turns "free trial" into "real revenue." Needed before you onboard another salon.
+### Phase B — Usage-based billing enforcement · ~3 hours
+**Why second:** `usage_events` is already being logged on every call, text, and AI turn (see `telnyx-voice.js`, `telnyx-sms.js`). What's missing is actually acting on it — soft-capping plans and prompting upgrades.
 
 **What to build:**
-- Stripe products: Solo $99, Starter $199, Pro $399, Med Spa $599, Enterprise $999
-- Stripe Checkout session at end of onboarding wizard
-- `/api/stripe-webhook.js` — handles `checkout.session.completed`, `customer.subscription.updated`, `invoice.payment_failed`
-- Update tenant row in Supabase with `stripe_customer_id`, `subscription_status`, `plan`, `trial_ends_at`
-- Settings → Billing page reads from Supabase + Stripe Customer Portal link
-- **Usage-based billing for numbers** ($5/month each) and **overage** (calls/SMS beyond plan) via Stripe metered subscriptions
+- A small cron or on-request check (e.g. in `data.js`'s overview resource) that sums this month's `usage_events` per tenant against their plan's included quota
+- Stripe metered billing or simple overage line items via `createCheckout`'s existing helper, billed monthly
+- Dashboard banner: "You're at 80% of your plan — upgrade for $50/mo more" — this is the highest-leverage lever for self-serve revenue growth without a sales team
 
-**Env vars added:**
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_SOLO` / `STRIPE_PRICE_STARTER` / `STRIPE_PRICE_PRO` / `STRIPE_PRICE_MEDSPA` / `STRIPE_PRICE_ENTERPRISE`
-
-**Verification:** complete onboarding → land on Stripe Checkout → enter test card 4242 4242 4242 4242 → land back on dashboard with active subscription showing in Settings.
+**Verification:** seed a tenant's `usage_events` past their plan limit → dashboard overview shows the warning → upgrade flow lands them on Stripe Checkout for the next tier.
 
 ---
 
-### Phase 3 — WhatsApp · ~2 hours
-**Why third:** salons (and especially med spas) ask for it constantly. After Phase 1+2 you have storage for threads and billing for usage.
+### Phase C — WhatsApp · ~2 hours
+**Why third:** salons (and especially med spas) ask for it constantly. Storage and billing are already in place to support it.
 
 **Two real paths — pick one:**
 
 **Option A: Telnyx WhatsApp** (cleanest fit since you already use Telnyx)
 - Telnyx Portal → Messaging → WhatsApp → onboard your Meta Business account
-- Reuse the existing `/api/telnyx-sms.js` shape — Telnyx routes WhatsApp inbound to a webhook too
+- Reuse the existing `telnyx-sms.js` shape (including the STOP/HELP/START compliance gate and opt-out check, which should apply to WhatsApp too) — Telnyx routes WhatsApp inbound to a webhook the same way
 - Add `/api/telnyx-whatsapp.js` mirroring the SMS handler
 
 **Option B: Meta WhatsApp Cloud API direct**
@@ -82,52 +69,41 @@ Each step requires the one before it. Doing them in the wrong order means rebuil
 **Env vars added (Option A):**
 - `TELNYX_WHATSAPP_PROFILE_ID`
 
-**Verification:** WhatsApp Lola's number → she replies in WhatsApp → Inbox page shows the thread with a WhatsApp pill.
+**Verification:** WhatsApp Lola's number → she replies in WhatsApp, in her real ElevenLabs-voiced tone of voice (text, not audio, but same brand personality) → Inbox page shows the thread with a WhatsApp pill.
 
 ---
 
-### Phase 4 — OAuth to booking platforms · ~4 hours each platform
-**Why last:** real data needs real persistence (Phase 1) and the customer needs to be on a paid plan (Phase 2) before they hand over their Square account.
+### Phase D — More booking platforms · ~4 hours each
+**Why last:** Square and Boulevard connectors already exist (`api/lib/connectors/square.js`, `boulevard.js`) along with Shopify and Google Calendar. Adding Vagaro/Mindbody/Fresha follows the exact same pattern — `getAuthUrl()`, `exchangeCode()`, `listAppointments()`, `createAppointment()` — and plugs straight into the existing `aggregator.js` and `lola-tools.js` without changing either.
 
 **Platforms in priority order:**
-1. **Square** — biggest US salon footprint, free OAuth, well-documented. Highest priority. **Approval to publish in Square App Marketplace is the #1 distribution move for LolaDesk.**
-2. **Vagaro** — second-biggest in our target market
-3. **Boulevard** — luxury salons specifically, high LTV
-4. **Mindbody** — bigger footprint but legacy API, slower to ship
-5. **Shopify** — only if salons sell products (revenue extension, not core)
+1. **Vagaro** — second-biggest in our target market, after Square
+2. **Mindbody** — bigger footprint but legacy API, slower to ship
+3. **Fresha** — global reach, useful for international expansion
 
 **What each integration includes:**
-- OAuth flow: `/api/oauth/<platform>/authorize` → consent → `/api/oauth/<platform>/callback` → store tokens in Supabase `integrations` table (encrypted)
-- Sync workers: pull appointments, clients, services on initial connect, then incremental updates via their webhooks
-- Booker agent gets a real calendar tool — `getAvailability()`, `createBooking()`, etc.
-- Settings → Integrations page shows real connection status from Supabase, not the mock today
+- A new file in `api/lib/connectors/` following the exact shape of `square.js`
+- Register it in `aggregator.js`'s `CONNECTORS` map — nothing else changes, since `oauth/connect.js`, `oauth/callback.js`, and `lola-tools.js` are already provider-agnostic
+- Env vars: `<PROVIDER>_CLIENT_ID` + `<PROVIDER>_CLIENT_SECRET`, added to `.env.example`
 
-**Env vars added per platform:**
-- `SQUARE_APP_ID` + `SQUARE_APP_SECRET`
-- `VAGARO_CLIENT_ID` + `VAGARO_CLIENT_SECRET`
-- etc.
-
-**Verification:** owner clicks "Connect Square" in Settings → Square consent screen → returns → Bookings page shows their real Square appointments.
+**Verification:** owner clicks "Connect Vagaro" → consent screen → returns connected → Bookings page shows real Vagaro appointments.
 
 ---
 
 ## What we're explicitly NOT building (yet)
 
-These came up in your paste but they're not the right call right now. Listing them so we both know they're parked, not forgotten:
+Listing them so we both know they're parked, not forgotten:
 
 - **Redis distributed sessions** — Vercel cold starts are real but Supabase row reads are fast enough until you have 50+ concurrent calls
 - **Private APN cellular network for terminals** — that's PoS hardware territory, not relevant until LolaDesk sells physical devices
-- **6-table pgcrypto SQL schema with HMAC-verified webhooks** — Supabase row-level security handles this without us hand-rolling crypto
+- **Hand-rolled webhook HMAC verification beyond what Stripe already requires** — Stripe's signature check is implemented properly in `lib/stripe.js`; don't add more crypto than the vendor's own spec requires
 - **"Aura" visualizer state machine** — the orb already breathes; over-engineering its state machine is a distraction
+- **Cross-instance audio cache (Supabase Storage for `/api/voice-audio`)** — in-memory caching is fine at current call volume; the upgrade path is documented in `api/lib/tts-cache.js` for when it's actually needed
 
-When/if any of these become real bottlenecks, we add them. Not before.
+When/if any of these become real bottlenecks, add them. Not before.
 
 ---
 
 ## Recommended next step
 
-**Don't do all 4 phases at once.** Pick the one that unblocks revenue fastest.
-
-For LolaDesk's stage right now: **Phase 1 (Supabase) + Phase 2 (Stripe) together** = real recurring revenue from any salon that signs up. Phase 3 and 4 follow once you have paying customers asking for them.
-
-Phase 1 + 2 together: ~5 hours of build. Realistic to ship this week.
+**Phase A (wire the Settings UI)** is the highest-leverage next step — the backend work for OAuth + encrypted storage is done; right now it's invisible to salon owners. That's ~2 hours to make real integrations actually usable from the dashboard, which directly supports the "Square App Marketplace listing" distribution goal in mind for LolaDesk.

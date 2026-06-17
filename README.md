@@ -1,125 +1,78 @@
 # LolaDesk — AI Front Desk for Salons & Spas
 
-The complete, working dashboard product. This is what each salon logs into.
+A multi-tenant SaaS where a salon owner runs their entire front desk through Lola — an AI that answers calls (in her real, custom ElevenLabs voice), texts, books appointments, and surfaces revenue opportunities. Built to be sold direct and listed on Square, Mindbody, Vagaro, and Fresha.
 
-## What this is
+## Architecture — what's actually real
 
-A multi-tenant SaaS dashboard where a salon owner runs their entire front desk through Lola — an AI that answers calls, books appointments, replies across every channel, and surfaces revenue opportunities. Built to be sold on Square, Mindbody, Vagaro, Fresha, and direct.
+This is **not** a static demo. Every salon is a row in Supabase, isolated by Row Level Security, with their own phone number, services, persona, integrations, and conversation history.
 
-## Files
+```
+Browser (static HTML/CSS/JS, no build step)
+   ↓
+Vercel serverless functions (api/*.js)
+   ↓
+Supabase (Postgres + Auth)     Telnyx (voice + SMS + numbers)     ElevenLabs (Lola's voice)
+   ↓                                ↓                                  ↓
+tenants · clients · conversations   inbound calls/texts route to    every spoken word, on
+· messages · calls · bookings ·     /api/telnyx-voice and           calls AND in the
+usage_events · integrations         /api/telnyx-sms by called #     dashboard, same voice
+```
+
+## Pages
 
 | File | Purpose |
 |------|---------|
-| `landing.html` | **Marketing site** — the front door for loladesk.com. Hero, features, pricing, comparison. Drives signups. |
-| `onboarding.html` | **Setup wizard** — 5-step flow: salon details → connect platform → services → Lola's personality → plan + go live. Hands config to the dashboard. |
-| `index.html` | **The dashboard** — what each salon logs into daily. Lola orb, schedule, insights, live call, inbox, revenue, team, command bar, mobile nav, chat overlay |
-| `app.js` | The engine — orb animation, voice in/out, charts, Lola AI brain, multi-tenant config resolver |
-| `lola-proxy-worker.js` | Cloudflare Worker that hides your API key and meters usage for billing |
+| `index.html` | **Marketing homepage** — what loladesk.com serves at `/`. |
+| `onboarding.html` | **Setup wizard** — salon details → connect platform → services → Lola's personality → plan → live. Calls `/api/auth/signup` and `/api/onboard`. |
+| `dashboard.html` | **The dashboard** — what each salon logs into daily. Reads real data via `/api/data`. |
+| `clients.html`, `calls.html`, `inbox.html`, `bookings.html`, `revenue.html`, `team.html`, `numbers.html`, `marketing.html`, `settings.html`, `agents.html` | Interior dashboard pages, each tenant-scoped via `/api/data`. |
+| `login.html` | Returning owner sign-in. |
+| `landing.html` | Alternate marketing page (not currently linked from main nav). |
 
-## The full flow
+## The API layer (`api/`)
 
-```
-landing.html  →  onboarding.html  →  index.html
-(stranger)       (signs up,           (their live
-                  configures Lola)      dashboard)
-```
-
-A visitor lands on `landing.html`, clicks "Start free trial", walks through `onboarding.html` (which collects their salon name, services, persona, and plan), and lands in `index.html` with their own Lola fully configured. The onboarding wizard saves the tenant config to `sessionStorage` and the dashboard reads it on load — so the same code becomes any salon's product.
-
-
+| Path | What it does |
+|------|---------------|
+| `auth/signup.js`, `auth/login.js`, `auth/session.js` | Supabase Auth — creates the owner's account + their tenant row + 14-day trial. |
+| `onboard.js` | Saves tenant details; if a website URL is given, the Marketer agent analyzes it and pre-fills services/positioning. |
+| `telnyx-voice.js` | **Real phone calls.** Telnyx hits this on every call. Resolves tenant by called number, asks Lola's brain, speaks the reply in her real ElevenLabs voice via `<Play>` (falls back to a generic `<Say>` only if ElevenLabs fails), persists the conversation. |
+| `telnyx-sms.js` | **Real texts.** Same tenant resolution + memory, plus STOP/HELP/START keyword compliance (10DLC) handled before Lola's AI ever sees the message. |
+| `telnyx-numbers.js` | Search & buy phone numbers; auto-attaches voice + SMS on purchase. This is a recurring revenue line (see TELNYX-SETUP.md). |
+| `telnyx-agents.js` | **Experimental, not yet wired to live calls.** Provisions a 7-agent team (Lola + 6 specialists) directly inside Telnyx's own AI Assistant product, as an alternative architecture to the custom TeXML+Claude loop above. No phone number currently routes to it — `agents.html`'s "copy Telnyx config" button exports this for manual import if you want to experiment with it. |
+| `lola-tools.js` | The skill layer (check availability, book, quote pricing, capture leads, escalate) — what Lola's brain calls into to actually do things. |
+| `lola.js` | Proxy the dashboard's browser-side chat uses to talk to the LLM without exposing API keys. |
+| `speak.js`, `lib/elevenlabs.js` | Lola's real voice — shared between the dashboard chat and phone calls so she sounds identical everywhere. |
+| `voice-audio.js`, `lib/tts-cache.js` | Serves the synthesized ElevenLabs audio at a URL Telnyx's `<Play>` can fetch. |
+| `data.js` | Unified read API every dashboard page calls — tenant-scoped, with a small demo dataset fallback so the UI is never blank during setup. |
+| `billing/checkout.js`, `billing/portal.js`, `billing/webhook.js`, `lib/stripe.js` | Stripe subscriptions — Checkout, customer portal, and a signature-verified webhook that activates/suspends tenants. |
+| `oauth/connect.js`, `oauth/callback.js`, `lib/connectors/*.js` | OAuth to Square, Boulevard, Shopify, Google Calendar. Tokens are **encrypted at rest** (`lib/crypto.js`) — never stored in plaintext. |
+| `lib/db.js` | The shared Supabase client + every multi-tenant helper (tenant resolution, client/conversation/booking writes, usage logging, encrypted integration storage). Everything else imports from here. |
+| `lib/llm.js` | Shared LLM client — Telnyx Inference (Kimi-K2.6) by default, or Anthropic Claude directly if `LLM_PROVIDER=anthropic`. Resilient retry on empty responses. |
+| `lib/auth.js` | Supabase Auth helpers (create user, sign in, verify bearer tokens). |
+| `marketer.js`, `agent-variables.js`, `notifications.js` | Supporting agents/utilities — site analysis, templated prompt variables, in-app notifications. |
 
 ## Run it locally
 
 ```bash
-cd loladesk-app
 python3 -m http.server 8080
-# open http://localhost:8080/landing.html  → walk the full flow
-# or http://localhost:8080/index.html       → jump straight to the dashboard
+# open http://localhost:8080/index.html — the marketing site
+# open http://localhost:8080/dashboard.html — straight to the dashboard (demo data without env vars)
 ```
 
-Everything works immediately except live AI responses, which need an API key (see below).
+The `api/*.js` files are Vercel serverless functions and won't run under the plain Python server — use `vercel dev` for those, or just deploy to a Vercel preview to test the full stack.
 
-## Make Lola's brain live
+## Deploy
 
-**Never put the API key in the browser.** Deploy the proxy:
-
-```bash
-npm install -g wrangler
-wrangler login
-wrangler secret put ANTHROPIC_API_KEY    # paste your key
-wrangler deploy
-```
-
-Then before `app.js` loads, set the endpoint:
-
-```html
-<script>
-  window.__LOLADESK_API__ = 'https://your-worker.workers.dev';
-</script>
-<script src="app.js"></script>
-```
-
-That's it — Lola is now live, secure, and billable.
+See `DEPLOY.md` for the Git → Vercel flow, `SUPABASE-SETUP.md` for the database, `TELNYX-SETUP.md` for voice/SMS, and `.env.example` for the full list of environment variables this code actually reads — keep that file in sync if you add a new `process.env.X` anywhere.
 
 ## Multi-tenant: one codebase, every salon
 
-Each salon is just a config object. Before `app.js` loads, inject their tenant:
+Each salon is a row in the `tenants` table (see `schema.sql`), identified by the phone number they're assigned. Every inbound call or text resolves its tenant by the **called number**, loads that salon's services/persona/hours/integrations, and Lola responds accordingly — fully isolated from every other salon via Postgres Row Level Security plus tenant-scoped queries in application code.
 
-```html
-<script>
-window.__LOLADESK_TENANT__ = {
-  id: 'glow-medspa',
-  name: 'Glow Med Spa',
-  owner: 'Dr. Chen',
-  location: '450 Park Ave, New York',
-  phone: '+12125550100',
-  bookingUrl: 'https://glowmedspa.com/book',
-  whatsapp: 'https://wa.me/12125550100',
-  persona: { name: 'Lola', energy: 'calm, clinical, reassuring luxury', voice: 'Karen' },
-  services: [
-    { name: 'Botox', price: 450, duration: '45m' },
-    { name: 'Dermal Filler', price: 750, duration: '1h' },
-    { name: 'Laser Resurfacing', price: 1200, duration: '1h 30m' }
-  ],
-  team: [
-    { name: 'Dr. Chen', role: 'Medical Director', revenue: 48000, change: 22 }
-  ]
-};
-</script>
-```
-
-The entire product — Lola's knowledge, the services menu, the team panel, the booking links, even her personality and voice — reconfigures from this one object. A med spa, a barbershop, and a luxury hair salon all run the same code with different configs.
-
-## How each salon connects their booking system
-
-`app.js` is written so the data arrays (`DATA.schedule`, `DATA.inbox`, etc.) get populated from the salon's existing platform:
-
-- **Square** → `bookingsApi.listBookings()` fills the schedule
-- **Mindbody** → `GET /appointment/appointments` fills the schedule
-- **Vagaro / Fresha** → their REST endpoints map the same way
-
-The webhook handler from your existing `lola-brain.js` already receives booking events — wire those to update `DATA` and re-render.
-
-## How you make money
-
-The proxy worker meters every Lola interaction per tenant. That's your billing hook:
-
-- **Solo** $99/mo — chat + SMS, 1 platform
-- **Starter** $199/mo — + unlimited SMS
-- **Pro** $399/mo — + Telnyx voice + ElevenLabs + photo AI
-- **Med Spa** $599/mo — + HIPAA-aware consultation flow
-- **Enterprise** $999+/mo — + white-label + API + multi-location
-
-Uncomment the KV metering lines in `lola-proxy-worker.js` to track usage and enforce plan limits.
-
-## What's real vs. what's wired for demo
-
-**Real and working now:** the entire UI, the orb animation, voice input (Web Speech), voice output (Speech Synthesis), all charts, the chat overlay, the command bar, mobile layout, keyboard shortcuts, the multi-tenant config system, and Lola's full AI brain (once the key is set).
-
-**Wired for demo, connect to go live:** the schedule / inbox / team data is sample data in `DATA`. Point these at the salon's Square/Mindbody/Vagaro API and the dashboard becomes their real operational cockpit.
+To onboard a new salon: they sign up (`onboarding.html` → `/api/auth/signup`), pick a number (`numbers.html` → `/api/telnyx-numbers`), and Lola is live on that number immediately — no code changes, no redeploys.
 
 ## Brand
 
 - Fonts: Inter + Cormorant Garamond (Google Fonts, free)
 - Icons: inline SVG (no dependency)
-- No templates, no UI kit, no licences — 100% original code
+- Voice: one consistent ElevenLabs voice for Lola everywhere — dashboard chat and real phone calls alike (see `api/lib/elevenlabs.js`)

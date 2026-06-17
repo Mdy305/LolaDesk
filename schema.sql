@@ -45,12 +45,19 @@ create table if not exists clients (
   lifetime_value  numeric default 0,
   notes           text,
   tags            text[] default '{}',
+  opted_out       boolean default false,        -- STOP keyword received; never text again
+  opted_out_at    timestamptz,
   created_at      timestamptz default now(),
   updated_at      timestamptz default now(),
   unique(tenant_id, phone_number)
 );
 create index if not exists idx_clients_tenant on clients(tenant_id);
 create index if not exists idx_clients_phone on clients(tenant_id, phone_number);
+
+-- Migration safety net: add opted_out columns if this schema was already
+-- run before SMS compliance was added (idempotent — safe to re-run).
+alter table clients add column if not exists opted_out boolean default false;
+alter table clients add column if not exists opted_out_at timestamptz;
 
 -- ── CONVERSATIONS ──
 -- A logical conversation thread (phone call, SMS thread, IG DM, WhatsApp)
