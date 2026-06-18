@@ -10,7 +10,19 @@ const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_TELNYX_MODEL    = 'moonshotai/Kimi-K2.6';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 
-function provider(){ return (process.env.LLM_PROVIDER || 'telnyx').toLowerCase(); }
+// Default to Anthropic when a key is present — Kimi-K2.6 on Telnyx is
+// documented above as intermittently returning empty even with retries,
+// which is exactly the "timeout / empty response" failure Marketer was
+// hitting. Anthropic is what already reliably powers Lola's phone/SMS
+// brain, so this is a safe, self-correcting default: explicit
+// LLM_PROVIDER still wins if set, otherwise prefer whichever key is
+// actually configured rather than hardcoding 'telnyx' unconditionally.
+function provider(){
+  const explicit = (process.env.LLM_PROVIDER || '').toLowerCase();
+  if(explicit) return explicit;
+  if(process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  return 'telnyx';
+}
 export const POWER_MODEL = process.env.LLM_POWER_MODEL || DEFAULT_TELNYX_MODEL;
 
 export async function chat({ system='', messages=[], maxTokens=600, temperature=0.7, model, jsonMode=false } = {}){
@@ -59,10 +71,26 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model }){
 
 async function chatAnthropic({ system, messages, maxTokens, temperature, model }){
   if(!process.env.ANTHROPIC_API_KEY) return { ok:false, text:'', provider:'anthropic', error:'Missing ANTHROPIC_API_KEY' };
-  try{
-    const r = await fetch(ANTHROPIC_API, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' }, body: JSON.stringify({ model: model || process.env.LLM_MODEL || DEFAULT_ANTHROPIC_MODEL, max_tokens: maxTokens, temperature, system, messages }) });
-    const data = await r.json();
-    if(!r.ok) return { ok:false, text:'', raw:data, provider:'anthropic', error: data?.error?.message || `HTTP ${r.status}` };
-    return { ok:true, text: data?.content?.[0]?.text || '', raw:data, provider:'anthropic' };
-  }catch(e){ return { ok:false, text:'', provider:'anthropic', error:String(e) }; }
+  const m = model || process.env.LLM_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  let lastError = 'unknown error';
+  // Two attempts total — covers a transient network blip without
+  // masking a real, persistent failure (bad key, bad model) behind
+  // repeated retries that would just waste time and tokens.
+  for(let attempt=0; attempt<2; attempt++){
+    try{
+      const r = await fetch(ANTHROPIC_API, { method:'POST', headers:{ 'Content-Type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' }, body: JSON.stringify({ model: m, max_tokens: maxTokens, temperature, system, messages }) });
+      const data = await r.json();
+      if(!r.ok){
+        lastError = data?.error?.message || `HTTP ${r.status}`;
+        // Auth/bad-request errors won't fix themselves on retry — stop immediately.
+        if(r.status === 401 || r.status === 400) break;
+        continue;
+      }
+      const text = data?.content?.[0]?.text || '';
+      if(text) return { ok:true, text, raw:data, provider:'anthropic', model:m, attempt:attempt+1 };
+      lastError = 'empty response';
+    }catch(e){ lastError = String(e&&e.message||e); }
+    if(attempt === 0) await new Promise(r=>setTimeout(r, 300));
+  }
+  return { ok:false, text:'', provider:'anthropic', model:m, error:lastError };
 }

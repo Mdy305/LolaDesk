@@ -32,12 +32,14 @@ export function isConfigured(){
 
 /**
  * Synthesize text to speech. Returns a Buffer of MP3 bytes, or throws.
- * Use a small `modelId` override for latency-sensitive call turns if
- * you ever add a faster ElevenLabs model — defaults to turbo already.
+ * Always uses Lola's one canonical voice (ELEVENLABS_VOICE_ID) — there
+ * is intentionally no per-request override. One voice, everywhere,
+ * always: that's the entire point of the brand-consistency goal, and
+ * an override parameter here would be a backdoor around it.
  */
-export async function synthesize(text, { voiceId, modelId } = {}){
+export async function synthesize(text, { modelId } = {}){
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voice = voiceId || process.env.ELEVENLABS_VOICE_ID;
+  const voice = process.env.ELEVENLABS_VOICE_ID;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
   if(!voice) throw new Error('Missing ELEVENLABS_VOICE_ID');
 

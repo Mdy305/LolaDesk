@@ -10,7 +10,7 @@
  *   ELEVENLABS_API_KEY   (required)
  *   ELEVENLABS_VOICE_ID  (Lola's one canonical voice id)
  *
- * POST { text: "...", voiceId?: "..." }  →  audio/mpeg bytes
+ * POST { text: "..." }  →  audio/mpeg bytes (always Lola's one canonical voice)
  */
 
 import { synthesize } from './lib/elevenlabs.js';
@@ -27,7 +27,7 @@ export default async function handler(req, res){
     const text = (body.text||'').toString().slice(0, 2500);
     if(!text) return res.status(400).json({ error:'text required' });
 
-    const buf = await synthesize(text, { voiceId: body.voiceId });
+    const buf = await synthesize(text);
     res.setHeader('Content-Type','audio/mpeg');
     res.setHeader('Content-Length', buf.length);
     return res.status(200).send(buf);
