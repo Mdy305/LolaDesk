@@ -15,6 +15,7 @@
 import { db, getTenantBySlug, getTenantIntegrations } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { listProviders } from './lib/aggregator.js';
+import { getUsageStatus } from './lib/usage.js';
 
 function ago(ts){
   if(!ts) return '';
@@ -142,14 +143,16 @@ export default async function handler(req,res){
       case 'overview':
       default: {
         const since=new Date(Date.now()-30*86400000).toISOString();
-        const [cl,ca,bk]=await Promise.all([
+        const [cl,ca,bk,usage]=await Promise.all([
           c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
-          c.from('bookings').select('price').eq('tenant_id',tid).gte('starts_at',since).then(r=>r.data||[]).catch(()=>[])
+          c.from('bookings').select('price').eq('tenant_id',tid).gte('starts_at',since).then(r=>r.data||[]).catch(()=>[]),
+          getUsageStatus(tid, tenant.plan).catch(()=>null)
         ]);
         const rev=bk.reduce((s,r)=>s+Number(r.price||0),0);
         return res.status(200).json({ tenant:tenant.name,
-          kpis:{ clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev) } });
+          kpis:{ clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev) },
+          usage });
       }
     }
   }catch(e){
@@ -195,7 +198,12 @@ function demo(resource, tenant){
       {id:'all',name:'All clients',count:165,desc:'Everyone'}
     ]},
     integrations:{tenant:name, tenantSlug:'demo', providers: listProviders().map(p=>({ ...p, connectedAt:null, metadata:null }))},
-    overview:{tenant:name,kpis:{clients:165,calls30:48,bookings30:62,revenue30:18450,revenue30Money:'$18,450'}}
+    overview:{tenant:name,kpis:{clients:165,calls30:48,bookings30:62,revenue30:18450,revenue30Money:'$18,450'},
+      usage:{plan:'pro',planName:'Pro',quotas:{voice_call:600,sms_sent:2500,ai_token:8000},
+        usage:{voice_call:210,sms_sent:980,ai_token:3100},
+        percentages:{voice_call:35,sms_sent:39,ai_token:39},
+        mostUsedKind:'sms_sent',mostUsedPercent:39,mostUsedLabel:'texts sent',
+        nearLimit:false,overLimit:false}}
   };
   return D[resource]||D.overview;
 }

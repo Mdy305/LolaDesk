@@ -137,6 +137,12 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .lola-ambient-toggle .dot{width:7px;height:7px;border-radius:50%;background:var(--text2);transition:all .2s}
 .lola-ambient-toggle.on .dot{background:#2ecc71;box-shadow:0 0 8px #2ecc71}
 .lola-ambient-toggle.muted .dot{background:#ff4d4d}
+.usage-banner{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r-sm);margin:4px 0 14px;font-size:13px}
+.usage-banner.near{background:rgba(255,180,0,.1);border:0.5px solid rgba(255,180,0,.35);color:#ffb800}
+.usage-banner.over{background:rgba(255,77,77,.1);border:0.5px solid rgba(255,77,77,.4);color:#ff6b6b}
+.usage-banner-text{flex:1}
+.usage-banner-cta{padding:6px 14px;border-radius:16px;font-size:12px;font-weight:600;background:currentColor;color:var(--bg)!important;opacity:.9;cursor:pointer;border:none;white-space:nowrap}
+.usage-banner-cta:hover{opacity:1}
 .lola-transcript{position:absolute;bottom:10px;left:24px;right:24px;text-align:center;font-size:12px;font-style:italic;color:var(--pink2);min-height:16px}
 
 /* ─── CARD ─── */
@@ -437,15 +443,16 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <!-- LOLA HERO PANEL (greeting + KPIs + orb) -->
       <div class="lola-panel">
         <div class="lola-hero-head">
-          <h1 class="hero-greeting">Good morning, Meddy. <span class="wave">👋</span></h1>
-          <p class="hero-sub">Here's what's happening in your salon today.</p>
+          <h1 class="hero-greeting">Good <span id="greetingTime">morning</span>, <span id="greetingName">there</span>. <span class="wave">👋</span></h1>
+          <p class="hero-sub">Here's what's happening in your salon.</p>
         </div>
         <div class="kpi-row">
-          <div class="kpi"><div class="kpi-val">7</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Today</div></div>
-          <div class="kpi"><div class="kpi-val">3</div><div class="kpi-label">Missed Calls</div><div class="kpi-sub">Need follow-up</div></div>
-          <div class="kpi"><div class="kpi-val">2</div><div class="kpi-label">New Leads</div><div class="kpi-sub">Hot prospects</div></div>
-          <div class="kpi accent"><div class="kpi-val">$2,850</div><div class="kpi-label">Potential Revenue</div><div class="kpi-sub">Today</div></div>
+          <div class="kpi"><div class="kpi-val" id="kpiClients">—</div><div class="kpi-label">Clients</div><div class="kpi-sub">Total</div></div>
+          <div class="kpi"><div class="kpi-val" id="kpiCalls">—</div><div class="kpi-label">Calls</div><div class="kpi-sub">Last 30 days</div></div>
+          <div class="kpi"><div class="kpi-val" id="kpiBookings">—</div><div class="kpi-label">Bookings</div><div class="kpi-sub">Last 30 days</div></div>
+          <div class="kpi accent"><div class="kpi-val" id="kpiRevenue">—</div><div class="kpi-label">Revenue</div><div class="kpi-sub">Last 30 days</div></div>
         </div>
+        <div id="usageBanner" style="display:none"></div>
         <div class="lola-orb-zone">
         <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Tap to speak with Lola, or just say her name">
           <canvas id="orbCanvas" width="240" height="240"></canvas>
@@ -661,7 +668,77 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
   </div>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script>window.__LOLADESK_API__ = '/api/lola';</script>
-<script src="app.js"></script>
+<script>
+(async function(){
+  // Wait for auth-guard's session check before app.js runs, so app.js's
+  // TENANT const (built synchronously at load time, see app.js's own
+  // IIFE) sees REAL tenant data via the same sessionStorage handoff key
+  // onboarding.html already uses — rather than two parallel, conflicting
+  // sources of truth for "who is this salon."
+  let auth = null;
+  try{ auth = await window.LolaAuth.ready; }catch(e){ return; } // guard already redirecting to login
+
+  const tenant = auth.tenant;
+  let overview = null;
+  if(tenant){
+    try{
+      // Seed app.js's expected sessionStorage shape with the REAL tenant,
+      // mapping snake_case DB fields to the camelCase shape app.js's
+      // DEFAULT_TENANT/merge logic expects.
+      const cfg = {
+        id: tenant.id, name: tenant.name, owner: tenant.owner_name || 'there',
+        location: tenant.location || '', phone: tenant.phone_number || '',
+        bookingUrl: tenant.booking_url || '',
+        persona: { name: 'Lola', voice: 'Samantha' },
+        services: tenant.services || [], team: tenant.team || []
+      };
+      sessionStorage.setItem('loladesk_tenant', JSON.stringify(cfg));
+    }catch(e){}
+
+    // Greeting: real name, real time-of-day
+    const hour = new Date().getHours();
+    const timeWord = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    const gt = document.getElementById('greetingTime'); if(gt) gt.textContent = timeWord;
+    const gn = document.getElementById('greetingName'); if(gn) gn.textContent = (tenant.owner_name || 'there').split(' ')[0];
+
+    overview = await LolaData.load('overview');
+  }
+
+  if(overview && overview.kpis){
+    const k = overview.kpis;
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    set('kpiClients', (k.clients||0).toLocaleString());
+    set('kpiCalls', k.calls30||0);
+    set('kpiBookings', k.bookings30||0);
+    set('kpiRevenue', k.revenue30Money || ('$'+(k.revenue30||0).toLocaleString()));
+  }
+
+  // Usage banner — only renders when a tenant is on a soft-capped plan
+  // and near/over their quota. Never blocks anything; purely informational.
+  const u = overview && overview.usage;
+  if(u && (u.nearLimit || u.overLimit)){
+    const el = document.getElementById('usageBanner');
+    const pct = u.mostUsedPercent;
+    const label = u.mostUsedLabel || 'usage';
+    el.className = 'usage-banner ' + (u.overLimit ? 'over' : 'near');
+    el.innerHTML = `
+      <div class="usage-banner-text">${u.overLimit
+        ? `You've passed your ${u.planName} plan's ${label} limit this month (${pct}%). Lola keeps working — upgrading just keeps your margin healthy.`
+        : `You're at ${pct}% of your ${u.planName} plan's ${label} for this month.`}</div>
+      <button class="usage-banner-cta" onclick="location.href='settings.html'">Upgrade plan</button>`;
+    el.style.display = 'flex';
+  }
+
+  // Load the real app.js engine now that sessionStorage has real data
+  // (or, if there's no DB/tenant, app.js's own demo defaults take over —
+  // same graceful fallback every other page already uses).
+  const s = document.createElement('script');
+  s.src = 'app.js';
+  document.body.appendChild(s);
+})();
+</script>
 </body>
 </html>
