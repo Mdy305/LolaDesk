@@ -205,9 +205,13 @@ do $$ declare t text; begin
 end $$;
 
 -- ─── SEED: MMA Salon (so the live app immediately has a tenant) ───
+-- NOTE: slug is 'mma' (not 'mma-salon') because api/data.js and
+-- api/notifications.js both default to getTenantBySlug('mma') when
+-- there's no auth token and no explicit ?tenant= param. Keep these in
+-- sync if either ever changes.
 insert into tenants (slug, name, owner_name, owner_email, location, hours, booking_url, phone_number, plan, services, team)
 values (
-  'mma-salon', 'MMΛ Salon', 'Meddy', 'meddy@mmasalon.com',
+  'mma', 'MMΛ Salon', 'Meddy', 'meddy@mmasalon.com',
   '1500 Alton Road, 2nd Floor, Miami Beach FL 33139',
   'Tuesday to Saturday, noon to 8pm',
   'https://www.mmasalon.com/book',
