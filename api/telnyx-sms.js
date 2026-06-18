@@ -91,7 +91,7 @@ export default async function handler(req,res){
 
   let reply="Thanks for texting! How can I help you book?";
   try{
-    const r=await chat({system:sysPrompt(row),messages:hist,maxTokens:200,temperature:0.7});
+    const r=await chat({system:sysPrompt(row),messages:hist,maxTokens:200,temperature:0.7,source:'sms'});
     if(r.ok&&r.text) reply=r.text;
   }catch{}
 

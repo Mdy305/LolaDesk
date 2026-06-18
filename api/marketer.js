@@ -80,7 +80,7 @@ async function analyze(body){
   const system = 'You are the Marketer agent for LolaDesk, a sharp marketing strategist for salons, spas, and med-spas. Analyze the website and write a clear, well-structured report in plain text using these labeled sections, each on its own lines:\n\nSUMMARY:\nPOSITIONING:\nTARGET AUDIENCE:\nSTRENGTHS: (bullet list with -)\nGAPS: (bullet list with -)\nSERVICES DETECTED: (short bullet list with -, just service names, max 8)\nBRAND TONE:\nTOP OPPORTUNITIES: (bullet list with -)\n\nBe specific and honest. No preamble, start directly with SUMMARY:.';
   const user = 'Analyze this salon site.\nURL: '+url+'\nTitle: '+(site.title||'')+'\nContent: '+content;
   let result;
-  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100 }); }
+  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100, source:'marketer' }); }
   catch(e){ return { ok:false, error:'LLM error: '+String(e&&e.message||e), url }; }
   if(!result || !result.ok) return { ok:false, error:(result&&result.error)||'LLM call failed', url };
   const raw = (result.text||'').trim();
@@ -99,7 +99,7 @@ async function strategy(body){
   const analysisText = analysis ? (typeof analysis==='object' ? JSON.stringify(analysis).slice(0,1200) : String(analysis).slice(0,1200)) : '';
   const user = 'Build the strategy.\nSalon: '+salonText+'\nGoals: '+(goals||'Grow revenue, retain VIP clients, fill empty chairs')+(analysisText?'\nContext: '+analysisText:'');
   let result;
-  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1200 }); }
+  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1200, source:'strategy' }); }
   catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
   if(!result||!result.ok) return { ok:false, error:(result&&result.error)||'failed' };
   const raw = (result.text||'').trim();
@@ -128,7 +128,7 @@ async function campaign(body){
   const salonText = typeof tenant==='object' ? (tenant.name||'the salon') : String(tenant||'the salon');
   const user = 'Draft the campaign.\nType: '+(type||'rebooking lapsed clients')+'\nSalon: '+salonText+'\nAudience: '+(audience||'clients who have not booked in 60+ days')+'\nChannel: '+(channel||'sms')+(customGoal?'\nGoal: '+customGoal:'');
   let result;
-  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100 }); }
+  try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1100, source:'marketer' }); }
   catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
   if(!result||!result.ok) return { ok:false, error:(result&&result.error)||'failed' };
   const raw = (result.text||'').trim();

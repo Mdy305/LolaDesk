@@ -170,7 +170,8 @@ export default async function handler(req,res){
       system: systemPrompt(tenant),
       messages: st.h,
       maxTokens: 90,
-      temperature: 0.7
+      temperature: 0.7,
+      source: 'voice'
     });
     if(r.ok && r.text) reply = r.text.trim();
     else console.error('[voice] LLM failed:', r.error);
