@@ -187,7 +187,8 @@ async function runAnalyze(){
 function renderAnalysis(d){
   const out = document.getElementById('analyzeOut');
   if(!d.summary){
-    out.innerHTML = `<div class="result-block"><div class="rb-text">${d.raw||'No structured output. Try another URL.'}</div></div>`;
+    const msg = d.raw || d.error || d.text || 'Analysis incomplete — try a different URL or try again in a moment.';
+    out.innerHTML = `<div class="result-block"><div class="rb-text">${msg}</div></div>`;
     return;
   }
   out.innerHTML = `
