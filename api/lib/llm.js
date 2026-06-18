@@ -71,7 +71,13 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model }){
 
 async function chatAnthropic({ system, messages, maxTokens, temperature, model }){
   if(!process.env.ANTHROPIC_API_KEY) return { ok:false, text:'', provider:'anthropic', error:'Missing ANTHROPIC_API_KEY' };
-  const m = model || process.env.LLM_MODEL || DEFAULT_ANTHROPIC_MODEL;
+  // Use LLM_MODEL only if it looks like an Anthropic model name,
+  // otherwise use the correct Anthropic default. This prevents
+  // LLM_MODEL=moonshotai/Kimi-K2.6 (a Telnyx model) from being
+  // sent to Anthropic's API, which would cause a model-not-found error.
+  const isAnthropicModel = (s) => !s || s.startsWith('claude-');
+  const rawModel = process.env.LLM_MODEL || '';
+  const m = model || (isAnthropicModel(rawModel) ? rawModel : '') || DEFAULT_ANTHROPIC_MODEL;
   let lastError = 'unknown error';
   // Two attempts total — covers a transient network blip without
   // masking a real, persistent failure (bad key, bad model) behind
