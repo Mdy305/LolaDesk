@@ -1,8 +1,9 @@
 {
   "functions": {
-    "api/**/*.js": {
-      "maxDuration": 10
-    }
+    "api/telnyx-voice.js": { "maxDuration": 60 },
+    "api/telnyx-sms.js":   { "maxDuration": 60 },
+    "api/marketer.js":     { "maxDuration": 60 },
+    "api/**/*.js":         { "maxDuration": 10 }
   },
   "rewrites": [
     { "source": "/start", "destination": "/onboarding.html" },
