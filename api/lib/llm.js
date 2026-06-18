@@ -20,6 +20,7 @@ const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 function provider(){
   const explicit = (process.env.LLM_PROVIDER || '').toLowerCase();
   if(explicit) return explicit;
+  if(process.env.TELNYX_API_KEY) return 'telnyx';
   if(process.env.ANTHROPIC_API_KEY) return 'anthropic';
   return 'telnyx';
 }
