@@ -5,7 +5,6 @@
 import { getTenantByPhone, upsertClient, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { chat } from './lib/llm.js';
 
-export const config = { api: { bodyParser: false } };
 
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
 const START=['start','unstop','yes'];
