@@ -1,16 +1,1 @@
-{
-  "name": "loladesk",
-  "version": "1.2.0",
-  "description": "LolaDesk — AI Front Desk for Salons & Spas",
-  "private": true,
-  "engines": {
-    "node": ">=18.17.0"
-  },
-  "scripts": {
-    "dev": "python3 -m http.server 8080",
-    "start": "python3 -m http.server 8080"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
-  }
-}
+{"type":"module","dependencies":{"@supabase/supabase-js":"^2.108.2"}}
