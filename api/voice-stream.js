@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 import url from 'url';
 import {
   getTenantByPhone, upsertClient, getOrStartConversation,
-  logMessage, getConversationHistory, logUsage, e164
+  logMessage, getConversationHistory, logUsage, e164, tenantKnowledgePrompt
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
@@ -31,8 +31,19 @@ function getRms(buf) {
 }
 
 function systemPrompt(t) {
-  const svc = (t.services || []).map(s => `${s.name} $${s.price}`).join(', ');
-  return `You are Lola, the AI receptionist for ${t.name}${t.location ? ` in ${t.location}` : ''}.\nLive phone call — keep every reply to ONE short sentence. No filler words. Warm, direct, always move toward booking.\nServices: ${svc}.\nHours: ${t.hours || 'Tuesday to Saturday, noon to 8pm'}.\nBooking: ${t.bookingUrl || ''}.\nTo book: collect service + preferred day + client name, then say you'll text them the booking link.\nIf you can't help with something, offer to take a message for the team.\nNever say you are an AI unless the caller asks directly.`;
+  const kb = tenantKnowledgePrompt(t);
+  return `You are Lola, the premier AI receptionist and desk manager for this business. 
+You are Siri, Alexa, and Jarvis combined into a human-feeling, ultra-performant, warm, and highly capable front desk manager.
+You sound completely natural, professional, and confident—never robotic. Keep replies concise, conversational, and direct (usually 1-2 natural sentences).
+
+BUSINESS DETAILS & KNOWLEDGE:
+${kb}
+
+YOUR CAPABILITIES & PROTOCOL:
+- Reception & Booking: Help callers book appointments. Gather the service, client name, and preferred day/time, then tell them you'll instantly text them the booking link to complete the confirmation.
+- Pricing & Services: Quote services and pricing from the business details above. Suggest complementary treatments dynamically if it matches their interest.
+- Escalation: If a request is beyond your capabilities or they need human help, offer to take a detailed message for the team.
+- Compliance: Never state you are an AI or bot unless the caller asks directly. Focus entirely on being a helpful, high-performing member of the salon team.`;
 }
 
 function shape(t) {

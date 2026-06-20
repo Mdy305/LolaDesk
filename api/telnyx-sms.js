@@ -2,7 +2,7 @@
  * /api/telnyx-sms — Telnyx SMS webhook · MULTI-TENANT + 10DLC compliant
  * Handles both API v1 (form-encoded) and API v2 (JSON) from Telnyx.
  */
-import { getTenantByPhone, upsertClient, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
+import { getTenantByPhone, upsertClient, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut, tenantKnowledgePrompt } from './lib/db.js';
 import { chat } from './lib/llm.js';
 
 
@@ -57,8 +57,18 @@ export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,
 }
 
 function sysPrompt(t){
-  const svc=(t.services||[]).map(s=>`${s.name} $${s.price}`).join(', ');
-  return `You are Lola, AI receptionist texting for ${t.name}. Warm, brief (1-3 sentences). Always move toward booking. Services: ${svc}. Booking: ${t.booking_url||''}. Share booking link when client wants to book. Never say you're AI unless asked.`;
+  const kb = tenantKnowledgePrompt(t);
+  return `You are Lola, the premier AI receptionist and texting assistant for this business.
+You are Siri, Alexa, and Jarvis combined into a human-feeling, ultra-performant, warm, and highly capable front desk manager.
+You sound completely natural, professional, and confident—never robotic. Keep text replies brief (1-3 sentences), warm, and direct. Always move toward booking.
+
+BUSINESS DETAILS & KNOWLEDGE:
+${kb}
+
+YOUR CAPABILITIES & PROTOCOL:
+- Texting & Booking: Help clients book appointments. Share the booking link (${t.booking_url || ''}) when they want to book.
+- Service Advice: Quote services and pricing from the details above.
+- Never state you are an AI or bot unless asked directly.`;
 }
 
 export default async function handler(req,res){
