@@ -37,14 +37,17 @@ export function isConfigured(){
  * always: that's the entire point of the brand-consistency goal, and
  * an override parameter here would be a backdoor around it.
  */
-export async function synthesize(text, { modelId } = {}){
+export async function synthesize(text, { modelId, outputFormat, signal } = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voice = process.env.ELEVENLABS_VOICE_ID;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
   if(!voice) throw new Error('Missing ELEVENLABS_VOICE_ID');
 
-  const r = await fetch(`${ELEVEN_TTS}/${voice}`, {
+  const url = outputFormat ? `${ELEVEN_TTS}/${voice}?output_format=${outputFormat}` : `${ELEVEN_TTS}/${voice}`;
+
+  const r = await fetch(url, {
     method: 'POST',
+    signal,
     headers: {
       'xi-api-key': apiKey,
       'Content-Type': 'application/json',
