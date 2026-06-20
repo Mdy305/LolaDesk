@@ -27,15 +27,32 @@ async function readBody(req){
 function extract(raw){
   if(raw.data?.event_type==='message.received'){
     const p=raw.data.payload||{};
-    return { inbound:true, from:p.from?.phone_number||'', to:(Array.isArray(p.to)?p.to[0]?.phone_number:p.to?.phone_number)||'', text:p.text||'' };
+    return { inbound:true, from:p.from?.phone_number||'', to:(Array.isArray(p.to)?p.to[0]?.phone_number:p.to?.phone_number)||'', text:p.text||'', type:p.type||'SMS' };
   }
   if(raw.to&&raw.text&&raw.from&&!raw.data) return { outbound:true, ...raw };
-  return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'' };
+  return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS' };
 }
 
-export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false}){
+export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,type='SMS',channel='sms'}){
+  const isWhatsApp = String(type||channel||'').toUpperCase() === 'WHATSAPP';
   if(!skipOptOut){ try{ const t=tenantId||(await getTenantByPhone(from))?.id; if(t&&await isOptedOut(t,to)) return {skipped:true}; }catch{} }
-  const r=await fetch('https://api.telnyx.com/v2/messages',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.TELNYX_API_KEY}`},body:JSON.stringify({from,to,text,messaging_profile_id:profileId})});
+  
+  const payload = { from, to };
+  if(isWhatsApp){
+    payload.whatsapp_message = {
+      type: 'text',
+      text: { body: text }
+    };
+  } else {
+    payload.text = text;
+    if(profileId) payload.messaging_profile_id = profileId;
+  }
+
+  const r=await fetch('https://api.telnyx.com/v2/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.TELNYX_API_KEY}`},
+    body:JSON.stringify(payload)
+  });
   return r.json();
 }
 
@@ -56,8 +73,10 @@ export default async function handler(req,res){
     catch(e){ return res.status(500).json({ok:false,error:String(e)}); }
   }
 
-  const fromN=e164(body.from), toN=e164(body.to), text=body.text||'';
-  console.log('[sms]',{from:fromN,to:toN,text:text.slice(0,40)});
+  const fromN=e164(body.from), toN=e164(body.to), text=body.text||'', type=body.type||'SMS';
+  const isWhatsApp = String(type).toUpperCase() === 'WHATSAPP';
+  const channel = isWhatsApp ? 'whatsapp' : 'sms';
+  console.log(`[${channel}]`,{from:fromN,to:toN,text:text.slice(0,40)});
 
   let row=null;
   try{ row=await getTenantByPhone(toN); }catch{}
@@ -67,16 +86,16 @@ export default async function handler(req,res){
   // 10DLC compliance
   if(kw(text,STOP)){
     try{ await setOptOut(row.id,fromN,true); }catch{}
-    try{ await sendSMS({from:toN,to:fromN,text:`Unsubscribed from ${tName} texts. Reply START to resubscribe.`,tenantId:row.id,skipOptOut:true}); }catch{}
+    try{ await sendSMS({from:toN,to:fromN,text:`Unsubscribed from ${tName} messages. Reply START to resubscribe.`,tenantId:row.id,skipOptOut:true,type}); }catch{}
     return res.status(200).json({ok:true,handled:'stop'});
   }
   if(kw(text,START)){
     try{ await setOptOut(row.id,fromN,false); }catch{}
-    try{ await sendSMS({from:toN,to:fromN,text:`Resubscribed to ${tName} texts. Reply STOP to opt out.`,tenantId:row.id,skipOptOut:true}); }catch{}
+    try{ await sendSMS({from:toN,to:fromN,text:`Resubscribed to ${tName} messages. Reply STOP to opt out.`,tenantId:row.id,skipOptOut:true,type}); }catch{}
     return res.status(200).json({ok:true,handled:'start'});
   }
   if(kw(text,HELP)){
-    try{ await sendSMS({from:toN,to:fromN,text:`${tName} AI front desk. Reply STOP to unsubscribe.`,tenantId:row.id,skipOptOut:true}); }catch{}
+    try{ await sendSMS({from:toN,to:fromN,text:`${tName} AI front desk. Reply STOP to unsubscribe.`,tenantId:row.id,skipOptOut:true,type}); }catch{}
     return res.status(200).json({ok:true,handled:'help'});
   }
   try{ if(await isOptedOut(row.id,fromN)) return res.status(200).json({ok:true,handled:'opted_out'}); }catch{}
@@ -84,13 +103,13 @@ export default async function handler(req,res){
   let client=null,conv=null,hist=[{role:'user',content:text}];
   try{
     if(fromN) client=await upsertClient(row.id,{phone:fromN});
-    conv=await getOrStartConversation(row.id,{clientId:client?.id,channel:'sms',agent:'lola'});
+    conv=await getOrStartConversation(row.id,{clientId:client?.id,channel,agent:'lola'});
     if(conv?.id){ const p=await getConversationHistory(conv.id,10); hist=[...p,{role:'user',content:text}]; }
   }catch{}
 
   let reply="Thanks for texting! How can I help you book?";
   try{
-    const r=await chat({system:sysPrompt(row),messages:hist,maxTokens:200,temperature:0.7,source:'sms'});
+    const r=await chat({system:sysPrompt(row),messages:hist,maxTokens:200,temperature:0.7,source:channel});
     if(r.ok&&r.text) reply=r.text;
   }catch{}
 
@@ -98,11 +117,11 @@ export default async function handler(req,res){
     try{
       await logMessage({conversationId:conv.id,tenantId:row.id,role:'user',agent:'lola',content:text});
       await logMessage({conversationId:conv.id,tenantId:row.id,role:'assistant',agent:'lola',content:reply});
-      await logUsage(row.id,'sms_received',1);
-      await logUsage(row.id,'sms_sent',1);
+      await logUsage(row.id,`${channel}_received`,1);
+      await logUsage(row.id,`${channel}_sent`,1);
     }catch{}
   }
 
-  try{ await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id}); }catch(e){ console.error('[sms] send err:',e.message); }
+  try{ await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id,type}); }catch(e){ console.error(`[${channel}] send err:`,e.message); }
   return res.status(200).json({ok:true});
 }

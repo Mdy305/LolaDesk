@@ -93,6 +93,11 @@
             <button class="connect-btn connected">Active</button>
           </div>
           <div class="integration">
+            <div class="int-logo" style="background:#25d366;color:#fff">W</div>
+            <div class="int-info"><div class="int-name">Telnyx WhatsApp</div><div class="int-status">Multi-channel support &amp; campaigns via WhatsApp</div></div>
+            <button class="connect-btn connected">Active</button>
+          </div>
+          <div class="integration">
             <div class="int-logo" style="background:#999;color:#fff">…</div>
             <div class="int-info"><div class="int-name">Loading booking platforms…</div><div class="int-status">&nbsp;</div></div>
           </div>
@@ -150,7 +155,17 @@ function showToast(msg, kind){
 
 function renderIntegrations(providers){
   const list = document.getElementById('integrationsList');
-  const telnyxCard = list.firstElementChild.outerHTML; // keep the static Telnyx row
+  const staticRows = `
+          <div class="integration">
+            <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
+            <div class="int-info"><div class="int-name">Telnyx</div><div class="int-status">Voice &amp; SMS — your Lola number</div></div>
+            <button class="connect-btn connected">Active</button>
+          </div>
+          <div class="integration">
+            <div class="int-logo" style="background:#25d366;color:#fff">W</div>
+            <div class="int-info"><div class="int-name">Telnyx WhatsApp</div><div class="int-status">Multi-channel support &amp; campaigns via WhatsApp</div></div>
+            <button class="connect-btn connected">Active</button>
+          </div>`;
   const rows = (providers||[]).map(p=>{
     const logo = PROVIDER_LOGOS[p.id] || { bg:'#666', color:'#fff', glyph:(p.name||'?')[0] };
     const label = STATUS_LABEL[p.status] || 'Connect';
@@ -172,7 +187,7 @@ function renderIntegrations(providers){
         <button class="connect-btn ${btnClass}" ${disabled?'disabled':''} ${hoverTriggers} onclick="${clickHandler}">${label}</button>
       </div>`;
   }).join('');
-  list.innerHTML = telnyxCard + rows;
+  list.innerHTML = staticRows + rows;
 }
 
 window.connectProvider = function(providerId){

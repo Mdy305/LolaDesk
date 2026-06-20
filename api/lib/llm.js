@@ -8,7 +8,7 @@
  * Pass source:'voice'|'sms' for Telnyx, source:'marketer'|'strategy'
  * for Anthropic. LLM_PROVIDER env var overrides everything.
  */
-const TELNYX_INFERENCE    = 'https://api.telnyx.com/v2/ai/chat/completions';
+const TELNYX_INFERENCE    = 'https://api.telnyx.com/v2/ai/openai/chat/completions';
 const ANTHROPIC_API       = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_TELNYX_MODEL    = 'moonshotai/Kimi-K2.6';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';

@@ -13,3 +13,4 @@ api/v2/
 Integral_Full_iCloud_Export.html
 *.icloud-export.html
 lib/stripe.js
+.env*
