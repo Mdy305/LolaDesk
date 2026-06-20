@@ -150,6 +150,48 @@
 <script>
 let lastAnalysis = null;
 
+function formatSteveJobsText(text) {
+  if (!text) return '';
+  text = text.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    if (line.toLowerCase().startsWith('the user wants') || line.toLowerCase().startsWith('key constraints') || line.toLowerCase().startsWith('wait, need to be careful') || line.toLowerCase().startsWith('let me review')) {
+      continue;
+    }
+    if (/^[A-Z\s_]{4,}:?$/.test(line) || (line.endsWith(':') && line.length < 35 && /^[A-Z]/.test(line))) {
+      if (inList) { html += '</ul>'; inList = false; }
+      const cleanHeader = line.replace(/:$/, '').replace(/_/g, ' ');
+      html += `<div class="rb-label" style="margin-top:20px; color:var(--pink2); font-weight:600; letter-spacing:0.08em;">${cleanHeader}</div>`;
+    } 
+    else if (/^[-*•]\s+/.test(line) || /^\d+\.\s+/.test(line)) {
+      if (!inList) { html += '<ul style="margin: 10px 0 10px 20px; padding: 0; list-style-type: disc;">'; inList = true; }
+      const content = line.replace(/^[-*•]\s+/, '').replace(/^\d+\.\s+/, '');
+      html += `<li style="font-size:14px; margin-bottom:6px; font-weight:300; color:var(--text2); line-height:1.6;">${content}</li>`;
+    } 
+    else if (line.includes('|')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      const parts = line.split('|').map(s => s.trim());
+      html += `
+        <div style="padding:14px 0; border-bottom:0.5px solid var(--border); display:flex; flex-direction:column; gap:4px;">
+          <div style="font-size:14px; font-weight:600;">${parts[0]}</div>
+          ${parts[1] ? `<div style="font-size:13px; color:var(--text2); font-weight:300;"><b style="color:var(--text3)">Why:</b> ${parts[1]}</div>` : ''}
+          ${parts[2] ? `<div style="font-size:13px; color:var(--pink2); font-weight:500;">→ ${parts[2]}</div>` : ''}
+        </div>`;
+    }
+    else {
+      if (inList) { html += '</ul>'; inList = false; }
+      const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text); font-weight:600;">$1</strong>');
+      html += `<p style="font-size:14px; font-weight:300; color:var(--text2); line-height:1.65; margin-bottom:12px;">${formattedLine}</p>`;
+    }
+  }
+  if (inList) { html += '</ul>'; }
+  return html;
+}
+
 // ── tab switching ──
 function switchTab(ev, name){
   document.querySelectorAll('.mk-tab').forEach(t=>t.classList.remove('active'));
@@ -188,7 +230,13 @@ function renderAnalysis(d){
   const out = document.getElementById('analyzeOut');
   if(!d.summary){
     const msg = d.raw || d.error || d.text || 'Analysis incomplete — try a different URL or try again in a moment.';
-    out.innerHTML = `<div class="result-block"><div class="rb-text">${msg}</div></div>`;
+    out.innerHTML = `
+      <div class="result-block">
+        <div class="rb-label" style="color:var(--pink2)">Strategic Review</div>
+        <div style="margin-top:15px;">
+          ${formatSteveJobsText(msg)}
+        </div>
+      </div>`;
     return;
   }
   out.innerHTML = `
@@ -262,7 +310,14 @@ async function runStrategy(){
 function renderStrategy(d){
   const out = document.getElementById('strategyOut');
   if(!d.headline){
-    out.innerHTML = `<div class="result-block"><div class="rb-text">${d.raw||'No structured output. Try again.'}</div></div>`;
+    const msg = d.raw || d.text || 'No strategy plan generated.';
+    out.innerHTML = `
+      <div class="result-block">
+        <div class="rb-label" style="color:var(--pink2)">Strategic Action Plan</div>
+        <div style="margin-top:15px;">
+          ${formatSteveJobsText(msg)}
+        </div>
+      </div>`;
     return;
   }
   out.innerHTML = `

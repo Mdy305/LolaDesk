@@ -35,7 +35,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model }){
   const oai = [];
   if(system) oai.push({ role:'system', content:system });
   for(const msg of messages) oai.push({ role:msg.role, content:msg.content });
-  const budgets = [Math.max(maxTokens,1600), Math.max(maxTokens,1000), 800, 600];
+  const budgets = [Math.max(maxTokens,3200), Math.max(maxTokens,2000), 1200, 800];
   let last = { error:'no attempts' };
   for(let i=0;i<budgets.length;i++){
     try{
