@@ -1,9 +1,9 @@
-/**
- * POST /api/auth/login
- * { email, password } -> { session, user, tenant }
- */
 import { signIn } from '../lib/auth.js';
-import { db } from '../lib/db.js';
+import { db, upsertTenant } from '../lib/db.js';
+
+function slugify(s){
+  return (s || 'salon').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,32);
+}
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -24,6 +24,17 @@ export default async function handler(req, res){
     if(c){
       const { data } = await c.from('tenants').select('*').eq('owner_email', email).limit(1);
       tenant = (data && data[0]) || null;
+
+      if(!tenant){
+        const ownerName = sess.user?.user_metadata?.name || email.split('@')[0];
+        tenant = await upsertTenant({
+          slug: slugify(email.split('@')[0]) + '-' + Math.random().toString(36).slice(2,6),
+          name: 'My Salon',
+          owner_name: ownerName,
+          owner_email: email,
+          plan: 'starter',
+        });
+      }
     }
 
     return res.status(200).json({ session: sess.session, user: sess.user, tenant });
