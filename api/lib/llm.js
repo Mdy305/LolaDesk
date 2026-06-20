@@ -18,9 +18,6 @@ export const POWER_MODEL = process.env.LLM_POWER_MODEL || DEFAULT_TELNYX_MODEL;
 function pickProvider(source){
   const explicit = (process.env.LLM_PROVIDER||'').toLowerCase();
   if(explicit) return explicit;
-  if(['marketer','strategy','campaign','analysis'].includes(source)){
-    if(process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  }
   if(process.env.TELNYX_API_KEY) return 'telnyx';
   if(process.env.ANTHROPIC_API_KEY) return 'anthropic';
   return 'telnyx';
