@@ -323,6 +323,17 @@ document.getElementById('keyboardText').addEventListener('keydown', e => {
 });
 
 setMode('asleep');
+
+// Auto-wake on redirect if query has ?wake=true or ?autostart=true
+window.addEventListener('load', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get('wake') === 'true' || urlParams.get('autostart') === 'true'){
+    setTimeout(() => {
+      const btn = document.getElementById('invoke');
+      if (btn) btn.click();
+    }, 400);
+  }
+});
 </script>
 </body>
 </html>

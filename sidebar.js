@@ -22,7 +22,7 @@
   };
 
   const items = [
-    { id:'overview', label:'Overview', href:'dashboard.html' },
+    { id:'overview', label:'Overview', href:'lola-atom.html' },
     { id:'agents',   label:'Agents',   href:'agents.html', badge:'8', pink:true },
     { id:'clients',  label:'Clients',  href:'clients.html' },
     { id:'calls',    label:'Calls',    href:'calls.html', badge:'12' },
@@ -63,9 +63,9 @@
   const mobile = document.createElement('nav');
   mobile.className = 'mobile-bar';
   const mb = [
-    { id:'overview', href:'dashboard.html', label:'Home', icon:icons.overview },
+    { id:'overview', href:'lola-atom.html', label:'Home', icon:icons.overview },
     { id:'clients', href:'clients.html', label:'Clients', icon:icons.clients },
-    { id:'lola', href:'dashboard.html', label:'', orb:true },
+    { id:'lola', href:'lola-atom.html', label:'', orb:true },
     { id:'inbox', href:'inbox.html', label:'Inbox', icon:icons.inbox },
     { id:'revenue', href:'revenue.html', label:'More', icon:icons.revenue }
   ];
