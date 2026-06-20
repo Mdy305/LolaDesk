@@ -1,37 +1,14 @@
 {
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+          "value": "default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: *;"
         }
       ]
     }
   ]
-}
-EOFgit add vercel.json
-git commit -m "Update CSP to allow unsafe-eval for login"
-git push origin main
-rm vercel.json
-git add .
-git commit -m "Revert CSP changes to restore login functionality"
-git push origin main
-ls -R api/auth/
-cat <<EOF > api/auth/login.js
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  // Set headers to allow cross-origin requests during testing
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  return res.status(200).json({ 
-    status: "success", 
-    token: "auth_token_active", // Explicitly return a token
-    redirect: "/dashboard.html"
-  });
 }

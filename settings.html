@@ -156,7 +156,12 @@ function renderIntegrations(providers){
     const label = STATUS_LABEL[p.status] || 'Connect';
     const btnClass = p.status === 'connected' ? 'connected'
       : (p.status === 'available' ? 'connect' : 'pending');
-    const disabled = p.status === 'connected' || p.status !== 'available';
+    const disabled = p.status !== 'connected' && p.status !== 'available';
+    const clickHandler = p.status === 'connected' ? `disconnectProvider('${p.id}')` : `connectProvider('${p.id}')`;
+    const hoverTriggers = p.status === 'connected'
+      ? `onmouseover="this.textContent='Disconnect'; this.style.color='#ff6b6b'; this.style.backgroundColor='rgba(255,107,107,0.12)'; this.style.cursor='pointer';"` +
+        ` onmouseout="this.textContent='Connected'; this.style.color='var(--green)'; this.style.backgroundColor='var(--green-dim)'; this.style.cursor='default';"`
+      : '';
     const statusText = p.status === 'connected'
       ? (p.metadata?.shop ? `Connected — ${p.metadata.shop}` : 'Connected')
       : p.description;
@@ -164,7 +169,7 @@ function renderIntegrations(providers){
       <div class="integration">
         <div class="int-logo" style="background:${logo.bg};color:${logo.color}">${logo.glyph}</div>
         <div class="int-info"><div class="int-name">${p.name}</div><div class="int-status">${statusText}</div></div>
-        <button class="connect-btn ${btnClass}" ${disabled?'disabled':''} onclick="connectProvider('${p.id}')">${label}</button>
+        <button class="connect-btn ${btnClass}" ${disabled?'disabled':''} ${hoverTriggers} onclick="${clickHandler}">${label}</button>
       </div>`;
   }).join('');
   list.innerHTML = telnyxCard + rows;
@@ -173,6 +178,28 @@ function renderIntegrations(providers){
 window.connectProvider = function(providerId){
   if(!currentTenantSlug){ showToast('Still loading your salon — try again in a second.', 'err'); return; }
   location.href = `/api/oauth/connect?provider=${encodeURIComponent(providerId)}&tenant=${encodeURIComponent(currentTenantSlug)}`;
+};
+
+window.disconnectProvider = async function(providerId){
+  const providerName = providerId === 'google_calendar' ? 'Google Calendar' : providerId.charAt(0).toUpperCase() + providerId.slice(1);
+  if(!confirm(`Are you sure you want to disconnect ${providerName}?`)) return;
+  try{
+    const r = await fetch('/api/oauth/disconnect', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (window.LolaAuth?.token || '')
+      },
+      body: JSON.stringify({ provider: providerId })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Disconnect failed');
+    showToast('Disconnected.', 'ok');
+    const data = await LolaData.load('integrations');
+    if(data && data.providers) renderIntegrations(data.providers);
+  }catch(e){
+    showToast(e.message || 'Could not disconnect provider', 'err');
+  }
 };
 
 window.manageBilling = async function(){
