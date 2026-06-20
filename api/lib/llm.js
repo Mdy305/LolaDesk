@@ -45,6 +45,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model }){
         body: JSON.stringify({ model:m, messages:oai, max_tokens:budgets[i], temperature:i>1?0.6:temperature })
       });
       const data = await r.json();
+      console.log('[telnyx inference response]', JSON.stringify(data));
       if(!r.ok){ last={error:data?.error?.message||`HTTP ${r.status}`}; if(!`${r.status}`.startsWith('5')) break; continue; }
       const text = data?.choices?.[0]?.message?.content||'';
       if(text.trim()) return { ok:true, text, provider:'telnyx', model:m, attempt:i+1 };
