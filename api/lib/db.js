@@ -302,7 +302,7 @@ export async function getTenantIntegrations(tenantId, { status='connected' } = {
 export async function updateTenantFields(tenantId, patch = {}){
   const c = db();
   if(!c || !tenantId) return null;
-  const allowed = ['name','location','hours','booking_url','persona','services','team'];
+  const allowed = ['name','location','hours','booking_url','persona','services','team','phone_number'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   if(Object.keys(row).length === 0) return null;

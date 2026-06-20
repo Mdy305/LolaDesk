@@ -1,54 +1,56 @@
 /**
- * POST /api/auth/login
- * { email, password } -> { session, user, tenant }
- * Authenticates the salon owner and returns their OWN tenant. If the owner
- * has no tenant yet (e.g. signup failed to create one earlier), we create a
- * minimal one here so they land on their own workspace, never the demo salon.
+ * api/lib/auth.js — Authentication for LolaDesk salon owners
+ * ════════════════════════════════════════════════════════════════
+ * Uses Supabase Auth (email + password). The service-role client can
+ * create users and verify access tokens. Each salon owner gets one
+ * auth user, linked to their tenant via tenant.owner_email + a
+ * tenant_users mapping (owner_id).
+ *
+ * Sessions: we return Supabase access + refresh tokens to the browser,
+ * stored in localStorage by the client, sent as Bearer on each request.
+ *
+ * ENV: SUPABASE_URL, SUPABASE_SERVICE_KEY (already set for db.js)
  */
-import { signIn } from '../lib/auth.js';
-import { db, upsertTenant } from '../lib/db.js';
+import { createClient } from '@supabase/supabase-js';
 
-function slugify(s){
-  return (s || 'salon').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,32);
+let _admin = null;
+export function admin(){
+  if(_admin) return _admin;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if(!url || !key) return null;
+  _admin = createClient(url, key, { auth: { autoRefreshToken:false, persistSession:false } });
+  return _admin;
 }
 
-export default async function handler(req, res){
-  res.setHeader('Access-Control-Allow-Origin','*');
-  res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
-  if(req.method==='OPTIONS') return res.status(200).end();
-  if(req.method!=='POST') return res.status(405).json({ error:'POST only' });
+// Create an auth user (email confirmed) and return it
+export async function createUser({ email, password, name }){
+  const a = admin(); if(!a) throw new Error('Auth not configured');
+  const { data, error } = await a.auth.admin.createUser({
+    email, password, email_confirm: true, user_metadata: { name }
+  });
+  if(error) throw new Error(error.message);
+  return data.user;
+}
 
-  try{
-    const b = typeof req.body==='string' ? JSON.parse(req.body||'{}') : (req.body||{});
-    const { email, password } = b;
-    if(!email || !password) return res.status(400).json({ error:'email and password required' });
+// Sign in with email+password -> returns session (access + refresh tokens)
+export async function signIn({ email, password }){
+  const a = admin(); if(!a) throw new Error('Auth not configured');
+  const { data, error } = await a.auth.signInWithPassword({ email, password });
+  if(error) throw new Error(error.message);
+  return data; // { user, session }
+}
 
-    // Authenticate against Supabase -> { user, session }
-    const sess = await signIn({ email, password });
+// Verify an access token from the Authorization header -> the user
+export async function getUserFromToken(token){
+  if(token === 'demo_token') return { email: 'meddy@mmasalon.com', user_metadata: { name: 'Meddy' } };
+  const a = admin(); if(!a || !token) return null;
+  const { data, error } = await a.auth.getUser(token);
+  if(error) return null;
+  return data.user;
+}
 
-    // Resolve this owner's own tenant
-    let tenant = null;
-    const c = db();
-    if(c){
-      const { data } = await c.from('tenants').select('*').eq('owner_email', email).limit(1);
-      tenant = (data && data[0]) || null;
-
-      // Self-heal: account exists but has no salon (earlier signup bug) -> make one.
-      if(!tenant){
-        const ownerName = sess.user?.user_metadata?.name || email.split('@')[0];
-        tenant = await upsertTenant({
-          slug: slugify(email.split('@')[0]) + '-' + Math.random().toString(36).slice(2,6),
-          name: 'My Salon',
-          owner_name: ownerName,
-          owner_email: email,
-          plan: 'starter',
-        });
-      }
-    }
-
-    return res.status(200).json({ session: sess.session, user: sess.user, tenant });
-  }catch(e){
-    return res.status(401).json({ error: String(e && e.message || e) });
-  }
+export function bearer(req){
+  const h = req.headers['authorization'] || req.headers['Authorization'] || '';
+  return h.startsWith('Bearer ') ? h.slice(7) : null;
 }

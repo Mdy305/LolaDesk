@@ -1,3 +1,6 @@
+import { db, updateTenantFields } from './lib/db.js';
+import { getUserFromToken, bearer } from './lib/auth.js';
+
 /**
  * /api/telnyx-numbers — Search & buy phone numbers
  * ════════════════════════════════════════════════════════════════
@@ -83,7 +86,7 @@ async function provisionNumber({ phone_number_id }){
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
   if(req.method === 'OPTIONS') return res.status(200).end();
 
   if(!process.env.TELNYX_API_KEY){
@@ -115,6 +118,27 @@ export default async function handler(req, res){
       const pnId = order?.data?.phone_numbers?.[0]?.id;
       let provisioning = null;
       if(pnId) provisioning = await provisionNumber({ phone_number_id: pnId });
+
+      // Save phone number to the tenant row in the database
+      try {
+        const token = bearer(req);
+        if(token) {
+          const user = await getUserFromToken(token);
+          if(user) {
+            const c = db();
+            if(c) {
+              const { data: rows } = await c.from('tenants').select('id').eq('owner_email', user.email).limit(1);
+              const tenant = rows && rows[0];
+              if(tenant) {
+                await updateTenantFields(tenant.id, { phone_number: body.phone_number });
+              }
+            }
+          }
+        }
+      } catch(dbErr) {
+        console.error('[telnyx-numbers] Database phone number update failed:', dbErr);
+      }
+
       return res.status(200).json({ ok:true, order, provisioning });
     }
 

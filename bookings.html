@@ -135,9 +135,11 @@
   </div>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-const STYLISTS = [
+let STYLISTS = [
   { id:'meddy', name:'Meddy', role:'Master Colorist', color:'#ff2d8e' },
   { id:'michelle', name:'Michelle', role:'Senior Stylist', color:'#5ac8fa' },
   { id:'alice', name:'Alice', role:'Senior Stylist', color:'#ffb020' },
@@ -343,7 +345,54 @@ function saveBook(){
   closeModal(); render();
 }
 
-render();
+(async ()=>{
+  let auth;
+  try{ auth = await window.LolaAuth.ready; }catch(e){ return; }
+
+  // Load database team
+  const teamData = await LolaData.load('team');
+  if(teamData && teamData.team && teamData.team.length > 0) {
+    const colors = ['#ff2d8e', '#5ac8fa', '#ffb020', '#34d171', '#f472b6', '#a64bff'];
+    STYLISTS = teamData.team.map((m, i) => ({
+      id: m.name.toLowerCase().replace(/[^a-z]/g,''),
+      name: m.name,
+      role: m.role || 'Stylist',
+      color: colors[i % colors.length]
+    }));
+  }
+
+  // Load database bookings
+  const bkData = await LolaData.load('bookings');
+  if(bkData && bkData.bookings && bkData.bookings.length > 0) {
+    APPTS = {};
+    bkData.bookings.forEach(b => {
+      const date = new Date(b.startsAt);
+      const key = dKey(date);
+      const stylistId = b.stylist ? b.stylist.toLowerCase().replace(/[^a-z]/g,'') : STYLISTS[0]?.id;
+      const startMin = (date.getHours() - START_HOUR)*60 + date.getMinutes();
+      const dur = b.durationMin || 60;
+      
+      const svc = SERVICES.find(s => s.name.toLowerCase() === b.service.toLowerCase());
+      
+      if(!APPTS[key]) APPTS[key] = [];
+      APPTS[key].push({
+        id: b.id,
+        stylistId,
+        startMin,
+        dur,
+        service: b.service,
+        color: svc ? svc.color : 'pink',
+        price: b.price || 0,
+        client: b.client
+      });
+    });
+  } else {
+    // Fallback to seed if database bookings are empty
+    seed();
+  }
+
+  render();
+})();
 </script>
 </body>
 </html>

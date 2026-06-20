@@ -124,6 +124,7 @@ a{color:inherit;text-decoration:none}
   <span class="toast-text" id="toastText"></span>
 </div>
 
+<script src="auth-guard.js"></script>
 <script>
 const RETAIL_MONTHLY = 5; // what you charge the salon per month for the number
 
@@ -172,9 +173,13 @@ async function buy(phone, btn){
   btn.disabled = true;
   btn.textContent = 'Getting it…';
   try{
+    const headers = {'Content-Type':'application/json'};
+    const token = localStorage.getItem('loladesk_token');
+    if(token) headers['Authorization'] = 'Bearer ' + token;
+
     const r = await fetch('/api/telnyx-numbers', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers,
       body: JSON.stringify({ action:'buy', phone_number: phone })
     });
     const data = await r.json();

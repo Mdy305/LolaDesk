@@ -56,7 +56,21 @@
         <div class="prompt" id="prompt">Say “Hey Lola”</div>
         <div class="said" id="said"></div>
         <div class="dock">
-          <button class="invoke" id="invoke"><span class="pulse-dot"></span><span id="invokeLabel">Wake her</span></button>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <button class="invoke" id="invoke"><span class="pulse-dot"></span><span id="invokeLabel">Wake her</span></button>
+            <button class="invoke" id="toggleKeyboard" style="padding: 13px;" title="Type to Lola">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M18 12h.01M7 16h10"/></svg>
+            </button>
+          </div>
+          
+          <!-- Keyboard Input Row -->
+          <div id="keyboardInputRow" style="display:none; width:100%; max-width:500px; margin-top:10px; gap:8px; align-items:center; padding: 0 20px;">
+            <input id="keyboardText" placeholder="Type your message to Lola..." style="flex:1; background:var(--surface); border:0.5px solid var(--border); border-radius:24px; padding:12px 18px; color:var(--text); font-size:14px; outline:none; transition:border-color .15s;" />
+            <button onclick="sendKeyboardMessage()" style="width:42px; height:42px; border-radius:50%; background:var(--pink); color:#fff; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink: 0; cursor: pointer;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+
           <div class="whisper" id="whisper">She rests until you call. Say her name and she’s with you — no buttons, just conversation.</div>
           <div class="err" id="err"></div>
         </div>
@@ -275,6 +289,37 @@ invoke.addEventListener('click',async()=>{
     whisper.textContent='She rests until you call.'; awake=false;
     if(recog){try{recog.stop();}catch(e){}} if(micStream)micStream.getTracks().forEach(t=>t.stop());
     setMode('asleep'); setPrompt('Say “Hey Lola”'); }
+});
+
+// Keyboard toggle and text send
+document.getElementById('toggleKeyboard').addEventListener('click', () => {
+  const row = document.getElementById('keyboardInputRow');
+  if(row.style.display === 'none') {
+    row.style.display = 'flex';
+    document.getElementById('keyboardText').focus();
+  } else {
+    row.style.display = 'none';
+  }
+});
+
+window.sendKeyboardMessage = function(){
+  const input = document.getElementById('keyboardText');
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+  if(!awake){
+    awake=true;
+    liveEl.classList.add('awake');
+    setMode('listening');
+    setPrompt('');
+    saidEl.innerHTML='';
+    resetIdle();
+  }
+  respond(text);
+};
+
+document.getElementById('keyboardText').addEventListener('keydown', e => {
+  if(e.key === 'Enter') sendKeyboardMessage();
 });
 
 setMode('asleep');

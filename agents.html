@@ -67,6 +67,39 @@
 .tone-purple{background:rgba(168,85,247,.12);color:#c084fc}
 .tone-rose{background:rgba(244,114,182,.12);color:#f472b6}
 .tone-sky{background:rgba(56,189,248,.12);color:#7dd3fc}
+/* Drawer / Modal Container override */
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw.open{display:flex}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width:420px;width:100%}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+.fld label{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.04em;text-transform:uppercase}
+.fld input,.fld select{background:var(--surface);border:.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family:var(--ff)}
+.fld input:focus,.fld select:focus{border-color:var(--pink)}
+.macts{display:flex;gap:10px;margin-top:6px}
+.macts .btn{flex:1;justify-content:center}
+
+/* Toggle Switch Slider styling */
+#agActive:checked + #agActiveSlider {
+  background-color: var(--green);
+}
+#agActiveSlider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+}
+#agActive:checked + #agActiveSlider:before {
+  transform: translateX(20px);
+}
+@keyframes slideright {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
 </style>
 </head>
 <body data-page="agents">
@@ -160,9 +193,58 @@
         <text x="550" y="138" fill="#52525a" font-size="9" font-family="Inter" text-anchor="middle">if needed</text>
       </svg>
     </div>
+    <!-- Agent Drawer -->
+    <div class="mw" id="agentDrawer" onclick="closeDrawer(event)" style="justify-content: flex-end; padding: 0;">
+      <div class="modal" id="drawerContent" onclick="event.stopPropagation()" style="max-width: 500px; height: 100vh; border-radius: var(--r-lg) 0 0 var(--r-lg); display: flex; flex-direction: column; animation: slideright 0.3s cubic-bezier(.19,1,.22,1);">
+        <h3 style="display:flex; align-items:center; gap:10px; margin-bottom:14px;" id="drawerTitle">Configure Agent</h3>
+        <div style="flex: 1; overflow-y: auto; padding-right: 4px;">
+          <div class="fld">
+            <label>Agent Name</label>
+            <input id="agName" value="" placeholder="e.g. Booker"/>
+          </div>
+          <div class="fld">
+            <label>Role Description</label>
+            <input id="agRole" value="" placeholder="e.g. Booking Specialist"/>
+          </div>
+          <div class="fld">
+            <label>LLM Model</label>
+            <select id="agModel">
+              <option value="claude-sonnet-4-6">Claude 3.5 Sonnet (Recommended)</option>
+              <option value="meta-llama/Llama-3.3-70B-Instruct">Llama 3.3 70B</option>
+              <option value="Qwen/Qwen3-235B-A22B">Qwen 3 235B (High Latency)</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>ElevenLabs Voice ID / Style</label>
+            <select id="agVoice">
+              <option value="Polly.Joanna-Neural">Joanna (Neural)</option>
+              <option value="ElevenLabs.Lola-Custom">Lola (ElevenLabs Custom Voice)</option>
+              <option value="ElevenLabs.Rachel-Clinical">Rachel (Clinical Style)</option>
+              <option value="ElevenLabs.Samantha-Warm">Samantha (Warm Style)</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>System Instructions (Prompt)</label>
+            <textarea id="agPrompt" rows="8" style="width: 100%; background:var(--surface); border:0.5px solid var(--border); border-radius:9px; padding:10px 12px; color:var(--text); font-size:13px; outline:none; font-family:var(--ff); resize:vertical; line-height:1.5;"></textarea>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:14px; margin-bottom:14px; padding-right: 4px;">
+            <span style="font-size:12px; font-weight:500; color:var(--text2);">Status</span>
+            <label style="position:relative; display:inline-block; width:44px; height:24px; cursor: pointer;">
+              <input type="checkbox" id="agActive" style="opacity: 0; width: 0; height: 0;" onchange="document.getElementById('agActiveSlider').style.backgroundColor = this.checked ? 'var(--green)' : '#333'">
+              <span style="position:absolute; inset:0; background-color:#333; transition:.3s; border-radius:24px;" id="agActiveSlider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="macts" style="border-top: 0.5px solid var(--border); padding-top: 18px; margin-top: 14px;">
+          <button class="btn btn-ghost" onclick="closeDrawer(null)">Cancel</button>
+          <button class="btn btn-primary" onclick="saveAgent()">Save Configuration</button>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
+<script src="auth-guard.js"></script>
 <script src="sidebar.js"></script>
 <script>
 // ── AGENT ROSTER ──
@@ -232,11 +314,67 @@ function renderAgents(){
 }
 renderAgents();
 
+// Load agents from localStorage on startup
+AGENTS.forEach(a => {
+  try {
+    const saved = localStorage.getItem('lola_agents_' + a.id);
+    if(saved) {
+      const parsed = JSON.parse(saved);
+      Object.assign(a, parsed);
+    }
+  } catch(e) {}
+});
+
+let editingAgentId = null;
+
 function openAgent(id){
   const a = AGENTS.find(x=>x.id===id);
   if(!a) return;
-  alert(`${a.name} — ${a.role}\n\nModel: ${a.model}\n\nSystem prompt:\n${a.prompt}\n\n(Configure UI lands here next.)`);
+  
+  editingAgentId = id;
+  document.getElementById('agName').value = a.name;
+  document.getElementById('agRole').value = a.role;
+  document.getElementById('agModel').value = a.model || 'claude-sonnet-4-6';
+  document.getElementById('agVoice').value = a.voice || 'Polly.Joanna-Neural';
+  document.getElementById('agPrompt').value = a.prompt;
+  document.getElementById('agActive').checked = a.active !== false;
+  document.getElementById('agActiveSlider').style.backgroundColor = (a.active !== false) ? 'var(--green)' : '#333';
+  
+  document.getElementById('agentDrawer').classList.add('open');
 }
+
+window.closeDrawer = function(e){
+  if (e && e.target !== document.getElementById('agentDrawer')) return;
+  document.getElementById('agentDrawer').classList.remove('open');
+};
+
+window.saveAgent = function(){
+  if(!editingAgentId) return;
+  const a = AGENTS.find(x=>x.id===editingAgentId);
+  if(a) {
+    a.name = document.getElementById('agName').value.trim();
+    a.role = document.getElementById('agRole').value.trim();
+    a.model = document.getElementById('agModel').value;
+    a.voice = document.getElementById('agVoice').value;
+    a.prompt = document.getElementById('agPrompt').value;
+    a.active = document.getElementById('agActive').checked;
+    
+    try {
+      localStorage.setItem('lola_agents_' + editingAgentId, JSON.stringify(a));
+    } catch(e) {}
+    
+    renderAgents();
+  }
+  document.getElementById('agentDrawer').classList.remove('open');
+  
+  // Show a beautiful toast
+  const toast = document.createElement('div');
+  toast.className = 'save-toast show ok';
+  toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:var(--surface); border:0.5px solid var(--green); border-radius:var(--r-sm); padding:12px 18px; font-size:13px; color:var(--green); box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:1000;';
+  toast.textContent = `${a.name} configuration saved.`;
+  document.body.appendChild(toast);
+  setTimeout(()=> toast.remove(), 2500);
+};
 
 // ── Telnyx config export ──
 function copyTelnyxConfig(){
