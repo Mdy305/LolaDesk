@@ -82,14 +82,14 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 @media(max-width:1100px){.grid-main{grid-template-columns:1fr}}
 
 /* ─── KPI ROW ─── */
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
 @media(max-width:640px){.kpi-row{grid-template-columns:1fr 1fr}}
-.kpi{background:rgba(255,255,255,.025);border:0.5px solid var(--border);border-radius:var(--r);padding:15px 16px;transition:all .15s;cursor:default}
-.kpi:hover{border-color:var(--border2);background:rgba(255,255,255,.04)}
-.kpi-val{font-size:24px;font-weight:600;color:var(--text);line-height:1;margin-bottom:6px}
-.kpi-label{font-size:12px;font-weight:500;color:var(--text);margin-bottom:2px}
-.kpi-sub{font-size:11px;font-weight:300;color:var(--text3)}
-.kpi.accent .kpi-val{color:var(--pink2)}
+.kpi{background:var(--surface);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:0.5px solid var(--border);border-radius:var(--r);padding:18px 20px;transition:all .3s cubic-bezier(0.25,0.8,0.25,1);cursor:default;box-shadow:0 4px 16px rgba(0,0,0,0.2)}
+.kpi:hover{border-color:var(--border2);background:var(--surface2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.4)}
+.kpi-val{font-size:34px;font-weight:600;letter-spacing:-0.03em;color:var(--text);line-height:1;margin-bottom:6px}
+.kpi-label{font-size:13px;font-weight:500;color:var(--text2);margin-bottom:2px}
+.kpi-sub{font-size:11px;font-weight:400;color:var(--text3)}
+.kpi.accent .kpi-val{color:var(--pink2);text-shadow:0 0 16px var(--pink-glow)}
 
 /* ─── LOLA HERO PANEL ─── */
 .lola-panel{background:radial-gradient(ellipse 80% 70% at 50% 62%,rgba(255,45,142,.06),var(--surface) 68%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:26px 28px 30px;display:flex;flex-direction:column;position:relative;overflow:hidden}
