@@ -548,6 +548,12 @@ window.goLive=()=>{
 };
 
 async function finishLive(){
+  // Hide liveCheck first
+  document.getElementById('liveCheck').style.display='none';
+  document.getElementById('liveNav').style.display='none';
+  document.getElementById('liveTitle').textContent='Setting up your account...';
+  document.getElementById('liveSub').textContent='Please wait while we provision your salon.';
+
   // Actually create the account + tenant + trial in the backend
   let created = null;
   try{
@@ -566,6 +572,7 @@ async function finishLive(){
     });
     created = await r.json();
     if(!r.ok) throw new Error(created.error||'Signup failed');
+    
     // store the session so the dashboard knows who is logged in
     if(created.session){
       try{
@@ -574,16 +581,31 @@ async function finishLive(){
         if(created.tenant) localStorage.setItem('loladesk_tenant_id', created.tenant.id||'');
       }catch(e){}
     }
-  }catch(e){
-    // surface the error but still show completion (account may exist)
-    document.getElementById('liveSub').textContent = 'Note: '+(e.message||e)+'  You can log in from the login page.';
-  }
-  document.getElementById('liveCheck').style.display='flex';
-  document.getElementById('liveTitle').textContent='Lola is live. 🎉';
-  if(created && !created.error){
+
+    // Success State
+    document.getElementById('liveCheck').style.display='flex';
+    document.getElementById('liveTitle').textContent='Lola is live. 🎉';
     document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. Your 14-day trial has started.`;
+    document.getElementById('liveNav').style.display='flex';
+    
+  }catch(e){
+    // Error State: Halt and show error
+    document.getElementById('liveCheck').style.display='none';
+    document.getElementById('liveTitle').textContent='Setup Failed';
+    document.getElementById('liveTitle').style.color='#ff5146';
+    document.getElementById('liveSub').textContent='Error: '+(e.message||e)+' — Please make sure your database is connected and try again.';
+    
+    // Convert the "Enter Dashboard" button into a "Try Again" button
+    const navBtn = document.getElementById('liveNav');
+    navBtn.textContent = 'Try Again';
+    navBtn.style.display='flex';
+    navBtn.onclick = () => {
+      document.getElementById('liveTitle').style.color='var(--text)';
+      navBtn.textContent = 'Enter your dashboard';
+      navBtn.onclick = enterDashboard;
+      goToStep(1); // send back to start
+    };
   }
-  document.getElementById('liveNav').style.display='flex';
 }
 
 window.enterDashboard=()=>{
