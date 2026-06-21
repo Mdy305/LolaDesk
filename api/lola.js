@@ -1,16 +1,69 @@
 /**
- * /api/lola — proxy used by dashboard front-end
+ * /api/lola — proxy used by dashboard front-end Voice Control
  * ════════════════════════════════════════════════════════════════
- * Browser POSTs here; we route via the shared LLM client (Telnyx by
- * default, Anthropic if LLM_PROVIDER=anthropic). The API key NEVER
- * reaches the client.
- *
- * Backwards-compatible: still returns Anthropic-shape `content` array
- * so existing dashboard code (which expects data.content[0].text) keeps
- * working without changes.
+ * This handles the web UI voice orb commands. It supports tool
+ * calling by defining Lola's core skills as OpenAI tools. If Lola
+ * decides to execute a skill, it is safely routed through the 
+ * Supabase Orchestrator in a multi-turn agentic loop.
  */
 
 import { chat } from './lib/llm.js';
+import { executeSkill } from './lib/orchestrator.js';
+import { SKILLS } from './lola-tools.js';
+import { getTenantBySlug } from './lib/db.js';
+
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "book_appointment",
+      description: "Book an appointment for a client.",
+      parameters: {
+        type: "object",
+        properties: {
+          service: { type: "string", description: "The service to book (e.g. balayage)" },
+          date: { type: "string", description: "Date like 2026-06-25" },
+          time: { type: "string", description: "Time like 14:00" },
+          client_name: { type: "string" },
+          client_phone: { type: "string" }
+        },
+        required: ["service", "client_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_services",
+      description: "List all services offered by the salon.",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_pricing",
+      description: "Get pricing and duration for a specific service.",
+      parameters: {
+        type: "object",
+        properties: { service: { type: "string" } },
+        required: ["service"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_availability",
+      description: "Check if the salon has openings for a service.",
+      parameters: {
+        type: "object",
+        properties: { service: { type: "string" }, date: { type: "string" } },
+        required: ["service"]
+      }
+    }
+  }
+];
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,12 +75,24 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const result = await chat({
+    const tenantIdHeader = req.headers['x-tenant-id'];
+    
+    // We fetch tenant so orchestrator can use it
+    let tenant = null;
+    if (tenantIdHeader) {
+      tenant = await getTenantBySlug(tenantIdHeader);
+    }
+
+    let messages = body.messages || [];
+    
+    // Step 1: Initial LLM call with tools
+    let result = await chat({
       system: body.system,
-      messages: body.messages || [],
+      messages: messages,
       maxTokens: Math.min(body.max_tokens || 500, 1000),
       temperature: body.temperature ?? 0.7,
-      model: body.model
+      model: body.model,
+      tools: TOOLS
     });
 
     if(!result.ok){
@@ -37,7 +102,56 @@ export default async function handler(req, res){
       });
     }
 
-    // Return in the shape the dashboard expects: { content: [{ type:'text', text }] }
+    // Step 2: Handle Tool Calls (Agentic Loop)
+    if (result.tool_calls && result.tool_calls.length > 0) {
+      const toolCall = result.tool_calls[0]; // Process first tool
+      const funcName = toolCall.function.name;
+      const funcArgs = JSON.parse(toolCall.function.arguments || '{}');
+      
+      // Add the assistant's tool request to history
+      messages.push({
+        role: "assistant",
+        content: null,
+        tool_calls: result.tool_calls
+      });
+
+      let toolResultText = "";
+      try {
+        if (SKILLS[funcName] && tenant) {
+           // Execute securely via orchestrator
+           const skillOutput = await executeSkill(tenant, funcArgs.client_phone, funcName, funcArgs, SKILLS);
+           toolResultText = JSON.stringify(skillOutput);
+        } else {
+           toolResultText = JSON.stringify({ error: "Missing tenant or unknown skill" });
+        }
+      } catch (e) {
+        toolResultText = JSON.stringify({ error: String(e) });
+      }
+
+      // Append the tool result
+      messages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: funcName,
+        content: toolResultText
+      });
+
+      // Step 3: Second LLM call to get spoken response
+      const secondResult = await chat({
+        system: body.system,
+        messages: messages,
+        maxTokens: Math.min(body.max_tokens || 500, 1000),
+        temperature: body.temperature ?? 0.7,
+        model: body.model,
+        tools: TOOLS
+      });
+
+      if(secondResult.ok) {
+        result = secondResult;
+      }
+    }
+
+    // Return in the shape the dashboard expects
     return res.status(200).json({
       id: `msg_${Date.now()}`,
       type: 'message',

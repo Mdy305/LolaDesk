@@ -200,7 +200,7 @@ function to24(t){
   return `${String(h).padStart(2,'0')}:${min}:00`;
 }
 
-const SKILLS = {
+export const SKILLS = {
   list_services, get_pricing, recommend_service,
   check_availability, book_appointment, capture_lead,
   handle_recovery, escalate

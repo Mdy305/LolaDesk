@@ -222,11 +222,13 @@ function sleep(){ awake=false; liveEl.classList.remove('awake'); setMode('asleep
   setPrompt('Say “Hey Lola”'); saidEl.innerHTML=''; }
 
 let SYS="You are Lola — a warm, brilliant, emotionally attuned salon concierge. The most poised, intuitive front-desk presence imaginable, with quiet wit and genuine warmth. Replies are SHORT and spoken-natural: one or two sentences, never a monologue. You remember the conversation and gently move toward helping or booking. You are never robotic; you sound alive.";
+let CURRENT_TENANT_SLUG = '';
 
 // enrich Lola with the logged-in salon's identity (from auth-guard's window.LOLA)
 document.addEventListener('lola:ready', (e)=>{
   const t = e.detail && e.detail.tenant;
   if(!t) return;
+  CURRENT_TENANT_SLUG = t.slug;
   const svc = Array.isArray(t.services) ? t.services.map(s=>`${s.name}${s.price?` $${s.price}`:''}`).join(', ') : '';
   SYS = `You are Lola, the front-desk concierge for ${t.name||'this salon'}.`
     + (t.location?` Location: ${t.location}.`:'')
@@ -245,7 +247,10 @@ async function respond(text){
   saidEl.innerHTML='<span class="q">“'+text+'”</span>';
   history.push({role:'user',content:text});
   try{
-    const r=await fetch('/api/lola',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch('/api/lola',{method:'POST',headers:{
+        'Content-Type':'application/json',
+        'x-tenant-id': CURRENT_TENANT_SLUG
+      },
       body:JSON.stringify({system:SYS,messages:history.slice(-10)})});
     const data=await r.json();
     const reply=(data.content&&data.content[0]&&data.content[0].text)?data.content[0].text.trim():'';
@@ -328,9 +333,16 @@ setMode('asleep');
 window.addEventListener('load', () => {
   const urlParams = new URLSearchParams(window.location.search);
   if(urlParams.get('wake') === 'true' || urlParams.get('autostart') === 'true'){
-    setTimeout(() => {
+    setTimeout(async () => {
       const btn = document.getElementById('invoke');
       if (btn) btn.click();
+      
+      // Fix Double Wake: Automatically trigger wake() instead of waiting for "Hey Lola"
+      if(urlParams.get('wake') === 'true') {
+         setTimeout(() => {
+           if(!awake) wake();
+         }, 800);
+      }
     }, 400);
   }
 });
