@@ -16,11 +16,7 @@
 .set-input{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:14px;transition:border-color .15s}
 .set-input:focus{border-color:var(--pink)}
 .set-input:disabled{opacity:.55;cursor:not-allowed}
-.persona-opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
-.persona-opt{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:13px;cursor:pointer;transition:all .15s}
-.persona-opt.sel{border-color:var(--pink);background:var(--pink-dim)}
-.persona-opt-name{font-size:13px;font-weight:600;margin-bottom:3px}
-.persona-opt-ex{font-size:11px;font-style:italic;color:var(--pink2);font-family:var(--ff-serif)}
+
 .integration{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:0.5px solid var(--border)}
 .integration:last-child{border-bottom:none}
 .int-logo{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
@@ -48,7 +44,7 @@
     <div class="topbar">
       <div class="page-head">
         <h1 class="page-title">Settings</h1>
-        <p class="page-sub">Your salon, Lola's personality, and connections.</p>
+        <p class="page-sub">Your salon operations and connections.</p>
       </div>
       <div class="topbar-actions">
         <button class="btn btn-primary" id="saveBtn" onclick="saveSettings()">Save changes</button>
@@ -67,20 +63,6 @@
           <input class="set-input" id="fLocation" value=""/>
           <label class="set-label">Hours</label>
           <input class="set-input" id="fHours" value=""/>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">Lola's personality</div></div>
-        <div class="set-section">
-          <label class="set-label">How should Lola sound?</label>
-          <div class="persona-opts" id="personas">
-            <div class="persona-opt" data-persona="warm" onclick="selPersona(this)"><div class="persona-opt-name">Warm &amp; Playful</div><div class="persona-opt-ex">"Obsessed — let's book you babe!"</div></div>
-            <div class="persona-opt" data-persona="luxury" onclick="selPersona(this)"><div class="persona-opt-name">Quiet Luxury</div><div class="persona-opt-ex">"It would be my pleasure."</div></div>
-            <div class="persona-opt" data-persona="clinical" onclick="selPersona(this)"><div class="persona-opt-name">Calm &amp; Clinical</div><div class="persona-opt-ex">"I'll walk you through it."</div></div>
-            <div class="persona-opt" data-persona="bright" onclick="selPersona(this)"><div class="persona-opt-name">Bright &amp; Energetic</div><div class="persona-opt-ex">"Yes! Let's make it amazing ✨"</div></div>
-          </div>
-          <p style="font-size:11px;color:var(--text3);margin-top:4px">Lola's voice itself is one consistent ElevenLabs voice everywhere — this sets her tone, not which voice she uses.</p>
         </div>
       </div>
 
@@ -186,15 +168,7 @@ const STATUS_LABEL = {
   pending_partner_approval: 'Pending approval'
 };
 
-let currentPersona = 'warm';
 let currentTenantSlug = '';
-let upsellRules = [];
-
-function selPersona(el){
-  document.querySelectorAll('.persona-opt').forEach(p=>p.classList.remove('sel'));
-  el.classList.add('sel');
-  currentPersona = el.getAttribute('data-persona');
-}
 
 function showToast(msg, kind){
   const t = document.getElementById('saveToast');
@@ -351,7 +325,6 @@ window.saveSettings = async function(){
         name: document.getElementById('fName').value.trim(),
         location: document.getElementById('fLocation').value.trim(),
         hours: document.getElementById('fHours').value.trim(),
-        persona: currentPersona,
         knowledge: { 
           upsells: upsellRules,
           require_deposit: document.getElementById('fDepositEnable').checked,
@@ -412,10 +385,6 @@ function fmtPlan(plan){
     document.getElementById('fPhone').value = tenant.phone_number || 'Not set up yet';
     document.getElementById('fLocation').value = tenant.location || '';
     document.getElementById('fHours').value = tenant.hours || '';
-    const persona = tenant.persona || 'warm';
-    currentPersona = persona;
-    const match = document.querySelector(`.persona-opt[data-persona="${persona}"]`) || document.querySelector('.persona-opt');
-    if(match) match.classList.add('sel');
     
     // Load upsells & deposits
     if(tenant.knowledge) {

@@ -30,7 +30,7 @@ export default async function handler(req, res){
     // but being explicit here means a typo'd extra field in the client
     // can't silently slip through as a no-op instead of an error.
     const patch = {};
-    for(const k of ['name','location','hours','booking_url','persona','knowledge']){
+    for(const k of ['name','location','hours','booking_url','knowledge']){
       if(body[k] !== undefined) patch[k] = body[k];
     }
     if(Object.keys(patch).length === 0) return res.status(400).json({ error:'no fields to update' });
