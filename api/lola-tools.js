@@ -28,6 +28,7 @@ import {
   createBooking, logUsage, getOrStartConversation, getTenantIntegrations
 } from './lib/db.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
+import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 
 // Resolve which salon this call is for
 async function resolveTenant(body){
@@ -215,13 +216,28 @@ export default async function handler(req, res){
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
     const tool = body.tool || body.function || body.skill;
+    
+    // Special Memory Injection Skill requested by Telnyx to start a call
+    if (tool === 'inject_memory') {
+      const tenant = await resolveTenant(body);
+      const clientPhone = body.from || body.client_phone;
+      const memoryPrompt = await injectCallerMemory(tenant?.id, clientPhone);
+      return res.status(200).json({ speak: "Memory loaded.", memory: memoryPrompt });
+    }
+
     if(!tool || !SKILLS[tool]){
       return res.status(200).json({ speak: "I can help with booking, pricing, or recommendations — what would you like?", available_tools: Object.keys(SKILLS) });
     }
+    
     const tenant = await resolveTenant(body);
-    const result = await SKILLS[tool](tenant, body);
+    const clientPhone = body.client_phone || body.from;
+    
+    // Execute the skill safely via Orchestrator
+    const result = await executeSkill(tenant, clientPhone, tool, body, SKILLS);
+    
     return res.status(200).json(result);
   }catch(e){
+    console.error('[lola-tools] Error:', e);
     return res.status(200).json({ speak: "I'm having a quick technical moment — let me take your number and have someone call you right back.", _error: String(e) });
   }
 }
