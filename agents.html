@@ -105,12 +105,11 @@
   <main class="main">
     <div class="topbar">
       <div class="page-head">
-        <h1 class="page-title">Lola's Team</h1>
-        <p class="page-sub">Eight specialized AI agents working together as one front desk.</p>
+        <h1 class="page-title">Lola</h1>
+        <p class="page-sub">The unified AI front desk brain. Powered by Telnyx Voice.</p>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" onclick="copyTelnyxConfig()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Export Telnyx config</button>
-        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>Add agent</button>
+        <button class="btn btn-primary" onclick="deployLola()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>Deploy Lola to Telnyx</button>
       </div>
     </div>
 
@@ -139,58 +138,14 @@
 
     <div class="section-head">
       <div>
-        <div class="section-title">The specialists</div>
-        <div class="section-sub">Each agent is world-class at one job.</div>
+        <div class="section-title">The Brain</div>
+        <div class="section-sub">Lola handles it all: booking, sales, and recovery.</div>
       </div>
     </div>
 
     <div class="agent-grid" id="agentGrid"></div>
 
-    <div class="section-head">
-      <div>
-        <div class="section-title">Handoff flow</div>
-        <div class="section-sub">How Lola routes each conversation.</div>
-      </div>
-    </div>
-
-    <div class="flow">
-      <svg class="flow-svg" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="lgrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#ff2d8e"/><stop offset="1" stop-color="#ff6bb0"/>
-          </linearGradient>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M0 0L10 5L0 10z" fill="#52525a"/>
-          </marker>
-        </defs>
-        <!-- caller -->
-        <circle cx="60" cy="140" r="30" fill="#16161a" stroke="#28282e"/>
-        <text x="60" y="145" text-anchor="middle" fill="#8a8a92" font-size="11" font-family="Inter">Caller</text>
-        <!-- Lola center -->
-        <circle cx="200" cy="140" r="40" fill="url(#lgrad)" opacity=".9"/>
-        <text x="200" y="146" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="Inter" letter-spacing="2">LOLA</text>
-        <!-- specialists right -->
-        <g font-family="Inter" font-size="11" fill="#f2f2f5">
-          <rect x="380" y="20" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="44" text-anchor="middle">💇 Booker</text>
-          <rect x="380" y="72" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="96" text-anchor="middle">💰 Sales</text>
-          <rect x="380" y="124" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="148" text-anchor="middle">🌸 Concierge</text>
-          <rect x="380" y="176" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="200" text-anchor="middle">🎯 Recovery</text>
-          <rect x="380" y="228" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e"/><text x="440" y="252" text-anchor="middle">📋 Support</text>
-        </g>
-        <!-- handoff far right -->
-        <rect x="600" y="124" width="120" height="40" rx="10" fill="#16161a" stroke="#28282e" font-family="Inter"/>
-        <text x="660" y="148" text-anchor="middle" fill="#f2f2f5" font-size="11" font-family="Inter">👋 Handoff</text>
-        <!-- arrows -->
-        <path d="M90 140 L160 140" stroke="#ff2d8e" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
-        <path d="M240 140 Q310 40 380 40" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
-        <path d="M240 140 Q310 92 380 92" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
-        <path d="M240 140 L380 144" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
-        <path d="M240 140 Q310 196 380 196" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
-        <path d="M240 140 Q310 248 380 248" stroke="#52525a" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
-        <path d="M500 144 L600 144" stroke="#52525a" stroke-width="1" fill="none" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
-        <text x="550" y="138" fill="#52525a" font-size="9" font-family="Inter" text-anchor="middle">if needed</text>
-      </svg>
-    </div>
+    <!-- Handoff flow removed for single brain architecture -->
     <!-- Agent Drawer -->
     <div class="mw" id="agentDrawer" onclick="closeDrawer(event)" style="justify-content: flex-end; padding: 0;">
       <div class="modal" id="drawerContent" onclick="event.stopPropagation()" style="max-width: 500px; height: 100vh; border-radius: var(--r-lg) 0 0 var(--r-lg); display: flex; flex-direction: column; animation: slideright 0.3s cubic-bezier(.19,1,.22,1);">
@@ -353,31 +308,37 @@ window.saveAgent = function(){
   setTimeout(()=> toast.remove(), 2500);
 };
 
-// ── Telnyx config export ──
-function copyTelnyxConfig(){
-  const config = {
-    orchestrator: {
-      name: 'Lola',
-      model: 'Qwen/Qwen3-235B-A22B',
-      voice: 'Polly.Joanna-Neural',
-      instructions: AGENTS[0].prompt,
-      handoff_targets: AGENTS.slice(1).map(a=>a.name)
-    },
-    specialists: AGENTS.slice(1).map(a=>({
-      name: a.name,
-      role: a.role,
-      model: 'Qwen/Qwen3-235B-A22B',
-      voice: 'Polly.Joanna-Neural',
-      instructions: a.prompt,
-      can_handoff_to: ['Lola','Handoff'].concat(AGENTS.filter(x=>x.id!==a.id&&x.id!=='lola'&&x.id!=='handoff').map(x=>x.name))
-    }))
-  };
-  const text = JSON.stringify(config, null, 2);
-  navigator.clipboard.writeText(text).then(()=>{
-    alert('Telnyx multi-agent config copied to clipboard.\n\nPaste it into Telnyx Portal → AI → Assistant Builder → Import.');
-  }).catch(()=>{
-    const w = window.open(); w.document.write('<pre>'+text.replace(/</g,'&lt;')+'</pre>');
-  });
+// ── Telnyx Deployment ──
+async function deployLola(){
+  const btn = document.querySelector('.topbar-actions .btn-primary');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Deploying...`;
+  btn.disabled = true;
+
+  try {
+    const r = await fetch('/api/telnyx-agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant: window.LolaData?.currentTenant || { name: 'MMA Salon' } })
+    });
+    
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || 'Failed to deploy');
+
+    // Show toast
+    const toast = document.createElement('div');
+    toast.className = 'save-toast show ok';
+    toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:var(--surface); border:0.5px solid var(--text); border-radius:var(--r-sm); padding:12px 18px; font-size:13px; color:var(--text); box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:1000;';
+    toast.textContent = `Lola Brain successfully deployed to Telnyx!`;
+    document.body.appendChild(toast);
+    setTimeout(()=> toast.remove(), 4000);
+
+  } catch(e) {
+    alert('Deployment failed: ' + e.message);
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
 }
 
 // ── orb (shared mini renderer) ──
