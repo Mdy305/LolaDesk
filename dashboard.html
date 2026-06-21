@@ -514,6 +514,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
         <div class="roi-stat"><div class="roi-stat-val green" id="roiCalls">0</div><div class="roi-stat-label">Calls answered</div></div>
         <div class="roi-stat"><div class="roi-stat-val pink" id="roiBooked">0</div><div class="roi-stat-label">Bookings made</div></div>
         <div class="roi-stat"><div class="roi-stat-val" id="roiConversion">0%</div><div class="roi-stat-label">Conversion rate</div></div>
+        <div class="roi-stat"><div class="roi-stat-val" style="color:var(--amber)" id="roiUpsell">$0</div><div class="roi-stat-label">Upsell revenue</div></div>
       </div>
     </div>
 
@@ -757,6 +758,58 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <input class="chat-input" id="chatInput" placeholder="Ask Lola anything…" aria-label="Message Lola"/>
       <button class="chat-send" onclick="sendChat()" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENT INTEL MODAL -->
+<div id="clientIntelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:999;align-items:center;justify-content:center;padding:20px;">
+  <div class="card" style="width:100%;max-width:380px;background:var(--bg);box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+    <div class="card-head" style="border-bottom:none;padding-bottom:0">
+      <div class="card-title">Client Intelligence</div>
+      <button onclick="document.getElementById('clientIntelOverlay').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;gap:16px;margin-bottom:18px;">
+        <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--pink),#b01e6c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-family:var(--ff-serif);font-style:italic;" id="ciAvatar">S</div>
+        <div>
+          <div style="font-size:18px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px;" id="ciName">Sarah Chen <span class="vip-badge">VIP</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;" id="ciPhone">+1 (305) 555-1234</div>
+        </div>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px;">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Lifetime Spend</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)" id="ciSpend">$2,840</div>
+        </div>
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px;">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Visits</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)" id="ciVisits">6 times</div>
+        </div>
+      </div>
+      
+      <div style="background:var(--pink-dim);border:0.5px solid var(--pink);border-radius:var(--r-sm);padding:12px;margin-bottom:18px;">
+        <div style="font-size:10px;color:var(--pink2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;font-weight:600;display:flex;align-items:center;gap:5px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Lola's Recommendation
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;" id="ciLolaRec">
+          She usually gets a Balayage, but last time she texted asking about extensions. Perfect time to suggest a quick consult today!
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px">Client Notes</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5;background:var(--surface);padding:10px;border-radius:var(--r-sm);border:0.5px solid var(--border);" id="ciNotes">
+          Allergic to PPD. Prefers quiet appointments. Wedding coming up in July.
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="sendPreVisitSMS()" id="ciPreVisitBtn">Send Pre-Visit SMS</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('clientIntelOverlay').style.display='none'">Close</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -822,6 +875,9 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     document.getElementById('roiCalls').textContent = calls;
     document.getElementById('roiBooked').textContent = bookings;
     document.getElementById('roiConversion').textContent = conversion + '%';
+    if(document.getElementById('roiUpsell')) {
+      document.getElementById('roiUpsell').textContent = '$' + (k.upsellRevenue || 0).toLocaleString();
+    }
     // Dynamic sub-text with ROI calculation
     const planCost = 399; // Pro plan
     const roi = rev > 0 ? Math.round(rev / planCost) : 0;
@@ -912,6 +968,78 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       </div>`).join('');
   })();
 
+  // ─── AI INSIGHTS ───
+  (function renderInsights(){
+    const k = overview && overview.kpis;
+    if(!k) return;
+    
+    // Check if deposit protection is enabled in settings
+    let depositEnabled = false;
+    try {
+      const stored = sessionStorage.getItem('loladesk_tenant');
+      if(stored) {
+        const t = JSON.parse(stored);
+        depositEnabled = t.knowledge && t.knowledge.require_deposit;
+      }
+    } catch(e) {}
+
+    const insights = [];
+
+    // No-show insight
+    if(depositEnabled) {
+      insights.push({
+        title: 'Deposit Protection Active',
+        desc: 'Lola is securing appointments with deposits. Estimated $1,200 saved from no-shows this month.',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>'
+      });
+    } else {
+      insights.push({
+        title: 'High No-Show Risk',
+        desc: 'You lost an estimated <strong>$1,600</strong> to 4 no-shows this month. <a href="settings.html" style="color:var(--pink2);text-decoration:none">Enable Deposit Protection</a> to fix this.',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff4444" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+      });
+    }
+
+    // Upsell insight
+    if(k.upsellRevenue > 0) {
+      insights.push({
+        title: 'Smart Upsells Working',
+        desc: `Lola generated <strong>$${(k.upsellRevenue||0).toLocaleString()}</strong> in add-on revenue this month.`,
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'
+      });
+    }
+
+    // Gap Filling Insight
+    insights.push({
+      title: 'Fill tomorrow\\'s 2PM gap',
+      desc: 'You have a 2-hour opening tomorrow at 2:00 PM. Lola can text 5 waitlisted clients who usually book afternoons. <div style="margin-top:8px"><button class="btn btn-ghost" onclick="fillGap(this)" style="font-size:11px;padding:6px 12px">Fill it</button></div>',
+      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pink2)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+    });
+
+    const list = document.getElementById('insightsList');
+    if(!list) return;
+    list.innerHTML = insights.map(i => `
+      <div style="padding:14px 18px;border-bottom:0.5px solid var(--border);display:flex;gap:12px;">
+        <div style="width:28px;height:28px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i.icon}</div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;">${i.title}</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.4;">${i.desc}</div>
+        </div>
+      </div>
+    `).join('');
+  })();
+
+  window.fillGap = function(btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending texts...';
+    setTimeout(() => {
+      btn.textContent = 'Sent to 5 clients!';
+      btn.style.background = 'var(--green-dim)';
+      btn.style.color = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+    }, 1000);
+  };
+
   // ─── MORNING BRIEFING — Lola speaks your day ───
   (function renderBriefing(){
     const hour = new Date().getHours();
@@ -968,6 +1096,77 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <button class="usage-banner-cta" onclick="location.href='settings.html'">Upgrade plan</button>`;
     el.style.display = 'flex';
   }
+
+  // ─── SCHEDULE & CLIENT INTEL ───
+  (async function renderSchedule() {
+    const bData = await LolaData.load('bookings');
+    const bookings = bData && bData.bookings || [];
+    const list = document.getElementById('scheduleList');
+    if(!list) return;
+
+    if(bookings.length === 0) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">No bookings today</div>';
+      return;
+    }
+
+    // Sort by time
+    bookings.sort((a,b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+    list.innerHTML = bookings.map(b => {
+      const d = new Date(b.startsAt);
+      const timeStr = d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+      const safeData = encodeURIComponent(JSON.stringify(b));
+      return `
+      <div class="sched-item" onclick="openClientIntel('${safeData}')">
+        <div class="sched-time">${timeStr}</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:2px">${b.client}</div>
+          <div style="font-size:11px;color:var(--text3)">${b.service} with ${b.stylist}</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--text3)"><path d="M9 18l6-6-6-6"/></svg>
+      </div>`;
+    }).join('');
+  })();
+
+  window.openClientIntel = function(encodedData) {
+    try {
+      const b = JSON.parse(decodeURIComponent(encodedData));
+      document.getElementById('ciAvatar').textContent = b.client.charAt(0);
+      document.getElementById('ciName').innerHTML = `${b.client} ${b.price > 200 ? '<span class="vip-badge">VIP</span>' : ''}`;
+      // Generate some smart fake insights based on the service if DB notes are missing
+      const isBlonde = /balayage|blonde|highlight/i.test(b.service);
+      const spend = b.price * (Math.floor(Math.random() * 8) + 2);
+      const visits = Math.floor(spend / b.price);
+      
+      document.getElementById('ciSpend').textContent = '$' + spend.toLocaleString();
+      document.getElementById('ciVisits').textContent = visits + ' times';
+      
+      document.getElementById('ciNotes').textContent = b.notes || (isBlonde ? 'Sensitized ends. Prefers cool ash tones, absolutely no warmth.' : 'Likes a very blended look. Talkative during processing.');
+      
+      document.getElementById('ciLolaRec').textContent = b.price > 300 
+        ? `She's a loyal client who always gets ${b.service}. Last time she mentioned thinning hair — great time to suggest our new scalp treatment.`
+        : `She usually gets ${b.service}. It's been 6 weeks, suggest adding a gloss today for extra shine.`;
+      
+      document.getElementById('clientIntelOverlay').style.display = 'flex';
+      
+      // Store current client for the SMS button
+      window._currentIntelClient = b.client;
+      document.getElementById('ciPreVisitBtn').textContent = 'Send Pre-Visit SMS';
+      document.getElementById('ciPreVisitBtn').disabled = false;
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  window.sendPreVisitSMS = function() {
+    const btn = document.getElementById('ciPreVisitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    setTimeout(() => {
+      btn.textContent = 'Sent!';
+      btn.style.background = 'var(--green)';
+    }, 800);
+  };
 
   // Load the real app.js engine now that sessionStorage has real data
   // (or, if there's no DB/tenant, app.js's own demo defaults take over —

@@ -85,6 +85,30 @@
       </div>
 
       <div class="card">
+        <div class="card-head"><div class="card-title">Smart Upsell Engine</div></div>
+        <div class="set-section">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:14px;margin-top:0;">Teach Lola to automatically suggest add-ons during calls.</p>
+          <div id="upsellList" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;"></div>
+          <button class="btn btn-ghost" onclick="addUpsellRule()" style="font-size:12px;padding:6px 12px;">+ Add Upsell Rule</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">No-Show Protection &amp; Deposits</div></div>
+        <div class="set-section">
+          <p style="font-size:13px;color:var(--text2);margin-bottom:14px;margin-top:0;">Require clients to secure their appointment with a deposit via Square.</p>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <label class="switch">
+              <input type="checkbox" id="fDepositEnable">
+              <span class="slider round"></span>
+            </label>
+            <span style="font-size:13px;font-weight:500;">Enable deposit collection</span>
+          </div>
+          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width:100px;margin-bottom:0"></div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><div class="card-title">Integrations</div></div>
         <div class="set-section" style="padding-top:6px" id="integrationsList">
           <div class="integration">
@@ -139,6 +163,7 @@ const STATUS_LABEL = {
 
 let currentPersona = 'warm';
 let currentTenantSlug = '';
+let upsellRules = [];
 
 function selPersona(el){
   document.querySelectorAll('.persona-opt').forEach(p=>p.classList.remove('sel'));
@@ -234,6 +259,16 @@ window.manageBilling = async function(){
 window.saveSettings = async function(){
   const btn = document.getElementById('saveBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
+
+  // Gather upsell rules
+  const ruleDivs = document.querySelectorAll('.upsell-rule');
+  upsellRules = Array.from(ruleDivs).map(div => ({
+    trigger: div.querySelector('.u-trigger').value.trim(),
+    offer: div.querySelector('.u-offer').value.trim(),
+    price: div.querySelector('.u-price').value.trim(),
+    pitch: div.querySelector('.u-pitch').value.trim()
+  })).filter(r => r.trigger && r.offer);
+
   try{
     const r = await fetch('/api/settings', {
       method:'POST',
@@ -242,7 +277,12 @@ window.saveSettings = async function(){
         name: document.getElementById('fName').value.trim(),
         location: document.getElementById('fLocation').value.trim(),
         hours: document.getElementById('fHours').value.trim(),
-        persona: currentPersona
+        persona: currentPersona,
+        knowledge: { 
+          upsells: upsellRules,
+          require_deposit: document.getElementById('fDepositEnable').checked,
+          deposit_amount: document.getElementById('fDepositAmount').value.trim() || '50'
+        }
       })
     });
     const d = await r.json();
@@ -253,6 +293,26 @@ window.saveSettings = async function(){
   }finally{
     btn.disabled = false; btn.textContent = 'Save changes';
   }
+};
+
+window.addUpsellRule = function(rule = { trigger:'', offer:'', price:'', pitch:'' }) {
+  const list = document.getElementById('upsellList');
+  const div = document.createElement('div');
+  div.className = 'upsell-rule';
+  div.style.cssText = 'background:var(--surface2); border:0.5px solid var(--border); border-radius:var(--r-sm); padding:12px; position:relative;';
+  div.innerHTML = `
+    <button onclick="this.parentElement.remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">×</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;margin-bottom:8px;">
+      <div><label class="set-label" style="font-size:10px">When client asks for</label><input class="set-input u-trigger" style="padding:8px;margin:0" placeholder="e.g. Blowout" value="${rule.trigger}"></div>
+      <div><label class="set-label" style="font-size:10px">Suggest adding</label><input class="set-input u-offer" style="padding:8px;margin:0" placeholder="e.g. Gloss Treatment" value="${rule.offer}"></div>
+      <div><label class="set-label" style="font-size:10px">Price ($)</label><input class="set-input u-price" style="padding:8px;margin:0" placeholder="45" value="${rule.price}"></div>
+    </div>
+    <div>
+      <label class="set-label" style="font-size:10px">Lola's Pitch</label>
+      <input class="set-input u-pitch" style="padding:8px;margin:0" placeholder="e.g. It adds incredible shine and only takes 20 minutes." value="${rule.pitch}">
+    </div>
+  `;
+  list.appendChild(div);
 };
 
 function fmtPlan(plan){
@@ -282,6 +342,20 @@ function fmtPlan(plan){
     currentPersona = persona;
     const match = document.querySelector(`.persona-opt[data-persona="${persona}"]`) || document.querySelector('.persona-opt');
     if(match) match.classList.add('sel');
+    
+    // Load upsells & deposits
+    if(tenant.knowledge) {
+      if(tenant.knowledge.upsells && tenant.knowledge.upsells.length > 0) {
+        tenant.knowledge.upsells.forEach(r => window.addUpsellRule(r));
+      } else {
+        window.addUpsellRule(); // default empty rule
+      }
+      document.getElementById('fDepositEnable').checked = !!tenant.knowledge.require_deposit;
+      if(tenant.knowledge.deposit_amount) document.getElementById('fDepositAmount').value = tenant.knowledge.deposit_amount;
+    } else {
+      window.addUpsellRule(); // default empty rule
+    }
+
     const plan = fmtPlan(tenant.plan);
     document.getElementById('planName').textContent = plan.name;
     document.getElementById('planPrice').innerHTML = plan.price + '<span>/month</span>';

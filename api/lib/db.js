@@ -305,6 +305,14 @@ export async function updateTenantFields(tenantId, patch = {}){
   const allowed = ['name','location','hours','booking_url','persona','services','team','phone_number'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
+  
+  if(patch.knowledge !== undefined) {
+    // Merge knowledge to prevent overwriting existing keys
+    const { data: existing } = await c.from('tenants').select('knowledge').eq('id', tenantId).maybeSingle();
+    const currentK = existing?.knowledge || {};
+    row.knowledge = { ...currentK, ...patch.knowledge };
+  }
+
   if(Object.keys(row).length === 0) return null;
   const { data, error } = await c.from('tenants').update(row).eq('id', tenantId).select().maybeSingle();
   if(error) throw new Error(error.message);
@@ -348,5 +356,9 @@ export function tenantKnowledgePrompt(tenant){
   if(k.tone) lines.push(`Brand voice: ${k.tone}`);
   if(k.summary) lines.push(`About: ${k.summary}`);
   if(k.audience) lines.push(`Typical clients: ${k.audience}`);
+  if(k.upsells && k.upsells.length > 0) {
+    const upsellText = k.upsells.map(u => `- When they ask for ${u.trigger}, suggest adding ${u.offer} for $${u.price} (Pitch: "${u.pitch}")`).join('\n');
+    lines.push(`UPSELL PROTOCOL:\n${upsellText}`);
+  }
   return lines.join('\n');
 }

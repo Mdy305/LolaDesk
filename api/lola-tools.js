@@ -140,9 +140,17 @@ async function book_appointment(tenant, body){
       await logUsage(tenant.id, 'booking', 1, { service: s?.name || service });
     }
 
+    let speakStr = `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service}${date?` on ${date}`:''}${time?` at ${time}`:''}${stylist?` with ${stylist}`:''}. `;
+    if(tenant.knowledge?.require_deposit) {
+      const dep = tenant.knowledge.deposit_amount || '50';
+      speakStr += `I'll text you a link to secure your spot with a $${dep} deposit. Anything else?`;
+    } else {
+      speakStr += `I'll text you a confirmation. Anything else?`;
+    }
+
     return {
-      speak: `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service}${date?` on ${date}`:''}${time?` at ${time}`:''}${stylist?` with ${stylist}`:''}. I'll text you a confirmation. Anything else?`,
-      booked: true, external: !!external
+      speak: speakStr,
+      booked: true, external: !!external, deposit_required: !!tenant.knowledge?.require_deposit
     };
   }catch(e){
     return {

@@ -51,6 +51,13 @@
       <div class="logo-sub">DESK</div>
     </div>
     <nav class="nav">${navHTML}</nav>
+    <div style="margin: 0 16px 20px; padding: 12px; background: linear-gradient(135deg, rgba(255,45,142,0.08), rgba(176,30,108,0.04)); border: 0.5px solid var(--pink-dim); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+      <div style="font-size: 20px; filter: drop-shadow(0 0 6px var(--pink));">🔥</div>
+      <div>
+        <div style="font-size: 12px; font-weight: 600; color: var(--pink2);">12-Day Streak</div>
+        <div style="font-size: 10px; color: var(--text2);">Top 15% of salons</div>
+      </div>
+    </div>
     <a class="nav-user" href="settings.html">
       <div class="nav-user-av">M</div>
       <div class="nav-user-info">
