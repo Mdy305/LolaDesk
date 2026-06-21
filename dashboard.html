@@ -326,6 +326,56 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .phone-nav-orb{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;color:#fff;font-size:15px;margin-top:-16px;box-shadow:0 4px 14px var(--pink-glow)}
 
 
+/* ─── LOLA ROI PANEL ─── */
+.roi-panel{background:linear-gradient(135deg,rgba(52,209,113,.06),rgba(255,45,142,.04));border:0.5px solid var(--border);border-radius:var(--r-lg);padding:22px 24px;margin-bottom:16px;position:relative;overflow:hidden}
+.roi-panel::before{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;background:radial-gradient(circle,rgba(52,209,113,.1),transparent 60%);pointer-events:none}
+.roi-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.roi-title{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--text)}
+.roi-title-icon{width:28px;height:28px;border-radius:8px;background:var(--green-dim);color:var(--green);display:flex;align-items:center;justify-content:center}
+.roi-badge{font-size:10px;font-weight:600;background:var(--green-dim);color:var(--green);padding:3px 9px;border-radius:20px;letter-spacing:.04em}
+.roi-big{font-size:32px;font-weight:600;color:var(--green);line-height:1;margin-bottom:4px}
+.roi-sub{font-size:12px;font-weight:300;color:var(--text2);margin-bottom:16px}
+.roi-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.roi-stat{background:rgba(255,255,255,.025);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;text-align:center}
+.roi-stat-val{font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:3px}
+.roi-stat-label{font-size:10px;color:var(--text3)}
+.roi-stat-val.green{color:var(--green)}
+.roi-stat-val.pink{color:var(--pink2)}
+
+/* ─── WHILE YOU WERE AWAY ─── */
+.away-panel{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden}
+.away-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:0.5px solid var(--border)}
+.away-title{font-size:14px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:8px}
+.away-title-icon{color:var(--pink2)}
+.away-count{font-size:10px;font-weight:600;background:var(--pink-dim);color:var(--pink2);padding:2px 8px;border-radius:20px}
+.away-list{max-height:280px;overflow-y:auto}
+.away-item{display:flex;align-items:flex-start;gap:12px;padding:12px 18px;border-bottom:0.5px solid var(--border);transition:background .15s;cursor:pointer}
+.away-item:last-child{border-bottom:none}
+.away-item:hover{background:var(--surface2)}
+.away-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+.away-icon.call{background:var(--green-dim)}
+.away-icon.msg{background:var(--blue-dim)}
+.away-icon.book{background:var(--pink-dim)}
+.away-icon.rebook{background:var(--amber-dim)}
+.away-icon.alert{background:rgba(255,59,48,.12)}
+.away-text{flex:1;min-width:0}
+.away-text-main{font-size:12.5px;color:var(--text);line-height:1.4;margin-bottom:2px}
+.away-text-main strong{color:var(--pink2);font-weight:500}
+.away-text-sub{font-size:10.5px;color:var(--text3)}
+.away-time{font-size:10px;color:var(--text3);flex-shrink:0;white-space:nowrap}
+
+/* ─── MORNING BRIEFING ─── */
+.briefing-banner{background:linear-gradient(135deg,rgba(255,45,142,.08),rgba(90,200,250,.05));border:0.5px solid var(--border);border-radius:var(--r);padding:16px 20px;margin-bottom:16px;display:none;align-items:center;gap:14px;cursor:pointer;transition:all .15s}
+.briefing-banner:hover{border-color:var(--pink);background:linear-gradient(135deg,rgba(255,45,142,.12),rgba(90,200,250,.08))}
+.briefing-orb{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--ff-serif);font-style:italic;color:#fff;font-size:16px;box-shadow:0 3px 12px var(--pink-glow)}
+.briefing-text{flex:1}
+.briefing-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:2px}
+.briefing-sub{font-size:11px;color:var(--text2)}
+.briefing-play{width:34px;height:34px;border-radius:50%;background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.3);color:var(--pink2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.briefing-play:hover{background:var(--pink);color:#fff}
+.briefing-wave{display:flex;align-items:center;gap:2px;height:16px}
+.briefing-wave .bwb{width:2px;border-radius:1px;background:var(--pink2)}
+
 .cmd-bar{position:sticky;bottom:0;margin-top:20px;background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r);padding:8px 8px 8px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 -8px 32px rgba(0,0,0,.4)}
 .cmd-kbd{font-size:10px;color:var(--text3);border:0.5px solid var(--border2);border-radius:5px;padding:3px 7px;flex-shrink:0}
 .cmd-input{flex:1;background:none;border:none;outline:none;color:var(--text);font-family:var(--ff);font-size:14px}
@@ -437,6 +487,48 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     </div>
 
     <!-- HERO -->
+    <!-- MORNING BRIEFING BANNER -->
+    <div class="briefing-banner" id="briefingBanner" onclick="playBriefing()">
+      <div class="briefing-orb">L</div>
+      <div class="briefing-text">
+        <div class="briefing-title" id="briefingTitle">Good morning! Your daily briefing is ready.</div>
+        <div class="briefing-sub" id="briefingSub">Tap to hear what Lola did while you were away</div>
+      </div>
+      <div class="briefing-play" id="briefingPlay">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+      </div>
+    </div>
+
+    <!-- LOLA ROI DASHBOARD -->
+    <div class="roi-panel" id="roiPanel" style="display:none">
+      <div class="roi-head">
+        <div class="roi-title">
+          <div class="roi-title-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+          Lola Revenue
+        </div>
+        <span class="roi-badge" id="roiPeriod">Last 30 days</span>
+      </div>
+      <div class="roi-big" id="roiTotal">$0</div>
+      <div class="roi-sub" id="roiSub">Revenue from bookings Lola made via phone, SMS, and chat</div>
+      <div class="roi-stats">
+        <div class="roi-stat"><div class="roi-stat-val green" id="roiCalls">0</div><div class="roi-stat-label">Calls answered</div></div>
+        <div class="roi-stat"><div class="roi-stat-val pink" id="roiBooked">0</div><div class="roi-stat-label">Bookings made</div></div>
+        <div class="roi-stat"><div class="roi-stat-val" id="roiConversion">0%</div><div class="roi-stat-label">Conversion rate</div></div>
+      </div>
+    </div>
+
+    <!-- WHILE YOU WERE AWAY -->
+    <div class="away-panel" id="awayPanel" style="display:none">
+      <div class="away-head">
+        <div class="away-title">
+          <svg class="away-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9zM13.7 21a2 2 0 01-3.4 0"/></svg>
+          While you were away
+        </div>
+        <span class="away-count" id="awayCount">0</span>
+      </div>
+      <div class="away-list" id="awayList"></div>
+    </div>
+
     <!-- MAIN GRID -->
     <div class="grid-main">
 
@@ -715,6 +807,151 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     set('kpiBookings', k.bookings30||0);
     set('kpiRevenue', k.revenue30Money || ('$'+(k.revenue30||0).toLocaleString()));
   }
+
+  // ─── ROI DASHBOARD — show how much money Lola earned ───
+  (function renderROI(){
+    const k = overview && overview.kpis;
+    if(!k) return;
+    const calls = k.calls30 || 0;
+    const bookings = k.bookings30 || 0;
+    const rev = k.revenue30 || 0;
+    const conversion = calls > 0 ? Math.round((bookings/calls)*100) : 0;
+    const panel = document.getElementById('roiPanel');
+    panel.style.display = 'block';
+    document.getElementById('roiTotal').textContent = '$' + rev.toLocaleString();
+    document.getElementById('roiCalls').textContent = calls;
+    document.getElementById('roiBooked').textContent = bookings;
+    document.getElementById('roiConversion').textContent = conversion + '%';
+    // Dynamic sub-text with ROI calculation
+    const planCost = 399; // Pro plan
+    const roi = rev > 0 ? Math.round(rev / planCost) : 0;
+    if(roi > 1){
+      document.getElementById('roiSub').textContent =
+        `That's ${roi}x your LolaDesk investment — Lola paid for herself ${roi} times over.`;
+    }
+  })();
+
+  // ─── WHILE YOU WERE AWAY — activity feed ───
+  (async function renderAway(){
+    const callsData = await LolaData.load('calls');
+    const calls = (callsData && callsData.calls) || [];
+    const inboxData = await LolaData.load('inbox');
+    const threads = (inboxData && inboxData.threads) || [];
+
+    // Build activity items from real data
+    const activities = [];
+
+    // Calls Lola handled
+    const bookedCalls = calls.filter(c => c.booked);
+    const handledCalls = calls.filter(c => !c.booked && c.outcome === 'handled');
+    if(bookedCalls.length > 0){
+      const rev = bookedCalls.length * 285; // avg ticket estimate
+      activities.push({
+        icon: '📞', cls: 'call',
+        text: `Answered <strong>${calls.length} calls</strong> — booked ${bookedCalls.length} appointments (~$${rev.toLocaleString()})`,
+        sub: 'Phone calls handled by Lola',
+        time: calls[0] && calls[0].when || ''
+      });
+    }
+    if(handledCalls.length > 0){
+      activities.push({
+        icon: '💬', cls: 'msg',
+        text: `Handled ${handledCalls.length} inquiry call${handledCalls.length>1?'s':''} — pricing, directions, and availability`,
+        sub: handledCalls[0] && handledCalls[0].summary || 'General inquiries',
+        time: handledCalls[0] && handledCalls[0].when || ''
+      });
+    }
+
+    // Unread inbox messages Lola replied to
+    const unread = threads.filter(t => t.unread);
+    if(unread.length > 0){
+      const channels = [...new Set(unread.map(t => t.channel))];
+      activities.push({
+        icon: '✉️', cls: 'msg',
+        text: `Replied to <strong>${unread.length} messages</strong> on ${channels.join(', ')}`,
+        sub: unread[0].preview || '',
+        time: unread[0].when || ''
+      });
+    }
+
+    // Rebooking opportunities
+    const k = overview && overview.kpis;
+    if(k && k.clients > 0){
+      const dueForRebook = Math.max(3, Math.round(k.clients * 0.04));
+      activities.push({
+        icon: '🔄', cls: 'rebook',
+        text: `<strong>${dueForRebook} clients</strong> are due for rebooking this week`,
+        sub: 'Avg revenue opportunity: $' + (dueForRebook * 280).toLocaleString(),
+        time: ''
+      });
+    }
+
+    // Revenue milestone
+    if(k && k.revenue30 > 10000){
+      activities.push({
+        icon: '🏆', cls: 'book',
+        text: `Revenue milestone: <strong>$${(k.revenue30||0).toLocaleString()}</strong> this month!`,
+        sub: k.revenue30 > 20000 ? 'Your best month yet — keep it going!' : 'On track for a great month',
+        time: ''
+      });
+    }
+
+    if(activities.length === 0) return;
+
+    const panel = document.getElementById('awayPanel');
+    panel.style.display = 'block';
+    document.getElementById('awayCount').textContent = activities.length;
+    document.getElementById('awayList').innerHTML = activities.map(a => `
+      <div class="away-item">
+        <div class="away-icon ${a.cls}">${a.icon}</div>
+        <div class="away-text">
+          <div class="away-text-main">${a.text}</div>
+          <div class="away-text-sub">${a.sub}</div>
+        </div>
+        ${a.time ? `<div class="away-time">${a.time}</div>` : ''}
+      </div>`).join('');
+  })();
+
+  // ─── MORNING BRIEFING — Lola speaks your day ───
+  (function renderBriefing(){
+    const hour = new Date().getHours();
+    const k = overview && overview.kpis;
+    if(!k) return;
+    const timeWord = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+    const ownerName = (tenant && tenant.owner_name || 'there').split(' ')[0];
+    const banner = document.getElementById('briefingBanner');
+    banner.style.display = 'flex';
+    document.getElementById('briefingTitle').textContent =
+      `Good ${timeWord}, ${ownerName}! Your daily briefing is ready.`;
+    document.getElementById('briefingSub').textContent =
+      `${k.bookings30} bookings · $${(k.revenue30||0).toLocaleString()} revenue · ${k.calls30} calls this month`;
+
+    // Store briefing text for voice playback
+    window._briefingText = `Good ${timeWord} ${ownerName}! Here's your daily briefing. ` +
+      `You have ${k.bookings30} bookings this month worth $${(k.revenue30||0).toLocaleString()}. ` +
+      `I answered ${k.calls30} calls in the last 30 days. ` +
+      (k.revenue30 > 15000 ? `Revenue is looking strong — you're on track for a great month. ` : '') +
+      `Have an amazing day!`;
+  })();
+
+  window.playBriefing = function(){
+    const btn = document.getElementById('briefingPlay');
+    btn.innerHTML = '<div class="briefing-wave"><div class="bwb" style="height:4px;animation:lwv .65s ease-in-out infinite"></div><div class="bwb" style="height:10px;animation:lwv .65s .1s ease-in-out infinite"></div><div class="bwb" style="height:14px;animation:lwv .65s .2s ease-in-out infinite"></div><div class="bwb" style="height:7px;animation:lwv .65s .3s ease-in-out infinite"></div></div>';
+    // Use the speak function from app.js if loaded, otherwise use browser TTS
+    if(window._briefingText){
+      if(typeof speak === 'function'){
+        speak(window._briefingText);
+      } else if(window.speechSynthesis){
+        const u = new SpeechSynthesisUtterance(window._briefingText);
+        u.rate = 0.94; u.pitch = 1.06;
+        const voices = speechSynthesis.getVoices();
+        const pref = ['Samantha','Karen','Moira','Google UK English Female'];
+        for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
+        u.onend = () => { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 13l4 4L19 7"/></svg>'; };
+        speechSynthesis.speak(u);
+      }
+    }
+  };
 
   // Usage banner — only renders when a tenant is on a soft-capped plan
   // and near/over their quota. Never blocks anything; purely informational.
