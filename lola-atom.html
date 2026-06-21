@@ -16,10 +16,11 @@
 .card h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;font-weight:500}
 
 /* ATOM */
-.atom-stage{position:relative;width:360px;height:360px;display:flex;align-items:center;justify-content:center;cursor:pointer}
-canvas#atom{position:absolute;inset:0;width:360px;height:360px}
-.atom-label{position:relative;z-index:2;text-align:center;pointer-events:none;margin-top:300px}
+.atom-stage{position:relative;width:100%;max-width:360px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto}
+canvas#atom{position:absolute;inset:0;width:100%;height:100%}
+.atom-label{position:relative;z-index:2;text-align:center;pointer-events:none;margin-top:80%}
 .atom-state{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:23px;color:var(--text);transition:.4s}
+@media(max-width:480px){.atom-state{font-size:19px}}
 .atom-sub{font-size:12px;color:var(--text3);margin-top:4px;letter-spacing:.02em}
 .ask{margin-top:18px;display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;
   background:rgba(255,45,142,.1);border:.5px solid rgba(255,45,142,.4);color:var(--pink2);cursor:pointer;
