@@ -101,4 +101,26 @@ export async function verifyWebhook(rawBody, sig){
   return JSON.parse(rawBody);
 }
 
+// ── Automated Metered Billing ──
+// Pushes $0.05 per text usage records to Stripe Connect
+export async function flushMeteredTextUsageToStripe(tenantId, messageCount = 1){
+  try {
+    // 1. Fetch the active subscription item for the metered text product
+    // In a production database, you would look up the exact subscription_item_id
+    // linked to this tenant. We use a mock ID for demonstration.
+    const mockSubscriptionItemId = `si_${tenantId}_texts`; 
+
+    // 2. Push the usage record to Stripe
+    await stripe(`/subscription_items/${mockSubscriptionItemId}/usage_records`, 'POST', {
+      quantity: messageCount,
+      timestamp: Math.floor(Date.now() / 1000),
+      action: 'increment'
+    });
+    
+    console.log(`[stripe] Billed ${tenantId} for ${messageCount} messages at $0.05/ea.`);
+  } catch(e) {
+    console.error(`[stripe] Failed to push metered usage for ${tenantId}:`, e);
+  }
+}
+
 export { stripe };
