@@ -24,7 +24,7 @@
 @media(max-width:900px){.bk-kpis{grid-template-columns:repeat(2,1fr)}}
 .kpi{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:16px 18px}
 .kpi .v{font-size:26px;font-weight:300;letter-spacing:-.02em}
-.kpi .v.green{color:var(--green)}.kpi .v.pink{color:var(--pink2)}
+.kpi .v.green{color:var(--text)}.kpi .v.pink{color:var(--pink2)}
 .kpi .l{font-size:11px;color:var(--text3);margin-top:3px}
 
 /* RESOURCE CALENDAR */
@@ -51,11 +51,8 @@
 .appt .t{font-size:9.5px;color:var(--text3);font-weight:500}
 .appt .s{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .appt .c{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
-.appt.pink{border-color:#ff2d8e;background:rgba(255,45,142,.13)}
-.appt.blue{border-color:#5ac8fa;background:rgba(90,200,250,.13)}
-.appt.amber{border-color:#ffb020;background:rgba(255,176,32,.13)}
-.appt.green{border-color:#34d171;background:rgba(52,209,113,.13)}
-.appt.rose{border-color:#f472b6;background:rgba(244,114,182,.13)}
+.appt.pink{border-color:var(--pink);background:var(--pink-dim)}
+.appt.mono{border-color:var(--border2);background:var(--surface2)}
 
 .now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--pink);box-shadow:0 0 8px var(--pink-glow);z-index:8;pointer-events:none}
 
@@ -93,7 +90,7 @@
 
     <div class="bk-kpis">
       <div class="kpi"><div class="v" id="kToday">0</div><div class="l">Appointments today</div></div>
-      <div class="kpi"><div class="v green" id="kRev">$0</div><div class="l">Booked revenue</div></div>
+      <div class="kpi"><div class="v mono" id="kRev">$0</div><div class="l">Booked revenue</div></div>
       <div class="kpi"><div class="v" id="kOpen">0</div><div class="l">Open slots</div></div>
       <div class="kpi"><div class="v pink" id="kUtil">0%</div><div class="l">Chair utilization</div></div>
     </div>
@@ -115,12 +112,12 @@
       <div class="fld"><label>Service</label>
         <select id="bkService">
           <option data-dur="150" data-price="395" data-color="pink">Balayage — $395 · 2h30</option>
-          <option data-dur="30" data-price="0" data-color="blue">Extensions Consult — free · 30m</option>
-          <option data-dur="120" data-price="325" data-color="amber">Hair Botox — $325 · 2h</option>
-          <option data-dur="150" data-price="450" data-color="green">Keratin — $450 · 2h30</option>
+          <option data-dur="30" data-price="0" data-color="mono">Extensions Consult — free · 30m</option>
+          <option data-dur="120" data-price="325" data-color="mono">Hair Botox — $325 · 2h</option>
+          <option data-dur="150" data-price="450" data-color="mono">Keratin — $450 · 2h30</option>
           <option data-dur="75" data-price="225" data-color="rose">Cut &amp; Gloss — $225 · 1h15</option>
           <option data-dur="60" data-price="95" data-color="pink">Blowout — $95 · 1h</option>
-          <option data-dur="120" data-price="350" data-color="amber">Color Correction — $350 · 2h</option>
+          <option data-dur="120" data-price="350" data-color="mono">Color Correction — $350 · 2h</option>
         </select>
       </div>
       <div class="row2">
@@ -147,12 +144,12 @@ let STYLISTS = [
 ];
 const SERVICES = [
   { name:'Balayage', dur:150, price:395, color:'pink' },
-  { name:'Extensions Consult', dur:30, price:0, color:'blue' },
-  { name:'Hair Botox', dur:120, price:325, color:'amber' },
-  { name:'Keratin', dur:150, price:450, color:'green' },
+  { name:'Extensions Consult', dur:30, price:0, color:'mono' },
+  { name:'Hair Botox', dur:120, price:325, color:'mono' },
+  { name:'Keratin', dur:150, price:450, color:'mono' },
   { name:'Cut & Gloss', dur:75, price:225, color:'rose' },
   { name:'Blowout', dur:60, price:95, color:'pink' },
-  { name:'Color Correction', dur:120, price:350, color:'amber' }
+  { name:'Color Correction', dur:120, price:350, color:'mono' }
 ];
 const CLIENTS = ['Amanda Davis','Rachel Smith','Olivia Brown','Emily Johnson','Sophie Wilson','Valentina Rossi','Jennifer Adams','Camila Santos','Sarah Johnson','Jessica Lee'];
 const START_HOUR = 9, END_HOUR = 20, SLOT_H = 64; // px per hour

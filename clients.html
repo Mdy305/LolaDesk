@@ -36,8 +36,8 @@
     <div class="kpis">
       <div class="kpi"><div class="kpi-val">1,284</div><div class="kpi-label">Total clients</div><div class="kpi-sub">All time</div></div>
       <div class="kpi"><div class="kpi-val pink">86</div><div class="kpi-label">VIP clients</div><div class="kpi-sub">Top spenders</div></div>
-      <div class="kpi"><div class="kpi-val green">42</div><div class="kpi-label">New this month</div><div class="kpi-sub">↑ 18%</div></div>
-      <div class="kpi"><div class="kpi-val amber" style="color:var(--amber)">23</div><div class="kpi-label">Due for rebooking</div><div class="kpi-sub">Lola is on it</div></div>
+      <div class="kpi"><div class="kpi-val mono">42</div><div class="kpi-label">New this month</div><div class="kpi-sub">↑ 18%</div></div>
+      <div class="kpi"><div class="kpi-val amber" style="color:var(--text)">23</div><div class="kpi-label">Due for rebooking</div><div class="kpi-sub">Lola is on it</div></div>
     </div>
 
     <div class="search-row">
@@ -87,7 +87,7 @@ function render(){
       <td style="color:var(--text2)">${c.service||'—'}</td>
       <td style="font-weight:500">$${(c.ltv||0).toLocaleString()}</td>
       <td style="color:var(--text2)">${fmtDate(c.lastVisit)}</td>
-      <td>${c.due?'<span class="pill amber">Due to rebook</span>':'<span class="pill green">Active</span>'}</td>
+      <td>${c.due?'<span class="pill mono">Due to rebook</span>':'<span class="pill mono">Active</span>'}</td>
     </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No clients yet — Lola will add them as she handles calls.</div></td></tr>';
 }
 function filterBy(el, f){

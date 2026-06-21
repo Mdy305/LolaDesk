@@ -27,7 +27,7 @@
     { id:'clients',  label:'Clients',  href:'clients.html' },
     { id:'calls',    label:'Calls',    href:'calls.html', badge:'12' },
     { id:'inbox',    label:'Inbox',    href:'inbox.html', badge:'8' },
-    { id:'numbers',  label:'Numbers',  href:'numbers.html', badge:'New', green:true },
+    { id:'numbers',  label:'Numbers',  href:'numbers.html', badge:'New', mono:true },
     { id:'bookings', label:'Bookings', href:'bookings.html' },
     { id:'revenue',  label:'Revenue',  href:'revenue.html' },
     { id:'team',     label:'Team',     href:'team.html' },
@@ -40,7 +40,7 @@
     <a class="nav-item ${it.id===page?'active':''}" href="${it.href}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>
       ${it.label}
-      ${it.badge?`<span class="nav-badge ${it.green?'green':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}
+      ${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}
     </a>`).join('');
 
   const sidebar = document.createElement('aside');

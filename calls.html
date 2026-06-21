@@ -15,8 +15,8 @@
 .call-row:hover{background:var(--surface2)}
 .call-row:last-child{border-bottom:none}
 .call-dir{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.call-dir.in{background:var(--green-dim);color:var(--green)}
-.call-dir.out{background:var(--blue-dim);color:var(--blue)}
+.call-dir.in{background:var(--mono-dim);color:var(--text)}
+.call-dir.out{background:var(--mono-dim);color:var(--text)}
 .call-dir.missed{background:rgba(255,59,48,.12);color:#ff5146}
 .call-info{flex:1;min-width:0}
 .call-name{font-size:14px;font-weight:500}
@@ -51,7 +51,7 @@
 
     <div class="kpis">
       <div class="kpi"><div class="kpi-val">47</div><div class="kpi-label">Calls today</div><div class="kpi-sub">Lola answered all</div></div>
-      <div class="kpi"><div class="kpi-val green">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
+      <div class="kpi"><div class="kpi-val mono">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
       <div class="kpi"><div class="kpi-val">2m 14s</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick & warm</div></div>
       <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lost to voicemail</div><div class="kpi-sub">Lola never sleeps</div></div>
     </div>
@@ -91,7 +91,7 @@ function render(){
         <div class="call-meta">${c.service} · ${c.dur}</div>
       </div>
       <div class="call-outcome">
-        <span class="pill ${c.outcome==='Booked'?'green':c.outcome.includes('text')?'blue':'gray'}">${c.outcome}</span>
+        <span class="pill ${c.outcome==='Booked'?'mono':c.outcome.includes('text')?'mono':'gray'}">${c.outcome}</span>
         <div class="call-time">${c.time}</div>
       </div>
     </div>`).join('');

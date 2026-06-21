@@ -15,7 +15,7 @@
   --border:#1e1e22;--border2:#28282e;
   --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
   --pink:#ff2d8e;--pink2:#ff6bb0;--pink-dim:rgba(255,45,142,.12);--pink-glow:rgba(255,45,142,.4);
-  --green:#34d171;--green-dim:rgba(52,209,113,.12);
+  
   --ff-serif:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --r:14px;--r-sm:10px;--r-lg:20px;
@@ -40,9 +40,9 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-step-dot{display:flex;align-items:center}
 .ob-dot{width:30px;height:30px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--text3);transition:all .3s;flex-shrink:0}
 .ob-dot.active{border-color:var(--pink);background:var(--pink-dim);color:var(--pink2);box-shadow:0 0 16px var(--pink-glow)}
-.ob-dot.done{border-color:var(--green);background:var(--green-dim);color:var(--green)}
+.ob-dot.done{border-color:var(--text);background:var(--mono-dim);color:var(--text)}
 .ob-line{width:46px;height:1px;background:var(--border2);transition:background .3s}
-.ob-line.done{background:var(--green)}
+.ob-line.done{background:var(--text)}
 .ob-step-labels{display:flex;align-items:center;justify-content:center;gap:0;padding:0 20px 24px}
 .ob-step-label{font-size:10px;color:var(--text3);text-align:center;transition:color .3s}
 .ob-step-label.active{color:var(--text2)}
@@ -133,12 +133,12 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-btn-primary.full{flex:1}
 
 /* GO LIVE */
-.ob-live-check{width:64px;height:64px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--green)}
+.ob-live-check{width:64px;height:64px;border-radius:50%;background:var(--mono-dim);border:1px solid var(--text);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--text)}
 .ob-connecting{display:flex;flex-direction:column;gap:12px;margin:24px 0}
 .ob-connect-item{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--text2);padding:12px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm)}
 .ob-connect-spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
-.ob-connect-check{color:var(--green);flex-shrink:0}
+.ob-connect-check{color:var(--text);flex-shrink:0}
 </style>
 </head>
 <body>

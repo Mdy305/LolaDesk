@@ -40,7 +40,7 @@
 .rb-text{font-size:14px;font-weight:300;color:var(--text2);line-height:1.6}
 .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chip{font-size:12px;background:var(--surface2);border:0.5px solid var(--border);padding:5px 11px;border-radius:20px;color:var(--text2)}
-.chip.good{background:var(--green-dim);color:var(--green);border-color:transparent}
+.chip.good{background:var(--mono-dim);color:var(--text);border-color:transparent}
 .chip.bad{background:rgba(255,59,48,.12);color:#ff5146;border-color:transparent}
 
 .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -264,8 +264,8 @@ function renderAnalysis(d){
 
     <div class="result-grid">
       <div class="result-block">
-        <div class="rb-label" style="color:var(--green)">Strengths</div>
-        ${(d.strengths||[]).map(s=>`<div class="list-item"><span class="list-marker" style="color:var(--green)">✓</span><span>${s}</span></div>`).join('')}
+        <div class="rb-label" style="color:var(--text)">Strengths</div>
+        ${(d.strengths||[]).map(s=>`<div class="list-item"><span class="list-marker" style="color:var(--text)">✓</span><span>${s}</span></div>`).join('')}
       </div>
       <div class="result-block">
         <div class="rb-label" style="color:#ff5146">Gaps</div>
@@ -283,7 +283,7 @@ function renderAnalysis(d){
 // ── STRATEGY ──
 async function runStrategy(){
   if(!lastAnalysis){
-    document.getElementById('strategyOut').innerHTML = `<div class="result-block"><div class="rb-text" style="color:var(--amber)">Run a URL analysis first so Marketer has something to build on.</div></div>`;
+    document.getElementById('strategyOut').innerHTML = `<div class="result-block"><div class="rb-text" style="color:var(--text)">Run a URL analysis first so Marketer has something to build on.</div></div>`;
     return;
   }
   const goals = document.getElementById('strategyGoals').value.trim();
@@ -357,8 +357,8 @@ function renderStrategy(d){
     </div>
 
     ${(d.do_not_do||[]).length?`<div class="result-block">
-      <div class="rb-label" style="color:var(--amber)">Stop doing</div>
-      ${d.do_not_do.map(s=>`<div class="list-item"><span class="list-marker" style="color:var(--amber)">!</span><span>${s}</span></div>`).join('')}
+      <div class="rb-label" style="color:var(--text)">Stop doing</div>
+      ${d.do_not_do.map(s=>`<div class="list-item"><span class="list-marker" style="color:var(--text)">!</span><span>${s}</span></div>`).join('')}
     </div>`:''}
   `;
 }

@@ -30,14 +30,14 @@
 .live-event{display:flex;align-items:center;gap:10px;padding:10px 18px;font-size:12.5px}
 .live-time{font-size:10px;color:var(--text3);width:42px;flex-shrink:0;font-variant-numeric:tabular-nums}
 .live-agent{font-weight:600;color:var(--pink2)}
-.live-event .pip{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);flex-shrink:0}
+.live-event .pip{width:6px;height:6px;border-radius:50%;background:var(--text);box-shadow:0 0 6px var(--text);flex-shrink:0}
 
 /* AGENT GRID */
 .agent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .agent{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:22px;transition:all .2s;position:relative;cursor:pointer;display:flex;flex-direction:column}
 .agent:hover{border-color:var(--border2);transform:translateY(-2px)}
 .agent.active{border-color:var(--pink)}
-.agent.active::before{content:'';position:absolute;top:14px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.agent.active::before{content:'';position:absolute;top:14px;right:14px;width:7px;height:7px;border-radius:50%;background:var(--text);box-shadow:0 0 8px var(--text)}
 .agent-icon{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
 .agent-name{font-size:16px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:8px}
 .agent-role{font-size:11px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px}
@@ -46,8 +46,8 @@
 .agent-stat-val{font-size:15px;font-weight:600}
 .agent-stat-label{font-size:10px;color:var(--text3);letter-spacing:.04em}
 .agent-foot{display:flex;align-items:center;justify-content:space-between;font-size:11px}
-.agent-status{display:flex;align-items:center;gap:6px;color:var(--green)}
-.agent-status .ldot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green)}
+.agent-status{display:flex;align-items:center;gap:6px;color:var(--text)}
+.agent-status .ldot{width:6px;height:6px;border-radius:50%;background:var(--text);box-shadow:0 0 5px var(--text)}
 .agent-cfg{color:var(--pink2);font-weight:500;cursor:pointer}
 
 /* SECTION HEADER */
@@ -61,9 +61,7 @@
 
 /* color variants */
 .tone-pink{background:var(--pink-dim);color:var(--pink2)}
-.tone-blue{background:var(--blue-dim);color:var(--blue)}
-.tone-green{background:var(--green-dim);color:var(--green)}
-.tone-amber{background:var(--amber-dim);color:var(--amber)}
+.tone-mono{background:var(--mono-dim);color:var(--text)}
 .tone-purple{background:rgba(168,85,247,.12);color:#c084fc}
 .tone-rose{background:rgba(244,114,182,.12);color:#f472b6}
 .tone-sky{background:rgba(56,189,248,.12);color:#7dd3fc}
@@ -80,7 +78,7 @@
 
 /* Toggle Switch Slider styling */
 #agActive:checked + #agActiveSlider {
-  background-color: var(--green);
+  background-color: var(--text);
 }
 #agActiveSlider:before {
   position: absolute;
@@ -128,7 +126,7 @@
           <div class="hub-stats">
             <div><div class="hub-stat-val">8</div><div class="hub-stat-label">AGENTS</div></div>
             <div><div class="hub-stat-val">160</div><div class="hub-stat-label">HANDOFFS TODAY</div></div>
-            <div><div class="hub-stat-val" style="color:var(--green)">97%</div><div class="hub-stat-label">SUCCESS</div></div>
+            <div><div class="hub-stat-val" style="color:var(--text)">97%</div><div class="hub-stat-label">SUCCESS</div></div>
           </div>
         </div>
       </div>
@@ -230,7 +228,7 @@
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:14px; margin-bottom:14px; padding-right: 4px;">
             <span style="font-size:12px; font-weight:500; color:var(--text2);">Status</span>
             <label style="position:relative; display:inline-block; width:44px; height:24px; cursor: pointer;">
-              <input type="checkbox" id="agActive" style="opacity: 0; width: 0; height: 0;" onchange="document.getElementById('agActiveSlider').style.backgroundColor = this.checked ? 'var(--green)' : '#333'">
+              <input type="checkbox" id="agActive" style="opacity: 0; width: 0; height: 0;" onchange="document.getElementById('agActiveSlider').style.backgroundColor = this.checked ? 'var(--text)' : '#333'">
               <span style="position:absolute; inset:0; background-color:#333; transition:.3s; border-radius:24px;" id="agActiveSlider"></span>
             </label>
           </div>
@@ -252,16 +250,16 @@ const AGENTS = [
   { id:'lola', icon:'🎀', tone:'pink', name:'Lola', role:'Orchestrator', desc:'The voice every caller hears first. Warmly greets, listens, detects intent, and hands off to the right specialist in under a second.',
     calls:142, handoffs:142, success:98, model:'claude-sonnet-4-6 / Qwen3-235B', active:true,
     prompt:`You are Lola, the front-desk AI for {{salon_name}}. You are warm, surgically smart, and brief — like the best receptionist in the world.\nYour job is to greet, listen for intent, then hand off to the right specialist:\n- "Booker" → wants to book, schedule, reschedule\n- "Sales" → asking about services, prices, packages (new clients)\n- "Concierge" → returning VIP client, wants their stylist\n- "Recovery" → missed an appointment, hasn't been in a while\n- "Support" → cancel, complaint, change\nIf a human is required, hand off to "Handoff".\nAlways stay warm. Never say "I'll transfer you" — say "let me get you to someone who can help with that".` },
-  { id:'booker', icon:'💇', tone:'blue', name:'Booker', role:'Booking Specialist', desc:'Owns the calendar. Checks live availability, books the right service with the right stylist, sends the confirmation text.',
+  { id:'booker', icon:'💇', tone:'mono', name:'Booker', role:'Booking Specialist', desc:'Owns the calendar. Checks live availability, books the right service with the right stylist, sends the confirmation text.',
     calls:64, handoffs:0, success:94, model:'claude-sonnet-4-6',
     prompt:`You are Booker, the booking specialist at {{salon_name}}. You ONLY book appointments — you do not chat, sell, or handle complaints.\nServices and prices: {{services}}\nStylists: {{team}}\nHours: {{hours}}\nFlow:\n1. Confirm what service they want\n2. Offer 2-3 real time slots\n3. Get their name + phone\n4. Confirm and tell them the booking link will be texted\nBe brief, decisive, kind.` },
-  { id:'sales', icon:'💰', tone:'green', name:'Sales', role:'New Client Closer', desc:'For first-time callers. Explains services and prices with confidence, qualifies the lead, hands them to Booker to close.',
+  { id:'sales', icon:'💰', tone:'mono', name:'Sales', role:'New Client Closer', desc:'For first-time callers. Explains services and prices with confidence, qualifies the lead, hands them to Booker to close.',
     calls:31, handoffs:28, success:90, model:'claude-sonnet-4-6',
     prompt:`You are Sales, the new-client specialist at {{salon_name}}. Your job is to make a first-time caller fall in love with the salon and want to book.\nServices: {{services}}\nWhat makes us special: {{usp}}\nApproach: be warm, build excitement, anchor to the result they want, give the price confidently, then hand off to Booker.\nNever apologize for prices.` },
   { id:'concierge', icon:'🌸', tone:'rose', name:'Concierge', role:'VIP Specialist', desc:'For returning VIPs. Remembers their preferences, their stylist, their last service. Treats every regular like family.',
     calls:24, handoffs:18, success:96, model:'claude-sonnet-4-6',
     prompt:`You are Concierge, the VIP specialist at {{salon_name}}. The caller is a returning client — you already know:\nLast service: {{last_service}}\nPreferred stylist: {{preferred_stylist}}\nNotes: {{client_notes}}\nGreet them by name. Reference their history naturally. Ask if they want their usual or something new. Hand off to Booker to schedule.\nWarm, familiar, never robotic.` },
-  { id:'recovery', icon:'🎯', tone:'amber', name:'Recovery', role:'Win-back & Rebooking', desc:'Outbound calls and texts. Reaches clients who missed their appointment or are overdue. Brings them back.',
+  { id:'recovery', icon:'🎯', tone:'mono', name:'Recovery', role:'Win-back & Rebooking', desc:'Outbound calls and texts. Reaches clients who missed their appointment or are overdue. Brings them back.',
     calls:38, handoffs:31, success:78, model:'claude-sonnet-4-6',
     prompt:`You are Recovery at {{salon_name}}. You make warm outbound calls and texts to clients who haven't been in for {{days_since_last_visit}} days or missed an appointment.\nBe gentle, never pushy. Reference what they got last time. Offer a specific time slot. If they want to rebook, hand off to Booker.\nIf they want to cancel/never return, gracefully accept and hand off to Support.` },
   { id:'support', icon:'📋', tone:'sky', name:'Support', role:'Changes & Resolution', desc:'Handles cancellations, reschedules, complaints. Calm, precise, de-escalates and resolves in one call.',
@@ -304,7 +302,7 @@ function renderAgents(){
       <div class="agent-stats">
         <div><div class="agent-stat-val">${a.calls}</div><div class="agent-stat-label">Today</div></div>
         <div><div class="agent-stat-val">${a.handoffs}</div><div class="agent-stat-label">Handoffs</div></div>
-        <div><div class="agent-stat-val" style="color:var(--green)">${a.success}%</div><div class="agent-stat-label">Success</div></div>
+        <div><div class="agent-stat-val" style="color:var(--text)">${a.success}%</div><div class="agent-stat-label">Success</div></div>
       </div>
       <div class="agent-foot">
         <span class="agent-status"><span class="ldot"></span>Active</span>
@@ -338,7 +336,7 @@ function openAgent(id){
   document.getElementById('agVoice').value = a.voice || 'Polly.Joanna-Neural';
   document.getElementById('agPrompt').value = a.prompt;
   document.getElementById('agActive').checked = a.active !== false;
-  document.getElementById('agActiveSlider').style.backgroundColor = (a.active !== false) ? 'var(--green)' : '#333';
+  document.getElementById('agActiveSlider').style.backgroundColor = (a.active !== false) ? 'var(--text)' : '#333';
   
   document.getElementById('agentDrawer').classList.add('open');
 }
@@ -370,7 +368,7 @@ window.saveAgent = function(){
   // Show a beautiful toast
   const toast = document.createElement('div');
   toast.className = 'save-toast show ok';
-  toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:var(--surface); border:0.5px solid var(--green); border-radius:var(--r-sm); padding:12px 18px; font-size:13px; color:var(--green); box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:1000;';
+  toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:var(--surface); border:0.5px solid var(--text); border-radius:var(--r-sm); padding:12px 18px; font-size:13px; color:var(--text); box-shadow:0 8px 30px rgba(0,0,0,.3); z-index:1000;';
   toast.textContent = `${a.name} configuration saved.`;
   document.body.appendChild(toast);
   setTimeout(()=> toast.remove(), 2500);

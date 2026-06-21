@@ -15,9 +15,9 @@
   --border:#1e1e22;--border2:#28282e;
   --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
   --pink:#ff2d8e;--pink2:#ff6bb0;--pink-dim:rgba(255,45,142,.12);--pink-glow:rgba(255,45,142,.4);
-  --green:#34d171;--green-dim:rgba(52,209,113,.12);
-  --amber:#ffb020;--amber-dim:rgba(255,176,32,.12);
-  --blue:#5ac8fa;--blue-dim:rgba(90,200,250,.12);
+  
+  
+  
   --ff-serif:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --r:14px;--r-sm:10px;--r-lg:20px;
@@ -175,15 +175,15 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .insight:hover{background:var(--surface2)}
 .insight-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
 .insight-icon.rebook{background:var(--pink-dim)}
-.insight-icon.gap{background:var(--amber-dim)}
-.insight-icon.gift{background:var(--blue-dim)}
+.insight-icon.gap{background:var(--mono-dim)}
+.insight-icon.gift{background:var(--mono-dim)}
 .insight-info{flex:1}
 .insight-text{font-size:12.5px;font-weight:400;color:var(--text);line-height:1.4;margin-bottom:2px}
 .insight-sub{font-size:11px;font-weight:300;color:var(--text3)}
 
 /* ─── REVENUE ─── */
 .rev-big{font-size:34px;font-weight:600;color:var(--text);line-height:1;margin-bottom:6px}
-.rev-change{font-size:12px;font-weight:500;color:var(--green);display:flex;align-items:center;gap:4px}
+.rev-change{font-size:12px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:4px}
 .rev-chart{height:88px;margin-top:16px;position:relative}
 
 /* ─── DONUT ─── */
@@ -212,7 +212,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .quick-val{font-size:12.5px;font-weight:300;color:var(--text2)}
 .quick-delta{color:var(--text3);margin-left:4px;font-size:11px}
 .quick-pill{font-size:9px;font-weight:600;background:var(--pink-dim);color:var(--pink2);padding:2px 7px;border-radius:20px;letter-spacing:.04em}
-.quick-pill.green{background:var(--green-dim);color:var(--green)}
+.quick-pill.green{background:var(--mono-dim);color:var(--text)}
 .quick-arrow{color:var(--text3);transition:all .18s cubic-bezier(.4,0,.2,1);flex-shrink:0}
 .panel-tag{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;color:var(--text2);padding:14px 16px 10px;letter-spacing:.04em}
 .panel-tag-icon{color:var(--pink2)}
@@ -259,9 +259,9 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .call-prob{margin-bottom:14px}
 .call-prob-head{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}
 .call-prob-label{color:var(--text3)}
-.call-prob-val{color:var(--green);font-weight:600}
+.call-prob-val{color:var(--text);font-weight:600}
 .call-prob-track{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
-.call-prob-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--pink),var(--green));transition:width 1s ease}
+.call-prob-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--pink),var(--text));transition:width 1s ease}
 .call-waveform{display:flex;align-items:center;justify-content:center;gap:2px;height:30px;margin-bottom:14px}
 .cwb{width:2px;border-radius:1px;background:var(--pink);opacity:.6}
 .call-transcript{font-size:11px;line-height:1.5;color:var(--text2);max-height:54px;overflow-y:auto;margin-bottom:14px}
@@ -285,9 +285,9 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .inbox-name{font-size:12.5px;font-weight:500;color:var(--text)}
 .inbox-channel{font-size:9px;font-weight:500;padding:1px 6px;border-radius:4px;letter-spacing:.04em}
 .ch-instagram{background:rgba(225,48,108,.15);color:#ff6bb0}
-.ch-sms{background:var(--green-dim);color:var(--green)}
+.ch-sms{background:var(--mono-dim);color:var(--text)}
 .ch-whatsapp{background:rgba(37,211,102,.15);color:#25d366}
-.ch-email{background:var(--blue-dim);color:var(--blue)}
+.ch-email{background:var(--mono-dim);color:var(--text)}
 .inbox-time{font-size:10px;color:var(--text3);flex-shrink:0}
 .inbox-msg{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .inbox-unread{width:7px;height:7px;border-radius:50%;background:var(--pink);flex-shrink:0;box-shadow:0 0 6px var(--pink-glow)}
@@ -301,7 +301,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .team-role{font-size:11px;color:var(--text3)}
 .team-rev{text-align:right}
 .team-rev-val{font-size:13px;font-weight:600;color:var(--text)}
-.team-rev-change{font-size:10px;color:var(--green)}
+.team-rev-change{font-size:10px;color:var(--text)}
 
 /* ─── MOBILE APP PHONE ─── */
 .phone-panel{display:flex;flex-direction:column;align-items:center}
@@ -331,15 +331,15 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .roi-panel::before{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;background:radial-gradient(circle,rgba(52,209,113,.1),transparent 60%);pointer-events:none}
 .roi-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .roi-title{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--text)}
-.roi-title-icon{width:28px;height:28px;border-radius:8px;background:var(--green-dim);color:var(--green);display:flex;align-items:center;justify-content:center}
-.roi-badge{font-size:10px;font-weight:600;background:var(--green-dim);color:var(--green);padding:3px 9px;border-radius:20px;letter-spacing:.04em}
-.roi-big{font-size:32px;font-weight:600;color:var(--green);line-height:1;margin-bottom:4px}
+.roi-title-icon{width:28px;height:28px;border-radius:8px;background:var(--mono-dim);color:var(--text);display:flex;align-items:center;justify-content:center}
+.roi-badge{font-size:10px;font-weight:600;background:var(--mono-dim);color:var(--text);padding:3px 9px;border-radius:20px;letter-spacing:.04em}
+.roi-big{font-size:32px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px}
 .roi-sub{font-size:12px;font-weight:300;color:var(--text2);margin-bottom:16px}
 .roi-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .roi-stat{background:rgba(255,255,255,.025);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;text-align:center}
 .roi-stat-val{font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:3px}
 .roi-stat-label{font-size:10px;color:var(--text3)}
-.roi-stat-val.green{color:var(--green)}
+.roi-stat-val.green{color:var(--text)}
 .roi-stat-val.pink{color:var(--pink2)}
 
 /* ─── WHILE YOU WERE AWAY ─── */
@@ -353,10 +353,10 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .away-item:last-child{border-bottom:none}
 .away-item:hover{background:var(--surface2)}
 .away-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
-.away-icon.call{background:var(--green-dim)}
-.away-icon.msg{background:var(--blue-dim)}
+.away-icon.call{background:var(--mono-dim)}
+.away-icon.msg{background:var(--mono-dim)}
 .away-icon.book{background:var(--pink-dim)}
-.away-icon.rebook{background:var(--amber-dim)}
+.away-icon.rebook{background:var(--mono-dim)}
 .away-icon.alert{background:rgba(255,59,48,.12)}
 .away-text{flex:1;min-width:0}
 .away-text-main{font-size:12.5px;color:var(--text);line-height:1.4;margin-bottom:2px}
@@ -396,7 +396,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .chat-modal-title{display:flex;align-items:center;gap:11px}
 .chat-modal-orb{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;font-size:16px;color:#fff}
 .chat-modal-name{font-size:15px;font-weight:600;color:var(--text)}
-.chat-modal-status{font-size:11px;color:var(--green)}
+.chat-modal-status{font-size:11px;color:var(--text)}
 .chat-close{width:34px;height:34px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all .15s}
 .chat-close:hover{background:var(--surface2);color:var(--text)}
 .chat-msgs{flex:1;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:14px;min-height:200px}
@@ -451,7 +451,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <div class="nav-item" onclick="location.href='clients.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg>Clients</div>
       <div class="nav-item" onclick="location.href='calls.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>Calls<span class="nav-badge">12</span></div>
       <div class="nav-item" onclick="location.href='inbox.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Inbox<span class="nav-badge">8</span></div>
-      <div class="nav-item" onclick="location.href='numbers.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg>Numbers<span class="nav-badge" style="background:var(--green-dim);color:var(--green)">New</span></div>
+      <div class="nav-item" onclick="location.href='numbers.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg>Numbers<span class="nav-badge" style="background:var(--mono-dim);color:var(--text)">New</span></div>
       <div class="nav-item" onclick="location.href='bookings.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>Bookings</div>
       <div class="nav-item" onclick="location.href='revenue.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Revenue</div>
       <div class="nav-item" onclick="location.href='team.html'"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/></svg>Team</div>
@@ -511,10 +511,10 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <div class="roi-big" id="roiTotal">$0</div>
       <div class="roi-sub" id="roiSub">Revenue from bookings Lola made via phone, SMS, and chat</div>
       <div class="roi-stats">
-        <div class="roi-stat"><div class="roi-stat-val green" id="roiCalls">0</div><div class="roi-stat-label">Calls answered</div></div>
+        <div class="roi-stat"><div class="roi-stat-val mono" id="roiCalls">0</div><div class="roi-stat-label">Calls answered</div></div>
         <div class="roi-stat"><div class="roi-stat-val pink" id="roiBooked">0</div><div class="roi-stat-label">Bookings made</div></div>
         <div class="roi-stat"><div class="roi-stat-val" id="roiConversion">0%</div><div class="roi-stat-label">Conversion rate</div></div>
-        <div class="roi-stat"><div class="roi-stat-val" style="color:var(--amber)" id="roiUpsell">$0</div><div class="roi-stat-label">Upsell revenue</div></div>
+        <div class="roi-stat"><div class="roi-stat-val" style="color:var(--text)" id="roiUpsell">$0</div><div class="roi-stat-label">Upsell revenue</div></div>
       </div>
     </div>
 
@@ -676,7 +676,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
         <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
         <div class="quick-body">
           <div class="quick-label">Revenue</div>
-          <div class="quick-val">$38,200 <span class="quick-delta" style="color:var(--green)">↑ 24%</span></div>
+          <div class="quick-val">$38,200 <span class="quick-delta" style="color:var(--text)">↑ 24%</span></div>
         </div>
         <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </a>
@@ -693,7 +693,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <a class="quick-tile" href="numbers.html">
         <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
         <div class="quick-body">
-          <div class="quick-label">Numbers <span class="quick-pill green">New</span></div>
+          <div class="quick-label">Numbers <span class="quick-pill mono">New</span></div>
           <div class="quick-val">Get your Lola line</div>
         </div>
         <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -1005,7 +1005,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       insights.push({
         title: 'Smart Upsells Working',
         desc: `Lola generated <strong>$${(k.upsellRevenue||0).toLocaleString()}</strong> in add-on revenue this month.`,
-        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'
       });
     }
 
@@ -1034,9 +1034,9 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     btn.textContent = 'Sending texts...';
     setTimeout(() => {
       btn.textContent = 'Sent to 5 clients!';
-      btn.style.background = 'var(--green-dim)';
-      btn.style.color = 'var(--green)';
-      btn.style.borderColor = 'var(--green)';
+      btn.style.background = 'var(--mono-dim)';
+      btn.style.color = 'var(--text)';
+      btn.style.borderColor = 'var(--text)';
     }, 1000);
   };
 
@@ -1164,7 +1164,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     btn.textContent = 'Sending...';
     setTimeout(() => {
       btn.textContent = 'Sent!';
-      btn.style.background = 'var(--green)';
+      btn.style.background = 'var(--text)';
     }, 800);
   };
 

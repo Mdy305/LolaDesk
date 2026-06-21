@@ -28,7 +28,7 @@
 .int-name{font-size:14px;font-weight:500}
 .int-status{font-size:11px;color:var(--text3)}
 .connect-btn{padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;transition:all .15s;border:none;cursor:pointer;white-space:nowrap}
-.connect-btn.connected{background:var(--green-dim);color:var(--green);cursor:default}
+.connect-btn.connected{background:var(--mono-dim);color:var(--text);cursor:default}
 .connect-btn.connect{background:var(--pink);color:#fff}
 .connect-btn.pending{background:var(--surface2);color:var(--text3);cursor:not-allowed}
 .plan-card{background:linear-gradient(135deg,var(--pink-dim),var(--surface));border:0.5px solid var(--pink);border-radius:var(--r);padding:22px;margin-top:0}
@@ -39,7 +39,7 @@
 .save-toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 18px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:50}
 .save-toast.show{opacity:1;transform:translateY(0)}
 .save-toast.err{color:#ff6b6b;border-color:#ff6b6b}
-.save-toast.ok{color:var(--green)}
+.save-toast.ok{color:var(--text)}
 </style>
 </head>
 <body data-page="settings">
@@ -200,7 +200,7 @@ function renderIntegrations(providers){
     const clickHandler = p.status === 'connected' ? `disconnectProvider('${p.id}')` : `connectProvider('${p.id}')`;
     const hoverTriggers = p.status === 'connected'
       ? `onmouseover="this.textContent='Disconnect'; this.style.color='#ff6b6b'; this.style.backgroundColor='rgba(255,107,107,0.12)'; this.style.cursor='pointer';"` +
-        ` onmouseout="this.textContent='Connected'; this.style.color='var(--green)'; this.style.backgroundColor='var(--green-dim)'; this.style.cursor='default';"`
+        ` onmouseout="this.textContent='Connected'; this.style.color='var(--text)'; this.style.backgroundColor='var(--mono-dim)'; this.style.cursor='default';"`
       : '';
     const statusText = p.status === 'connected'
       ? (p.metadata?.shop ? `Connected — ${p.metadata.shop}` : 'Connected')
