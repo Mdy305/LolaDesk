@@ -23,7 +23,6 @@
 
   const items = [
     { id:'overview', label:'Overview', href:'lola-atom.html' },
-    { id:'agents',   label:'Agents',   href:'agents.html', badge:'8', pink:true },
     { id:'clients',  label:'Clients',  href:'clients.html' },
     { id:'calls',    label:'Calls',    href:'calls.html', badge:'12' },
     { id:'inbox',    label:'Inbox',    href:'inbox.html', badge:'8' },
