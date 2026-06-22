@@ -158,8 +158,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
     <div class="ob-step-dot"><div class="ob-dot" data-dot="2">3</div></div>
     <div class="ob-line" data-line="2"></div>
     <div class="ob-step-dot"><div class="ob-dot" data-dot="3">4</div></div>
-    <div class="ob-line" data-line="3"></div>
-    <div class="ob-step-dot"><div class="ob-dot" data-dot="4">5</div></div>
+    
   </div>
 
   <div class="ob-body">
@@ -236,82 +235,8 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
         </div>
       </div>
 
-      <!-- STEP 2: PLATFORM -->
+      <!-- STEP 2: PLAN -->
       <div class="ob-step" data-step="2">
-        <h1 class="ob-step-title">Connect your booking system</h1>
-        <p class="ob-step-sub">Lola reads your calendar and books straight into the system you already use.</p>
-        <div class="ob-platforms" id="platforms">
-          <div class="ob-platform" data-platform="square" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#fff;color:#000">□</div>
-            <div class="ob-platform-name">Square</div>
-            <div class="ob-platform-desc">Appointments & payments. Most popular.</div>
-          </div>
-          <div class="ob-platform" data-platform="mindbody" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#e0f;color:#fff">M</div>
-            <div class="ob-platform-name">Mindbody</div>
-            <div class="ob-platform-desc">Wellness & spa scheduling.</div>
-          </div>
-          <div class="ob-platform" data-platform="vagaro" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#5b2a86;color:#fff">V</div>
-            <div class="ob-platform-name">Vagaro</div>
-            <div class="ob-platform-desc">Salon & beauty bookings.</div>
-          </div>
-          <div class="ob-platform" data-platform="fresha" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#1a1a2e;color:#fff">F</div>
-            <div class="ob-platform-name">Fresha</div>
-            <div class="ob-platform-desc">Global beauty platform.</div>
-          </div>
-        </div>
-        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:14px">Don't use any of these? <a href="#" style="color:var(--pink2)" onclick="selectNone();return false">Use a booking link instead →</a></p>
-        <div class="ob-nav">
-          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary full" onclick="next()">Review & Live</button>
-        </div>
-      </div>
-
-      <!-- STEP 3: PERSONA -->
-      <div class="ob-step" data-step="3">
-        <h1 class="ob-step-title">Give Lola her personality</h1>
-        <p class="ob-step-sub">How should Lola sound when she talks to your clients?</p>
-        <div class="ob-persona" id="personas">
-          <div class="ob-persona-card selected" data-persona="warm" onclick="selectPersona(this)">
-            <div class="ob-persona-name">Warm & Playful</div>
-            <div class="ob-persona-desc">Valley girl confidence. Friendly, fun, converts.</div>
-            <div class="ob-persona-sample">"Obsessed — let's get you booked babe!"</div>
-          </div>
-          <div class="ob-persona-card" data-persona="luxury" onclick="selectPersona(this)">
-            <div class="ob-persona-name">Quiet Luxury</div>
-            <div class="ob-persona-desc">Refined, elegant, understated. High-end feel.</div>
-            <div class="ob-persona-sample">"It would be my pleasure to arrange that."</div>
-          </div>
-          <div class="ob-persona-card" data-persona="clinical" onclick="selectPersona(this)">
-            <div class="ob-persona-name">Calm & Clinical</div>
-            <div class="ob-persona-desc">Reassuring, precise. Ideal for med spas.</div>
-            <div class="ob-persona-sample">"I'll walk you through exactly what to expect."</div>
-          </div>
-          <div class="ob-persona-card" data-persona="energetic" onclick="selectPersona(this)">
-            <div class="ob-persona-name">Bright & Energetic</div>
-            <div class="ob-persona-desc">Upbeat, fast, exciting. Great for trendy spots.</div>
-            <div class="ob-persona-sample">"Yes! Let's make today amazing ✨"</div>
-          </div>
-        </div>
-        <div class="ob-field" style="margin-top:16px">
-          <label class="ob-label">Lola's voice</label>
-          <select class="ob-input" id="f-voice">
-            <option value="Samantha">Samantha — warm American</option>
-            <option value="Karen">Karen — calm Australian</option>
-            <option value="Moira">Moira — friendly Irish</option>
-            <option value="Google UK English Female">British English</option>
-          </select>
-        </div>
-        <div class="ob-nav">
-          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary" onclick="next()">Continue</button>
-        </div>
-      </div>
-
-      <!-- STEP 5: PLAN + GO LIVE -->
-      <div class="ob-step" data-step="4">
         <h1 class="ob-step-title">Meet your Lola</h1>
         <p class="ob-step-sub">Here's how she'll greet your clients. Pick a plan and go live.</p>
 
@@ -348,8 +273,46 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
         <p style="font-size:11px;color:var(--text3);text-align:center;margin-top:12px">No charge today. Cancel anytime.</p>
       </div>
 
-      <!-- GO LIVE ANIMATION -->
-      <div class="ob-step" data-step="5">
+      <!-- STEP 3: PLATFORM -->
+      <div class="ob-step" data-step="3">
+        <h1 class="ob-step-title">Connect your booking system</h1>
+        <p class="ob-step-sub">Lola reads your calendar and books straight into the system you already use.</p>
+        <div class="ob-platforms" id="platforms">
+          <div class="ob-platform" data-platform="square" onclick="selectPlatform(this)">
+            <div class="ob-platform-logo" style="background:#fff;color:#000">□</div>
+            <div class="ob-platform-name">Square</div>
+            <div class="ob-platform-desc">Appointments & payments. Most popular.</div>
+          </div>
+          <div class="ob-platform" data-platform="mindbody" onclick="selectPlatform(this)">
+            <div class="ob-platform-logo" style="background:#e0f;color:#fff">M</div>
+            <div class="ob-platform-name">Mindbody</div>
+            <div class="ob-platform-desc">Wellness & spa scheduling.</div>
+          </div>
+          <div class="ob-platform" data-platform="vagaro" onclick="selectPlatform(this)">
+            <div class="ob-platform-logo" style="background:#5b2a86;color:#fff">V</div>
+            <div class="ob-platform-name">Vagaro</div>
+            <div class="ob-platform-desc">Salon & beauty bookings.</div>
+          </div>
+          <div class="ob-platform" data-platform="fresha" onclick="selectPlatform(this)">
+            <div class="ob-platform-logo" style="background:#1a1a2e;color:#fff">F</div>
+            <div class="ob-platform-name">Fresha</div>
+            <div class="ob-platform-desc">Global beauty platform.</div>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:14px">Don't use any of these? <a href="#" style="color:var(--pink2)" onclick="selectNone();return false">Use a booking link instead →</a></p>
+        
+        <div class="ob-field" style="margin-top:20px">
+          <label class="ob-label">Your Booking Link / Site URL</label>
+          <input class="ob-input" id="f-booking-url" placeholder="https://..." />
+        </div>
+<div class="ob-nav">
+          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
+          <button class="ob-btn ob-btn-primary full" onclick="next()">Continue</button>
+        </div>
+      </div>
+
+      <!-- STEP 4: GO LIVE -->
+      <div class="ob-step" data-step="4">
         <div class="ob-live-check" id="liveCheck" style="display:none">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
         </div>
@@ -375,16 +338,10 @@ const state = {
     {name:'Haircut & Style', price:'95', dur:'1h'},
     {name:'Color', price:'225', dur:'1h 30m'}
   ],
-  persona:'warm', voice:'Samantha',
+  bookingUrl:'',
   plan:'pro', price:'399'
 };
 
-const personaGreetings = {
-  warm:"Hey babe! I'm Lola. What can I get you booked for today?",
-  luxury:"Good day. I'm Lola — it would be my pleasure to arrange your appointment.",
-  clinical:"Hi, I'm Lola. I'll help you find the right treatment and book your visit.",
-  energetic:"Hi hi! I'm Lola ✨ Let's get you something amazing booked!"
-};
 
 function renderServices(){
   const el = document.getElementById('services');
@@ -412,11 +369,6 @@ window.selectNone=()=>{
   state.platform='link';
   next();
 };
-window.selectPersona=(el)=>{
-  document.querySelectorAll('.ob-persona-card').forEach(p=>p.classList.remove('selected'));
-  el.classList.add('selected');
-  state.persona=el.dataset.persona;
-};
 window.selectPlan=(el)=>{
   document.querySelectorAll('.ob-plan').forEach(p=>p.classList.remove('selected'));
   el.classList.add('selected');
@@ -434,6 +386,10 @@ function saveStep(){
     state.email=document.getElementById('f-email').value.trim();
     state.password=document.getElementById('f-password').value;
   }
+  if(state.step===3){
+    state.bookingUrl=document.getElementById('f-booking-url').value;
+  }
+}
   if(state.step===4){
     state.voice=document.getElementById('f-voice').value;
   }
@@ -461,7 +417,7 @@ function showStep(n){
   document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
   document.querySelector(`.ob-step[data-step="${n}"]`).classList.add('active');
   // progress dots (we shift them by 1 visually so step 0 doesn't have a dot)
-  for(let i=0;i<5;i++){
+  for(let i=0;i<4;i++){
     const dot=document.querySelector(`.ob-dot[data-dot="${i}"]`);
     const line=document.querySelector(`.ob-line[data-line="${i}"]`);
     if(!dot) continue;
@@ -476,9 +432,9 @@ function showStep(n){
 
 window.next=()=>{
   saveStep();
-  if(state.step<5){state.step++;showStep(state.step);}
+  if(state.step<4){state.step++;showStep(state.step);}
   if(state.step===3)renderServices();
-  if(state.step===5)renderPreview();
+  if(state.step===2)renderPreview();
 };
 window.back=()=>{
   if(state.step>0){state.step--;showStep(state.step);}
@@ -486,8 +442,8 @@ window.back=()=>{
 
 function renderPreview(){
   document.getElementById('previewName').textContent = 'LOLA';
-  document.getElementById('previewGreeting').textContent =
-    personaGreetings[state.persona].replace("I'm Lola","I'm Lola"+(state.name&&state.name!=='Your Salon'?` from ${state.name}`:''));
+  document.getElementById('previewGreeting').textContent = "Hi! I'm Lola" + (state.name&&state.name!=='Your Salon'?` from ${state.name}`:'') + ". How can I help you today?";
+}`:''));
 }
 
 /* preview orb */
@@ -513,10 +469,10 @@ drawPreviewOrb();
 /* GO LIVE sequence */
 window.goLive=()=>{
   saveStep();
-  state.step=5;
-  showStep(4); // keep last dot active
-  document.querySelector('.ob-step[data-step="4"]').classList.remove('active');
-  document.querySelector('.ob-step[data-step="5"]').classList.add('active');
+  state.step=4;
+  showStep(3); // keep last dot active
+  document.querySelector('.ob-step[data-step="3"]').classList.remove('active');
+  document.querySelector('.ob-step[data-step="4"]').classList.add('active');
 
   const steps=[
     'Creating your account',
@@ -566,7 +522,8 @@ async function finishLive(){
         salonName: state.name,
         location: state.location,
         plan: state.plan,
-        businessMode: (state.type||'').toLowerCase().includes('med') ? 'medspa'
+        bookingUrl: state.bookingUrl,
+        businessMode:  (state.type||'').toLowerCase().includes('med') ? 'medspa'
                      : (state.type||'').toLowerCase().includes('spa') ? 'spa' : 'salon'
       })
     });
@@ -613,7 +570,7 @@ window.enterDashboard=()=>{
     id:slugify(state.name),name:state.name,owner:state.owner,
     location:state.location,phone:state.phone,
     bookingUrl:'#',whatsapp:state.phone?'https://wa.me/'+state.phone.replace(/[^0-9]/g,''):'#',
-    persona:{name:'Lola',energy:personaEnergy[state.persona],voice:state.voice},
+    persona:{name:'Lola'},
     services:state.services.map(s=>({name:s.name,price:Number(s.price)||0,duration:s.dur})),
     team:[{name:state.owner,role:'Owner',revenue:0,change:0}],
     plan:state.plan
@@ -622,12 +579,6 @@ window.enterDashboard=()=>{
   window.location.href='dashboard.html';
 };
 
-const personaEnergy={
-  warm:'warm, intelligent, lightly playful Valley Girl confidence',
-  luxury:'refined, elegant, understated quiet-luxury poise',
-  clinical:'calm, precise, reassuring clinical warmth',
-  energetic:'bright, upbeat, fast, exciting energy'
-};
 
 function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
 function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
