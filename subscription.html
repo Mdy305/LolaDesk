@@ -43,73 +43,78 @@
 .foot a{color:var(--pink2)}
 </style>
 </head>
-<body>
-<div class="pwrap">
-  <div class="phead">
-    <div class="peyebrow">LolaDesk</div>
-    <h1 class="ptitle">Never miss a booking again.</h1>
-    <p class="psub">Lola answers every call, books every appointment, and follows up with every client — 24/7, in a voice that sounds like your best front-desk manager.</p>
-  </div>
-
-  <div class="toggle">
-    <span>Monthly</span>
-    <div class="sw" id="sw"><div class="k"></div></div>
-    <span>Yearly <span class="save">save 20%</span></span>
-  </div>
-
-  <div class="tiers">
-    <!-- Starter -->
-    <div class="tier">
-      <div class="tname">Starter</div>
-      <div class="tfor">Solo & small salons · 1–3 chairs</div>
-      <div class="tprice"><span class="amt" data-m="99" data-y="79">$99</span><span class="per">/mo</span></div>
-      <div class="tnote">Includes your Lola number</div>
-      <ul class="feat">
-        <li>${check} Lola answers & books 24/7</li>
-        <li>${check} Your custom voice</li>
-        <li>${check} Pricing, services & recommendations</li>
-        <li>${check} Lead capture — never lose a caller</li>
-        <li>${check} 1 phone number included</li>
-      </ul>
-      <div class="tcta ghost" data-plan="starter">Start free trial</div>
+<body data-page="settings">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Subscription</h1>
+        <p class="page-sub">Choose a plan to activate your AI Front Desk.</p>
+      </div>
     </div>
 
-    <!-- Pro -->
-    <div class="tier featured">
-      <div class="tname">Pro</div>
-      <div class="tfor">Growing salons · 4–10 chairs</div>
-      <div class="tprice"><span class="amt" data-m="399" data-y="319">$399</span><span class="per">/mo</span></div>
-      <div class="tnote">Everything in Starter, plus —</div>
-      <ul class="feat">
-        <li>${check} Multi-stylist resource calendar</li>
-        <li>${check} Win-back & rebooking campaigns</li>
-        <li>${check} Booking platform sync (Square, Google)</li>
-        <li>${check} Live activity & smart insights</li>
-        <li>${check} Priority call handling</li>
-      </ul>
-      <div class="tcta solid" data-plan="pro">Start free trial</div>
-    </div>
+    <div class="pwrap" style="padding-top:20px;">
+      <div class="toggle">
+        <span>Monthly</span>
+        <div class="sw" id="sw"><div class="k"></div></div>
+        <span>Yearly <span class="save">save 20%</span></span>
+      </div>
 
-    <!-- Med-Spa -->
-    <div class="tier">
-      <div class="tname">Med-Spa</div>
-      <div class="tfor">Med-spas & premium · high volume</div>
-      <div class="tprice"><span class="amt" data-m="599" data-y="479">$599</span><span class="per">/mo</span></div>
-      <div class="tnote">Everything in Pro, plus —</div>
-      <ul class="feat">
-        <li>${check} Highest call capacity</li>
-        <li>${check} Consultation & intake flows</li>
-        <li>${check} Compliance-ready call handling</li>
-        <li>${check} Dedicated onboarding</li>
-        <li>${check} All marketplace integrations</li>
-      </ul>
-      <div class="tcta ghost" data-plan="medspa">Talk to us</div>
-    </div>
-  </div>
+      <div class="tiers">
+        <!-- Starter -->
+        <div class="tier">
+          <div class="tname">Starter</div>
+          <div class="tfor">Solo & small salons · 1–3 chairs</div>
+          <div class="tprice"><span class="amt" data-m="99" data-y="79">$99</span><span class="per">/mo</span></div>
+          <div class="tnote">Includes your Lola number</div>
+          <ul class="feat">
+            <li>${check} Lola answers & books 24/7</li>
+            <li>${check} Your custom voice</li>
+            <li>${check} Pricing, services & recommendations</li>
+            <li>${check} Lead capture — never lose a caller</li>
+            <li>${check} 1 phone number included</li>
+          </ul>
+          <div class="tcta ghost" data-plan="starter">Select Starter</div>
+        </div>
 
-  <div class="foot">14-day free trial · no card to start · cancel anytime. Questions? <a href="mailto:hello@loladesk.com">hello@loladesk.com</a></div>
+        <!-- Pro -->
+        <div class="tier featured">
+          <div class="tname">Pro</div>
+          <div class="tfor">Growing salons · 4–10 chairs</div>
+          <div class="tprice"><span class="amt" data-m="399" data-y="319">$399</span><span class="per">/mo</span></div>
+          <div class="tnote">Everything in Starter, plus —</div>
+          <ul class="feat">
+            <li>${check} Multi-stylist resource calendar</li>
+            <li>${check} Win-back & rebooking campaigns</li>
+            <li>${check} Booking platform sync (Square, Google)</li>
+            <li>${check} Live activity & smart insights</li>
+            <li>${check} Priority call handling</li>
+          </ul>
+          <div class="tcta solid" data-plan="pro">Select Pro</div>
+        </div>
+
+        <!-- Med-Spa -->
+        <div class="tier">
+          <div class="tname">Med-Spa</div>
+          <div class="tfor">Med-spas & premium · high volume</div>
+          <div class="tprice"><span class="amt" data-m="599" data-y="479">$599</span><span class="per">/mo</span></div>
+          <div class="tnote">Everything in Pro, plus —</div>
+          <ul class="feat">
+            <li>${check} Highest call capacity</li>
+            <li>${check} Consultation & intake flows</li>
+            <li>${check} Compliance-ready call handling</li>
+            <li>${check} Dedicated onboarding</li>
+            <li>${check} All marketplace integrations</li>
+          </ul>
+          <div class="tcta ghost" data-plan="medspa">Talk to us</div>
+        </div>
+      </div>
+    </div>
+  </main>
 </div>
 
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
 <script>
 const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>';
 document.querySelectorAll('.feat li').forEach(li=>{ li.innerHTML = li.innerHTML.replace('${check}', CHECK); });
@@ -120,12 +125,28 @@ sw.addEventListener('click',()=>{ yearly=!yearly; sw.classList.toggle('on',yearl
   document.querySelectorAll('.amt').forEach(a=>{ a.textContent='$'+(yearly?a.dataset.y:a.dataset.m); });
 });
 
-// checkout redirects to onboarding
-document.querySelectorAll('.tcta').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const plan=btn.dataset.plan;
-    if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
-    window.location.href = `onboarding.html?plan=${plan}`;
+// checkout
+window.LolaAuth.ready.then(() => {
+  document.querySelectorAll('.tcta').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const plan=btn.dataset.plan;
+      if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
+      btn.textContent='Loading…';
+      try{
+        const r=await fetch('/api/billing/checkout',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ 
+            plan: plan,
+            tenantId: window.LolaAuth.tenant.id,
+            email: window.LolaAuth.user.email
+          })
+        });
+        const d=await r.json();
+        if(d.url) window.location.href=d.url;
+        else { btn.textContent='Try again'; alert(d.error||'Could not start checkout'); }
+      }catch(e){ btn.textContent='Try again'; }
+    });
   });
 });
 </script>

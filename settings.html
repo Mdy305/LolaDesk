@@ -244,7 +244,7 @@ window.disconnectProvider = async function(providerId){
 window.manageBilling = async function(){
   try{
     const customerId = window.LolaSettings?.stripeCustomerId;
-    if(!customerId){ showToast("No billing account yet — start a plan first.", 'err'); return; }
+    if(!customerId){ location.href = 'subscription.html'; return; }
     const r = await fetch('/api/billing/portal', {
       method:'POST', headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ customerId })

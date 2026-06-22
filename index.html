@@ -271,6 +271,14 @@ const obs = new IntersectionObserver((entries)=>{
 }, { threshold: 0.18 });
 document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
 
+document.querySelectorAll('.tcta').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const plan=btn.dataset.plan;
+    if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
+    window.location.href = `onboarding.html?plan=${plan}`;
+  });
+});
+
 function makeOrb(canvas, size){
   const x = canvas.getContext('2d');
   const c = size/2;
