@@ -1,3 +1,8 @@
+# 1. Clear out the previous version of the file
+rm -f server.cjs
+
+# 2. Write the robust, adaptive multi-tenant server module script
+cat << 'EOF' > server.cjs
 const WebSocket = require('ws');
 const { DeepgramClient } = require('@deepgram/sdk');
 const { createClient } = require('@supabase/supabase-js');
@@ -6,20 +11,20 @@ require('dotenv').config();
 const PORT = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port: PORT });
 
-// Initialize Production Client Clusters
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+// 🧠 UNIVERSAL MATRIX: Automatically scan and fallback on all Vercel & Supabase naming patterns
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL_PRODUCTION || process.env.NEXT_PUBLIC_SUPABASE_URL_PRODUCTION;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY_PRODUCTION || process.env.SUPABASE_SECRET_KEY;
 
 let supabase = null;
-if (supabaseUrl && supabaseKey) {
+if (supabaseUrl && supabaseKey && !supabaseUrl.includes('your_supabase_url')) {
   try {
     supabase = createClient(supabaseUrl, supabaseKey);
-    console.log("✅ Supabase Production Database Connected.");
+    console.log("✅ SUCCESS: Supabase Production Database connected via unified key matrix.");
   } catch (err) {
-    console.log("⚠️ Supabase connection error:", err.message);
+    console.log("⚠️ Supabase initialization bypassed:", err.message);
   }
 } else {
-  console.log("❌ CRITICAL: Supabase credentials are missing. App features will be locked.");
+  console.log("❌ CRITICAL: Supabase keys could not be found. App features are running in fallback mode.");
 }
 
 const deepgram = new DeepgramClient(process.env.DEEPGRAM_API_KEY);
@@ -27,13 +32,15 @@ const deepgram = new DeepgramClient(process.env.DEEPGRAM_API_KEY);
 console.log(`📡 LolaDesk Marketplace Engine Online on Port ${PORT}`);
 
 wss.on('connection', async (ws) => {
+  console.log('📞 Telephony Carrier Stream Route Bound.');
+  
   let isAiSpeaking = false;
   let elevenLabsWS = null;
   let callStartTime = Date.now();
   let tenantId = null;
   let systemPrompt = "You are an elite frontdesk assistant.";
 
-  // THE MULTI-TENANT BRAIN ROUTER (SUPABASE INTERACTION)
+  // MULTI-TENANT BRAIN ROUTER (SUPABASE HANDSHAKE)
   const configureDynamicTenant = async (dialedNumber) => {
     if (!supabase) return;
     try {
@@ -161,3 +168,9 @@ wss.on('connection', async (ws) => {
     }
   });
 });
+EOF
+
+# 3. Clear port 8080 and fire the voice engine core live!
+kill -9 $(lsof -t -i:8080) 2>/dev/null || true
+PORT=8080 node server.cjs
+
