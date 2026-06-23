@@ -69,6 +69,28 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .icon-btn:hover{background:var(--surface2);color:var(--text)}
 .icon-btn .dot{position:absolute;top:9px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 6px var(--pink-glow)}
 
+
+/* ─── NEW DASH LAYOUT ─── */
+.dash-header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; }
+.dash-greeting h1 { font-size:28px; font-weight:500; letter-spacing:-.01em; color:var(--text); margin-bottom:4px; }
+.dash-greeting p { font-size:14px; font-weight:300; color:var(--text2); }
+.dash-header .kpi-row { display:flex; gap:14px; margin-bottom:0; }
+.kpi { min-width:140px; }
+.col-stack { display:flex; flex-direction:column; gap:16px; }
+.bottom-cards { display:grid; grid-template-columns:repeat(5, 1fr); gap:16px; margin-top:16px; margin-bottom:60px; }
+.b-card { background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r); padding:18px; display:flex; flex-direction:column; }
+.b-card-head { display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:600; color:var(--text); margin-bottom:14px; }
+.b-card-head svg { color:var(--pink); }
+
+/* Command Bar */
+.cmd-dock { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:100; background:rgba(22,22,26,0.85); backdrop-filter:blur(24px); border:0.5px solid var(--border2); border-radius:30px; padding:8px; display:flex; align-items:center; gap:12px; box-shadow:0 10px 40px rgba(0,0,0,0.5); width:100%; max-width:900px; }
+.cmd-dock-input { flex:1; display:flex; align-items:center; gap:10px; background:var(--surface); border-radius:24px; padding:10px 16px; border:0.5px solid var(--border); }
+.cmd-dock-input input { background:none; border:none; outline:none; color:var(--text); font-size:14px; flex:1; font-family:var(--ff); }
+.cmd-dock-kbd { font-size:10px; color:var(--text3); border:0.5px solid var(--border2); padding:2px 6px; border-radius:4px; }
+.cmd-chips { display:flex; gap:8px; overflow-x:auto; }
+.cmd-chip { font-size:12px; color:var(--text2); background:var(--surface); border:0.5px solid var(--border); border-radius:20px; padding:6px 12px; white-space:nowrap; transition:0.2s; cursor:pointer; }
+.cmd-chip:hover { color:var(--text); border-color:var(--text3); }
+
 /* ─── HERO GREETING ─── */
 .hero-head{margin-bottom:22px}
 .hero-greeting{font-size:28px;font-weight:500;letter-spacing:-.01em;color:var(--text);margin-bottom:4px}
@@ -530,103 +552,149 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       <div class="away-list" id="awayList"></div>
     </div>
 
+    
+    <!-- DASH HEADER -->
+    <div class="dash-header">
+      <div class="dash-greeting">
+        <h1>Good Morning, <span id="greetingName">Meddy</span>. <span class="wave">👋</span></h1>
+        <p>Here's what's happening in your salon today.</p>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-val">7</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Today</div></div>
+        <div class="kpi"><div class="kpi-val">3</div><div class="kpi-label">Missed Calls</div><div class="kpi-sub">Need Follow Up</div></div>
+        <div class="kpi"><div class="kpi-val">2</div><div class="kpi-label">New Leads</div><div class="kpi-sub">Hot Prospects</div></div>
+        <div class="kpi accent"><div class="kpi-val">$2,850</div><div class="kpi-label">Potential Revenue</div><div class="kpi-sub">Today</div></div>
+      </div>
+    </div>
+
     <!-- MAIN GRID -->
     <div class="grid-main">
-
-      <!-- LOLA HERO PANEL (greeting + KPIs + orb) -->
+      <!-- LOLA HERO PANEL -->
       <div class="lola-panel">
-        <div class="lola-hero-head">
-          <h1 class="hero-greeting">Good <span id="greetingTime">morning</span>, <span id="greetingName">there</span>. <span class="wave">👋</span></h1>
-          <p class="hero-sub">Here's what's happening in your salon.</p>
-        </div>
-        <div class="kpi-row">
-          <div class="kpi"><div class="kpi-val" id="kpiClients">—</div><div class="kpi-label">Clients</div><div class="kpi-sub">Total</div></div>
-          <div class="kpi"><div class="kpi-val" id="kpiCalls">—</div><div class="kpi-label">Calls</div><div class="kpi-sub">Last 30 days</div></div>
-          <div class="kpi"><div class="kpi-val" id="kpiBookings">—</div><div class="kpi-label">Bookings</div><div class="kpi-sub">Last 30 days</div></div>
-          <div class="kpi accent"><div class="kpi-val" id="kpiRevenue">—</div><div class="kpi-label">Revenue</div><div class="kpi-sub">Last 30 days</div></div>
-        </div>
         <div id="usageBanner" style="display:none"></div>
         <div class="lola-orb-zone">
-        <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Tap to speak with Lola, or just say her name">
-          <canvas id="orbCanvas" width="240" height="240"></canvas>
-          
-        <div class="lola-prompt">
-          <div class="lola-prompt-title" id="orbTitle">Hey Lola…</div>
-          <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
-        </div>
-        <button class="lola-mic" id="orbMic" onclick="toggleVoice()" aria-label="Voice input">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
-        </button>
-        <div class="lola-transcript" id="orbTranscript"></div>
-        <div class="lola-ambient-toggle" id="ambientToggle" onclick="toggleAmbientListening()" role="button" tabindex="0" aria-label="Tap to toggle always-listening for Lola, mute, or hold to turn off completely">
-          <span class="dot"></span>
-          <span id="ambientToggleLabel">Always listening for "Lola"</span>
-        </div>
+          <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()">
+            <canvas id="orbCanvas" width="300" height="300"></canvas>
+            <div class="lola-core">
+              <div class="lola-name">LOLA</div>
+            </div>
+          </div>
+          <div class="lola-prompt">
+            <div class="lola-prompt-title" id="orbTitle">Hey Lola…</div>
+            <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
+          </div>
+          <button class="lola-mic" id="orbMic" onclick="toggleVoice()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
+          </button>
         </div>
       </div>
 
       <!-- MIDDLE COLUMN -->
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="col-stack">
         <!-- SCHEDULE -->
-        <div class="card">
+        <div class="card" style="flex:1">
           <div class="card-head">
-            <div class="card-title"><svg class="card-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>Today's Schedule</div>
-            <span class="card-link">View all</span>
+            <div class="card-title">Today's Schedule</div><span class="card-link">View all</span>
           </div>
-          <div class="card-body" id="scheduleList"></div>
+          <div class="card-body" id="scheduleList" style="max-height:200px;overflow-y:auto"></div>
         </div>
         <!-- AI INSIGHTS -->
-        <div class="card">
+        <div class="card" style="flex:1">
           <div class="card-head">
-            <div class="card-title"><svg class="card-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.5 1.5M16.5 16.5L18 18M6 18l1.5-1.5M16.5 7.5L18 6"/><circle cx="12" cy="12" r="4"/></svg>AI Insights</div>
-            <span class="card-link">View all</span>
+            <div class="card-title">AI Insights</div><span class="card-link">View all</span>
           </div>
           <div class="card-body" id="insightsList"></div>
         </div>
       </div>
 
       <!-- RIGHT COLUMN -->
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="col-stack">
         <!-- REVENUE -->
-        <div class="card">
+        <div class="card" style="flex:1">
           <div class="card-head">
-            <div class="card-title"><svg class="card-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>Today's Revenue</div>
-            <span class="card-link">Report</span>
+            <div class="card-title">Today's Revenue</div><span class="card-link">Report</span>
           </div>
           <div style="padding:16px 18px">
             <div class="rev-big">$2,840</div>
             <div class="rev-change"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>18% vs yesterday</div>
-            <div class="rev-chart"><canvas id="revChart" width="300" height="88"></canvas></div>
+            <div class="rev-chart" style="margin-top:10px;"><canvas id="revChart" width="300" height="70"></canvas></div>
           </div>
         </div>
         <!-- TOP SERVICES -->
-        <div class="card">
+        <div class="card" style="flex:1">
           <div class="card-head">
-            <div class="card-title"><svg class="card-title-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 3"/></svg>Top Services</div>
-            <span class="card-link">This month</span>
+            <div class="card-title">Top Services</div><span class="card-link">This month</span>
           </div>
           <div class="donut-wrap">
-            <div class="donut">
-              <canvas id="donutChart" width="120" height="120"></canvas>
-              <div class="donut-center"><div class="donut-total">$38.2K</div><div class="donut-label">Total</div></div>
-            </div>
-            <div class="donut-legend">
-              <div class="legend-item"><span class="legend-dot" style="background:#ff2d8e"></span><span class="legend-name">Blonde Services</span><span class="legend-val">48%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#ff6bb0"></span><span class="legend-name">Extensions</span><span class="legend-val">28%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#c44d8a"></span><span class="legend-name">Color</span><span class="legend-val">16%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#7a3a5c"></span><span class="legend-name">Haircut & Style</span><span class="legend-val">8%</span></div>
+            <div class="donut"><canvas id="donutChart" width="100" height="100"></canvas></div>
+            <div class="donut-legend" style="font-size:11px;">
+              <div class="legend-item"><span class="legend-dot" style="background:#ff2d8e"></span>Blonde Services <span style="margin-left:auto">48%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#ff6bb0"></span>Extensions <span style="margin-left:auto">28%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#c44d8a"></span>Color <span style="margin-left:auto">16%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#7a3a5c"></span>Haircut & Style <span style="margin-left:auto">8%</span></div>
             </div>
           </div>
         </div>
       </div>
-
     </div>
 
-    <!-- BOTTOM PANELS -->
-    <div class="quick-grid">
+    <!-- BOTTOM CARDS -->
+    <div class="bottom-cards">
+      <div class="b-card">
+        <div class="b-card-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg> Clients</div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+          <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&q=80" style="width:48px;height:48px;border-radius:6px;object-fit:cover;">
+          <div>
+            <div style="font-size:14px;font-weight:500;">Jennifer Adams <span style="font-size:8px;background:rgba(255,215,0,0.2);color:gold;padding:2px 4px;border-radius:4px;margin-left:4px;">VIP</span></div>
+            <div style="font-size:11px;color:var(--text3);">VIP Blonde Client</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Lifetime Value: <strong style="color:var(--text)">$14,250</strong></div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Next Visit: <strong style="color:var(--text)">June 18, 2024</strong></div>
+        <div style="font-size:10px;background:var(--surface2);padding:8px;border-radius:6px;color:var(--text2);margin-top:auto;"><strong>AI Notes:</strong> Prefers cool blonde tones. Always books Friday afternoons. Loves scalp treatments.</div>
+      </div>
+      
+      <div class="b-card">
+        <div class="b-card-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg> Live Call</div>
+        <div style="text-align:center;margin-bottom:12px;">
+           <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(45deg,var(--pink),var(--pink2));margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;">L</div>
+           <div style="font-size:13px;font-weight:500;">Lola AI</div>
+           <div style="font-size:10px;color:var(--text2);">Talking to Sarah (02:18)</div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);display:flex;justify-content:space-between;margin-bottom:4px;"><span>Probability to Book</span><strong style="color:var(--text)">92%</strong></div>
+        <div style="height:4px;background:var(--surface2);border-radius:2px;margin-bottom:12px;overflow:hidden;"><div style="height:100%;width:92%;background:var(--pink);"></div></div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.4;">
+          <strong>Sarah:</strong> Hi, I'm looking to get a balayage...<br>
+          <strong style="color:var(--pink)">Lola:</strong> Great! I can definitely help with that...
+        </div>
+      </div>
 
-      <a class="quick-tile" href="clients.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg></div>
+      <div class="b-card">
+        <div class="b-card-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg> Inbox</div>
+        <div style="display:flex;flex-direction:column;gap:12px;" id="inboxList"></div>
+      </div>
+
+      <div class="b-card">
+        <div class="b-card-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Revenue</div>
+        <div style="font-size:24px;font-weight:600;margin-bottom:4px;">$38,200</div>
+        <div style="font-size:11px;color:var(--pink2);margin-bottom:16px;">↑ 24% vs last month</div>
+        <div style="flex:1;display:flex;align-items:flex-end;gap:4px;height:80px;">
+           <div style="flex:1;background:var(--surface2);height:40%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--surface2);height:60%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--pink-dim);height:80%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--pink);height:100%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--pink-dim);height:70%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--surface2);height:50%;border-radius:2px;"></div>
+           <div style="flex:1;background:var(--surface2);height:90%;border-radius:2px;"></div>
+        </div>
+      </div>
+
+      <div class="b-card">
+        <div class="b-card-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/></svg> Team</div>
+        <div style="display:flex;flex-direction:column;gap:14px;" id="teamList"></div>
+      </div>
+    </div>
+
         <div class="quick-body">
           <div class="quick-label">Clients</div>
           <div class="quick-val">1,284 <span class="quick-delta">↑ 42 this month</span></div>
@@ -699,17 +767,24 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 
     </div>
 
-    <!-- COMMAND BAR -->
-    <div class="cmd-bar">
-      <span class="cmd-kbd">⌘K</span>
-      <input class="cmd-input" id="cmdInput" placeholder="Ask Lola anything…"/>
-      <div class="cmd-chips">
-        <button class="cmd-chip" onclick="askLola('Book Sarah for balayage')">Book Sarah for balayage</button>
-        <button class="cmd-chip" onclick="askLola('Call clients overdue 12 weeks')">Call overdue clients</button>
-        <button class="cmd-chip" onclick="askLola('Show highest spending blonde clients')">Top blonde clients</button>
-        <button class="cmd-chip" onclick="askLola(\"What's my revenue this month?\")">Revenue this month</button>
-      </div>
+    
       <button class="cmd-send" onclick="sendCmd()" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+    </div>
+
+  
+    <!-- COMMAND DOCK -->
+    <div class="cmd-dock">
+      <div class="cmd-dock-input">
+        <span class="cmd-dock-kbd">⌘K</span>
+        <input placeholder="Ask Lola anything..."/>
+      </div>
+      <div class="cmd-chips">
+        <button class="cmd-chip">Book Sarah for balayage</button>
+        <button class="cmd-chip">Call clients overdue 12 weeks</button>
+        <button class="cmd-chip">Show highest spending blondes</button>
+        <button class="cmd-chip">What's my revenue this month?</button>
+      </div>
+      <button style="background:var(--pink-dim);color:var(--pink);width:32px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;border:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
     </div>
 
   </main>
