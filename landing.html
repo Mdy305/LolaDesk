@@ -61,7 +61,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 /* HERO */
 .hero{padding:72px 0 56px;text-align:center;position:relative;overflow:hidden}
 .hero-glow{position:absolute;width:700px;height:700px;left:50%;top:-180px;transform:translateX(-50%);background:radial-gradient(circle,rgba(255,45,142,.08),transparent 60%);pointer-events:none}
-.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:500;letter-spacing:.04em;color:var(--pink2);background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.2);padding:8px;border-radius:999px}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:500;letter-spacing:.04em;color:var(--pink2);background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.2)}
 .hero-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--pink);animation:blink 2s ease-in-out infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .hero-h1{font-size:clamp(36px,6.5vw,64px);font-weight:600;letter-spacing:-.03em;line-height:1.02;margin-bottom:18px;position:relative}
@@ -83,6 +83,15 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .hor2{inset:-36px;border-color:rgba(255,45,142,.06);animation:spin 22s linear infinite reverse}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hero-orb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:600;letter-spacing:.24em;text-indent:.24em}
+
+/* Demo modal */
+.demo-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(3,3,4,.6);z-index:200}
+.demo-modal[open]{display:flex}
+.demo-modal-card{background:var(--surface);padding:20px;border-radius:12px;max-width:420px;width:100%;color:var(--text);box-shadow:0 8px 40px rgba(0,0,0,.6)}
+.demo-modal h3{margin-bottom:8px}
+.demo-input{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border2);background:transparent;color:var(--text);margin-bottom:10px}
+.demo-actions{display:flex;gap:8px;justify-content:flex-end}
+.demo-note{font-size:13px;color:var(--text2);margin-top:8px}
 
 /* small responsive tweaks */
 @media(max-width:720px){.hero{padding:56px 0 40px}.hero-orb{width:160px;height:160px}}
@@ -116,7 +125,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     <div class="hero-ctas" role="region" aria-label="Primary actions">
       <a href="onboarding.html" class="btn-primary" id="start-trial">Start 14‑day free trial</a>
       <button id="hear-lola" class="btn-ghost" aria-label="Hear Lola demo">Hear Lola</button>
-      <a href="index.html" class="btn-ghost">See live demo</a>
+      <button id="open-demo-modal" class="btn-ghost">Get live demo</button>
     </div>
     <p class="hero-trust" aria-live="polite">No credit card required · Live in under 5 minutes</p>
 
@@ -131,6 +140,21 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     </div>
   </div>
 </header>
+
+<!-- Demo modal (placeholder-driven) -->
+<div id="demoModal" class="demo-modal" role="dialog" aria-modal="true" aria-labelledby="demoTitle">
+  <div class="demo-modal-card">
+    <h3 id="demoTitle">Request a live demo call</h3>
+    <p class="demo-note">Enter your phone number and we’ll call you with a short demo of Lola. For staging this uses a queued demo flow.</p>
+    <label for="demoPhone" class="visually-hidden">Phone number</label>
+    <input id="demoPhone" class="demo-input" placeholder="+1 555 555 5555" aria-label="Phone number" />
+    <div class="demo-actions">
+      <button id="cancelDemo" class="btn-ghost">Cancel</button>
+      <button id="submitDemo" class="btn-primary">Request call</button>
+    </div>
+    <div id="demoResult" class="demo-note" aria-live="polite"></div>
+  </div>
+</div>
 
 <!-- STATS ... rest of page unchanged (omitted in this commit for brevity) -->
 
@@ -228,20 +252,51 @@ document.getElementById('hear-lola').addEventListener('click', async function(){
       const ct = r.headers.get('content-type') || '';
       if(ct.includes('audio')){
         const ab = await r.arrayBuffer(); const blob = new Blob([ab], { type: ct }); const url = URL.createObjectURL(blob);
-        const a = new Audio(url); await a.play(); if(status) status.textContent = 'Playing demo'; a.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle' };
+        const a = new Audio(url); await a.play(); if(status) status.textContent = 'Playing demo'; a.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle'; };
         return;
       }
       // otherwise assume JSON with { url }
-      const j = await r.json(); if(j?.url){ const a = new Audio(j.url); if(status) status.textContent = 'Playing demo'; await a.play(); a.onended=()=>{btn.textContent=prev;btn.disabled=false; if(status) status.textContent='Demo idle'}; return; }
+      const j = await r.json(); if(j?.url){ const a = new Audio(j.url); if(status) status.textContent = 'Playing demo'; await a.play(); a.onended=()=>{btn.textContent=prev;btn.disabled=false; if(status) status.textContent = 'Demo idle'; };
+        return;
+      }
     }
     // fallback: ask /api/speak with small demo text
     const fallbackText = "Hi — I'm Lola, your front desk assistant. I answer calls, book appointments, and follow up with clients in your salon's voice.";
     const rr = await fetch('/api/speak',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ text: fallbackText }) });
     if(!rr.ok) throw new Error('TTS failed');
     const ab = await rr.arrayBuffer(); const blob = new Blob([ab], { type: rr.headers.get('content-type')||'audio/mpeg' }); const url = URL.createObjectURL(blob);
-    const a2 = new Audio(url); if(status) status.textContent = 'Playing demo'; await a2.play(); a2.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle' };
-  }catch(e){ console.error(e); if(status) status.textContent = 'Demo unavailable'; btn.textContent = 'Demo unavailable'; setTimeout(()=>{btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle'},2000); }
+    const a2 = new Audio(url); if(status) status.textContent = 'Playing demo'; await a2.play(); a2.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle'; };
+  }catch(e){ console.error(e); if(status) status.textContent = 'Demo unavailable'; btn.textContent = 'Demo unavailable'; setTimeout(()=>{btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle';}, 2000); }
 });
+
+// Demo modal behavior: enqueue demo-call and show queued result
+(function(){
+  const openBtn = document.getElementById('open-demo-modal');
+  const modal = document.getElementById('demoModal');
+  const cancel = document.getElementById('cancelDemo');
+  const submit = document.getElementById('submitDemo');
+  const phoneInput = document.getElementById('demoPhone');
+  const result = document.getElementById('demoResult');
+
+  openBtn.addEventListener('click', ()=>{ modal.setAttribute('open',''); phoneInput.focus(); result.textContent = ''; });
+  cancel.addEventListener('click', ()=>{ modal.removeAttribute('open'); });
+
+  submit.addEventListener('click', async ()=>{
+    const phone = phoneInput.value.trim();
+    if(!phone){ result.textContent = 'Please enter a phone number.'; return; }
+    submit.disabled = true; result.textContent = 'Requesting demo…';
+    try{
+      const r = await fetch('/api/demo-call', { method: 'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ phone }) });
+      const j = await r.json();
+      if(r.status === 202 || r.ok){
+        result.textContent = j?.queued ? `Queued demo request (id: ${j?.id || 'unknown'}). You should receive a call shortly.` : (j?.error || 'Request failed');
+      } else {
+        result.textContent = j?.error || 'Request failed';
+      }
+    }catch(e){ console.error(e); result.textContent = 'Request failed'; }
+    submit.disabled = false;
+  });
+})();
 </script>
 </body>
 </html>
