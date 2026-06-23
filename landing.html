@@ -41,7 +41,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 /* HERO */
 .hero{padding:90px 0 70px;text-align:center;position:relative;overflow:hidden}
 .hero-glow{position:absolute;width:700px;height:700px;left:50%;top:-200px;transform:translateX(-50%);background:radial-gradient(circle,rgba(255,45,142,.08),transparent 60%);pointer-events:none}
-.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:500;letter-spacing:.04em;color:var(--pink2);background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.2);padding:6px 14px;border-radius:20px;margin-bottom:28px;position:relative}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:500;letter-spacing:.04em;color:var(--pink2);background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.2)[...]
 .hero-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:var(--pink);animation:blink 2s ease-in-out infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .hero-h1{font-size:clamp(40px,7vw,72px);font-weight:600;letter-spacing:-.03em;line-height:1.02;margin-bottom:22px;position:relative}
@@ -114,7 +114,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 @media(max-width:880px){.pricing{grid-template-columns:1fr;max-width:380px;margin:0 auto}}
 .price-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:30px;display:flex;flex-direction:column}
 .price-card.featured{border-color:var(--pink);background:linear-gradient(180deg,var(--pink-dim),var(--surface) 40%);position:relative}
-.price-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10px;font-weight:600;letter-spacing:.1em;padding:4px 14px;border-radius:20px}
+.price-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10px;font-weight:600;letter-spacing:.1em;padding:4px 14px;border-radius:20[...]
 .price-name{font-size:14px;font-weight:600;letter-spacing:.04em;margin-bottom:6px}
 .price-tag{display:flex;align-items:baseline;gap:4px;margin-bottom:6px}
 .price-amount{font-size:42px;font-weight:600;letter-spacing:-.02em}
@@ -130,7 +130,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-btn.ghost:hover{border-color:var(--text3)}
 
 /* CTA BAND */
-.cta-band{background:radial-gradient(ellipse 80% 100% at 50% 0%,rgba(255,45,142,.1),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:60px 32px;text-align:center}
+.cta-band{background:radial-gradient(ellipse 80% 100% at 50% 0%,rgba(255,45,142,.1),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:60px 32px;text-align:cen[...]
 .cta-band-title{font-size:clamp(28px,4vw,42px);font-weight:600;letter-spacing:-.02em;margin-bottom:14px;line-height:1.1}
 .cta-band-title em{font-family:var(--ff-serif);font-style:italic;font-weight:300;color:var(--pink2)}
 .cta-band-sub{font-size:16px;font-weight:300;color:var(--text2);max-width:440px;margin:0 auto 30px}
@@ -167,6 +167,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     <p class="hero-sub">Lola answers your phone, books appointments, and follows up with clients around the clock — so you never lose a booking to voicemail again.</p>
     <div class="hero-ctas">
       <a href="onboarding.html" class="btn-primary">Start 14-day free trial<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a id="hear-lola" class="btn-ghost" role="button">Hear Lola</a>
       <a href="index.html" class="btn-ghost">See live demo</a>
     </div>
     <p class="hero-trust">No credit card required · Live in under 5 minutes</p>
@@ -200,27 +201,27 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     <p class="section-sub">Lola handles the work of a full front desk team — across phone, text, Instagram, and web — without ever taking a break.</p>
     <div class="features">
       <div class="feature">
-        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg></div>
+        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 [...]
         <div class="feature-title">Answers every call</div>
         <div class="feature-desc">Lola picks up on the first ring with a natural voice, understands what the caller wants, and books them in — even at 2am.</div>
       </div>
       <div class="feature">
-        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div>
+        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"[...]</svg></div>
         <div class="feature-title">Books into your calendar</div>
         <div class="feature-desc">Connects to Square, Mindbody, Vagaro, or Fresha. Lola checks real availability and books the right service instantly.</div>
       </div>
       <div class="feature">
-        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div>
+        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>[...]
         <div class="feature-title">Replies everywhere</div>
         <div class="feature-desc">Instagram DMs, text messages, WhatsApp, web chat — Lola answers them all in seconds, in your salon's voice.</div>
       </div>
       <div class="feature">
-        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2"/><circle cx="12" cy="12" r="4"/></svg></div>
+        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2"/><circle cx="12" cy="12" r="4"/></svg>[...]
         <div class="feature-title">Spots opportunities</div>
         <div class="feature-desc">"3 clients are due for rebooking." "Thursday has a gap worth $400." Lola finds revenue you'd otherwise miss.</div>
       </div>
       <div class="feature">
-        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg></div>
+        <div class="feature-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></[...]
         <div class="feature-title">Remembers every client</div>
         <div class="feature-desc">Preferences, history, VIP status, birthday — Lola knows each client and treats them like a regular.</div>
       </div>
@@ -412,6 +413,31 @@ function draw(){
   requestAnimationFrame(draw);
 }
 draw();
+
+// Hear Lola: post to /api/speak and play returned audio
+document.getElementById('hear-lola').addEventListener('click', async function onHear(){
+  const btn = this;
+  btn.classList.add('loading');
+  const original = btn.textContent;
+  btn.textContent = 'Loading…';
+  try{
+    const sample = "Hi — I'm Lola, your front desk assistant. I answer calls, book appointments, and follow up with clients in your salon's voice. Say 'book' to get started.";
+    const r = await fetch('/api/speak',{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: sample }) });
+    if(!r.ok) throw new Error('TTS failed');
+    const ab = await r.arrayBuffer();
+    const blob = new Blob([ab], { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    a.play().catch(()=>{});
+    a.onended = () => { URL.revokeObjectURL(url); btn.textContent = 'Hear Lola'; };
+    btn.textContent = 'Playing — hear again';
+  }catch(e){
+    console.error(e);
+    btn.textContent = 'Hear demo by calling +1 (929) 456-8227';
+  }finally{
+    btn.classList.remove('loading');
+  }
+});
 </script>
 </body>
 </html>
