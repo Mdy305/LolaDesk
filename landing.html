@@ -12,6 +12,9 @@
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" as="style" onload="this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet"></noscript>
 <style>
+/* Utility: visually-hidden */
+.visually-hidden{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px}
+
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#070708;--bg2:#0c0c0e;--surface:#121214;--surface2:#16161a;
@@ -29,6 +32,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-s
 a{color:inherit;text-decoration:none}
 button{font-family:var(--ff);cursor:pointer;border:none}
 .wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+
+/* Skip link */
+.skip-link{position:fixed;left:12px;top:12px;background:#111;color:#fff;padding:8px 12px;border-radius:8px;z-index:999;transform:translateY(-120%);transition:transform .18s ease}
+.skip-link:focus{transform:translateY(0)}
+
+/* Focus-visible outlines */
+:focus{outline:none}
+:focus-visible{outline:3px solid rgba(255,45,142,.18);outline-offset:3px;border-radius:6px}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important}
+  .hero-orb canvas{opacity:1!important}
+}
 
 /* NAV */
 .nav{position:sticky;top:0;z-index:50;background:rgba(7,7,8,.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:0.5px solid var(--border)}
@@ -74,6 +91,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to content</a>
 
 <!-- NAV -->
 <nav class="nav" role="navigation" aria-label="Main navigation">
@@ -89,7 +107,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 </nav>
 
 <!-- HERO -->
-<header class="hero">
+<header class="hero" id="main">
   <div class="hero-glow" aria-hidden></div>
   <div class="wrap">
     <div class="hero-eyebrow"><span class="hero-eyebrow-dot" aria-hidden></span>Now answering calls 24/7 with AI voice</div>
@@ -101,6 +119,9 @@ button{font-family:var(--ff);cursor:pointer;border:none}
       <a href="index.html" class="btn-ghost">See live demo</a>
     </div>
     <p class="hero-trust" aria-live="polite">No credit card required · Live in under 5 minutes</p>
+
+    <!-- demo status for assistive tech -->
+    <div id="demo-status" class="visually-hidden" aria-live="polite">Demo idle</div>
 
     <div class="hero-orb" id="heroOrbWrap" aria-hidden="false">
       <canvas id="heroOrb" width="200" height="200"></canvas>
@@ -132,12 +153,24 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 (function(){
   const wrap = document.getElementById('heroOrbWrap');
   const canvas = document.getElementById('heroOrb');
+  const status = document.getElementById('demo-status');
   const ctx = canvas && canvas.getContext && canvas.getContext('2d');
   let running = false, t = 0;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function drawStatic(){
+    if(!ctx) return;
+    const cx=canvas.width/2, cy=canvas.height/2;
+    const g = ctx.createRadialGradient(cx,cy,0,cx,cy,80);
+    g.addColorStop(0,'rgba(255,45,142,0.06)');
+    g.addColorStop(1,'rgba(255,45,142,0)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
 
   function startOrb(){
     if(running || !ctx) return;
     running = true; wrap.classList.add('ready');
+    if(reduceMotion){ drawStatic(); return; }
     function draw(){
       ctx.clearRect(0,0,canvas.width,canvas.height);
       const cx=canvas.width/2, cy=canvas.height/2;
@@ -173,17 +206,21 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   function warmDemoAudio(){
     try{
       if(window.__demo_warmed) return; window.__demo_warmed = true;
-      fetch('/api/speak-demo?demo=hero').then(r=>{
-        // response may be URL or bytes; we ignore result — server caches it
-      }).catch(()=>{});
-    }catch(e){}
+      if(status) status.textContent = 'Warming demo audio';
+      fetch('/api/speak-demo?demo=hero').then(async r=>{
+        if(status) status.textContent = 'Demo audio ready';
+        // ignore response body; server caches/upload to storage
+      }).catch(()=>{ if(status) status.textContent = 'Demo warm failed' });
+    }catch(e){ if(status) status.textContent = 'Demo warm error' }
   }
   if('requestIdleCallback' in window) requestIdleCallback(warmDemoAudio, {timeout:2000}); else setTimeout(warmDemoAudio, 2000);
 })();
 
 // Hear Lola button: play cached demo (falls back to /api/speak)
 document.getElementById('hear-lola').addEventListener('click', async function(){
-  const btn = this; btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Loading…';
+  const btn = this; btn.disabled = true; const prev = btn.textContent; const status = document.getElementById('demo-status');
+  if(status) status.textContent = 'Loading demo';
+  btn.textContent = 'Loading…';
   try{
     // Try demo endpoint first (pre-cached). If it returns an audio URL or bytes, play it.
     const r = await fetch('/api/speak-demo?demo=hero');
@@ -191,19 +228,19 @@ document.getElementById('hear-lola').addEventListener('click', async function(){
       const ct = r.headers.get('content-type') || '';
       if(ct.includes('audio')){
         const ab = await r.arrayBuffer(); const blob = new Blob([ab], { type: ct }); const url = URL.createObjectURL(blob);
-        const a = new Audio(url); await a.play(); a.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; };
+        const a = new Audio(url); await a.play(); if(status) status.textContent = 'Playing demo'; a.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle' };
         return;
       }
       // otherwise assume JSON with { url }
-      const j = await r.json(); if(j?.url){ const a = new Audio(j.url); await a.play(); a.onended=()=>{btn.textContent=prev;btn.disabled=false}; return; }
+      const j = await r.json(); if(j?.url){ const a = new Audio(j.url); if(status) status.textContent = 'Playing demo'; await a.play(); a.onended=()=>{btn.textContent=prev;btn.disabled=false; if(status) status.textContent='Demo idle'}; return; }
     }
     // fallback: ask /api/speak with small demo text
     const fallbackText = "Hi — I'm Lola, your front desk assistant. I answer calls, book appointments, and follow up with clients in your salon's voice.";
     const rr = await fetch('/api/speak',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ text: fallbackText }) });
     if(!rr.ok) throw new Error('TTS failed');
     const ab = await rr.arrayBuffer(); const blob = new Blob([ab], { type: rr.headers.get('content-type')||'audio/mpeg' }); const url = URL.createObjectURL(blob);
-    const a2 = new Audio(url); await a2.play(); a2.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false };
-  }catch(e){ console.error(e); btn.textContent = 'Demo unavailable'; setTimeout(()=>{btn.textContent = prev; btn.disabled = false},2000); }
+    const a2 = new Audio(url); if(status) status.textContent = 'Playing demo'; await a2.play(); a2.onended = ()=>{ URL.revokeObjectURL(url); btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle' };
+  }catch(e){ console.error(e); if(status) status.textContent = 'Demo unavailable'; btn.textContent = 'Demo unavailable'; setTimeout(()=>{btn.textContent = prev; btn.disabled = false; if(status) status.textContent = 'Demo idle'},2000); }
 });
 </script>
 </body>
