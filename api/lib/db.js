@@ -1,18 +1,6 @@
-/**
+/*
  * api/lib/db.js — Shared Supabase client + multi-tenant helpers
- * ═══════════════════════════════════════════════════════════════
- * Every /api/* handler imports from here. One source of truth.
- *
- * Server-side only. We use SUPABASE_SERVICE_KEY which bypasses RLS,
- * so the server can read/write any tenant's data — we enforce tenant
- * isolation in code by ALWAYS scoping queries to a resolved tenant_id.
- *
- * ENV VARS (Vercel → Settings → Environment Variables):
- *   SUPABASE_URL              public, e.g. https://xxx.supabase.co
- *   SUPABASE_SERVICE_KEY      server-side service role key (sensitive)
- *
- * NEVER ship SUPABASE_SERVICE_KEY to the browser. It only lives in
- * Vercel env vars, used only by these serverless functions.
+ * Extended with client memory, deposits, and demo request helpers
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -44,8 +32,6 @@ export function e164(num){
 }
 
 // ── TENANT RESOLUTION ──
-// The single most important function: given a called/texted number,
-// find which salon owns it. This is how multi-tenant works.
 export async function getTenantByPhone(toNumber){
   const c = db();
   if(!c) return demoTenant();
@@ -65,7 +51,6 @@ export async function getTenantBySlug(slug){
   return data || demoTenant();
 }
 
-// Fallback so the app never crashes when Supabase isn't wired yet
 function demoTenant(){
   return {
     id: '00000000-0000-0000-0000-000000000000',
@@ -158,11 +143,9 @@ export async function logMessage({ conversationId, tenantId, role, agent='lola',
   });
 }
 
-// Find or start a conversation for an inbound message/call from a phone number
 export async function getOrStartConversation(tenantId, { clientId, channel, agent='lola' }){
   const c = db();
   if(!c) return null;
-  // Reuse an open conversation in the same channel from the last 60 minutes
   const cutoff = new Date(Date.now() - 60*60*1000).toISOString();
   const { data: open } = await c.from('conversations').select('*')
     .eq('tenant_id', tenantId).eq('channel', channel).eq('status', 'open')
@@ -174,7 +157,6 @@ export async function getOrStartConversation(tenantId, { clientId, channel, agen
   return startConversation(tenantId, { clientId, channel, agent });
 }
 
-// Pull recent message history for an ongoing conversation (for LLM context)
 export async function getConversationHistory(conversationId, limit=12){
   const c = db();
   if(!c) return [];
@@ -221,7 +203,6 @@ export async function logUsage(tenantId, kind, units=1, metadata={}){
 export async function upsertTenant(p = {}){
   const c = db();
   if(!c) return null;
-  // accept both camelCase and snake_case (signup uses snake_case)
   const ownerName  = p.ownerName  ?? p.owner_name;
   const ownerEmail = p.ownerEmail ?? p.owner_email;
   const bookingUrl = p.bookingUrl ?? p.booking_url;
@@ -250,11 +231,6 @@ export async function upsertTenant(p = {}){
 }
 
 // ── INTEGRATIONS (Square / Boulevard / Shopify / Google Calendar OAuth) ──
-// Tokens are encrypted at rest (see api/lib/crypto.js). ALWAYS use these
-// helpers instead of querying the `integrations` table directly, so
-// encryption/decryption can never accidentally be skipped.
-
-// Write (or update) an integration's tokens. Called from the OAuth callback.
 export async function upsertIntegration(tenantId, { provider, accessToken, refreshToken, expiresAt, metadata={} }){
   const c = db();
   if(!c) return null;
@@ -274,10 +250,6 @@ export async function upsertIntegration(tenantId, { provider, accessToken, refre
   return data;
 }
 
-// Read all connected integrations for a tenant, decrypted and ready
-// to hand to a connector (square.js, boulevard.js, etc). This is the
-// ONLY place that should ever decrypt tokens — keep them in-memory,
-// server-side, for the duration of the request only.
 export async function getTenantIntegrations(tenantId, { status='connected' } = {}){
   const c = db();
   if(!c || !tenantId) return [];
@@ -293,12 +265,6 @@ export async function getTenantIntegrations(tenantId, { status='connected' } = {
 }
 
 // ── Partial update for an EXISTING tenant by id (used by Settings) ──
-// Unlike upsertTenant (which expects a full object and will null out
-// fields like phone_number if they're absent — fine for onboarding's
-// one-shot writes, unsafe for a settings form that only sends the
-// fields the owner is actually editing), this only touches fields
-// explicitly present in the patch. Never accepts slug/owner_email/
-// phone_number changes here — those have separate, more careful flows.
 export async function updateTenantFields(tenantId, patch = {}){
   const c = db();
   if(!c || !tenantId) return null;
@@ -307,7 +273,6 @@ export async function updateTenantFields(tenantId, patch = {}){
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   
   if(patch.knowledge !== undefined) {
-    // Merge knowledge to prevent overwriting existing keys
     const { data: existing } = await c.from('tenants').select('knowledge').eq('id', tenantId).maybeSingle();
     const currentK = existing?.knowledge || {};
     row.knowledge = { ...currentK, ...patch.knowledge };
@@ -319,18 +284,14 @@ export async function updateTenantFields(tenantId, patch = {}){
   return data;
 }
 
-
 export async function saveTenantKnowledge(tenantId, knowledge){
   const c = db();
   if(!c) return null;
-  // Merge services detected by the analysis into the tenant's services if empty
   const patch = { knowledge };
   if(knowledge?.services_detected?.length){
-    // only set if tenant has no services yet
     const { data: t } = await c.from('tenants').select('services').eq('id', tenantId).maybeSingle();
     if(t && (!t.services || t.services.length === 0)){
       patch.services = knowledge.services_detected.map(s => {
-        // try to parse "Balayage $395" style strings
         const m = String(s).match(/^(.*?)\s*\$?(\d+)?/);
         return { name: (m?.[1]||s).trim(), price: m?.[2] ? Number(m[2]) : null };
       });
@@ -361,4 +322,53 @@ export function tenantKnowledgePrompt(tenant){
     lines.push(`UPSELL PROTOCOL:\n${upsellText}`);
   }
   return lines.join('\n');
+}
+
+// ── NEW: Client memory helpers ──
+export async function getClientMemory(tenantId, phone){
+  const c = db(); if(!c) return [];
+  const phoneE = e164(phone);
+  const { data } = await c.from('client_memories').select('key,value,created_at').eq('tenant_id', tenantId).eq('client_phone', phoneE);
+  return data || [];
+}
+
+export async function setClientMemory(tenantId, phone, key, value){
+  const c = db(); if(!c) return null;
+  const phoneE = e164(phone);
+  const { data } = await c.from('client_memories').upsert({ tenant_id: tenantId, client_phone: phoneE, key, value }, { onConflict: 'tenant_id,client_phone,key' }).select().maybeSingle();
+  return data;
+}
+
+// ── NEW: Deposits helpers ──
+export async function createDeposit(tenantId, bookingId, amount){
+  const c = db(); if(!c) return null;
+  const { data } = await c.from('deposits').insert({ tenant_id: tenantId, booking_id: bookingId, amount }).select().maybeSingle();
+  return data;
+}
+
+export async function updateDepositStatus(depositId, status, stripeIntentId){
+  const c = db(); if(!c) return null;
+  const { data } = await c.from('deposits').update({ status, stripe_payment_intent_id: stripeIntentId }).eq('id', depositId).select().maybeSingle();
+  return data;
+}
+
+// ── NEW: Demo request helpers ──
+export async function enqueueDemoRequest(phone, ip){
+  const c = db(); if(!c) return null;
+  const { data } = await c.from('demo_requests').insert({ phone_number: e164(phone), ip }).select().maybeSingle();
+  return data;
+}
+
+export async function markDemoProcessed(id){
+  const c = db(); if(!c) return null;
+  const { data } = await c.from('demo_requests').update({ processed: true }).eq('id', id).select().maybeSingle();
+  return data;
+}
+
+export async function recentDemoRequestsByPhone(phone, minutes=60){
+  const c = db(); if(!c) return 0;
+  const since = new Date(Date.now() - minutes*60*1000).toISOString();
+  const phoneE = e164(phone);
+  const { count } = await c.from('demo_requests').select('*', { count: 'exact' }).eq('phone_number', phoneE).gte('created_at', since);
+  return Number(count || 0);
 }
