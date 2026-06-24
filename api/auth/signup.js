@@ -22,7 +22,7 @@ export default async function handler(req, res){
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
     // 1. create auth user
-    await createUser({ email, password, name });
+    const user = await createUser({ email, password, name });
 
     // 2. create tenant with 14-day trial
     const trialEnds = new Date(Date.now() + 14*24*3600*1000).toISOString();
@@ -33,6 +33,18 @@ export default async function handler(req, res){
       website_url: websiteUrl||'', business_mode: businessMode||'salon',
       trial_ends_at: trialEnds
     });
+
+    // 2b. link auth user -> tenant for multi-tenant safe resolution
+    try{
+      const c = db();
+      if(c && user?.id && tenant?.id){
+        await c.from('tenant_users').upsert({
+          tenant_id: tenant.id,
+          user_id: user.id,
+          role: 'owner'
+        }, { onConflict: 'tenant_id,user_id' });
+      }
+    }catch{}
 
     // 3. sign them in -> session tokens
     const sess = await signIn({ email, password });

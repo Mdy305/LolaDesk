@@ -157,10 +157,7 @@ function setupSR(){
     document.getElementById('voiceTranscript').textContent=txt;
     if(e.results[e.results.length-1].isFinal){
       stopListening();
-      // any spoken phrase signs in (demo). In production: voice biometric / passphrase.
-      localStorage.setItem('loladesk_token', 'demo_token');
-      document.getElementById('voiceState').textContent='Welcome back — signing you in…';
-      setTimeout(()=>{ window.location.href='dashboard.html'; }, 1200);
+      document.getElementById('voiceState').textContent='Voice sign-in preview heard you. Use email + password to sign in securely.';
     }
   };
   recognition.onerror=()=>stopListening();
@@ -200,6 +197,10 @@ window.signIn=async ()=>{
       if(d.tenant) localStorage.setItem('loladesk_tenant_id', d.tenant.id||'');
     }
     const next = new URLSearchParams(location.search).get('next');
+    if(!d.tenant){
+      window.location.href = 'onboarding.html';
+      return;
+    }
     window.location.href = next ? decodeURIComponent(next) : 'dashboard.html';
   }catch(e){ stateEl.textContent = e.message||'Invalid email or password'; }
 };

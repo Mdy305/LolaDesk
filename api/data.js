@@ -16,6 +16,8 @@ import { db, getTenantBySlug, getTenantIntegrations } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { listProviders } from './lib/aggregator.js';
 import { getUsageStatus } from './lib/usage.js';
+import { summarizeTopology, listControlPlaneAgents } from './lib/agent-topology.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 function ago(ts){
   if(!ts) return '';
@@ -26,10 +28,14 @@ function ago(ts){
 function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
 
 async function resolveTenant(req, q){
-  // prefer the authenticated owner's tenant
+  // prefer authenticated mapping
   try{
     const u = await getUserFromToken(bearer(req));
-    if(u){ const c=db(); if(c){ const {data}=await c.from('tenants').select('*').eq('owner_email',u.email).limit(1); if(data&&data[0])return data[0]; } }
+    if(u){
+      const tenant = await resolveTenantForUser(u);
+      if(tenant) return tenant;
+      return null; // authenticated but unmapped should not fall into demo tenant
+    }
   }catch(e){}
   if(q.tenant) return getTenantBySlug(q.tenant);
   return getTenantBySlug('mma');
@@ -47,6 +53,10 @@ export default async function handler(req,res){
   try{
     const tenant=await resolveTenant(req,q);
     const c=db();
+    const hasBearer = !!bearer(req);
+    if(c && hasBearer && !tenant?.id){
+      return res.status(403).json({ error:'no tenant mapped to this account' });
+    }
     if(!c || !tenant?.id) return res.status(200).json(demo(resource, tenant));
     const tid=tenant.id;
 
@@ -99,17 +109,15 @@ export default async function handler(req,res){
         return res.status(200).json({ tenant:tenant.name, team:team.length?team:[{name:tenant.owner_name||'Owner',role:'Owner'}] });
       }
       case 'agents': {
-        // the 8 skills Lola runs, with live on/off
-        return res.status(200).json({ tenant:tenant.name, agents:[
-          {id:'reception',name:'Reception',desc:'Answers every call, books appointments',on:true},
-          {id:'pricing',name:'Pricing & Services',desc:'Quotes accurate prices and durations',on:true},
-          {id:'recommend',name:'Recommender',desc:'Suggests the right service',on:true},
-          {id:'recovery',name:'Recovery',desc:'Saves bookings, wins back clients',on:true},
-          {id:'leadcapture',name:'Lead Capture',desc:'Never loses a caller',on:true},
-          {id:'availability',name:'Availability',desc:'Reads the live calendar',on:true},
-          {id:'escalation',name:'Escalation',desc:'Hands off to a human when needed',on:true},
-          {id:'memory',name:'Client Memory',desc:'Recognizes returning clients',on:true}
-        ]});
+        const topology = summarizeTopology();
+        return res.status(200).json({
+          tenant: tenant.name,
+          orchestrator: topology.orchestrator,
+          agents: topology.agents.map(a => ({
+            ...a,
+            on: true
+          }))
+        });
       }
       case 'integrations': {
         // Real connection status per provider, decrypted in-memory only
@@ -128,17 +136,28 @@ export default async function handler(req,res){
         return res.status(200).json({ tenant: tenant.name, tenantSlug: tenant.slug, providers });
       }
       case 'marketing': {
-        const { data=[] } = await c.from('clients').select('last_visit,is_vip').eq('tenant_id',tid).limit(1000);
+        const { data=[] } = await c.from('clients').select('last_visit,is_vip,lifetime_value').eq('tenant_id',tid).limit(1000);
         const rows=data||[];
         const now=Date.now();
         const lapsed=rows.filter(r=>r.last_visit && (now-new Date(r.last_visit))/86400000>60).length;
         const vips=rows.filter(r=>r.is_vip).length;
+        const recent=rows.filter(r=>r.last_visit && (now-new Date(r.last_visit))/86400000<=21).length;
+        const since=new Date(Date.now()-30*86400000).toISOString();
+        const { data: usage=[] } = await c.from('usage_events').select('kind,units,metadata').eq('tenant_id',tid).gte('created_at',since);
+        const campaignRuns=(usage||[]).filter(u=>u.kind==='campaign_run');
+        const campaignRevenue=campaignRuns.reduce((s,u)=>s+Number(u.metadata?.estimated_revenue||0),0);
         return res.status(200).json({ tenant:tenant.name,
           segments:[
             {id:'winback',name:'Win-back',count:lapsed,desc:"Haven't visited in 60+ days"},
             {id:'vip',name:'VIP',count:vips,desc:'Your best clients'},
+            {id:'postvisit',name:'Post-visit',count:recent,desc:'Visited in the last 21 days'},
             {id:'all',name:'All clients',count:rows.length,desc:'Everyone'}
-          ]});
+          ],
+          roi:{
+            campaignRuns30:campaignRuns.length,
+            campaignRevenue30:campaignRevenue
+          }
+        });
       }
       case 'overview':
       default: {
@@ -152,11 +171,12 @@ export default async function handler(req,res){
         ]);
         const rev=bk.reduce((s,r)=>s+Number(r.price||0),0);
         const upsellRev=upsellEvents.reduce((s,r)=>s+Number(r.units||0),0);
+        const upsellRate = rev > 0 ? Math.max(0, Math.min(100, Math.round((upsellRev / rev) * 100))) : 0;
         return res.status(200).json({ tenant:tenant.name,
           kpis:{ 
             clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev),
-            upsellRevenue: upsellRev > 0 ? upsellRev : 1450, // default fallback to look good
-            upsellRate: upsellRev > 0 ? '18%' : '14%'
+            upsellRevenue: upsellRev,
+            upsellRate: `${upsellRate}%`
           },
           usage });
       }
@@ -193,11 +213,11 @@ function demo(resource, tenant){
       services:[{name:'Balayage',value:7900},{name:'Keratin',value:4500},{name:'Extensions',value:3200},{name:'Cut & Gloss',value:2850}],
       bookingCount:62},
     team:{tenant:name,team:[{name:'Meddy',role:'Owner · Colorist'},{name:'Michelle',role:'Stylist'},{name:'Alice',role:'Stylist'},{name:'Samantha',role:'Stylist'}]},
-    agents:{tenant:name,agents:[
-      {id:'reception',name:'Reception',desc:'Answers every call, books appointments',on:true},
-      {id:'memory',name:'Client Memory',desc:'Recognizes returning clients',on:true},
-      {id:'recovery',name:'Recovery',desc:'Saves bookings, wins back clients',on:true}
-    ]},
+    agents:{
+      tenant:name,
+      orchestrator: summarizeTopology().orchestrator,
+      agents:listControlPlaneAgents().map(a=>({ ...a, on:true }))
+    },
     marketing:{tenant:name,segments:[
       {id:'winback',name:'Win-back',count:14,desc:"Haven't visited in 60+ days"},
       {id:'vip',name:'VIP',count:8,desc:'Your best clients'},

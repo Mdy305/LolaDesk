@@ -159,6 +159,30 @@ create table if not exists integrations (
   unique(tenant_id, provider)
 );
 
+-- ── NUMBER PORT REQUESTS ──
+-- Tracks "keep my number" onboarding and Telnyx transfer status.
+create table if not exists tenant_number_ports (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  requested_phone_number text not null,
+  status text not null default 'draft',                 -- draft | submitted | in_progress | completed | rejected
+  current_carrier text,
+  account_number text,
+  account_pin text,
+  billing_name text,
+  billing_address text,
+  authorized_contact_name text,
+  authorized_contact_email text,
+  telnyx_order_id text,
+  foc_date timestamptz,
+  temporary_phone_number text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_tenant_number_ports_tenant on tenant_number_ports(tenant_id, created_at desc);
+create index if not exists idx_tenant_number_ports_order on tenant_number_ports(telnyx_order_id);
+
 -- ─── updated_at trigger ───
 create or replace function set_updated_at() returns trigger as $$
 begin new.updated_at = now(); return new; end;
@@ -173,6 +197,9 @@ create trigger trg_clients_updated before update on clients
 drop trigger if exists trg_integrations_updated on integrations;
 create trigger trg_integrations_updated before update on integrations
   for each row execute function set_updated_at();
+drop trigger if exists trg_tenant_number_ports_updated on tenant_number_ports;
+create trigger trg_tenant_number_ports_updated before update on tenant_number_ports
+  for each row execute function set_updated_at();
 
 -- ─── ROW LEVEL SECURITY ───
 -- Service role bypasses RLS. Browser-side reads go through these policies.
@@ -185,6 +212,7 @@ alter table calls          enable row level security;
 alter table bookings       enable row level security;
 alter table usage_events   enable row level security;
 alter table integrations   enable row level security;
+alter table tenant_number_ports enable row level security;
 
 -- Helper: read tenant_id from JWT (works once Supabase Auth is wired)
 create or replace function auth_tenant() returns uuid as $$
@@ -197,7 +225,7 @@ create policy tenant_read_own on tenants for select
   using (id = auth_tenant());
 
 do $$ declare t text; begin
-  for t in select unnest(array['clients','conversations','messages','calls','bookings','usage_events','integrations'])
+  for t in select unnest(array['clients','conversations','messages','calls','bookings','usage_events','integrations','tenant_number_ports'])
   loop
     execute format('drop policy if exists %I_read on %I', t, t);
     execute format('create policy %I_read on %I for select using (tenant_id = auth_tenant())', t, t);

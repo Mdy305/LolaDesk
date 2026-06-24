@@ -1,5 +1,6 @@
 import { db, updateTenantFields } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 /**
  * /api/telnyx-numbers — Search & buy phone numbers
@@ -127,8 +128,7 @@ export default async function handler(req, res){
           if(user) {
             const c = db();
             if(c) {
-              const { data: rows } = await c.from('tenants').select('id').eq('owner_email', user.email).limit(1);
-              const tenant = rows && rows[0];
+              const tenant = await resolveTenantForUser(user);
               if(tenant) {
                 await updateTenantFields(tenant.id, { phone_number: body.phone_number });
               }

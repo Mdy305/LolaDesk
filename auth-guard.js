@@ -26,6 +26,10 @@
     const here = encodeURIComponent(location.pathname + location.search);
     location.replace('login.html?next=' + here);
   }
+  function redirectToOnboarding(){
+    const here = encodeURIComponent(location.pathname + location.search);
+    location.replace('onboarding.html?next=' + here);
+  }
 
   const token = getToken();
   if(!token){
@@ -41,9 +45,16 @@
     if(!r.ok) throw new Error('session invalid: ' + r.status);
     return r.json();
   }).then(data => {
+    if(!data?.tenant){
+      redirectToOnboarding();
+      throw new Error('session valid but tenant not provisioned yet');
+    }
     window.LolaAuth = { user: data.user, tenant: data.tenant, token };
     return window.LolaAuth;
   }).catch(err => {
+    if(String(err?.message || '').includes('tenant not provisioned')){
+      return Promise.reject(err);
+    }
     console.warn('[auth-guard] session check failed, redirecting to login:', err);
     clearToken();
     redirectToLogin();

@@ -31,7 +31,7 @@
     { id:'revenue',  label:'Revenue',  href:'revenue.html' },
     { id:'team',     label:'Team',     href:'team.html' },
     { id:'marketing',label:'Marketing',href:'marketing.html' },
-    { id:'marketer', label:'Marketer', href:'marketer.html', badge:'AI', pink:true },
+    { id:'marketer', label:'Control Plane', href:'marketer.html#control', badge:'AI', pink:true },
     { id:'settings', label:'Settings', href:'settings.html' }
   ];
 

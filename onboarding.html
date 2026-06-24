@@ -77,6 +77,17 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-platform-desc{font-size:11px;color:var(--text3);line-height:1.4}
 .ob-platform-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;margin-bottom:12px}
 
+/* NUMBER CHOICE */
+.ob-number-choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+@media(max-width:480px){.ob-number-choice{grid-template-columns:1fr}}
+.ob-number-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s}
+.ob-number-card.selected{border-color:var(--pink);background:var(--pink-dim)}
+.ob-number-title{font-size:14px;font-weight:600;margin-bottom:4px}
+.ob-number-desc{font-size:12px;color:var(--text3);line-height:1.45}
+.ob-port-fields{display:none;gap:10px}
+.ob-port-fields.show{display:grid;grid-template-columns:1fr 1fr}
+@media(max-width:480px){.ob-port-fields.show{grid-template-columns:1fr}}
+
 /* PERSONA */
 .ob-persona{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
 .ob-persona-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:all .15s}
@@ -268,7 +279,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 
         <div class="ob-nav">
           <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary" onclick="goLive()">Start 14-day free trial</button>
+          <button class="ob-btn ob-btn-primary" onclick="next()">Continue</button>
         </div>
         <p style="font-size:11px;color:var(--text3);text-align:center;margin-top:12px">No charge today. Cancel anytime.</p>
       </div>
@@ -305,9 +316,35 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
           <label class="ob-label">Your Booking Link / Site URL</label>
           <input class="ob-input" id="f-booking-url" placeholder="https://..." />
         </div>
+        <div class="ob-field" style="margin-top:18px">
+          <label class="ob-label">Phone setup</label>
+          <div class="ob-number-choice">
+            <div class="ob-number-card selected" data-number-mode="new" onclick="selectNumberMode(this)">
+              <div class="ob-number-title">Get a new Lola number</div>
+              <div class="ob-number-desc">Fastest path. Lola goes live immediately on a fresh local line.</div>
+            </div>
+            <div class="ob-number-card" data-number-mode="port" onclick="selectNumberMode(this)">
+              <div class="ob-number-title">Keep my current number</div>
+              <div class="ob-number-desc">We submit your Telnyx transfer and keep you live with a temporary number until completion.</div>
+            </div>
+          </div>
+        </div>
+        <div id="portFields" class="ob-port-fields">
+          <input class="ob-input" id="f-port-number" placeholder="Current business number (+1...)"/>
+          <input class="ob-input" id="f-port-carrier" placeholder="Current carrier (e.g. Verizon)"/>
+          <input class="ob-input" id="f-port-account" placeholder="Carrier account number"/>
+          <input class="ob-input" id="f-port-pin" placeholder="Carrier PIN / passcode"/>
+          <input class="ob-input" id="f-port-billing-name" placeholder="Billing name on account"/>
+          <input class="ob-input" id="f-port-billing-address" placeholder="Billing address on account"/>
+          <input class="ob-input" id="f-port-contact-name" placeholder="Authorized contact name"/>
+          <input class="ob-input" id="f-port-contact-email" placeholder="Authorized contact email"/>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-loa"/> I have Letter of Authorization (LOA)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-bill"/> I have a recent bill copy</label>
+        </div>
+        <div class="ob-err" id="ob-err3" style="color:#ff7a7a;font-size:12.5px;min-height:16px;margin:8px 0 4px"></div>
 <div class="ob-nav">
           <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary full" onclick="next()">Continue</button>
+          <button class="ob-btn ob-btn-primary full" onclick="validateStep3AndGoLive()">Start 14-day free trial</button>
         </div>
       </div>
 
@@ -339,12 +376,26 @@ const state = {
     {name:'Color', price:'225', dur:'1h 30m'}
   ],
   bookingUrl:'',
-  plan:'pro', price:'399'
+  plan:'pro', price:'399',
+  numberMode:'new',
+  port:{
+    requestedNumber:'',
+    currentCarrier:'',
+    accountNumber:'',
+    accountPin:'',
+    billingName:'',
+    billingAddress:'',
+    contactName:'',
+    contactEmail:'',
+    loaUploaded:false,
+    billUploaded:false
+  }
 };
 
 
 function renderServices(){
   const el = document.getElementById('services');
+  if(!el) return;
   el.innerHTML = state.services.map((s,i)=>`
     <div class="ob-service-row">
       <input class="ob-input" value="${s.name}" placeholder="Service name" onchange="updateService(${i},'name',this.value)"/>
@@ -364,10 +415,32 @@ window.selectPlatform=(el)=>{
   el.classList.add('selected');
   state.platform=el.dataset.platform;
 };
+window.selectNumberMode=(el)=>{
+  document.querySelectorAll('.ob-number-card').forEach(x=>x.classList.remove('selected'));
+  el.classList.add('selected');
+  const mode = el.dataset.numberMode || 'new';
+  state.numberMode = mode;
+  const fields = document.getElementById('portFields');
+  if(fields) fields.classList.toggle('show', mode === 'port');
+};
 window.selectNone=()=>{
   document.querySelectorAll('.ob-platform').forEach(p=>p.classList.remove('selected'));
   state.platform='link';
   next();
+};
+
+window.validateStep3AndGoLive=()=>{
+  saveStep();
+  const err = document.getElementById('ob-err3');
+  if(state.numberMode === 'port'){
+    const okEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(state.port.contactEmail || '');
+    if(!state.port.requestedNumber || !state.port.contactName || !okEmail){
+      err.textContent = 'For number transfer, add current number, authorized contact name, and valid email.';
+      return;
+    }
+  }
+  err.textContent = '';
+  goLive();
 };
 window.selectPlan=(el)=>{
   document.querySelectorAll('.ob-plan').forEach(p=>p.classList.remove('selected'));
@@ -388,10 +461,17 @@ function saveStep(){
   }
   if(state.step===3){
     state.bookingUrl=document.getElementById('f-booking-url').value;
-  }
-}
-  if(state.step===4){
-    state.voice=document.getElementById('f-voice').value;
+    state.numberMode = document.querySelector('.ob-number-card.selected')?.dataset?.numberMode || 'new';
+    state.port.requestedNumber = document.getElementById('f-port-number')?.value || '';
+    state.port.currentCarrier = document.getElementById('f-port-carrier')?.value || '';
+    state.port.accountNumber = document.getElementById('f-port-account')?.value || '';
+    state.port.accountPin = document.getElementById('f-port-pin')?.value || '';
+    state.port.billingName = document.getElementById('f-port-billing-name')?.value || '';
+    state.port.billingAddress = document.getElementById('f-port-billing-address')?.value || '';
+    state.port.contactName = document.getElementById('f-port-contact-name')?.value || '';
+    state.port.contactEmail = document.getElementById('f-port-contact-email')?.value || '';
+    state.port.loaUploaded = !!document.getElementById('f-port-loa')?.checked;
+    state.port.billUploaded = !!document.getElementById('f-port-bill')?.checked;
   }
 }
 
@@ -432,7 +512,10 @@ function showStep(n){
 
 window.next=()=>{
   saveStep();
-  if(state.step<4){state.step++;showStep(state.step);}
+  if(state.step<4){
+    state.step++;
+    showStep(state.step);
+  }
   if(state.step===3)renderServices();
   if(state.step===2)renderPreview();
 };
@@ -443,7 +526,6 @@ window.back=()=>{
 function renderPreview(){
   document.getElementById('previewName').textContent = 'LOLA';
   document.getElementById('previewGreeting').textContent = "Hi! I'm Lola" + (state.name&&state.name!=='Your Salon'?` from ${state.name}`:'') + ". How can I help you today?";
-}`:''));
 }
 
 /* preview orb */
@@ -478,7 +560,7 @@ window.goLive=()=>{
     'Creating your account',
     `Connecting ${state.platform==='link'?'your booking link':capitalize(state.platform)}`,
     'Teaching Lola your services',
-    'Setting up your phone line',
+    state.numberMode === 'port' ? 'Submitting your number transfer and assigning a temporary line' : 'Setting up your new Lola phone line',
     'Activating your dashboard'
   ];
   const el=document.getElementById('connecting');
@@ -539,10 +621,53 @@ async function finishLive(){
       }catch(e){}
     }
 
+    let portingNote = '';
+    if(created.session && state.numberMode === 'port'){
+      const token = created.session.access_token || '';
+      const rr = await fetch('/api/telnyx-porting', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+        body: JSON.stringify({
+          requested_phone_number: state.port.requestedNumber,
+          current_carrier: state.port.currentCarrier,
+          account_number: state.port.accountNumber,
+          account_pin: state.port.accountPin,
+          billing_name: state.port.billingName || state.owner,
+          billing_address: state.port.billingAddress || state.location,
+          authorized_contact_name: state.port.contactName || state.owner,
+          authorized_contact_email: state.port.contactEmail || state.email,
+          loa_uploaded: state.port.loaUploaded,
+          recent_bill_uploaded: state.port.billUploaded,
+          use_temporary_number: true
+        })
+      });
+      const pd = await rr.json();
+      if(!rr.ok) throw new Error(pd.error || 'Number transfer setup failed');
+      if(pd.temporary_phone_number) state.phone = pd.temporary_phone_number;
+      portingNote = pd.temporary_phone_number
+        ? ` Your temporary Lola line ${pd.temporary_phone_number} is live now while your main number transfer is processing.`
+        : ' Your number transfer request was submitted.';
+    }
+
     // Success State
     document.getElementById('liveCheck').style.display='flex';
     document.getElementById('liveTitle').textContent='Lola is live. 🎉';
-    document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. Your 14-day trial has started.`;
+    let readinessNote = '';
+    try{
+      const token = localStorage.getItem('loladesk_token') || '';
+      if(token){
+        const rr = await fetch('/api/onboarding-readiness', { headers:{ Authorization:'Bearer '+token } });
+        if(rr.ok){
+          const rd = await rr.json();
+          if(!rd.can_go_live){
+            readinessNote = ` Setup score ${rd.score}%. Finish: ${String((rd.next_actions||[])[0] || 'complete readiness checklist')}.`;
+          }else{
+            readinessNote = ` Setup score ${rd.score}% — fully launch-ready.`;
+          }
+        }
+      }
+    }catch(e){}
+    document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. Your 14-day trial has started.${portingNote}${readinessNote}`;
     document.getElementById('liveNav').style.display='flex';
     
   }catch(e){
@@ -553,14 +678,16 @@ async function finishLive(){
     document.getElementById('liveSub').textContent='Error: '+(e.message||e)+' — Please make sure your database is connected and try again.';
     
     // Convert the "Enter Dashboard" button into a "Try Again" button
-    const navBtn = document.getElementById('liveNav');
+    const navWrap = document.getElementById('liveNav');
+    const navBtn = navWrap.querySelector('button');
+    navWrap.style.display='flex';
     navBtn.textContent = 'Try Again';
-    navBtn.style.display='flex';
     navBtn.onclick = () => {
       document.getElementById('liveTitle').style.color='var(--text)';
       navBtn.textContent = 'Enter your dashboard';
       navBtn.onclick = enterDashboard;
-      goToStep(1); // send back to start
+      state.step = 1;
+      showStep(1);
     };
   }
 }

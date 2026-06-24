@@ -9,6 +9,9 @@
  * SKILLS (the orchestra):
  *   check_availability   — open times for a service/day
  *   book_appointment     — write a confirmed booking
+ *   confirm_booking      — confirm the next upcoming appointment
+ *   reschedule_appointment — safely move an appointment
+ *   cancel_appointment   — cancel an appointment
  *   capture_lead         — save contact when booking can't complete
  *   get_pricing          — price + duration for a service
  *   recommend_service    — suggest the right service from a goal
@@ -25,10 +28,11 @@
 
 import {
   getTenantByPhone, getTenantBySlug, upsertClient, getClientByPhone,
-  createBooking, logUsage, getOrStartConversation, getTenantIntegrations
+  logUsage, getOrStartConversation, getTenantIntegrations, db
 } from './lib/db.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
+import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
 
 // Resolve which salon this call is for
 async function resolveTenant(body){
@@ -83,6 +87,20 @@ function recommend_service(tenant, { goal }){
 
 // ── SKILL: check availability ──
 async function check_availability(tenant, { service, date }){
+  const svc = findService(tenant, service);
+  const durationMin = parseDurationMin(svc?.durationMin ?? svc?.duration, 60);
+  const smart = await listAvailability({ tenant, date, durationMin });
+  if(smart?.slots?.length){
+    const spokenSlots = smart.slots
+      .slice(0, 3)
+      .map(s => new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
+      .join(', ');
+    return {
+      speak: `I can offer ${spokenSlots}${service ? ` for ${service}` : ''}. Which one do you want?`,
+      slots: smart.slots
+    };
+  }
+
   // Pull connected integrations for this tenant (tokens decrypted in-memory here only)
   let appointments = [];
   try{
@@ -119,6 +137,14 @@ async function book_appointment(tenant, body){
       client = await upsertClient(tenant.id, { phone: client_phone, name: client_name });
     }
     const startsAt = date && time ? new Date(`${date}T${to24(time)}`).toISOString() : null;
+    const durationMin = parseDurationMin(s?.durationMin ?? s?.duration, 60);
+    if(!startsAt){
+      return {
+        speak: `Perfect — I can book that now. Tell me the exact date and time you want for ${s?.name || service || 'your appointment'}.`,
+        booked: false,
+        needs_time: true
+      };
+    }
 
     // Try writing to a connected booking platform first
     let external = null;
@@ -126,19 +152,41 @@ async function book_appointment(tenant, body){
       const integrations = await getTenantIntegrations(tenant.id);
       if(integrations.length){
         external = await writeAppointment(integrations, {
-          starts_at: startsAt, duration_min: s?.durationMin || 60,
+          starts_at: startsAt, duration_min: durationMin,
           service: s?.name || service, client: { name: client_name, phone: client_phone }
         });
       }
     }catch(e){ /* fall back to internal booking */ }
 
-    // Always record internally too
-    if(tenant.id){
-      await createBooking(tenant.id, {
-        clientId: client?.id, service: s?.name || service, stylist,
-        startsAt, durationMin: s?.durationMin || 60, price: s?.price
+    // Always record internally too (conflict-safe)
+    if(tenant.id && startsAt){
+      const safe = await createBookingSafe({
+        tenant,
+        clientId: client?.id,
+        service: s?.name || service,
+        stylist,
+        startsAt,
+        durationMin,
+        price: s?.price
       });
-      await logUsage(tenant.id, 'booking', 1, { service: s?.name || service });
+      if(!safe.ok && safe.conflict){
+        const av = await listAvailability({ tenant, date: startsAt, durationMin, stylist });
+        const options = (av.slots || []).slice(0, 3).map(x => new Date(x).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })).join(', ');
+        return {
+          speak: `That time just got taken. I can do ${options || 'the next available slot'} instead.`,
+          booked: false,
+          conflict: true,
+          slots: av.slots || []
+        };
+      } else if(!safe.ok){
+        return {
+          speak: `I could not lock that slot yet. Please confirm another nearby time and I will secure it now.`,
+          booked: false,
+          error: safe.error || 'booking_failed'
+        };
+      } else {
+        await logUsage(tenant.id, 'booking', 1, { service: s?.name || service });
+      }
     }
 
     let speakStr = `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service}${date?` on ${date}`:''}${time?` at ${time}`:''}${stylist?` with ${stylist}`:''}. `;
@@ -159,6 +207,89 @@ async function book_appointment(tenant, body){
       booked: false, needs_callback: true
     };
   }
+}
+
+async function confirm_booking(tenant, { client_phone, client_name }){
+  const c = db();
+  if(!c) return { speak:'I can confirm that now. Share your booking phone number.' };
+  let client = null;
+  if(client_phone) client = await getClientByPhone(tenant.id, client_phone);
+  if(!client && client_name){
+    const { data } = await c.from('clients').select('*').eq('tenant_id', tenant.id).ilike('name', `%${client_name}%`).limit(1);
+    client = data?.[0] || null;
+  }
+  if(!client) return { speak:'I could not find that booking yet. Share the phone number on the appointment.' };
+  const { data: rows } = await c
+    .from('bookings')
+    .select('*')
+    .eq('tenant_id', tenant.id)
+    .eq('client_id', client.id)
+    .gte('starts_at', new Date().toISOString())
+    .neq('status', 'cancelled')
+    .order('starts_at', { ascending: true })
+    .limit(1);
+  const next = rows?.[0];
+  if(!next) return { speak:`I do not see an upcoming booking for ${client.name || 'that client'}. Want me to book one now?`, confirmed:false };
+  const when = new Date(next.starts_at).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  return { speak:`Yes - you are confirmed for ${next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
+}
+
+async function reschedule_appointment(tenant, { booking_id, client_phone, new_date, new_time }){
+  const c = db();
+  if(!c) return { speak:'I can help reschedule. Please share booking details again.' };
+  let bookingId = booking_id;
+  if(!bookingId && client_phone){
+    const client = await getClientByPhone(tenant.id, client_phone);
+    if(client){
+      const { data } = await c.from('bookings')
+        .select('id, starts_at')
+        .eq('tenant_id', tenant.id)
+        .eq('client_id', client.id)
+        .gte('starts_at', new Date().toISOString())
+        .neq('status','cancelled')
+        .order('starts_at', { ascending: true })
+        .limit(1);
+      bookingId = data?.[0]?.id;
+    }
+  }
+  if(!bookingId) return { speak:'I could not identify which booking to reschedule yet. Please share the booking phone number.' };
+  const targetIso = new_date && new_time ? new Date(`${new_date}T${to24(new_time)}`).toISOString() : null;
+  if(!targetIso) return { speak:'Please share the new date and time, and I will move it immediately.' };
+  const out = await rescheduleBookingSafe({ tenantId: tenant.id, bookingId, newStartsAt: targetIso });
+  if(!out.ok){
+    if(out.conflict){
+      const av = await listAvailability({ tenant, date: targetIso, durationMin: Number(out?.booking?.duration_min || 60) });
+      const options = (av.slots || []).slice(0, 3).map(x => new Date(x).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })).join(', ');
+      return { speak:`That new time is not available. I can offer ${options || 'the next open slot'} instead.`, rescheduled:false, conflict:true, slots:av.slots || [] };
+    }
+    return { speak:'I could not reschedule that just now. Please give me one moment and we can retry.', rescheduled:false };
+  }
+  const when = new Date(targetIso).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  return { speak:`Done - your appointment is moved to ${when}.`, rescheduled:true, booking:out.booking };
+}
+
+async function cancel_appointment(tenant, { booking_id, client_phone }){
+  const c = db();
+  if(!c) return { speak:'I can help cancel it now. Please confirm the booking phone number.' };
+  let bookingId = booking_id;
+  if(!bookingId && client_phone){
+    const client = await getClientByPhone(tenant.id, client_phone);
+    if(client){
+      const { data } = await c.from('bookings')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .eq('client_id', client.id)
+        .gte('starts_at', new Date().toISOString())
+        .neq('status','cancelled')
+        .order('starts_at', { ascending: true })
+        .limit(1);
+      bookingId = data?.[0]?.id;
+    }
+  }
+  if(!bookingId) return { speak:'I could not find the booking to cancel yet. Share the booking phone number.' };
+  const out = await cancelBookingSafe({ tenantId: tenant.id, bookingId });
+  if(!out.ok) return { speak:'I could not cancel that right now. Please give me one moment and retry.' };
+  return { speak:'Done. The appointment is canceled. Do you want me to suggest a new time now?', cancelled:true };
 }
 
 // ── SKILL: capture a lead ──
@@ -203,7 +334,8 @@ function to24(t){
 export const SKILLS = {
   list_services, get_pricing, recommend_service,
   check_availability, book_appointment, capture_lead,
-  handle_recovery, escalate
+  handle_recovery, escalate,
+  confirm_booking, reschedule_appointment, cancel_appointment
 };
 
 export default async function handler(req, res){

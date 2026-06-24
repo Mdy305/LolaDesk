@@ -54,6 +54,17 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .hero-scroll-line{width:1px;height:40px;background:linear-gradient(var(--text3),transparent);animation:scrollpulse 2s ease-in-out infinite}
 @keyframes scrollpulse{0%,100%{opacity:.3;transform:scaleY(.7)}50%{opacity:1;transform:scaleY(1)}}
 
+/* VOICE TRIAL DEMO */
+.voice-demo{padding:24px 24px 0;display:flex;justify-content:center}
+.voice-demo-card{width:min(1040px,100%);background:linear-gradient(180deg,var(--surface),var(--surface2));border:1px solid var(--border);border-radius:22px;padding:20px}
+.voice-demo-kicker{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--pink2);font-weight:600;margin-bottom:8px}
+.voice-demo-title{font-size:clamp(24px,3.4vw,38px);font-weight:600;letter-spacing:-.02em;line-height:1.1;margin-bottom:8px}
+.voice-demo-sub{font-size:14px;color:var(--text2);margin-bottom:14px}
+.voice-demo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.voice-chip{background:rgba(255,45,142,.08);color:var(--text);border:1px solid rgba(255,45,142,.25);padding:11px 14px;border-radius:999px;font-size:13px}
+.voice-chip:hover{background:rgba(255,45,142,.15)}
+.voice-demo-status{font-size:12px;color:var(--text3);margin-top:10px;min-height:18px}
+
 /* REVEAL */
 .reveal{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 24px;text-align:center;position:relative}
 .reveal-inner{max-width:880px;opacity:0;transform:translateY(40px);transition:all 1s cubic-bezier(.16,1,.3,1)}
@@ -143,6 +154,20 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   </div>
   <div class="hero-scroll"><span>Scroll</span><div class="hero-scroll-line"></div></div>
 </header>
+
+<section class="voice-demo" aria-label="Lola trial voice demo">
+  <div class="voice-demo-card">
+    <div class="voice-demo-kicker">Lola trial demo</div>
+    <h2 class="voice-demo-title">Hear Lola in real salon conversations</h2>
+    <p class="voice-demo-sub">Tap a scenario. Prospects hear Lola's real voice before they start trial.</p>
+    <div class="voice-demo-actions">
+      <button class="voice-chip" data-voice-demo="book">Play booking call</button>
+      <button class="voice-chip" data-voice-demo="recover">Play missed-call recovery</button>
+      <button class="voice-chip" data-voice-demo="upsell">Play upsell conversation</button>
+    </div>
+    <div id="voiceDemoStatus" class="voice-demo-status" aria-live="polite">Ready to play</div>
+  </div>
+</section>
 
 <section class="reveal">
   <div class="reveal-inner">
@@ -335,6 +360,55 @@ function makeOrb(canvas, size){
 }
 makeOrb(document.getElementById('heroOrb'), 680);
 makeOrb(document.getElementById('finalOrb'), 560);
+
+(function(){
+  const lines = {
+    book: "Hi, you've reached Lola at LolaDesk. I can get you booked right now. I have openings tomorrow at 2:15 or 4:00 for a balayage. Which one feels best for you?",
+    recover: "I saw we missed your call a few minutes ago, so I already pulled next available times for your usual service. I can lock one in now and text your confirmation immediately.",
+    upsell: "Since your color appointment is already booked, I'd recommend adding a restorative gloss to protect shine and make the result last longer. I can add it now in one tap."
+  };
+  const status = document.getElementById('voiceDemoStatus');
+  let currentAudio = null;
+
+  async function playVoice(text){
+    if(currentAudio){
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    if(status) status.textContent = 'Loading voice…';
+    const r = await fetch('/api/speak', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if(!r.ok) throw new Error('voice unavailable');
+    const bytes = await r.arrayBuffer();
+    const blob = new Blob([bytes], { type: r.headers.get('content-type') || 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    currentAudio = audio;
+    if(status) status.textContent = 'Playing…';
+    await audio.play();
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if(currentAudio === audio) currentAudio = null;
+      if(status) status.textContent = 'Ready to play';
+    };
+  }
+
+  document.querySelectorAll('[data-voice-demo]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = btn.getAttribute('data-voice-demo');
+      const text = lines[key];
+      if(!text) return;
+      try{
+        await playVoice(text);
+      }catch(e){
+        if(status) status.textContent = 'Voice demo temporarily unavailable';
+      }
+    });
+  });
+})();
 </script>
 </body>
 </html>

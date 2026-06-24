@@ -11,6 +11,8 @@ import { chat } from './lib/llm.js';
 import { executeSkill } from './lib/orchestrator.js';
 import { SKILLS } from './lola-tools.js';
 import { getTenantBySlug } from './lib/db.js';
+import { getUserFromToken, bearer } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 const TOOLS = [
   {
@@ -62,13 +64,58 @@ const TOOLS = [
         required: ["service"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirm_booking",
+      description: "Confirm a client's upcoming booking by phone or name.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_phone: { type: "string" },
+          client_name: { type: "string" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "reschedule_appointment",
+      description: "Reschedule an existing appointment to a new date/time.",
+      parameters: {
+        type: "object",
+        properties: {
+          booking_id: { type: "string" },
+          client_phone: { type: "string" },
+          new_date: { type: "string", description: "Date like 2026-06-25" },
+          new_time: { type: "string", description: "Time like 14:00 or 2:00 PM" }
+        },
+        required: ["new_date", "new_time"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancel_appointment",
+      description: "Cancel an existing appointment.",
+      parameters: {
+        type: "object",
+        properties: {
+          booking_id: { type: "string" },
+          client_phone: { type: "string" }
+        }
+      }
+    }
   }
 ];
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-tenant-id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-tenant-id');
 
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -79,7 +126,11 @@ export default async function handler(req, res){
     
     // We fetch tenant so orchestrator can use it
     let tenant = null;
-    if (tenantIdHeader) {
+    try{
+      const user = await getUserFromToken(bearer(req));
+      if(user) tenant = await resolveTenantForUser(user);
+    }catch{}
+    if (!tenant && tenantIdHeader) {
       tenant = await getTenantBySlug(tenantIdHeader);
     }
 
@@ -151,12 +202,15 @@ export default async function handler(req, res){
       }
     }
 
+    const finalText = String(result?.text || '').trim() ||
+      'I am on it. Give me the client name, service, and preferred time, and I will handle the next step.';
+
     // Return in the shape the dashboard expects
     return res.status(200).json({
       id: `msg_${Date.now()}`,
       type: 'message',
       role: 'assistant',
-      content: [{ type: 'text', text: result.text }],
+      content: [{ type: 'text', text: finalText }],
       model: result.model,
       provider: result.provider
     });
