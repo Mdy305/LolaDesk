@@ -132,135 +132,136 @@ export function deterministicSkillReply({ tenant, intent, channel='voice', clien
   const name = clientName ? ` ${clientName}` : '';
   const bookingUrl = tenant?.booking_url || '';
   const services = serviceList(tenant);
+  const company = tenant?.name || 'our salon';
   
   switch(intent){
     // TIER 1: CORE BOOKING
     case 'booking_new':
       if(channel === 'sms' && bookingUrl){
-        return `Perfect${name}. I can book this now or you can use ${bookingUrl}. What service, day, and time do you prefer?`;
+        return `Perfect${name}! This is Lola at ${company}. I can book you now or send the link. What service, day, and time do you prefer?`;
       }
-      return `Perfect${name}. I can help you book now. What service, day, and preferred time should I lock in?`;
+      return `Perfect${name}! This is Lola at ${company}. What service, day, and preferred time should I lock in?`;
     
     case 'booking_change':
-      return 'Absolutely. I can help change or cancel your appointment. Share your full name and current appointment day/time.';
+      return `Hi${name}! It's Lola at ${company}. I can change your appointment—share your full name and current booking details.`;
     
     case 'booking_confirm':
-      return 'Absolutely. I can confirm that for you now. Please share your full name and the best phone number on the booking.';
+      return `Hi${name}! It's Lola at ${company}. I'll confirm your appointment. Full name and phone number on the booking, please.`;
     
     case 'booking_multi':
-      return `Love it — multitasking appointment. What two services would you like done together? And what day/time works?`;
+      return `Love it${name}—multitasking at ${company}! What two services together, and when?`;
     
     case 'booking_package':
-      return `Great thinking${name}. We offer package deals that save you time and money. What's your main goal: color + cut, maintenance boost, or full pampering day?`;
+      return `Great${name}! At ${company}, we have package deals that save you time and money. Color + cut, maintenance boost, or full pampering day?`;
     
     // TIER 2: AVAILABILITY & INTELLIGENCE
     case 'urgent_slot':
-      return `I can absolutely find you something today or tomorrow${name}. What service and what time window works best?`;
+      return `This is Lola at ${company}. I can find you something today or tomorrow${name}. What service and time window works best?`;
     
     case 'waitlist':
-      return `Smart move. I'll add you to our priority waitlist for your preferred time — if someone cancels, I'll text you right away. When do you want to be on standby for?`;
+      return `Smart move${name}! I'll add you to ${company}'s priority waitlist. When do you want to be on standby for?`;
     
     case 'stylist_match':
-      return `Absolutely${name}. I have stylists who specialize in different techniques. What's your hair type, and what result are you going for? I'll match you with the best fit.`;
+      return `Hi${name}, Lola here at ${company}. I'll match you with the perfect stylist. What's your hair type and what result do you want?`;
     
     // TIER 3: PRICING & VALUE
     case 'pricing':
-      if(services) return `Our most requested services are ${services}. Tell me your goal and I will recommend the best option and price.`;
-      return 'Tell me what result you want and I will recommend the right service and price range.';
+      if(services) return `At ${company}, we offer ${services}. Tell me your goal and I'll recommend the best option and price.`;
+      return `At ${company}, I can recommend the perfect service for your goal. What result are you hoping for?`;
     
     case 'loyalty':
-      return `Love that you asked. Every appointment earns you points for free services, exclusive perks, and early access to new treatments. Want to join our VIP club today?`;
+      return `Great question! At ${company}, every appointment earns points for free services and exclusive perks. Want to join our VIP club today?`;
     
     case 'first_time_discount':
-      return `New here? Perfect — I can lock in your first-time discount right now, plus I'll add you to our loyalty program so you earn on this appointment. What service sounds best?`;
+      return `New here? Perfect! I can lock in your first-time discount at ${company} right now, plus loyalty rewards. What service sounds best?`;
     
     case 'upsell':
-      return `Smart combo${name}. Adding a gloss or shine treatment to your service locks in color and takes just 15 more minutes—want me to add it on?`;
+      return `Smart combo${name}! Adding a gloss or shine at ${company} takes 15 more minutes—want me to add it on?`;
     
     // TIER 4: PERSONALIZATION
     case 'recommendation':
-      return `I'm here to find the perfect service for you. What result are you hoping for today, and what's your hair been through recently?`;
+      return `Hi${name}! I'm Lola at ${company}. Tell me what result you're hoping for and I'll find the perfect service.`;
     
     case 'product_retail':
-      return `Absolutely${name}. The right home-care routine is half the battle. Based on your service today, I'll recommend products that keep your style looking salon-fresh. Sound good?`;
+      return `Absolutely${name}! Lola at ${company} here. Based on your service, I'll recommend home-care products that keep everything looking salon-fresh.`;
     
     case 'preference_capture':
-      return `Got it${name} — I'm saving that. We'll make sure your next appointment is exactly how you love it.`;
+      return `Got it${name}—Lola is saving that to your ${company} profile so every stylist knows exactly what you love.`;
     
     case 'service_history':
-      return `Perfect — I have your history here. Last time you got your favorite style. Want the same magic, or ready to switch it up?`;
+      return `Hi${name}! Lola at ${company} here. I see your last service was amazing. Want that same magic, or ready to switch it up?`;
     
     // TIER 5: POLICIES
     case 'policy':
-      return `Great question. We have a simple policy: small deposit holds your slot, 48-hour cancellation is free, and we offer a 100% redo guarantee if you're not thrilled. Any questions?`;
+      return `At ${company}, we have a simple policy: deposit holds your slot, 48-hour cancellation is free, and we guarantee 100% redo if you're not thrilled.`;
     
     case 'no_show_policy':
-      return `I totally get life happens. Our policy is: miss two appointments and a $25 fee applies to your next one—unless we give you 24 hours notice. Can I reschedule you right now instead?`;
+      return `I get it${name}—life happens. At ${company}, miss two and a $25 fee applies, unless you give us 24 hours notice. Can I rebook you now?`;
     
     case 'deposit_payment':
-      return `Perfect${name}. Your deposit of $25-50 holds your spot. I can collect that securely right now via text. Sound good?`;
+      return `Perfect${name}! I can collect your $25-50 deposit securely via text link right now. Sound good?`;
     
     // TIER 6: FEEDBACK & QUALITY
     case 'feedback':
-      return `Thank you so much for the feedback${name}—I just saved it to personalize your next visit. Want me to go ahead and book your next appointment while I have you?`;
+      return `Thank you so much${name}! Lola at ${company} just saved that to personalize your next visit. Want to book your next appointment now?`;
     
     case 'complaint_recovery':
-      return `I am so sorry this happened${name}. We will make this right right away—please share your name, service date, and the fastest callback number. I'm flagging this for our team immediately.`;
+      return `I'm so sorry${name}. Lola at ${company} here. We will make this right—please share your name, service date, and fastest callback number. Flagging our team now.`;
     
     case 'satisfaction_survey':
-      return `Perfect${name}. Quick question: on a scale of 1-10, how happy are you with your appointment today? And is there anything we could have done better?`;
+      return `Hi${name}, quick question: on a scale of 1-10, how happy are you with your ${company} appointment? Anything we could do better?`;
     
     // TIER 7: LEAD CONVERSION
     case 'lead_capture':
       return channel === 'sms'
-        ? `Totally fine. I can hold a priority consult spot and text you two ideal times—what day works best?`
-        : `Totally fine. I can hold a priority consult slot and give you two perfect options. What day works best?`;
+        ? `Totally fine! Lola at ${company} here. I can hold a priority spot and text two ideal times—what day works?`
+        : `Totally fine${name}! Lola at ${company} will hold a priority slot. What day works best?`;
     
     case 'follow_up_schedule':
-      return `Smart thinking ahead${name}. Based on your service type, I'd recommend rebooking in 6-8 weeks to keep everything looking fresh. Want me to pencil that in now?`;
+      return `Smart thinking${name}! At ${company}, I'd recommend rebooking in 6-8 weeks to keep everything fresh. Want me to hold that spot?`;
     
     case 'referral_incentive':
-      return `Love that you'd refer us${name}. Here's the deal: send a friend, they get 20% off, and you both get a free $25 add-on service. Sound good?`;
+      return `Love that you'd refer us${name}! Here's the deal at ${company}: your friend gets 20% off, you both get $25. Sound good?`;
     
     // TIER 8: BUSINESS OPERATIONS
     case 'owner_assistant':
-      return 'Yes. I can help with no-show recovery, rebooking, targeting at-risk clients, and filling schedule gaps. Which should we tackle first?';
+      return `Yes! Lola at ${company} can help with no-shows, rebooking, targeting at-risk clients, and filling schedule gaps. What first?`;
     
     case 'owner_no_shows':
-      return 'I see you had a no-show pattern last month. Want me to send a re-engagement text with a 15% "we miss you" discount?';
+      return `Lola here at ${company}. I see a no-show pattern last month. Want me to send a 15% "we miss you" re-engagement text?`;
     
     case 'owner_gaps':
-      return 'I found 3 open slots this week. Want me to text past clients in your top 5 favorite categories to fill them?';
+      return `Lola at ${company}: I found 3 open slots this week. Want me to text past clients to fill them?`;
     
     case 'owner_calendar':
-      return 'I can see your team calendars. Stylist A is overbooked, Stylist B has gaps. Want me to suggest rebooking some of A\'s clients to B?';
+      return `Lola here: I can see your ${company} team calendars. Some stylists are busier than others. Want me to suggest rebooking?`;
     
     // TIER 9: SPECIAL REQUESTS
     case 'hours':
       return tenant?.hours
-        ? `We are open ${tenant.hours}. Do you want me to help you book the best time?`
-        : 'I can help you book right now. What day works best for you?';
+        ? `At ${company}, we're open ${tenant.hours}. Want me to help you book the best time?`
+        : `This is Lola at ${company}. I can help you book right now. What day works best for you?`;
     
     case 'location':
       return tenant?.location
-        ? `We are located in ${tenant.location}. Want me to set your appointment now?`
-        : 'I can help you schedule now. What day and time are best for you?';
+        ? `At ${company}, we're located in ${tenant.location}. Want me to set your appointment now?`
+        : `This is Lola at ${company}. I can help you schedule now. What day and time works?`;
     
     case 'event_package':
-      return `Congratulations${name}! Group bookings are my specialty. How many people, what's the event, and when do you need us?`;
+      return `Congratulations${name}! Lola at ${company} specializes in group bookings. How many people, what's the event, and when?`;
     
     case 'gift_card':
-      return `Perfect gift${name}. Our gift cards start at $25 and never expire. Want me to send a digital one right now, or would you prefer a physical card?`;
+      return `Perfect gift${name}! Gift cards at ${company} start at $25 and never expire. Digital or physical card?`;
     
     // TIER 10: ESCALATION
     case 'callback_schedule':
-      return `Absolutely${name}. What's the best number and what time works best for someone from the team to call you back?`;
+      return `Absolutely${name}! Lola at ${company} here. What's your best number and best time for our team to call back?`;
     
     case 'complaint_escalation':
-      return `I'm taking this seriously${name}. I'm connecting you with our owner/manager right now to make this right. Stay on the line for one second?`;
+      return `I'm taking this seriously${name}. Lola at ${company} is connecting you with management right now. Stay on the line for one second?`;
     
     case 'human_handoff':
-      return 'Absolutely. I will route this to the team now. What is the best callback number and your name?';
+      return `Hi${name}! Lola at ${company} here. I'll route this to the team now. Best callback number and your full name?`;
     
     case 'interruption':
       return channel === 'voice'
@@ -417,12 +418,16 @@ export function buildClientMemoryBlock(profile){
 export function buildLolaSystemPrompt({ tenant, channel='voice', intent='general', mood='neutral', memoryBlock='' }){
   const kb = tenantKnowledgePrompt(tenant);
   const skills = SKILLS.map(s => `- ${s.id}: ${s.name}`).join('\n');
-  return `You are Lola, the world-class AI front desk manager and salon assistant.
-You sound human, fast, warm, and precise. Keep replies concise and actionable.
+  const companyName = tenant?.name || 'the salon';
+  
+  return `You are Lola, the world-class AI front desk manager at ${companyName}.
+You sound human, fast, warm, and precise. Always mention "${companyName}" naturally in greetings and sign-offs.
+Keep replies concise and actionable.
 
 CHANNEL: ${channel}
 DETECTED_INTENT: ${intent}
 MOOD: ${mood}
+COMPANY_NAME: ${companyName}
 
 BUSINESS KNOWLEDGE:
 ${kb}
@@ -443,5 +448,6 @@ OPERATING RULES:
 - Sound like a real luxury concierge, not a bot: natural phrasing, calm confidence, no robotic disclaimers.
 - If MOOD is recovery, lead with empathy and ownership before logistics.
 - If MOOD is urgent, acknowledge urgency and offer the fastest next action.
-- Keep SMS replies to 1-3 sentences; keep voice replies to 1-2 short sentences.`;
+- Keep SMS replies to 1-3 sentences; keep voice replies to 1-2 short sentences.
+- FOR VOICE CHANNEL: Speak naturally like you're talking to a friend. Include ${companyName} name. Short pauses make sense.`;
 }

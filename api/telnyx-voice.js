@@ -199,12 +199,24 @@ export default async function handler(req, res){
   }
 
   let playUrl = '';
+  let synthesisError = '';
+  
+  // CRITICAL: Always attempt ElevenLabs before falling back to Polly
   if(elevenLabsConfigured() && process.env.APP_URL){
     try{
       const audio = await synthesize(reply);
       const id = putAudio(audio);
       playUrl = `${process.env.APP_URL.replace(/\/+$/,'')}/api/voice-audio?id=${encodeURIComponent(id)}`;
-    }catch{}
+    }catch(e){
+      synthesisError = String(e.message || e).slice(0, 100);
+      console.error(`[VOICE] ElevenLabs synthesis failed for tenant ${tenant.id}: ${synthesisError}`);
+    }
+  }else{
+    const missing = [];
+    if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
+    if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
+    if(!process.env.APP_URL) missing.push('APP_URL');
+    console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
 
   const xml = texmlSayAndGather({ say: reply, playUrl });
