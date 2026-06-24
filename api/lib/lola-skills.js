@@ -1,4 +1,18 @@
 import { tenantKnowledgePrompt } from './db.js';
+import { 
+  PAYMENT_SKILLS, INVENTORY_SKILLS, CLIENT_SKILLS, MARKETING_SKILLS,
+  ADVANCED_BOOKING_SKILLS, TEAM_SKILLS, COMMUNICATION_SKILLS, QUALITY_SKILLS,
+  CONCIERGE_SKILLS, INTEGRATION_SKILLS, ALL_ELITE_SKILLS,
+  detectEliteIntent, deterministicEliteSkillReply 
+} from './lola-elite-skills.js';
+
+import { tenantKnowledgePrompt } from './db.js';
+import { 
+  PAYMENT_SKILLS, INVENTORY_SKILLS, CLIENT_SKILLS, MARKETING_SKILLS,
+  ADVANCED_BOOKING_SKILLS, TEAM_SKILLS, COMMUNICATION_SKILLS, QUALITY_SKILLS,
+  CONCIERGE_SKILLS, INTEGRATION_SKILLS, ALL_ELITE_SKILLS,
+  detectEliteIntent, deterministicEliteSkillReply 
+} from './lola-elite-skills.js';
 
 const SKILLS = [
   // TIER 1: CORE BOOKING (Foundation)
@@ -55,7 +69,37 @@ const SKILLS = [
   // TIER 10: ESCALATION (Safety)
   { id: 'complaint_escalation', name: 'Escalate serious issues to management' },
   { id: 'human_handoff', name: 'Escalate to owner/stylist on request' },
-  { id: 'callback_schedule', name: 'Schedule human callback at preferred time' }
+  { id: 'callback_schedule', name: 'Schedule human callback at preferred time' },
+  
+  // TIER 11: PAYMENT & FINANCIAL (NEW)
+  ...PAYMENT_SKILLS,
+  
+  // TIER 12: INVENTORY & PRODUCTS (NEW)
+  ...INVENTORY_SKILLS,
+  
+  // TIER 13: CLIENT SEGMENTATION (NEW)
+  ...CLIENT_SKILLS,
+  
+  // TIER 14: MARKETING & ANALYTICS (NEW)
+  ...MARKETING_SKILLS,
+  
+  // TIER 15: ADVANCED BOOKING (NEW)
+  ...ADVANCED_BOOKING_SKILLS,
+  
+  // TIER 16: TEAM OPERATIONS (NEW)
+  ...TEAM_SKILLS,
+  
+  // TIER 17: COMMUNICATION & CHANNELS (NEW)
+  ...COMMUNICATION_SKILLS,
+  
+  // TIER 18: QUALITY & FEEDBACK (NEW)
+  ...QUALITY_SKILLS,
+  
+  // TIER 19: CONCIERGE SERVICES (NEW)
+  ...CONCIERGE_SKILLS,
+  
+  // TIER 20: INTEGRATIONS & STATUS (NEW)
+  ...INTEGRATION_SKILLS,
 ];
 
 function low(v){
@@ -124,6 +168,10 @@ export function detectLolaIntent(text){
   if(hasAny(t, ['hours','open','close','today','tomorrow','sunday','monday'])) return 'hours';
   if(hasAny(t, ['address','located','where are you','location','parking','directions','google'])) return 'location';
   if(hasAny(t, ['call me back','someone from the salon','speak to','talk to'])) return 'callback_schedule';
+  
+  // Try elite intent detection for new 60+ skills
+  const eliteIntent = detectEliteIntent(text);
+  if(eliteIntent !== 'general') return eliteIntent;
   
   return 'general';
 }
@@ -269,7 +317,9 @@ export function deterministicSkillReply({ tenant, intent, channel='voice', clien
         : 'Of course - take your time. I am here when you are ready.';
     
     default:
-      return '';
+      // Try elite skills (Tiers 11-20: Payment, Inventory, Analytics, etc.)
+      const eliteReply = deterministicEliteSkillReply({ tenant, intent, channel, clientName });
+      return eliteReply;
   }
 }
 
