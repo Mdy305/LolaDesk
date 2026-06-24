@@ -14,6 +14,8 @@ import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenla
 import { putAudio } from './lib/tts-cache.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
+import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
+import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
 
 function escapeXml(value=''){
   return String(value)
@@ -150,24 +152,72 @@ export default async function handler(req, res){
     }catch{}
     if(!reply){
       const messages = [...history, { role: 'user', content: speech }];
+      
+      // Build enhanced system prompt with advanced features
+      let systemPrompt = buildLolaSystemPrompt({
+        tenant,
+        channel: 'voice',
+        intent,
+        mood,
+        memoryBlock: buildClientMemoryBlock(clientProfile)
+      });
+      
+      // Add MCP tools availability to system prompt
+      systemPrompt += '\n' + buildMCPToolsPrompt();
+      
+      // Add MMS vision results if available
+      const mmsResult = getInCallMmsResult(payload.callControlId);
+      if(mmsResult){
+        systemPrompt += '\n' + buildMmsVisionPromptBlock(mmsResult);
+      }
+      
       try{
         const ai = await chat({
-          system: buildLolaSystemPrompt({
-            tenant,
-            channel: 'voice',
-            intent,
-            mood,
-            memoryBlock: buildClientMemoryBlock(clientProfile)
-          }),
+          system: systemPrompt,
           messages,
           maxTokens: 220,
           temperature: 0.5,
           source: 'voice'
         });
-        reply = ai.ok && ai.text ? ai.text.trim() : '';
-      }catch{}
-    }
-    if(!reply) reply = 'Got it. I can help with that. What day works best for you?';
+        
+       if(ai.ok && ai.text){
+         reply = ai.text.trim();
+          
+         // Check if LLM requested a tool invocation (MCP)
+         const toolMatch = reply.match(/\[TOOL:\s*(\w+)\s*\{([^}]*)\}\]/);
+         if(toolMatch){
+           const toolName = toolMatch[1];
+           try{
+             const params = JSON.parse('{' + toolMatch[2] + '}');
+             const toolResult = await executeMCPTool(toolName, params, tenant.id);
+              
+             // Refine reply with tool result
+             const refinedMessages = [
+               ...messages,
+               { role: 'assistant', content: reply },
+               { role: 'user', content: `Tool "${toolName}" returned: ${JSON.stringify(toolResult)}` }
+             ];
+              
+             const refined = await chat({
+               system: systemPrompt,
+               messages: refinedMessages,
+               maxTokens: 200,
+               temperature: 0.5,
+               source: 'voice'
+             });
+              
+             if(refined.ok && refined.text){
+               reply = refined.text.trim();
+             }
+           }catch(e){
+             console.error(`[MCP] Tool execution error: ${e.message}`);
+             // Fall back to original reply
+           }
+         }
+       }
+     }catch{}
+   }
+   if(!reply) reply = 'Got it. I can help with that. What day works best for you?';
 
     try{
       const quality = evaluateInteractionQuality({
