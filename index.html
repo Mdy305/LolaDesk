@@ -103,6 +103,35 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-btn.ghost{background:var(--surface2);color:var(--text);border:0.5px solid var(--border2)}
 .price-btn.ghost:hover{border-color:var(--text3)}
 
+/* PRICING — ROI + BILLING TOGGLE */
+.price-roi{font-size:clamp(15px,2.1vw,18px);font-weight:300;color:var(--text2);max-width:520px;margin:18px auto 0;line-height:1.6}
+.price-roi em{font-style:normal;color:var(--pink2)}
+.billing-toggle{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:0.5px solid var(--border2);border-radius:100px;padding:4px;margin:30px auto 0}
+.billing-opt{background:transparent;color:var(--text2);font-size:13px;font-weight:500;padding:9px 20px;border-radius:100px;transition:all .25s;display:inline-flex;align-items:center;gap:8px}
+.billing-opt.active{background:var(--pink);color:#fff}
+.billing-save{font-size:10px;font-weight:600;letter-spacing:.04em;padding:3px 8px;border-radius:100px;background:rgba(255,255,255,.18)}
+.billing-opt:not(.active) .billing-save{background:var(--pink-dim);color:var(--pink2)}
+.price-note{font-size:11.5px;color:var(--text3);min-height:15px;margin-bottom:18px;letter-spacing:.01em}
+
+/* TRUST + RISK-REVERSAL */
+.trust-sec{padding:120px 24px;text-align:center}
+.guarantee-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;max-width:1100px;margin:54px auto 0;width:100%}
+@media(max-width:880px){.guarantee-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:540px){.guarantee-grid{grid-template-columns:1fr}}
+.guar-card{background:var(--surface);border:0.5px solid var(--border);border-radius:20px;padding:28px 24px;text-align:left;opacity:0;transform:translateY(28px);transition:opacity .8s,transform .8s,border-color .3s}
+.reveal.visible .guar-card{opacity:1;transform:none}
+.reveal.visible .guar-card:nth-child(2){transition-delay:.08s}
+.reveal.visible .guar-card:nth-child(3){transition-delay:.16s}
+.reveal.visible .guar-card:nth-child(4){transition-delay:.24s}
+.guar-card:hover{border-color:var(--border2)}
+.guar-icon{width:44px;height:44px;border-radius:12px;background:var(--pink-dim);display:flex;align-items:center;justify-content:center;color:var(--pink2);margin-bottom:18px}
+.guar-title{font-size:16px;font-weight:600;margin-bottom:9px;letter-spacing:-.01em}
+.guar-text{font-size:13px;font-weight:300;color:var(--text2);line-height:1.6}
+.proofbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:16px 30px;max-width:900px;margin:52px auto 0;padding-top:42px;border-top:0.5px solid var(--border)}
+.proof-label{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);width:100%;margin-bottom:2px}
+.proof-item{font-size:13px;font-weight:400;color:var(--text2);display:flex;align-items:center;gap:9px}
+.proof-item svg{color:var(--pink2);flex-shrink:0}
+
 /* FINAL */
 .final{min-height:90vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:80px 24px;position:relative;overflow:hidden}
 .final-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;height:560px;pointer-events:none;opacity:.5}
@@ -197,26 +226,97 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   </div>
 </section>
 
+<section class="trust-sec reveal">
+  <div class="reveal-inner" style="max-width:1100px">
+    <div class="reveal-tag">Your salon. Your rules.</div>
+    <h2 class="reveal-title">Hand over the phone<br>without losing <em>control.</em></h2>
+    <p class="reveal-text">Lola only ever says what you approve — and you can hear every word she handled.</p>
+    <div class="guarantee-grid">
+      <div class="guar-card">
+        <div class="guar-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 3 12.2V5a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.4"/></svg></div>
+        <div class="guar-title">You set every price</div>
+        <div class="guar-text">Lola quotes only the services and prices you enter. She never guesses or invents a number on a call.</div>
+      </div>
+      <div class="guar-card">
+        <div class="guar-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></div>
+        <div class="guar-title">Every call on the record</div>
+        <div class="guar-text">Listen back or read the transcript of anything Lola handled, anytime. Nothing happens off the books.</div>
+      </div>
+      <div class="guar-card">
+        <div class="guar-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+        <div class="guar-title">She knows when to get you</div>
+        <div class="guar-text">Anything outside her playbook is flagged straight to you. Lola never bluffs past a question she can't answer.</div>
+      </div>
+      <div class="guar-card">
+        <div class="guar-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 4v5c0 4.2-3 7.4-7 9-4-1.6-7-4.8-7-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div class="guar-title">Cancel anytime</div>
+        <div class="guar-text">Month to month, no contract, no setup fee. Keep Lola because she earns her keep — not because you're locked in.</div>
+      </div>
+    </div>
+    <div class="proofbar">
+      <div class="proof-label">Built on infrastructure you can trust</div>
+      <div class="proof-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12h3l3-8 4 16 3-8h7"/></svg>Telnyx carrier-grade voice</div>
+      <div class="proof-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Stripe-secured billing</div>
+      <div class="proof-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>Books into Square · Mindbody · Vagaro · Fresha</div>
+      <div class="proof-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V7z"/></svg>HIPAA-aware med-spa flow</div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════
+         TESTIMONIALS — the single highest-converting element you're
+         missing. For a tool that talks to clients on your behalf,
+         social proof beats any copy tweak.
+
+         TO ACTIVATE: replace the three quotes below with REAL ones
+         (owner name + salon + city), then uncomment the block.
+         Do NOT ship placeholder/invented quotes live — fake
+         testimonials mislead buyers and are a legal liability.
+    ═════════════════════════════════════════════════════════════════ -->
+    <!--
+    <div class="triptych" style="margin-top:60px">
+      <div class="tri-card">
+        <div class="tri-text" style="font-size:16px;color:var(--text);line-height:1.6">"Real quote about missed calls Lola caught."</div>
+        <div class="tri-title" style="font-size:14px;margin-top:20px;font-weight:500">Owner Name — Salon, City</div>
+      </div>
+      <div class="tri-card">
+        <div class="tri-text" style="font-size:16px;color:var(--text);line-height:1.6">"Real quote about revenue or rebookings."</div>
+        <div class="tri-title" style="font-size:14px;margin-top:20px;font-weight:500">Owner Name — Salon, City</div>
+      </div>
+      <div class="tri-card">
+        <div class="tri-text" style="font-size:16px;color:var(--text);line-height:1.6">"Real quote about how natural Lola sounds."</div>
+        <div class="tri-title" style="font-size:14px;margin-top:20px;font-weight:500">Owner Name — Salon, City</div>
+      </div>
+    </div>
+    -->
+  </div>
+</section>
+
 <section class="pricing-sec reveal" id="pricing">
   <div class="reveal-inner" style="max-width:1040px">
     <div class="reveal-tag">Pricing</div>
     <h2 class="reveal-title">Less than one <em>lost client.</em></h2>
+    <p class="price-roi">One recovered no-show or filled gap usually <em>covers the whole month.</em></p>
+    <div class="billing-toggle" role="tablist" aria-label="Billing period">
+      <button class="billing-opt active" data-billing="monthly" role="tab">Monthly</button>
+      <button class="billing-opt" data-billing="annual" role="tab">Annual <span class="billing-save">2 months free</span></button>
+    </div>
     <div class="pricing">
       <div class="price-card">
         <div class="price-name">SOLO</div>
-        <div class="price-tag"><span class="price-amount">$99</span><span class="price-per">/mo</span></div>
+        <div class="price-tag"><span class="price-amount" data-m="99" data-a="83">$99</span><span class="price-per">/mo</span></div>
+        <div class="price-note"></div>
         <div class="price-desc">For solo stylists and single chairs.</div>
         <ul class="price-features">
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Web chat + SMS</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>1 booking platform</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>500 messages/mo</li>
         </ul>
-        <a href="onboarding.html" class="price-btn ghost">Start free</a>
+        <a href="onboarding.html?plan=solo&billing=monthly" class="price-btn ghost pcta" data-plan="solo">Start free</a>
       </div>
       <div class="price-card featured">
         <div class="price-badge">MOST POPULAR</div>
         <div class="price-name">PRO</div>
-        <div class="price-tag"><span class="price-amount">$399</span><span class="price-per">/mo</span></div>
+        <div class="price-tag"><span class="price-amount" data-m="399" data-a="333">$399</span><span class="price-per">/mo</span></div>
+        <div class="price-note"></div>
         <div class="price-desc">For salons that want the phone answered.</div>
         <ul class="price-features">
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Solo</li>
@@ -224,18 +324,19 @@ button{font-family:var(--ff);cursor:pointer;border:none}
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Instagram + WhatsApp</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>CRM + revenue insights</li>
         </ul>
-        <a href="onboarding.html" class="price-btn primary">Start free</a>
+        <a href="onboarding.html?plan=pro&billing=monthly" class="price-btn primary pcta" data-plan="pro">Start free</a>
       </div>
       <div class="price-card">
         <div class="price-name">MED SPA</div>
-        <div class="price-tag"><span class="price-amount">$599</span><span class="price-per">/mo</span></div>
+        <div class="price-tag"><span class="price-amount" data-m="599" data-a="499">$599</span><span class="price-per">/mo</span></div>
+        <div class="price-note"></div>
         <div class="price-desc">For med spas & aesthetic practices.</div>
         <ul class="price-features">
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Pro</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>HIPAA-aware flow</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>High-ticket qualifying</li>
         </ul>
-        <a href="onboarding.html" class="price-btn ghost">Start free</a>
+        <a href="onboarding.html?plan=medspa&billing=monthly" class="price-btn ghost pcta" data-plan="medspa">Start free</a>
       </div>
     </div>
   </div>
@@ -278,6 +379,22 @@ document.querySelectorAll('.tcta').forEach(btn=>{
     window.location.href = `onboarding.html?plan=${plan}`;
   });
 });
+
+/* Monthly / annual billing toggle */
+(function(){
+  const opts = document.querySelectorAll('.billing-opt');
+  const amounts = document.querySelectorAll('.pricing .price-amount');
+  const notes = document.querySelectorAll('.pricing .price-note');
+  const ctas = document.querySelectorAll('.pricing .pcta');
+  if(!opts.length) return;
+  function setBilling(mode){
+    opts.forEach(o => o.classList.toggle('active', o.dataset.billing === mode));
+    amounts.forEach(a => { a.textContent = '$' + (mode === 'annual' ? a.dataset.a : a.dataset.m); });
+    notes.forEach(n => { n.textContent = mode === 'annual' ? 'billed annually · 2 months free' : ''; });
+    ctas.forEach(c => { c.href = `onboarding.html?plan=${c.dataset.plan}&billing=${mode}`; });
+  }
+  opts.forEach(o => o.addEventListener('click', () => setBilling(o.dataset.billing)));
+})();
 
 function makeOrb(canvas, size){
   const x = canvas.getContext('2d');

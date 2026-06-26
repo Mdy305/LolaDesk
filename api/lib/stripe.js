@@ -47,19 +47,30 @@ async function stripe(path, method='POST', body){
   return data;
 }
 
-// Map plan slug -> env price id
-export function priceFor(plan){
-  const map = {
+// Normalize the marketing slugs to billing plan keys.
+const PLAN_ALIAS = { solo:'starter', starter:'starter', pro:'pro', medspa:'medspa', 'med-spa':'medspa' };
+
+// Map plan slug + billing interval -> env price id
+export function priceFor(plan, interval='monthly'){
+  const p = PLAN_ALIAS[plan] || 'starter';
+  const monthly = {
     starter: process.env.STRIPE_PRICE_STARTER,
     pro:     process.env.STRIPE_PRICE_PRO,
     medspa:  process.env.STRIPE_PRICE_MEDSPA
   };
-  return map[plan] || map.starter;
+  const annual = {
+    starter: process.env.STRIPE_PRICE_STARTER_ANNUAL,
+    pro:     process.env.STRIPE_PRICE_PRO_ANNUAL,
+    medspa:  process.env.STRIPE_PRICE_MEDSPA_ANNUAL
+  };
+  const map = interval === 'annual' ? annual : monthly;
+  // Fall back to the monthly price if an annual one isn't configured yet.
+  return map[p] || monthly[p] || monthly.starter;
 }
 
 // Create a Checkout Session for a subscription
-export async function createCheckout({ plan, tenantId, email, customerId }){
-  const price = priceFor(plan);
+export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly' }){
+  const price = priceFor(plan, interval);
   if(!price) throw new Error('No Stripe price configured for plan: '+plan);
   const appUrl = process.env.APP_URL || 'https://www.loladesk.com';
   const payload = {
@@ -68,8 +79,8 @@ export async function createCheckout({ plan, tenantId, email, customerId }){
     success_url: `${appUrl}/settings?billing=success`,
     cancel_url: `${appUrl}/settings?billing=cancelled`,
     client_reference_id: tenantId || '',
-    metadata: { tenantId: tenantId||'', plan },
-    subscription_data: { metadata: { tenantId: tenantId||'', plan } }
+    metadata: { tenantId: tenantId||'', plan, interval },
+    subscription_data: { metadata: { tenantId: tenantId||'', plan, interval } }
   };
   if(customerId) payload.customer = customerId;
   else if(email) payload.customer_email = email;

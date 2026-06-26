@@ -12,9 +12,9 @@ export default async function handler(req, res){
   if(req.method!=='POST') return res.status(405).json({ error:'POST only' });
   try{
     const body = typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const { plan, tenantId, email, customerId } = body;
+    const { plan, tenantId, email, customerId, interval } = body;
     if(!plan) return res.status(400).json({ error:'plan required' });
-    const session = await createCheckout({ plan, tenantId, email, customerId });
+    const session = await createCheckout({ plan, tenantId, email, customerId, interval: interval==='annual'?'annual':'monthly' });
     return res.status(200).json({ url: session.url, id: session.id });
   }catch(e){ return res.status(500).json({ error:String(e&&e.message||e) }); }
 }
