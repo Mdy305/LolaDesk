@@ -34,7 +34,8 @@ import { sendSMS } from './telnyx-sms.js';
 import {
   listBookings, enrichBookings, findBooking, cancelBooking, moveBooking,
   revenueSummary, dueForRebooking, broadcastAudience,
-  resolveDate, computeNewStart, pinOk, isKnownOperator, signAction, verifyAction
+  resolveDate, computeNewStart, pinOk, isKnownOperator, signAction, verifyAction,
+  tenantToolSecret
 } from './lib/operator-db.js';
 
 // ── spoken formatting helpers ─────────────────────────────────────────────
@@ -202,9 +203,14 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ speak: 'Method not allowed' });
 
-  // Gate 1: only callers holding the shared secret (i.e. Telnyx) may run owner tools.
-  const secret = req.headers['x-lola-operator-secret'];
-  if(!process.env.OPERATOR_TOOLS_SECRET || secret !== process.env.OPERATOR_TOOLS_SECRET){
+  // Gate 1: shared secret. Accept the legacy global secret (back-compat) OR
+  // this tenant's derived secret (set per-tool at provision time), so a leaked
+  // header only works for one salon.
+  const provided = req.headers['x-lola-operator-secret'];
+  const slug = (req.query && req.query.tenant) || '';
+  const master = process.env.OPERATOR_TOOLS_SECRET;
+  const ok = master && provided && (provided === master || (slug && provided === tenantToolSecret(slug)));
+  if(!ok){
     return res.status(401).json({ speak: "I can't run owner commands from here." });
   }
 

@@ -22,6 +22,8 @@
  * add these same tools by hand in the Telnyx portal pointing at that URL.
  */
 
+import { tenantToolSecret } from './lib/operator-db.js';
+
 const TELNYX = 'https://api.telnyx.com/v2';
 const DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B';
 
@@ -37,6 +39,7 @@ function toolsUrl(){ return `${appUrl()}/api/operator-tools`; }
 // present; the model only fills the args in `props`.
 function webhookTool(name, description, props = {}, required = [], slug = ''){
   const url = `${toolsUrl()}?tool=${encodeURIComponent(name)}${slug ? `&tenant=${encodeURIComponent(slug)}` : ''}`;
+  const secretVal = slug ? tenantToolSecret(slug) : (process.env.OPERATOR_TOOLS_SECRET || '');
   return {
     type: 'webhook',
     webhook: {
@@ -46,7 +49,7 @@ function webhookTool(name, description, props = {}, required = [], slug = ''){
       method: 'POST',
       headers: [
         { name: 'Content-Type', value: 'application/json' },
-        { name: 'x-lola-operator-secret', value: process.env.OPERATOR_TOOLS_SECRET || '' }
+        { name: 'x-lola-operator-secret', value: secretVal }
       ],
       body_parameters: { type: 'object', properties: props, required }
     }

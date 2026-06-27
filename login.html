@@ -157,10 +157,9 @@ function setupSR(){
     document.getElementById('voiceTranscript').textContent=txt;
     if(e.results[e.results.length-1].isFinal){
       stopListening();
-      // any spoken phrase signs in (demo). In production: voice biometric / passphrase.
-      localStorage.setItem('loladesk_token', 'demo_token');
-      document.getElementById('voiceState').textContent='Welcome back — signing you in…';
-      setTimeout(()=>{ window.location.href='dashboard.html'; }, 1200);
+      // Voice biometric sign-in is NOT built yet. Never bypass auth here —
+      // this previously set a demo token and let anyone reach the dashboard.
+      document.getElementById('voiceState').textContent='Voice sign-in is coming soon — please sign in with your email and password below.';
     }
   };
   recognition.onerror=()=>stopListening();

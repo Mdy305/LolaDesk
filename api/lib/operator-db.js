@@ -77,6 +77,12 @@ export async function setOperatorPin(tenantId, pin){
 
 // ── stateless confirmation tokens (HMAC) ─────────────────────────────────
 function secret(){ return process.env.OPERATOR_TOOLS_SECRET || 'dev-only-secret-change-me'; }
+
+// Per-tenant tool secret: derived from the master so each salon's webhook
+// header is unique. A leaked header only works for that one tenant.
+export function tenantToolSecret(slug){
+  return crypto.createHmac('sha256', secret()).update('operator-tool:' + String(slug || '')).digest('hex');
+}
 export function signAction(payload, ttlSec = 300){
   const body = { ...payload, exp: Date.now() + ttlSec * 1000 };
   const data = Buffer.from(JSON.stringify(body)).toString('base64url');

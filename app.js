@@ -397,6 +397,7 @@ async function callLola(message){
   try{
     const headers = { 'Content-Type':'application/json' };
     if(!USE_PROXY) headers['anthropic-dangerous-direct-browser-access'] = 'true';
+    else { try{ const t = localStorage.getItem('loladesk_token'); if(t) headers['Authorization'] = 'Bearer '+t; }catch(e){} }
     const res = await fetch(LOLA_API, {
       method:'POST',
       headers,

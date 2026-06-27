@@ -10,7 +10,8 @@
 import { chat } from './lib/llm.js';
 import { executeSkill } from './lib/orchestrator.js';
 import { SKILLS } from './lola-tools.js';
-import { getTenantBySlug } from './lib/db.js';
+import { db } from './lib/db.js';
+import { getUserFromToken, bearer } from './lib/auth.js';
 
 const TOOLS = [
   {
@@ -68,20 +69,27 @@ const TOOLS = [
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-tenant-id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const tenantIdHeader = req.headers['x-tenant-id'];
-    
-    // We fetch tenant so orchestrator can use it
+
+    // Owner-scoped: dashboard voice control may only act on the authenticated
+    // owner's own tenant. The client-supplied x-tenant-id is ignored — it
+    // previously let anyone act on any salon just by passing a slug.
     let tenant = null;
-    if (tenantIdHeader) {
-      tenant = await getTenantBySlug(tenantIdHeader);
+    const u = await getUserFromToken(bearer(req));
+    if (u?.email) {
+      const c = db();
+      if (c) {
+        const { data } = await c.from('tenants').select('*').eq('owner_email', u.email).limit(1);
+        tenant = (data && data[0]) || null;
+      }
     }
+    if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
     let messages = body.messages || [];
     

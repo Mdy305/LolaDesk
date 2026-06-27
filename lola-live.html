@@ -273,7 +273,7 @@ async function respond(text){
   try{
     const r=await fetch('/api/lola',{method:'POST',headers:{
         'Content-Type':'application/json',
-        'x-tenant-id': CURRENT_TENANT_SLUG
+        'Authorization':'Bearer '+(localStorage.getItem('loladesk_token')||'')
       },
       body:JSON.stringify({system:SYS,messages:history.slice(-10)})});
     const data=await r.json();
