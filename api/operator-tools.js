@@ -210,7 +210,10 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const tool = body.tool || body.function || body.skill;
+    // tool + tenant ride in the URL query (set at provision time); the model
+    // fills the rest into the JSON body. Merge, with body winning on overlap.
+    const args = { ...(req.query || {}), ...body };
+    const tool = args.tool || args.function || args.skill;
 
     if(!tool || !OPERATOR_SKILLS[tool]){
       return res.status(200).json({
@@ -219,13 +222,13 @@ export default async function handler(req, res){
       });
     }
 
-    const tenant = await resolveTenant(body);
+    const tenant = await resolveTenant(args);
     if(!tenant?.id) return res.status(200).json({ speak: "I couldn't tell which salon this is." });
 
     // Soft signal for the assistant's phrasing (not an authorization).
-    body._known_operator = isKnownOperator(tenant, body.from);
+    args._known_operator = isKnownOperator(tenant, args.from);
 
-    const result = await OPERATOR_SKILLS[tool](tenant, body);
+    const result = await OPERATOR_SKILLS[tool](tenant, args);
     return res.status(200).json(result);
   }catch(e){
     console.error('[operator-tools]', e);

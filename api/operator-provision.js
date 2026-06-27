@@ -31,44 +31,44 @@ function authHeaders(){
 function appUrl(){ return process.env.APP_URL || 'https://www.loladesk.com'; }
 function toolsUrl(){ return `${appUrl()}/api/operator-tools`; }
 
-// One webhook tool definition. `fixed` are constant body fields (e.g. the tool
-// name + tenant slug); `params` are the JSON-schema args the model fills in.
-function webhookTool(name, description, params = {}, required = [], fixed = {}){
+// One webhook tool, in Telnyx's AI Assistant schema: name/description live
+// INSIDE the `webhook` object, args are `body_parameters` (JSON Schema). The
+// constant tool name + tenant slug ride in the URL query so they're always
+// present; the model only fills the args in `props`.
+function webhookTool(name, description, props = {}, required = [], slug = ''){
+  const url = `${toolsUrl()}?tool=${encodeURIComponent(name)}${slug ? `&tenant=${encodeURIComponent(slug)}` : ''}`;
   return {
     type: 'webhook',
-    name,
-    description,
     webhook: {
-      url: toolsUrl(),
+      name,
+      description,
+      url,
       method: 'POST',
-      headers: [{ name: 'x-lola-operator-secret', value: process.env.OPERATOR_TOOLS_SECRET || '' }],
-      // body merges these fixed fields with the model-provided parameters
-      body: { tool: name, ...fixed },
-      parameters: {
-        type: 'object',
-        properties: { tool: { type: 'string', const: name }, ...params },
-        required: ['tool', ...required]
-      }
+      headers: [
+        { name: 'Content-Type', value: 'application/json' },
+        { name: 'x-lola-operator-secret', value: process.env.OPERATOR_TOOLS_SECRET || '' }
+      ],
+      body_parameters: { type: 'object', properties: props, required }
     }
   };
 }
 
 function buildTools(tenant){
-  const tenantField = tenant?.slug ? { tenant: tenant.slug } : {};
+  const slug = tenant?.slug || '';
   const dateProp = { date: { type: 'string', description: 'Day to read, e.g. "today", "tomorrow", or YYYY-MM-DD.' } };
 
   return [
     webhookTool('whats_my_day', "Read the appointments on the books for a given day.",
-      dateProp, [], tenantField),
+      dateProp, [], slug),
 
     webhookTool('find_revenue', "Total booked revenue for a period.",
       { range: { type: 'string', enum: ['today', 'week', 'month'], description: 'Period to total.' },
         date: { type: 'string', description: 'A specific day instead of a range (YYYY-MM-DD).' } },
-      [], tenantField),
+      [], slug),
 
     webhookTool('who_is_due', "List clients overdue for a rebooking.",
       { since_days: { type: 'integer', description: 'How many days since last visit counts as overdue. Default 42.' } },
-      [], tenantField),
+      [], slug),
 
     webhookTool('move_appointment',
       "Reschedule a booking. DESTRUCTIVE: call once to preview, then call again with confirm=true, the confirm_token, and the owner's PIN.",
@@ -76,25 +76,25 @@ function buildTools(tenant){
         time: { type: 'string', description: 'Current time, e.g. "3pm".' },
         new_date: { type: 'string' }, new_time: { type: 'string', description: 'New time, e.g. "4:30pm".' },
         confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
-      [], tenantField),
+      [], slug),
 
     webhookTool('cancel_appointment',
       "Cancel a booking. DESTRUCTIVE: preview first, then confirm=true + confirm_token + PIN.",
       { client_name: { type: 'string' }, date: { type: 'string' }, time: { type: 'string' },
         confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
-      [], tenantField),
+      [], slug),
 
     webhookTool('broadcast_text',
       "Text a group of clients. DESTRUCTIVE: preview first, then confirm=true + confirm_token + PIN.",
       { segment: { type: 'string', enum: ['all', 'vip', 'due'], description: 'Who to text.' },
         message: { type: 'string', description: 'The exact message to send.' },
         confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
-      ['message'], tenantField),
+      ['message'], slug),
 
     webhookTool('book_for_client', "Add a booking for a client.",
       { client_name: { type: 'string' }, client_phone: { type: 'string' }, service: { type: 'string' },
         date: { type: 'string' }, time: { type: 'string' }, stylist: { type: 'string' } },
-      ['service'], tenantField)
+      ['service'], slug)
   ];
 }
 
