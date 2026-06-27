@@ -43,7 +43,13 @@ export async function signIn({ email, password }){
 
 // Verify an access token from the Authorization header -> the user
 export async function getUserFromToken(token){
-  if(token === 'demo_token') return { email: 'meddy@mmasalon.com', user_metadata: { name: 'Meddy' } };
+  // demo_token is a dev convenience AND a production backdoor (it authenticates
+  // as a real owner). Only honor it when explicitly enabled. Never set
+  // ALLOW_DEMO_TOKEN in production once real owners exist.
+  if(token === 'demo_token'){
+    if(process.env.ALLOW_DEMO_TOKEN === '1') return { email: 'meddy@mmasalon.com', user_metadata: { name: 'Meddy' } };
+    return null;
+  }
   const a = admin(); if(!a || !token) return null;
   const { data, error } = await a.auth.getUser(token);
   if(error) return null;

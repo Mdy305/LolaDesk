@@ -15,6 +15,7 @@
  */
 
 import { db, getTenantBySlug, getTenantByPhone } from './lib/db.js';
+import { getUserFromToken, bearer } from './lib/auth.js';
 
 function timeAgo(ts){
   if(!ts) return '';
@@ -25,10 +26,15 @@ function timeAgo(ts){
   return Math.floor(s/86400)+'d ago';
 }
 
-async function resolveTenant(q){
-  if(q.tenant) return getTenantBySlug(q.tenant);
-  if(q.to) return getTenantByPhone(q.to);
-  return getTenantBySlug('mma'); // sensible default
+async function resolveTenant(req){
+  // Owner-scoped only: no ?tenant= override, no real-data fallback.
+  try{
+    const u = await getUserFromToken(bearer(req));
+    if(!u?.email) return null;
+    const c = db(); if(!c) return null;
+    const { data } = await c.from('tenants').select('*').eq('owner_email', u.email).limit(1);
+    return (data && data[0]) || null;
+  }catch(e){ return null; }
 }
 
 export default async function handler(req, res){
@@ -41,13 +47,11 @@ export default async function handler(req, res){
   try{ q = Object.fromEntries(new URL(req.url,'http://x').searchParams); }catch{}
 
   try{
-    const tenant = await resolveTenant(q);
     const c = db();
-
-    // No Supabase -> demo feed so the atom is still alive
-    if(!c || !tenant?.id){
-      return res.status(200).json(demoFeed());
-    }
+    // No Supabase -> demo feed so the atom is still alive (never real data)
+    if(!c) return res.status(200).json(demoFeed());
+    const tenant = await resolveTenant(req);
+    if(!tenant?.id) return res.status(401).json({ error:'Not authenticated' });
 
     const tid = tenant.id;
     const since = new Date(Date.now() - 24*3600*1000).toISOString();

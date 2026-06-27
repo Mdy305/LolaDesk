@@ -25,14 +25,18 @@ function ago(ts){
 }
 function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
 
-async function resolveTenant(req, q){
-  // prefer the authenticated owner's tenant
+// Server-side tenant isolation: a request may ONLY read the tenant owned by
+// the authenticated user. No ?tenant= override, and no fallback to a real
+// salon — that fallback was the data leak (any slug + no token returned real
+// client/booking/revenue data).
+async function resolveTenant(req){
   try{
     const u = await getUserFromToken(bearer(req));
-    if(u){ const c=db(); if(c){ const {data}=await c.from('tenants').select('*').eq('owner_email',u.email).limit(1); if(data&&data[0])return data[0]; } }
-  }catch(e){}
-  if(q.tenant) return getTenantBySlug(q.tenant);
-  return getTenantBySlug('mma');
+    if(!u?.email) return null;
+    const c = db(); if(!c) return null;
+    const { data } = await c.from('tenants').select('*').eq('owner_email', u.email).limit(1);
+    return (data && data[0]) || null;
+  }catch(e){ return null; }
 }
 
 export default async function handler(req,res){
@@ -45,9 +49,12 @@ export default async function handler(req,res){
   const resource=q.resource||'overview';
 
   try{
-    const tenant=await resolveTenant(req,q);
     const c=db();
-    if(!c || !tenant?.id) return res.status(200).json(demo(resource, tenant));
+    // No DB configured → dev mode renders clearly-fake sample data only.
+    if(!c) return res.status(200).json(demo(resource, null));
+    const tenant=await resolveTenant(req);
+    // DB configured but no valid auth → refuse. Never fall back to real data.
+    if(!tenant?.id) return res.status(401).json({ error:'Not authenticated' });
     const tid=tenant.id;
 
     switch(resource){
