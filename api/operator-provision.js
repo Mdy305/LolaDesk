@@ -23,7 +23,7 @@
  */
 
 const TELNYX = 'https://api.telnyx.com/v2';
-const DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
+const DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B';
 
 function authHeaders(){
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}` };
@@ -120,10 +120,10 @@ STYLE
 Concise and direct — you're a tool the owner uses while working, not a conversation. Lead with the answer ("You've got 6 today, $1,840 booked"). No pleasantries, no "happy to help". Confirm what you did in one line.`;
 }
 
-async function createAssistant(tenant){
+async function createAssistant(tenant, model){
   const body = {
     name: `Lola Ops${tenant?.name ? ` — ${tenant.name}` : ''}`,
-    model: DEFAULT_MODEL,
+    model: model || DEFAULT_MODEL,
     instructions: buildInstructions(tenant),
     description: `Owner-facing operator assistant for ${tenant?.name || 'a salon'}.`,
     tools: buildTools(tenant)
@@ -140,6 +140,13 @@ async function listAssistants(){
   return r.json();
 }
 
+// List the models your account can use — runs server-side so the API key
+// never leaves Vercel. GET /api/operator-provision?models=1
+async function listModels(){
+  const r = await fetch(`${TELNYX}/ai/models`, { headers: authHeaders() });
+  return r.json();
+}
+
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -151,10 +158,13 @@ export default async function handler(req, res){
 
   try{
     if(req.method === 'GET'){
+      if(req.query && req.query.models){
+        return res.status(200).json({ ok: true, models: await listModels() });
+      }
       return res.status(200).json({ ok: true, assistants: await listAssistants() });
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const result = await createAssistant(body.tenant || null);
+    const result = await createAssistant(body.tenant || null, body.model);
     return res.status(200).json({ ok: result.status < 300, result });
   }catch(e){
     return res.status(500).json({ ok: false, error: String(e) });
