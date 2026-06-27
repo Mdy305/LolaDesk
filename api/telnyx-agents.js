@@ -35,7 +35,7 @@ function buildAgents(tenant){
 
   // ── 1. LOLA — The Unified Master Brain ──
   const lola = {
-    name: 'Lola',
+    name: `Lola — ${salon}`,
     description: `${salon} Master AI Front Desk. Handles booking, sales, support, and recovery natively.`,
     model: DEFAULT_MODEL,
     voice_settings: { voice: DEFAULT_VOICE },

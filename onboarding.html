@@ -539,6 +539,17 @@ async function finishLive(){
       }catch(e){}
     }
 
+    // Auto-provision both Telnyx assistants (client-facing Lola + operator
+    // Jarvis) for this brand-new tenant. Non-blocking: if it hiccups the owner
+    // still gets in and can re-provision from Settings — never hard-fail signup.
+    try{
+      document.getElementById('liveSub').textContent='Provisioning your AI front desk…';
+      await fetch('/api/provision-tenant', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(created.session?.access_token||'') }
+      });
+    }catch(e){ /* owner can re-provision from Settings later */ }
+
     // Success State
     document.getElementById('liveCheck').style.display='flex';
     document.getElementById('liveTitle').textContent='Lola is live. 🎉';
