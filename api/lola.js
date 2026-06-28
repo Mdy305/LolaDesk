@@ -99,7 +99,8 @@ export default async function handler(req, res){
       messages: messages,
       maxTokens: Math.min(body.max_tokens || 500, 1000),
       temperature: body.temperature ?? 0.7,
-      model: body.model,
+      // NOTE: ignore body.model — the dashboard hardcodes an Anthropic model
+      // name that the Telnyx provider rejects. Let chat() pick a valid default.
       tools: TOOLS
     });
 
@@ -150,7 +151,6 @@ export default async function handler(req, res){
         messages: messages,
         maxTokens: Math.min(body.max_tokens || 500, 1000),
         temperature: body.temperature ?? 0.7,
-        model: body.model,
         tools: TOOLS
       });
 
