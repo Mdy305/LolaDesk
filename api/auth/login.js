@@ -1,9 +1,6 @@
 import { signIn } from '../lib/auth.js';
-import { db, upsertTenant } from '../lib/db.js';
-
-function slugify(s){
-  return (s || 'salon').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,32);
-}
+import { db } from '../lib/db.js';
+import { resolveTenantForUser } from '../lib/tenant-access.js';
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -22,22 +19,19 @@ export default async function handler(req, res){
     let tenant = null;
     const c = db();
     if(c){
-      const { data } = await c.from('tenants').select('*').eq('owner_email', email).limit(1);
-      tenant = (data && data[0]) || null;
-
+      tenant = await resolveTenantForUser(sess.user);
       if(!tenant){
-        const ownerName = sess.user?.user_metadata?.name || email.split('@')[0];
-        tenant = await upsertTenant({
-          slug: slugify(email.split('@')[0]) + '-' + Math.random().toString(36).slice(2,6),
-          name: 'My Salon',
-          owner_name: ownerName,
-          owner_email: email,
-          plan: 'starter',
-        });
+        const { data } = await c.from('tenants').select('*').eq('owner_email', email).limit(1);
+        tenant = (data && data[0]) || null;
       }
     }
 
-    return res.status(200).json({ session: sess.session, user: sess.user, tenant });
+    return res.status(200).json({
+      session: sess.session,
+      user: sess.user,
+      tenant: tenant || null,
+      onboarding_required: !tenant
+    });
   }catch(e){
     return res.status(401).json({ error: String(e && e.message || e) });
   }

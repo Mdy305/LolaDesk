@@ -199,6 +199,10 @@ window.signIn=async ()=>{
       if(d.tenant) localStorage.setItem('loladesk_tenant_id', d.tenant.id||'');
     }
     const next = new URLSearchParams(location.search).get('next');
+    if(!d.tenant){
+      window.location.href = 'onboarding.html';
+      return;
+    }
     window.location.href = next ? decodeURIComponent(next) : 'dashboard.html';
   }catch(e){ stateEl.textContent = e.message||'Invalid email or password'; }
 };

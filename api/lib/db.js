@@ -372,3 +372,59 @@ export async function recentDemoRequestsByPhone(phone, minutes=60){
   const { count } = await c.from('demo_requests').select('*', { count: 'exact' }).eq('phone_number', phoneE).gte('created_at', since);
   return Number(count || 0);
 }
+
+// ── NEW: Tenant number porting workflow ──
+export async function createTenantPortRequest(tenantId, payload = {}){
+  const c = db();
+  if(!c || !tenantId) return null;
+  const row = {
+    tenant_id: tenantId,
+    requested_phone_number: e164(payload.requested_phone_number),
+    status: payload.status || 'draft',
+    current_carrier: payload.current_carrier || null,
+    account_number: payload.account_number || null,
+    account_pin: payload.account_pin || null,
+    billing_name: payload.billing_name || null,
+    billing_address: payload.billing_address || null,
+    authorized_contact_name: payload.authorized_contact_name || null,
+    authorized_contact_email: payload.authorized_contact_email || null,
+    telnyx_order_id: payload.telnyx_order_id || null,
+    foc_date: payload.foc_date || null,
+    temporary_phone_number: payload.temporary_phone_number ? e164(payload.temporary_phone_number) : null,
+    metadata: payload.metadata || {}
+  };
+  const { data, error } = await c.from('tenant_number_ports').insert(row).select().maybeSingle();
+  if(error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateTenantPortRequest(portRequestId, patch = {}){
+  const c = db();
+  if(!c || !portRequestId) return null;
+  const row = {};
+  const allowed = [
+    'status', 'current_carrier', 'account_number', 'account_pin', 'billing_name', 'billing_address',
+    'authorized_contact_name', 'authorized_contact_email', 'telnyx_order_id', 'foc_date', 'metadata'
+  ];
+  for(const k of allowed){
+    if(patch[k] !== undefined) row[k] = patch[k];
+  }
+  if(patch.requested_phone_number !== undefined) row.requested_phone_number = e164(patch.requested_phone_number);
+  if(patch.temporary_phone_number !== undefined) row.temporary_phone_number = patch.temporary_phone_number ? e164(patch.temporary_phone_number) : null;
+  if(Object.keys(row).length === 0) return null;
+  const { data, error } = await c.from('tenant_number_ports').update(row).eq('id', portRequestId).select().maybeSingle();
+  if(error) throw new Error(error.message);
+  return data;
+}
+
+export async function listTenantPortRequests(tenantId, limit = 20){
+  const c = db();
+  if(!c || !tenantId) return [];
+  const { data, error } = await c.from('tenant_number_ports')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if(error) throw new Error(error.message);
+  return data || [];
+}

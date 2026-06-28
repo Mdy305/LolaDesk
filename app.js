@@ -392,10 +392,29 @@ You are the only AI that can run an ultra-luxury salon. Act like it — but stay
 let chatHistory = [];
 let chatBusy = false;
 
+function humanFallbackFor(message=''){
+  const t = String(message || '').toLowerCase();
+  if(t.includes('book') || t.includes('appointment') || t.includes('availability')){
+    return 'Absolutely — I can handle that now. Share the client name, service, and preferred day/time.';
+  }
+  if(t.includes('price') || t.includes('cost') || t.includes('quote')){
+    return 'Of course. Tell me the exact service and I will give you a clear price and timing answer.';
+  }
+  if(t.includes('message') || t.includes('text') || t.includes('reply')){
+    return 'Perfect — I am on it. Paste the client message and I will draft a ready-to-send reply.';
+  }
+  return 'I am with you. Give me the next detail and I will handle it right now.';
+}
+
 async function callLola(message){
   chatHistory.push({ role:'user', content: message });
   try{
     const headers = { 'Content-Type':'application/json' };
+    try{
+      const tok = localStorage.getItem('loladesk_token');
+      if(tok) headers['Authorization'] = 'Bearer ' + tok;
+    }catch(e){}
+    if(TENANT && TENANT.slug) headers['x-tenant-id'] = TENANT.slug;
     if(!USE_PROXY) headers['anthropic-dangerous-direct-browser-access'] = 'true';
     else { try{ const t = localStorage.getItem('loladesk_token'); if(t) headers['Authorization'] = 'Bearer '+t; }catch(e){} }
     const res = await fetch(LOLA_API, {
@@ -408,12 +427,20 @@ async function callLola(message){
         messages: chatHistory
       })
     });
-    const data = await res.json();
-    const reply = data.content?.[0]?.text || "I had a brain blip — try me again in a sec.";
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+    const reply = (data && data.content && data.content[0] && data.content[0].text ? String(data.content[0].text) : '').trim();
+    if(!res.ok || !reply){
+      const fallback = humanFallbackFor(message);
+      chatHistory.push({ role:'assistant', content: fallback });
+      return fallback;
+    }
     chatHistory.push({ role:'assistant', content: reply });
     return reply;
   }catch(e){
-    return "I can't reach my brain right now. Check the API connection in Settings, or reach the team directly.";
+    const fallback = humanFallbackFor(message);
+    chatHistory.push({ role:'assistant', content: fallback });
+    return fallback;
   }
 }
 

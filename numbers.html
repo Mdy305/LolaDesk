@@ -147,9 +147,11 @@ async function loadTelecomAssets() {
   const portingList = document.getElementById('portingList');
 
   try {
+    const token = localStorage.getItem('loladesk_token') || '';
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
     const [simRes, portRes] = await Promise.all([
-      fetch('/api/telnyx-sims'),
-      fetch('/api/telnyx-porting')
+      fetch('/api/telnyx-sims', { headers }),
+      fetch('/api/telnyx-porting', { headers })
     ]);
     
     const simData = await simRes.json();

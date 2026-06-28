@@ -10,8 +10,8 @@
 import { chat } from './lib/llm.js';
 import { executeSkill } from './lib/orchestrator.js';
 import { SKILLS } from './lola-tools.js';
-import { db } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 const TOOLS = [
   {
@@ -63,6 +63,51 @@ const TOOLS = [
         required: ["service"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirm_booking",
+      description: "Confirm a client's upcoming booking by phone or name.",
+      parameters: {
+        type: "object",
+        properties: {
+          client_phone: { type: "string" },
+          client_name: { type: "string" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "reschedule_appointment",
+      description: "Reschedule an existing appointment to a new date/time.",
+      parameters: {
+        type: "object",
+        properties: {
+          booking_id: { type: "string" },
+          client_phone: { type: "string" },
+          new_date: { type: "string", description: "Date like 2026-06-25" },
+          new_time: { type: "string", description: "Time like 14:00 or 2:00 PM" }
+        },
+        required: ["new_date", "new_time"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancel_appointment",
+      description: "Cancel an existing appointment.",
+      parameters: {
+        type: "object",
+        properties: {
+          booking_id: { type: "string" },
+          client_phone: { type: "string" }
+        }
+      }
+    }
   }
 ];
 
@@ -81,14 +126,10 @@ export default async function handler(req, res){
     // owner's own tenant. The client-supplied x-tenant-id is ignored — it
     // previously let anyone act on any salon just by passing a slug.
     let tenant = null;
-    const u = await getUserFromToken(bearer(req));
-    if (u?.email) {
-      const c = db();
-      if (c) {
-        const { data } = await c.from('tenants').select('*').eq('owner_email', u.email).limit(1);
-        tenant = (data && data[0]) || null;
-      }
-    }
+    try{
+      const user = await getUserFromToken(bearer(req));
+      if(user) tenant = await resolveTenantForUser(user);
+    }catch{}
     if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
     let messages = body.messages || [];
@@ -159,12 +200,15 @@ export default async function handler(req, res){
       }
     }
 
+    const finalText = String(result?.text || '').trim() ||
+      'I am on it. Give me the client name, service, and preferred time, and I will handle the next step.';
+
     // Return in the shape the dashboard expects
     return res.status(200).json({
       id: `msg_${Date.now()}`,
       type: 'message',
       role: 'assistant',
-      content: [{ type: 'text', text: result.text }],
+      content: [{ type: 'text', text: finalText }],
       model: result.model,
       provider: result.provider
     });

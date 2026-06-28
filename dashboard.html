@@ -386,6 +386,47 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .away-text-sub{font-size:10.5px;color:var(--text3)}
 .away-time{font-size:10px;color:var(--text3);flex-shrink:0;white-space:nowrap}
 
+/* ─── FRONT DESK COMMAND CENTER ─── */
+.desk-center{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden}
+.desk-center-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border-bottom:0.5px solid var(--border);flex-wrap:wrap}
+.desk-center-title{font-size:14px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:8px}
+.desk-center-title svg{color:var(--pink2)}
+.desk-center-kpis{display:flex;gap:8px;flex-wrap:wrap}
+.desk-kpi{font-size:11px;font-weight:500;color:var(--text2);background:var(--surface2);border:0.5px solid var(--border);border-radius:999px;padding:5px 10px}
+.desk-kpi strong{color:var(--text);font-weight:600}
+.desk-queue{display:flex;flex-direction:column}
+.desk-item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:13px 18px;border-bottom:0.5px solid var(--border);align-items:start}
+.desk-item:last-child{border-bottom:none}
+.desk-pri{width:9px;height:9px;border-radius:50%;margin-top:6px;box-shadow:0 0 8px rgba(255,45,142,.45)}
+.desk-pri.critical{background:#ff4d4d}
+.desk-pri.high{background:#ff9f0a}
+.desk-pri.medium{background:#5ac8fa}
+.desk-title{font-size:12.5px;font-weight:500;color:var(--text);line-height:1.4}
+.desk-sub{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4}
+.desk-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.desk-tag{font-size:10px;font-weight:500;color:var(--text2);background:var(--surface2);border:0.5px solid var(--border);border-radius:999px;padding:3px 8px}
+.desk-actions{display:flex;gap:6px;align-items:center}
+.desk-btn{font-size:11px;font-weight:500;padding:7px 11px;border-radius:10px;border:0.5px solid var(--border2);background:var(--pink-dim);color:var(--pink2);white-space:nowrap}
+.desk-btn:hover{background:rgba(255,45,142,.2)}
+.desk-btn.secondary{background:var(--surface2);color:var(--text2);border-color:var(--border)}
+.desk-btn.secondary:hover{color:var(--text)}
+.desk-empty{padding:20px 18px;font-size:12px;color:var(--text2)}
+
+/* ─── RESONANCE PANEL ─── */
+.res-panel{background:linear-gradient(135deg,rgba(255,255,255,.02),rgba(255,45,142,.05));border:0.5px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:16px}
+.res-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.res-title{font-size:14px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:8px}
+.res-title svg{color:var(--pink2)}
+.res-pill{font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:999px;padding:4px 9px;background:var(--pink-dim);color:var(--pink2)}
+.res-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:900px){.res-grid{grid-template-columns:1fr}}
+.res-stat{background:rgba(255,255,255,.02);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px 12px}
+.res-stat-val{font-size:18px;font-weight:600;line-height:1;color:var(--text);margin-bottom:4px}
+.res-stat-label{font-size:11px;color:var(--text3)}
+.res-actions{display:flex;gap:8px;flex-wrap:wrap}
+.res-btn{font-size:11px;font-weight:500;padding:8px 12px;border-radius:10px;background:var(--surface2);border:0.5px solid var(--border);color:var(--text2)}
+.res-btn:hover{border-color:var(--pink);color:var(--pink2)}
+
 /* ─── MORNING BRIEFING ─── */
 .briefing-banner{background:linear-gradient(135deg,rgba(255,45,142,.08),rgba(90,200,250,.05));border:0.5px solid var(--border);border-radius:var(--r);padding:16px 20px;margin-bottom:16px;display:none;align-items:center;gap:14px;cursor:pointer;transition:all .15s}
 .briefing-banner:hover{border-color:var(--pink);background:linear-gradient(135deg,rgba(255,45,142,.12),rgba(90,200,250,.08))}
@@ -638,6 +679,51 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       </div>
     </div>
 
+    <!-- FRONT DESK COMMAND CENTER -->
+    <section class="desk-center" id="deskCenter">
+      <div class="desk-center-head">
+        <div class="desk-center-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12h18M12 3v18"/><path d="M18 5l3 3-3 3M6 19l-3-3 3-3"/></svg>
+          Front Desk Command Center
+        </div>
+        <div class="desk-center-kpis">
+          <span class="desk-kpi"><strong id="deskUrgentCount">0</strong> urgent</span>
+          <span class="desk-kpi"><strong id="deskSlaCount">0</strong> due in &lt;30m</span>
+          <span class="desk-kpi"><strong id="deskRiskValue">$0</strong> revenue at risk</span>
+        </div>
+      </div>
+      <div class="desk-queue" id="deskQueue"></div>
+    </section>
+
+    <section class="res-panel" id="resPanel">
+      <div class="res-head">
+        <div class="res-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l2.7 5.6L21 8.6l-4.5 4.4 1.1 6.4L12 16.9 6.4 19.4l1.1-6.4L3 8.6l6.3-1z"/></svg>
+          Resonance Engine
+        </div>
+        <span class="res-pill" id="resMood">Momentum mode</span>
+      </div>
+      <div class="res-grid">
+        <div class="res-stat">
+          <div class="res-stat-val" id="resStreak">0 days</div>
+          <div class="res-stat-label">Execution streak</div>
+        </div>
+        <div class="res-stat">
+          <div class="res-stat-val" id="resActionsToday">0</div>
+          <div class="res-stat-label">Actions completed today</div>
+        </div>
+        <div class="res-stat">
+          <div class="res-stat-val" id="resNextOpportunity">$0</div>
+          <div class="res-stat-label">Next opportunity value</div>
+        </div>
+      </div>
+      <div class="res-actions">
+        <button class="res-btn" onclick="runResonanceAction('Run a premium win-back campaign for top clients who have not booked in 8+ weeks.', 'marketing.html')">Run win-back in 1 tap</button>
+        <button class="res-btn" onclick="runResonanceAction('Create today\\'s owner power plan with top 3 profit moves and exact scripts.', '')">Generate owner power plan</button>
+        <button class="res-btn" onclick="runResonanceAction('Draft stylist shift huddle notes: VIPs, upsell targets, and at-risk bookings for today.', 'team.html')">Prepare team huddle notes</button>
+      </div>
+    </section>
+
     <!-- BOTTOM CARDS -->
     <div class="bottom-cards">
       <div class="b-card">
@@ -776,15 +862,15 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
     <div class="cmd-dock">
       <div class="cmd-dock-input">
         <span class="cmd-dock-kbd">⌘K</span>
-        <input placeholder="Ask Lola anything..."/>
+        <input id="cmdInput" placeholder="Ask Lola anything..."/>
       </div>
       <div class="cmd-chips">
-        <button class="cmd-chip">Book Sarah for balayage</button>
-        <button class="cmd-chip">Call clients overdue 12 weeks</button>
-        <button class="cmd-chip">Show highest spending blondes</button>
-        <button class="cmd-chip">What's my revenue this month?</button>
+        <button class="cmd-chip" onclick="askLola('Book Sarah for balayage and include one high-margin add-on suggestion.')">Book Sarah for balayage</button>
+        <button class="cmd-chip" onclick="askLola('Draft callback text messages for clients who missed us in the last 12 weeks.')">Call clients overdue 12 weeks</button>
+        <button class="cmd-chip" onclick="askLola('Show the top 10 highest-spending blonde clients and suggest who to contact next.')">Show highest spending blondes</button>
+        <button class="cmd-chip" onclick="askLola('Give me this month\\'s revenue, conversion rate, and one optimization opportunity.')">What's my revenue this month?</button>
       </div>
-      <button style="background:var(--pink-dim);color:var(--pink);width:32px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;border:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      <button onclick="sendCmd()" style="background:var(--pink-dim);color:var(--pink);width:32px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center;border:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
     </div>
 
   </main>
@@ -898,7 +984,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       // mapping snake_case DB fields to the camelCase shape app.js's
       // DEFAULT_TENANT/merge logic expects.
       const cfg = {
-        id: tenant.id, name: tenant.name, owner: tenant.owner_name || 'there',
+        id: tenant.id, slug: tenant.slug, name: tenant.name, owner: tenant.owner_name || 'there',
         location: tenant.location || '', phone: tenant.phone_number || '',
         bookingUrl: tenant.booking_url || '',
         persona: { name: 'Lola', voice: 'Samantha' },
@@ -1075,7 +1161,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 
     // Gap Filling Insight
     insights.push({
-      title: 'Fill tomorrow\\'s 2PM gap',
+      title: "Fill tomorrow's 2PM gap",
       desc: 'You have a 2-hour opening tomorrow at 2:00 PM. Lola can text 5 waitlisted clients who usually book afternoons. <div style="margin-top:8px"><button class="btn btn-ghost" onclick="fillGap(this)" style="font-size:11px;padding:6px 12px">Fill it</button></div>',
       icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pink2)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
     });
@@ -1231,6 +1317,255 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       btn.style.background = 'var(--text)';
     }, 800);
   };
+
+  // ─── FRONT DESK COMMAND CENTER ───
+  (async function renderDeskCenter(){
+    const queue = document.getElementById('deskQueue');
+    if(!queue) return;
+
+    const ageInMinutes = (value) => {
+      if(!value) return 120;
+      const low = String(value).toLowerCase();
+      const n = parseInt(low, 10);
+      if(Number.isNaN(n)) return 120;
+      if(low.includes('h')) return n * 60;
+      if(low.includes('d')) return n * 1440;
+      return n;
+    };
+    const formatMoney = (n) => '$' + Math.max(0, Math.round(n || 0)).toLocaleString();
+    const dateLabel = (iso) => {
+      const d = new Date(iso);
+      if(Number.isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    };
+    const priorityWeight = { critical: 3, high: 2, medium: 1 };
+    const deskStorageKey = 'loladesk_desk_resolved';
+    let resolved = {};
+    try{ resolved = JSON.parse(localStorage.getItem(deskStorageKey) || '{}'); }catch(e){ resolved = {}; }
+
+    const [bookingsData, callsData, inboxData] = await Promise.all([
+      LolaData.load('bookings'),
+      LolaData.load('calls'),
+      LolaData.load('inbox')
+    ]);
+
+    const bookings = (bookingsData && bookingsData.bookings) || [];
+    const calls = (callsData && callsData.calls) || [];
+    const threads = (inboxData && inboxData.threads) || [];
+    const tasks = [];
+
+    const unread = threads.filter(t => t.unread).slice(0, 3);
+    unread.forEach((t, idx) => {
+      const age = ageInMinutes(t.when);
+      const priority = age >= 45 ? 'critical' : age >= 20 ? 'high' : 'medium';
+      tasks.push({
+        id: `inbox-${idx}-${(t.who || 'lead').replace(/\W+/g, '').toLowerCase()}`,
+        priority,
+        title: `Reply to ${t.who || 'new lead'} on ${(t.channel || 'inbox').toUpperCase()}`,
+        sub: `Last message: ${t.preview || 'Needs response'} · waiting ${t.when || 'now'}`,
+        eta: Math.max(10, 45 - Math.min(age, 40)),
+        value: 220,
+        route: 'inbox.html',
+        prompt: `Draft a warm, premium reply to ${t.who || 'this lead'}: "${t.preview || ''}". Include one clear booking CTA.`
+      });
+    });
+
+    const nonBookedCalls = calls.filter(c => !c.booked).slice(0, 3);
+    nonBookedCalls.forEach((c, idx) => {
+      const missedLike = /missed|voicemail|abandon/i.test((c.outcome || '') + ' ' + (c.summary || ''));
+      tasks.push({
+        id: `call-${idx}-${(c.from || 'caller').replace(/\W+/g, '').toLowerCase()}`,
+        priority: missedLike ? 'critical' : 'high',
+        title: `Follow up ${c.from || 'recent caller'} from ${c.when || 'today'}`,
+        sub: c.summary || 'No booking captured yet — recover this lead quickly.',
+        eta: missedLike ? 15 : 30,
+        value: 280,
+        route: 'calls.html',
+        prompt: `Write a short callback SMS for ${c.from || 'this caller'} to recover the booking. Mention one service upgrade.`
+      });
+    });
+
+    if(bookings.length){
+      const today = new Date();
+      const dayStart = new Date(today); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(today); dayEnd.setHours(23,59,59,999);
+      const todays = bookings
+        .filter(b => {
+          const d = new Date(b.startsAt);
+          return d >= dayStart && d <= dayEnd;
+        })
+        .sort((a,b)=> new Date(a.startsAt) - new Date(b.startsAt));
+
+      for(let i=0; i<todays.length-1; i++){
+        const a = new Date(todays[i].startsAt).getTime();
+        const b = new Date(todays[i+1].startsAt).getTime();
+        const gapMin = Math.round((b-a)/60000);
+        if(gapMin >= 90){
+          const t = todays[i+1];
+          tasks.push({
+            id: `gap-${i}-${t.startsAt}`,
+            priority: 'high',
+            title: `Fill ${Math.round(gapMin/60)}h gap before ${t.client || 'next client'} at ${dateLabel(t.startsAt)}`,
+            sub: 'Launch waitlist outreach to high-value clients who prefer this time window.',
+            eta: 25,
+            value: Math.round((gapMin / 60) * 190),
+            route: 'bookings.html',
+            prompt: `Generate 3 short outreach messages to fill a ${Math.round(gapMin/60)}-hour gap before ${dateLabel(t.startsAt)}. Prioritize high-ticket services.`
+          });
+          break;
+        }
+      }
+    }
+
+    if(tasks.length === 0){
+      tasks.push(
+        {
+          id: 'default-rebook',
+          priority: 'high',
+          title: 'Rebook VIP clients due this week',
+          sub: 'Protect premium retention before the week gets busy.',
+          eta: 20,
+          value: 840,
+          route: 'clients.html',
+          prompt: 'Draft rebooking messages for VIP clients due this week with one add-on per client.'
+        },
+        {
+          id: 'default-gap',
+          priority: 'medium',
+          title: 'Launch same-day gap campaign',
+          sub: 'Target lapsed afternoon clients with a limited-time offer.',
+          eta: 35,
+          value: 420,
+          route: 'marketing.html',
+          prompt: 'Write a same-day campaign message to fill open afternoon slots with premium add-ons.'
+        }
+      );
+    }
+
+    const pending = tasks
+      .filter(t => !resolved[t.id])
+      .sort((a,b) => (priorityWeight[b.priority] - priorityWeight[a.priority]) || (a.eta - b.eta))
+      .slice(0, 6);
+
+    const urgent = pending.filter(t => t.priority !== 'medium').length;
+    const dueSoon = pending.filter(t => t.eta <= 30).length;
+    const risk = pending.reduce((sum, t) => sum + (t.value || 0), 0);
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    set('deskUrgentCount', urgent);
+    set('deskSlaCount', dueSoon);
+    set('deskRiskValue', formatMoney(risk));
+    if(typeof window.renderResonance === 'function') window.renderResonance();
+
+    if(!pending.length){
+      queue.innerHTML = '<div class="desk-empty">All high-impact front-desk actions are cleared. You\'re running ahead of plan.</div>';
+      return;
+    }
+
+    queue.innerHTML = pending.map(t => `
+      <div class="desk-item">
+        <span class="desk-pri ${t.priority}"></span>
+        <div>
+          <div class="desk-title">${t.title}</div>
+          <div class="desk-sub">${t.sub}</div>
+          <div class="desk-tags">
+            <span class="desk-tag">${t.priority.toUpperCase()} priority</span>
+            <span class="desk-tag">SLA ${t.eta}m</span>
+            <span class="desk-tag">At risk ${formatMoney(t.value)}</span>
+          </div>
+        </div>
+        <div class="desk-actions">
+          <button class="desk-btn" data-task-id="${t.id}" data-action="run">Run with Lola</button>
+          <button class="desk-btn secondary" data-task-id="${t.id}" data-action="done">Done</button>
+        </div>
+      </div>
+    `).join('');
+
+    const byId = Object.fromEntries(pending.map(t => [t.id, t]));
+    queue.querySelectorAll('.desk-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.getAttribute('data-task-id');
+        const action = e.currentTarget.getAttribute('data-action');
+        const task = byId[id];
+        if(!task) return;
+        if(action === 'done'){
+          resolved[id] = Date.now();
+          localStorage.setItem(deskStorageKey, JSON.stringify(resolved));
+          renderDeskCenter();
+          return;
+        }
+        if(typeof window.askLola === 'function'){
+          window.askLola(task.prompt);
+        } else {
+          const cmd = document.getElementById('cmdInput');
+          if(cmd){ cmd.value = task.prompt; cmd.focus(); }
+        }
+        if(task.route){
+          setTimeout(() => { location.href = task.route; }, 1200);
+        }
+      });
+    });
+  })();
+
+  window.runResonanceAction = function(prompt, route){
+    if(typeof window.askLola === 'function'){
+      window.askLola(prompt);
+    } else {
+      const cmd = document.getElementById('cmdInput');
+      if(cmd){ cmd.value = prompt; cmd.focus(); }
+    }
+    if(route){
+      setTimeout(() => { location.href = route; }, 1200);
+    }
+  };
+
+  window.renderResonance = function(){
+    const resolvedMap = (() => {
+      try{ return JSON.parse(localStorage.getItem('loladesk_desk_resolved') || '{}'); }
+      catch(e){ return {}; }
+    })();
+    const events = Object.values(resolvedMap)
+      .map(v => Number(v))
+      .filter(v => Number.isFinite(v) && v > 0)
+      .sort((a,b) => b-a);
+
+    const dayKey = (ts) => {
+      const d = new Date(ts);
+      return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    };
+
+    const uniqueDays = [];
+    for(const ts of events){
+      const key = dayKey(ts);
+      if(!uniqueDays.includes(key)) uniqueDays.push(key);
+    }
+
+    let streak = 0;
+    if(uniqueDays.length){
+      let cursor = new Date();
+      cursor.setHours(0,0,0,0);
+      for(let i=0;i<60;i++){
+        const key = `${cursor.getFullYear()}-${cursor.getMonth()+1}-${cursor.getDate()}`;
+        if(uniqueDays.includes(key)) streak += 1;
+        else if(i !== 0 || uniqueDays.length) break;
+        cursor.setDate(cursor.getDate()-1);
+      }
+    }
+
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+    const actionsToday = events.filter(ts => dayKey(ts) === todayKey).length;
+    const nextValue = Number((document.getElementById('deskRiskValue')?.textContent || '$0').replace(/[^\d]/g,'')) || 0;
+
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    set('resStreak', `${Math.max(streak, actionsToday ? 1 : 0)} day${Math.max(streak, actionsToday ? 1 : 0) === 1 ? '' : 's'}`);
+    set('resActionsToday', actionsToday);
+    set('resNextOpportunity', `$${Math.max(0, Math.round(nextValue)).toLocaleString()}`);
+    const mood = document.getElementById('resMood');
+    if(mood){
+      mood.textContent = actionsToday >= 3 ? 'Locked-in mode' : actionsToday >= 1 ? 'Momentum mode' : 'Start strong mode';
+    }
+  };
+  window.renderResonance();
 
   // Load the real app.js engine now that sessionStorage has real data
   // (or, if there's no DB/tenant, app.js's own demo defaults take over —

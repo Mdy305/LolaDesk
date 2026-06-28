@@ -1,46 +1,275 @@
-const { createClient } = require('@supabase/supabase-js');
+import {
+  e164,
+  getTenantByPhone,
+  upsertClient,
+  getClientMemory,
+  setClientMemory,
+  getOrStartConversation,
+  getConversationHistory,
+  logMessage,
+  logUsage
+} from './lib/db.js';
+import { chat } from './lib/llm.js';
+import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
+import { putAudio } from './lib/tts-cache.js';
+import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
+import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
+import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
+import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+function escapeXml(value=''){
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
-module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(200).json({ status: 'ignored' });
+async function readBody(req){
+  if(req.body && typeof req.body === 'object'){
+    return { parsed: req.body, raw: '', parsedByRuntime: true };
   }
+  return new Promise(resolve => {
+    let raw = '';
+    req.on('data', c => raw += c.toString());
+    req.on('end', () => {
+      const ct = String(req.headers['content-type'] || '').toLowerCase();
+      if(ct.includes('application/json')){
+        try{ return resolve({ parsed: JSON.parse(raw), raw, parsedByRuntime: false }); }catch{ return resolve({ parsed: {}, raw, parsedByRuntime: false }); }
+      }
+      if(ct.includes('application/x-www-form-urlencoded')){
+        try{
+          const p = new URLSearchParams(raw);
+          const obj = {};
+          for(const [k,v] of p.entries()) obj[k] = v;
+          return resolve({ parsed: obj, raw, parsedByRuntime: false });
+        }catch{
+          return resolve({ parsed: {}, raw, parsedByRuntime: false });
+        }
+      }
+      resolve({ parsed: {}, raw, parsedByRuntime: false });
+    });
+    req.on('error', () => resolve({ parsed: {}, raw: '', parsedByRuntime: false }));
+  });
+}
 
-  const { event_type, payload } = req.body || {};
+function extractVoicePayload(parsed){
+  const p = parsed?.data?.payload || parsed || {};
+  return {
+    callControlId: p.call_control_id || parsed?.call_control_id || '',
+    from: p.from || p.From || parsed?.From || parsed?.from || '',
+    to: p.to || p.To || parsed?.To || parsed?.to || '',
+    speechResult: p.speech_result || p.SpeechResult || parsed?.SpeechResult || parsed?.speech_result || parsed?.speech || '',
+    callSid: p.call_leg_id || p.call_session_id || parsed?.CallSid || parsed?.call_sid || ''
+  };
+}
 
-  try {
-    if (event_type === 'call.initiated') {
-      const dialedNumber = payload.to || payload.custom_parameters?.tenantNumber;
-      
-      // 🧠 DYNAMIC MULTI-TENANT ROUTER
-      // Matches the incoming dialed phone number straight onto your Supabase salon profiles
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('telnyx_phone_number', dialedNumber)
-        .single();
+function texmlSayAndGather({ say, playUrl }){
+  const speakBlock = playUrl
+    ? `<Play>${escapeXml(playUrl)}</Play>`
+    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  ${speakBlock}
+  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto" action="/api/telnyx-voice" method="POST"/>
+</Response>`;
+}
 
-      // 🚀 THE PRODUCTION LINK SWITCH
-      // REPLACE the placeholder URL below with your actual active Railway public network address
-      const productionCloudUrl = "wss://your-mcp-voice-service.up.railway.app";
+export default async function handler(req, res){
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, telnyx-signature-ed25519, telnyx-timestamp');
+  if(req.method === 'OPTIONS') return res.status(200).end();
+  if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-      const streamTeXML = `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-          <Connect>
-              <Stream url="${productionCloudUrl}" track="both_tracks">
-                  <Parameter name="tenantId" value="${tenant?.id || 'unknown'}" />
-                  <Parameter name="tenantNumber" value="${dialedNumber}" />
-              </Stream>
-          </Connect>
-      </Response>`;
-      
-      res.setHeader('Content-Type', 'application/xml');
-      return res.status(200).send(streamTeXML);
+  const incoming = await readBody(req);
+  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
+    const sig = getTelnyxSignatureHeaders(req);
+    const verified = verifyTelnyxSignature({ rawBody: incoming.raw, signature: sig.signature, timestamp: sig.timestamp });
+    if(!verified.ok){
+      return res.status(403).json({ error: `invalid telnyx signature: ${verified.reason}` });
     }
-    
-    return res.status(200).json({ status: 'processed' });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
   }
-};
+  const parsed = incoming.parsed;
+
+  const payload = extractVoicePayload(parsed);
+  const toN = e164(payload.to);
+  const fromN = e164(payload.from);
+
+  let tenant = null;
+  try{ tenant = await getTenantByPhone(toN); }catch{}
+  if(!tenant?.id){
+    const xml = texmlSayAndGather({ say: 'Sorry, we cannot route this call yet. Please try again shortly.' });
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  }
+
+  let client = null;
+  let conversation = null;
+  let clientProfile = null;
+  try{
+    client = fromN ? await upsertClient(tenant.id, { phone: fromN }) : null;
+    conversation = await getOrStartConversation(tenant.id, { clientId: client?.id, channel: 'voice', agent: 'lola' });
+    if(fromN){
+      const rows = await getClientMemory(tenant.id, fromN);
+      clientProfile = profileFromMemoryRows(rows);
+    }
+  }catch{}
+
+  const speech = String(payload.speechResult || '').trim();
+  let reply = '';
+
+  if(!speech){
+    const name = client?.name ? ` ${client.name.split(' ')[0]}` : '';
+    reply = `Hi${name}, this is Lola at ${tenant.name}. How can I help you today?`;
+  }else{
+    const intent = detectLolaIntent(speech);
+    const mood = detectConversationMood(speech);
+    const signals = extractPersonalizationSignals(speech);
+    if(signals.hasSignal && fromN){
+      try{
+        clientProfile = mergeClientProfile(clientProfile, signals);
+        await setClientMemory(tenant.id, fromN, 'profile', clientProfile);
+        if(signals.feedback){
+          await setClientMemory(tenant.id, fromN, 'last_feedback', {
+            ...signals.feedback,
+            at: new Date().toISOString()
+          });
+        }
+      }catch{}
+    }
+    reply = deterministicSkillReply({
+      tenant,
+      intent,
+      channel: 'voice',
+      clientName: client?.name ? String(client.name).split(' ')[0] : ''
+    });
+
+    let history = [];
+    try{
+      if(conversation?.id) history = await getConversationHistory(conversation.id, 10);
+    }catch{}
+    if(!reply){
+      const messages = [...history, { role: 'user', content: speech }];
+      
+      // Build enhanced system prompt with advanced features
+      let systemPrompt = buildLolaSystemPrompt({
+        tenant,
+        channel: 'voice',
+        intent,
+        mood,
+        memoryBlock: buildClientMemoryBlock(clientProfile)
+      });
+      
+      // Add MCP tools availability to system prompt
+      systemPrompt += '\n' + buildMCPToolsPrompt();
+      
+      // Add MMS vision results if available
+      const mmsResult = getInCallMmsResult(payload.callControlId);
+      if(mmsResult){
+        systemPrompt += '\n' + buildMmsVisionPromptBlock(mmsResult);
+      }
+      
+      try{
+        const ai = await chat({
+          system: systemPrompt,
+          messages,
+          maxTokens: 220,
+          temperature: 0.5,
+          source: 'voice'
+        });
+        
+       if(ai.ok && ai.text){
+         reply = ai.text.trim();
+          
+         // Check if LLM requested a tool invocation (MCP)
+         const toolMatch = reply.match(/\[TOOL:\s*(\w+)\s*\{([^}]*)\}\]/);
+         if(toolMatch){
+           const toolName = toolMatch[1];
+           try{
+             const params = JSON.parse('{' + toolMatch[2] + '}');
+             const toolResult = await executeMCPTool(toolName, params, tenant.id);
+              
+             // Refine reply with tool result
+             const refinedMessages = [
+               ...messages,
+               { role: 'assistant', content: reply },
+               { role: 'user', content: `Tool "${toolName}" returned: ${JSON.stringify(toolResult)}` }
+             ];
+              
+             const refined = await chat({
+               system: systemPrompt,
+               messages: refinedMessages,
+               maxTokens: 200,
+               temperature: 0.5,
+               source: 'voice'
+             });
+              
+             if(refined.ok && refined.text){
+               reply = refined.text.trim();
+             }
+           }catch(e){
+             console.error(`[MCP] Tool execution error: ${e.message}`);
+             // Fall back to original reply
+           }
+         }
+       }
+     }catch{}
+   }
+   if(!reply) reply = 'Got it. I can help with that. What day works best for you?';
+
+    try{
+      const quality = evaluateInteractionQuality({
+        intent,
+        mood,
+        personalized: !!signals.hasSignal || !!buildClientMemoryBlock(clientProfile),
+        reply,
+        userText: speech,
+        channel: 'voice'
+      });
+      await logUsage(tenant.id, 'interaction_quality', quality.score, {
+        channel: 'voice',
+        level: quality.level,
+        intent,
+        mood
+      });
+    }catch{}
+  }
+
+  if(conversation?.id){
+    try{
+      if(speech){
+        await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: speech });
+      }
+      await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: reply });
+      await logUsage(tenant.id, 'voice_call', 1, { call_control_id: payload.callControlId || '', call_sid: payload.callSid || '' });
+      await logUsage(tenant.id, 'ai_token', 1, { source: 'voice' });
+    }catch{}
+  }
+
+  let playUrl = '';
+  let synthesisError = '';
+  
+  // CRITICAL: Always attempt ElevenLabs before falling back to Polly
+  if(elevenLabsConfigured() && process.env.APP_URL){
+    try{
+      const audio = await synthesize(reply);
+      const id = putAudio(audio);
+      playUrl = `${process.env.APP_URL.replace(/\/+$/,'')}/api/voice-audio?id=${encodeURIComponent(id)}`;
+    }catch(e){
+      synthesisError = String(e.message || e).slice(0, 100);
+      console.error(`[VOICE] ElevenLabs synthesis failed for tenant ${tenant.id}: ${synthesisError}`);
+    }
+  }else{
+    const missing = [];
+    if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
+    if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
+    if(!process.env.APP_URL) missing.push('APP_URL');
+    console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
+  }
+
+  const xml = texmlSayAndGather({ say: reply, playUrl });
+  res.setHeader('Content-Type', 'application/xml');
+  return res.status(200).send(xml);
+}

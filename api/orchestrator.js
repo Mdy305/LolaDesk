@@ -1,19 +1,48 @@
 import fetch from 'node-fetch';
 import { db } from './lib/db.js';
 import { validateLLMOutput } from './lib/llm-validator.js';
+import { delegateToAgent } from './lib/router.js';
+import { normalizeAgentName, summarizeTopology } from './lib/agent-topology.js';
 
-// Lightweight orchestrator endpoint — call LLM, validate structured JSON output, record audit
+// Control plane endpoint:
+// 1) explicit routing mode (route_to + task)
+// 2) LLM planning mode (prompt -> structured action)
 export default async function handler(req, res){
   if(req.method !== 'POST') return res.status(405).end();
   const body = req.body || {};
   const prompt = body.prompt || null;
+  const routeTo = body.route_to || body.routeTo || null;
+  const task = body.task || null;
+  const tenant = body.tenant || {};
   const model = process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini';
-  if(!prompt) return res.status(400).json({ error: 'missing prompt' });
 
   const c = db();
   if(!c) return res.status(500).json({ error: 'Supabase not configured' });
 
-  // call LLM if key present, otherwise create a safe mock
+  // Explicit routing mode bypasses LLM and delegates directly.
+  if(routeTo || task){
+    const normalized = normalizeAgentName(routeTo);
+    if(!normalized){
+      return res.status(200).json({
+        ok: false,
+        error: 'unknown route_to agent',
+        topology: summarizeTopology()
+      });
+    }
+    const routed = await delegateToAgent(normalized, task || 'Run default check-in', tenant, body.context || {});
+    return res.status(200).json({
+      ok: routed.status === 'delegated',
+      mode: 'direct-route',
+      route_to: normalized,
+      task: task || 'Run default check-in',
+      routed
+    });
+  }
+  if(!prompt){
+    return res.status(400).json({ error: 'missing prompt (or pass route_to + task)' });
+  }
+
+  // Call LLM if key present, otherwise safe mock.
   let llmRaw = null;
   try{
     if(process.env.OPENAI_API_KEY){
@@ -25,7 +54,10 @@ export default async function handler(req, res){
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: 'system', content: 'Respond with a single JSON object describing {action, params, speak}. Do not include any extra text.' }, { role: 'user', content: prompt }],
+          messages: [{
+            role: 'system',
+            content: 'You are the LolaDesk control-plane orchestrator. Respond with ONE JSON object only in this shape: {action, params, speak, route_to?, task?}. action must be one of book,cancel,ask,route,none. Use action=route for specialized agents and set route_to to one of lola,ops,growth,website,reputation,citation,publication.'
+          }, { role: 'user', content: prompt }],
           max_tokens: 800
         })
       });
@@ -34,7 +66,7 @@ export default async function handler(req, res){
       llmRaw = j?.choices?.[0]?.message?.content || JSON.stringify(j);
     } else {
       // Mock safe response when no key present
-      llmRaw = JSON.stringify({ action: 'none', params: {}, speak: "Sorry — AI service not configured in staging." });
+      llmRaw = JSON.stringify({ action: 'none', params: {}, speak: 'Control plane AI is not configured yet.' });
     }
   }catch(e){
     llmRaw = JSON.stringify({ action: 'none', params: {}, speak: `LLM call failed: ${String(e?.message||e)}` });
@@ -59,6 +91,27 @@ export default async function handler(req, res){
     // safe fallback reply
     const fallback = { action: 'none', params: {}, speak: "I'm sorry — I couldn't prepare that action. Can you please rephrase?" };
     return res.status(200).json({ fallback, validation });
+  }
+
+  if(parsed.action === 'route'){
+    const normalized = normalizeAgentName(parsed.route_to);
+    if(!normalized){
+      return res.status(200).json({
+        ok: false,
+        error: 'route action returned unknown agent',
+        output: parsed,
+        topology: summarizeTopology()
+      });
+    }
+    const routed = await delegateToAgent(normalized, parsed.task || prompt, tenant, body.context || {});
+    return res.status(200).json({
+      ok: routed.status === 'delegated',
+      mode: 'llm-route',
+      output: parsed,
+      route_to: normalized,
+      routed,
+      validation
+    });
   }
 
   return res.status(200).json({ output: parsed, validation });

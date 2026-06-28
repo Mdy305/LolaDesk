@@ -5,6 +5,7 @@
  */
 import { getUserFromToken, bearer } from '../lib/auth.js';
 import { db } from '../lib/db.js';
+import { resolveTenantForUser } from '../lib/tenant-access.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,8 +21,7 @@ export default async function handler(req, res) {
     const c = db();
     if (!c) return res.status(503).json({ error: 'database not configured' });
 
-    const { data: rows } = await c.from('tenants').select('id').eq('owner_email', user.email).limit(1);
-    const tenant = rows && rows[0];
+    const tenant = await resolveTenantForUser(user);
     if (!tenant) return res.status(404).json({ error: 'no tenant found for this account' });
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});

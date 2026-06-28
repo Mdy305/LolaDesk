@@ -33,6 +33,7 @@ TELNYX_VOICE_APP_ID        Your TeXML app id (auto-attach voice to new numbers)
 TELNYX_MESSAGING_PROFILE   Your messaging profile id (auto-attach SMS)
 ELEVENLABS_API_KEY         Lola's real voice
 ELEVENLABS_VOICE_ID        Lola's specific cloned/custom voice id
+TELNYX_PUBLIC_KEY          Optional: verify Telnyx webhook signatures (recommended)
 ```
 
 After adding these, **redeploy** so the functions pick them up.
@@ -52,6 +53,11 @@ After adding these, **redeploy** so the functions pick them up.
 
 **3. API key**
 - Portal → Auth → **Create API Key** → that's your `TELNYX_API_KEY`
+
+**4. (Recommended) Webhook signature verification**
+- Portal → API Keys / Public Keys → copy your Telnyx public signing key
+- Set `TELNYX_PUBLIC_KEY` in Vercel
+- The app will verify `telnyx-signature-ed25519` + `telnyx-timestamp` on webhook calls
 
 ## How a salon gets a working number
 
@@ -85,3 +91,4 @@ You can't fully test inbound voice without a real Telnyx number pointed at a pub
 - Conversation memory persists to Supabase (`getOrStartConversation` / `getConversationHistory` in `api/lib/db.js`) — Lola remembers callers across calls, not just within one call. Per-turn state also rides in TeXML's `client_state` for speed within a single call.
 - `/api/voice-audio` caches synthesized audio in a single serverless instance's memory for ~60 seconds — fine at current scale. If you see occasional fallback-voice turns under high concurrent call volume, that's a Vercel multi-instance cache miss; see the scaling note at the bottom of `api/lib/tts-cache.js` for the Supabase Storage upgrade path.
 - The 7-agent Telnyx-native system in `api/telnyx-agents.js` (and the "copy config" button in `agents.html`) is a **separate, experimental architecture** — no phone number currently routes to it. The live path is `telnyx-voice.js`'s custom TeXML + Claude/Telnyx-Inference loop described above. Don't be surprised these two systems both reference Lola; only one is wired to real calls today.
+- Porting callbacks should target `https://YOUR-APP.vercel.app/api/webhooks/telnyx`.

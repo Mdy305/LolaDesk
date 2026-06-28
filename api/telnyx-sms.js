@@ -2,8 +2,10 @@
  * /api/telnyx-sms — Telnyx SMS webhook · MULTI-TENANT + 10DLC compliant
  * Handles both API v1 (form-encoded) and API v2 (JSON) from Telnyx.
  */
-import { getTenantByPhone, upsertClient, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut, tenantKnowledgePrompt } from './lib/db.js';
+import { getTenantByPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { chat } from './lib/llm.js';
+import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
+import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 
 
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
@@ -12,15 +14,18 @@ const HELP=['help','info'];
 const kw=(t,l)=>l.includes(String(t||'').trim().toLowerCase());
 
 async function readBody(req){
+  if(req.body && typeof req.body === 'object'){
+    return { parsed: req.body, raw: '', parsedByRuntime: true };
+  }
   return new Promise(resolve=>{
     let raw='';
     req.on('data',c=>raw+=c.toString());
     req.on('end',()=>{
       const ct=(req.headers['content-type']||'').toLowerCase();
-      if(ct.includes('json')){ try{ resolve(JSON.parse(raw)); }catch{ resolve({}); } }
-      else{ try{ const p=new URLSearchParams(raw),o={}; for(const[k,v]of p)o[k]=v; resolve(o); }catch{ resolve({}); } }
+      if(ct.includes('json')){ try{ resolve({ parsed: JSON.parse(raw), raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
+      else{ try{ const p=new URLSearchParams(raw),o={}; for(const[k,v]of p)o[k]=v; resolve({ parsed: o, raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
     });
-    req.on('error',()=>resolve({}));
+    req.on('error',()=>resolve({ parsed:{}, raw:'', parsedByRuntime:false }));
   });
 }
 
@@ -56,26 +61,20 @@ export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,
   return r.json();
 }
 
-function sysPrompt(t){
-  const kb = tenantKnowledgePrompt(t);
-  return `You are Lola, the premier AI receptionist and texting assistant for this business.
-You are Siri, Alexa, and Jarvis combined into a human-feeling, ultra-performant, warm, and highly capable front desk manager.
-You sound completely natural, professional, and confident—never robotic. Keep text replies brief (1-3 sentences), warm, and direct. Always move toward booking.
-
-BUSINESS DETAILS & KNOWLEDGE:
-${kb}
-
-YOUR CAPABILITIES & PROTOCOL:
-- Texting & Booking: Help clients book appointments. Share the booking link (${t.booking_url || ''}) when they want to book.
-- Service Advice: Quote services and pricing from the details above.
-- Never state you are an AI or bot unless asked directly.`;
-}
-
 export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, telnyx-signature-ed25519, telnyx-timestamp');
   if(req.method==='OPTIONS') return res.status(200).end();
 
-  const raw=await readBody(req);
+  const incoming=await readBody(req);
+  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
+    const sig = getTelnyxSignatureHeaders(req);
+    const verified = verifyTelnyxSignature({ rawBody: incoming.raw, signature: sig.signature, timestamp: sig.timestamp });
+    if(!verified.ok){
+      return res.status(403).json({ ok:false, error:`invalid telnyx signature: ${verified.reason}` });
+    }
+  }
+  const raw=incoming.parsed;
   const body=extract(raw);
 
   if(body.outbound){
@@ -110,17 +109,73 @@ export default async function handler(req,res){
   }
   try{ if(await isOptedOut(row.id,fromN)) return res.status(200).json({ok:true,handled:'opted_out'}); }catch{}
 
-  let client=null,conv=null,hist=[{role:'user',content:text}];
+  let client=null,conv=null,hist=[{role:'user',content:text}],clientProfile=null;
   try{
     if(fromN) client=await upsertClient(row.id,{phone:fromN});
     conv=await getOrStartConversation(row.id,{clientId:client?.id,channel,agent:'lola'});
     if(conv?.id){ const p=await getConversationHistory(conv.id,10); hist=[...p,{role:'user',content:text}]; }
+    if(fromN){
+      const rows = await getClientMemory(row.id, fromN);
+      clientProfile = profileFromMemoryRows(rows);
+    }
   }catch{}
 
-  let reply="Thanks for texting! How can I help you book?";
+  const signals = extractPersonalizationSignals(text);
+  if(signals.hasSignal && fromN){
+    try{
+      clientProfile = mergeClientProfile(clientProfile, signals);
+      await setClientMemory(row.id, fromN, 'profile', clientProfile);
+      if(signals.feedback){
+        await setClientMemory(row.id, fromN, 'last_feedback', {
+          ...signals.feedback,
+          at: new Date().toISOString()
+        });
+      }
+    }catch{}
+  }
+
+  const intent = detectLolaIntent(text);
+  const mood = detectConversationMood(text);
+  let reply = deterministicSkillReply({
+    tenant: row,
+    intent,
+    channel: 'sms',
+    clientName: client?.name ? String(client.name).split(' ')[0] : ''
+  }) || 'Thanks for texting! How can I help you book?';
   try{
-    const r=await chat({system:sysPrompt(row),messages:hist,maxTokens:200,temperature:0.7,source:channel});
-    if(r.ok&&r.text) reply=r.text;
+    if(!reply || intent === 'general' || intent === 'recommendation'){
+      const r=await chat({
+        system:buildLolaSystemPrompt({
+          tenant: row,
+          channel,
+          intent,
+          mood,
+          memoryBlock: buildClientMemoryBlock(clientProfile)
+        }),
+        messages:hist,
+        maxTokens:240,
+        temperature:0.6,
+        source:channel
+      });
+      if(r.ok&&r.text) reply=r.text;
+    }
+  }catch{}
+
+  try{
+    const quality = evaluateInteractionQuality({
+      intent,
+      mood,
+      personalized: !!signals.hasSignal || !!buildClientMemoryBlock(clientProfile),
+      reply,
+      userText: text,
+      channel
+    });
+    await logUsage(row.id, 'interaction_quality', quality.score, {
+      channel,
+      level: quality.level,
+      intent,
+      mood
+    });
   }catch{}
 
   if(conv?.id){
