@@ -141,7 +141,15 @@ function extractBooking(text, tenant){
 
   let date = null;
   if(/\btomorrow\b/.test(t)) date = fmtDate(resolveDate('tomorrow'));
+  else if(/\bday after tomorrow\b/.test(t)) date = fmtDate(resolveDate('day after tomorrow'));
   else if(/\btoday\b/.test(t)) date = fmtDate(resolveDate('today'));
+  else {
+    const wd = t.match(/\b(this|next|coming)?\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+    const inN = t.match(/\bin\s+(\d+)\s+days?\b/);
+    if(wd) date = fmtDate(resolveDate(((wd[1] ? wd[1] + ' ' : '') + wd[2]).trim()));
+    else if(inN) date = fmtDate(resolveDate('in ' + inN[1] + ' days'));
+    else if(/\bnext week\b/.test(t)) date = fmtDate(resolveDate('next week'));
+  }
 
   if(!service && !time && !client_name) return null;
   return { service: service || 'appointment', date, time, client_name };

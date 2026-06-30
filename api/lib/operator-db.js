@@ -27,6 +27,28 @@ export function resolveDate(phrase){
   const now = new Date();
   if(p === 'today') return now;
   if(p === 'tomorrow'){ const t = new Date(now); t.setDate(t.getDate() + 1); return t; }
+  if(p === 'day after tomorrow'){ const t = new Date(now); t.setDate(t.getDate() + 2); return t; }
+
+  // "in N days"
+  const inDays = p.match(/^in\s+(\d+)\s+days?$/);
+  if(inDays){ const t = new Date(now); t.setDate(t.getDate() + parseInt(inDays[1], 10)); return t; }
+
+  // weekday names, optionally prefixed with this / next / coming
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const wd = p.match(/^(?:(this|next|coming)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/);
+  if(wd){
+    const mod = wd[1];
+    const target = days.indexOf(wd[2]);
+    const t = new Date(now);
+    let delta = (target - t.getDay() + 7) % 7;
+    if(delta === 0) delta = 7;       // a bare weekday that equals today -> next occurrence
+    if(mod === 'next') delta += 7;   // "next friday" -> the following week
+    t.setDate(t.getDate() + delta);
+    return t;
+  }
+
+  if(p === 'next week'){ const t = new Date(now); t.setDate(t.getDate() + 7); return t; }
+
   const d = new Date(phrase);
   return isNaN(d) ? now : d;
 }
