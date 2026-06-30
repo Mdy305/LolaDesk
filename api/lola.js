@@ -13,6 +13,7 @@ import { SKILLS } from './lola-tools.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { detectEliteIntent, deterministicEliteSkillReply } from './lib/lola-elite-skills.js';
+import { resolveDate } from './lib/operator-db.js';
 
 const TOOLS = [
   {
@@ -112,6 +113,40 @@ const TOOLS = [
   }
 ];
 
+// ── Sentence → booking extraction ────────────────────────────────────────
+// Telnyx can't do tool-calls, so we pull the booking details out of the
+// owner's sentence ourselves and run the real book_appointment skill.
+function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function extractBooking(text, tenant){
+  if(!text) return null;
+  const t = text.toLowerCase();
+  if(!/\b(book|schedule|rebook|pencil(?:\s+in)?|set\s+up)\b/.test(t)) return null;
+
+  let service = null;
+  const svcList = Array.isArray(tenant?.services) ? tenant.services.map(s => (s && (s.name || s))).filter(Boolean) : [];
+  for(const s of svcList){ if(t.includes(String(s).toLowerCase())){ service = s; break; } }
+  if(!service){
+    const kw = ['balayage','colour','color','haircut','cut','styling','blowout','ombre','highlights','keratin','extensions','extension','treatment','facial','manicure','pedicure','wax','massage'];
+    for(const k of kw){ if(t.includes(k)){ service = k; break; } }
+  }
+
+  let client_name = null;
+  const m = text.match(/\bfor\s+([A-Z][a-zA-Z]+)/) || text.match(/\bbook\s+([A-Z][a-zA-Z]+)/);
+  if(m && !['a','an','the','me','my'].includes(m[1].toLowerCase())) client_name = m[1];
+
+  let time = null;
+  const tm = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i) || text.match(/\b(\d{1,2}:\d{2})\b/);
+  if(tm) time = tm[1].replace(/\s+/g,'');
+
+  let date = null;
+  if(/\btomorrow\b/.test(t)) date = fmtDate(resolveDate('tomorrow'));
+  else if(/\btoday\b/.test(t)) date = fmtDate(resolveDate('today'));
+
+  if(!service && !time && !client_name) return null;
+  return { service: service || 'appointment', date, time, client_name };
+}
+
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -134,6 +169,22 @@ export default async function handler(req, res){
     if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
     let messages = body.messages || [];
+
+    // ── Booking fast-path: write a real appointment from the sentence ──────
+    try{
+      const lastUserB = [...messages].reverse().find(m => m && m.role === 'user');
+      const bText = (lastUserB && (typeof lastUserB.content === 'string' ? lastUserB.content : '')) || '';
+      const booking = extractBooking(bText, tenant);
+      if(booking){
+        const result = await executeSkill(tenant, booking.client_phone || null, 'book_appointment', booking, SKILLS);
+        if(result && (result.speak || result.booked !== undefined)){
+          return res.status(200).json({
+            content: [{ type:'text', text: result.speak || 'Done.' }],
+            intent: 'book_appointment', booked: !!result.booked, source: 'skill'
+          });
+        }
+      }
+    }catch(e){ /* fall through to skill/conversation */ }
 
     // ── Skill fast-path (orchestrator) ─────────────────────────────────────
     // Telnyx's inference endpoint rejects tool-calls, so instead of relying on
