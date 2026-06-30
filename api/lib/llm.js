@@ -45,10 +45,11 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model, too
   }
   const budgets = [Math.max(maxTokens,3200), Math.max(maxTokens,2000), 1200, 800];
   let last = { error:'no attempts' };
+  let dropTools = false;
   for(let i=0;i<budgets.length;i++){
     try{
       const payload = { model:m, messages:oai, max_tokens:budgets[i], temperature:i>1?0.6:temperature };
-      if(tools && tools.length > 0) payload.tools = tools;
+      if(tools && tools.length > 0 && !dropTools) payload.tools = tools;
 
       const r = await fetch(TELNYX_INFERENCE, {
         method:'POST',
@@ -57,7 +58,14 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model, too
       });
       const data = await r.json();
       console.log('[telnyx inference response]', JSON.stringify(data));
-      if(!r.ok){ last={error:data?.error?.message||`HTTP ${r.status}`}; if(!`${r.status}`.startsWith('5')) break; continue; }
+      if(!r.ok){
+        last={error:data?.error?.message||`HTTP ${r.status}`};
+        // If the provider rejects the request while tools are attached, retry
+        // once WITHOUT tools so Lola can still respond conversationally.
+        if(r.status === 400 && payload.tools && !dropTools){ dropTools = true; continue; }
+        if(!`${r.status}`.startsWith('5')) break;
+        continue;
+      }
       
       const msg = data?.choices?.[0]?.message;
       const text = (msg?.content || msg?.reasoning || '').trim();
