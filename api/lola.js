@@ -118,18 +118,34 @@ const TOOLS = [
 // owner's sentence ourselves and run the real book_appointment skill.
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
+// Pull a concrete YYYY-MM-DD out of natural phrasing (today/tomorrow/weekday/
+// next week/in N days). Returns null when no date is mentioned.
+function parseDateFromText(t){
+  if(/\btomorrow\b/.test(t)) return fmtDate(resolveDate('tomorrow'));
+  if(/\bday after tomorrow\b/.test(t)) return fmtDate(resolveDate('day after tomorrow'));
+  if(/\btoday\b/.test(t)) return fmtDate(resolveDate('today'));
+  const wd = t.match(/\b(this|next|coming)?\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if(wd) return fmtDate(resolveDate(((wd[1] ? wd[1] + ' ' : '') + wd[2]).trim()));
+  const inN = t.match(/\bin\s+(\d+)\s+days?\b/);
+  if(inN) return fmtDate(resolveDate('in ' + inN[1] + ' days'));
+  if(/\bnext week\b/.test(t)) return fmtDate(resolveDate('next week'));
+  return null;
+}
+
+function matchService(t, tenant){
+  const svcList = Array.isArray(tenant?.services) ? tenant.services.map(s => (s && (s.name || s))).filter(Boolean) : [];
+  for(const s of svcList){ if(t.includes(String(s).toLowerCase())){ return s; } }
+  const kw = ['balayage','colour','color','haircut','cut','styling','blowout','ombre','highlights','keratin','extensions','extension','treatment','facial','manicure','pedicure','wax','massage'];
+  for(const k of kw){ if(t.includes(k)){ return k; } }
+  return null;
+}
+
 function extractBooking(text, tenant){
   if(!text) return null;
   const t = text.toLowerCase();
   if(!/\b(book|schedule|rebook|pencil(?:\s+in)?|set\s+up)\b/.test(t)) return null;
 
-  let service = null;
-  const svcList = Array.isArray(tenant?.services) ? tenant.services.map(s => (s && (s.name || s))).filter(Boolean) : [];
-  for(const s of svcList){ if(t.includes(String(s).toLowerCase())){ service = s; break; } }
-  if(!service){
-    const kw = ['balayage','colour','color','haircut','cut','styling','blowout','ombre','highlights','keratin','extensions','extension','treatment','facial','manicure','pedicure','wax','massage'];
-    for(const k of kw){ if(t.includes(k)){ service = k; break; } }
-  }
+  const service = matchService(t, tenant);
 
   let client_name = null;
   const m = text.match(/\bfor\s+([A-Z][a-zA-Z]+)/) || text.match(/\bbook\s+([A-Z][a-zA-Z]+)/);
@@ -139,20 +155,21 @@ function extractBooking(text, tenant){
   const tm = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i) || text.match(/\b(\d{1,2}:\d{2})\b/);
   if(tm) time = tm[1].replace(/\s+/g,'');
 
-  let date = null;
-  if(/\btomorrow\b/.test(t)) date = fmtDate(resolveDate('tomorrow'));
-  else if(/\bday after tomorrow\b/.test(t)) date = fmtDate(resolveDate('day after tomorrow'));
-  else if(/\btoday\b/.test(t)) date = fmtDate(resolveDate('today'));
-  else {
-    const wd = t.match(/\b(this|next|coming)?\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
-    const inN = t.match(/\bin\s+(\d+)\s+days?\b/);
-    if(wd) date = fmtDate(resolveDate(((wd[1] ? wd[1] + ' ' : '') + wd[2]).trim()));
-    else if(inN) date = fmtDate(resolveDate('in ' + inN[1] + ' days'));
-    else if(/\bnext week\b/.test(t)) date = fmtDate(resolveDate('next week'));
-  }
+  const date = parseDateFromText(t);
 
   if(!service && !time && !client_name) return null;
   return { service: service || 'appointment', date, time, client_name };
+}
+
+// "am I free friday", "any openings tomorrow", "is 3pm open", "what's available"
+function extractAvailabilityQuery(text, tenant){
+  if(!text) return null;
+  const t = text.toLowerCase();
+  // a clear booking command is handled elsewhere
+  if(/\b(book|rebook|pencil)\b/.test(t) && /\bfor\s+[a-z]/i.test(text)) return null;
+  const asks = /\b(free|availab|openings?|slots?|booked up|when can|what times?|do you have (?:any )?(?:time|openings?|availability|slots?)|is\s+\d{1,2}\s*(?:am|pm)?\s*(?:free|open|available|taken|booked))\b/.test(t);
+  if(!asks) return null;
+  return { service: matchService(t, tenant), date: parseDateFromText(t) };
 }
 
 export default async function handler(req, res){
@@ -193,6 +210,19 @@ export default async function handler(req, res){
         }
       }
     }catch(e){ /* fall through to skill/conversation */ }
+
+    // ── Availability sight: let Lola see her calendar and answer openings ──
+    try{
+      const lastUserA = [...messages].reverse().find(m => m && m.role === 'user');
+      const aText = (lastUserA && (typeof lastUserA.content === 'string' ? lastUserA.content : '')) || '';
+      const aq = extractAvailabilityQuery(aText, tenant);
+      if(aq){
+        const result = await executeSkill(tenant, null, 'check_availability', aq, SKILLS);
+        if(result && result.speak){
+          return res.status(200).json({ content:[{ type:'text', text: result.speak }], intent:'check_availability', source:'skill' });
+        }
+      }
+    }catch(e){ /* fall through */ }
 
     // ── Skill fast-path (orchestrator) ─────────────────────────────────────
     // Telnyx's inference endpoint rejects tool-calls, so instead of relying on
