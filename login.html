@@ -208,6 +208,11 @@ window.signIn=async ()=>{
 };
 document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') signIn(); });
 setupSR();
+  // Prefill email when arriving from onboarding (returning user).
+  try{
+    const qp = new URLSearchParams(location.search).get('email');
+    if(qp){ const el = document.getElementById('email'); if(el) el.value = qp; const pw = document.querySelector('input[type=password]'); if(pw) pw.focus(); }
+  }catch(e){}
 </script>
 </body>
 </html>

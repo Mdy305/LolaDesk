@@ -157,7 +157,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 
   <header class="ob-head">
     <div class="ob-logo">LOLADESK<span>AI FRONT DESK</span></div>
-    <div class="ob-help">Need help? <a href="#">We're here</a></div>
+    <div class="ob-help">Already have an account? <a href="/login" style="color:var(--accent,#e879b9);font-weight:500">Sign in</a></div>
   </header>
 
   <!-- PROGRESS -->
@@ -683,24 +683,34 @@ async function finishLive(){
     document.getElementById('liveNav').style.display='flex';
     
   }catch(e){
-    // Error State: Halt and show error
+    const msg = (e.message||String(e));
+    // A returning user (email already registered) must NOT be trapped in the
+    // signup flow — send them to sign in instead of looping on "Try Again".
+    const exists = /already registered|already exists|exists/i.test(msg);
     document.getElementById('liveCheck').style.display='none';
-    document.getElementById('liveTitle').textContent='Setup Failed';
-    document.getElementById('liveTitle').style.color='#ff5146';
-    document.getElementById('liveSub').textContent='Error: '+(e.message||e)+' — Please make sure your database is connected and try again.';
-    
-    // Convert the "Enter Dashboard" button into a "Try Again" button
     const navWrap = document.getElementById('liveNav');
     const navBtn = navWrap.querySelector('button');
     navWrap.style.display='flex';
-    navBtn.textContent = 'Try Again';
-    navBtn.onclick = () => {
+
+    if(exists){
+      document.getElementById('liveTitle').textContent='Welcome back 👋';
       document.getElementById('liveTitle').style.color='var(--text)';
-      navBtn.textContent = 'Enter your dashboard';
-      navBtn.onclick = enterDashboard;
-      state.step = 1;
-      showStep(1);
-    };
+      document.getElementById('liveSub').textContent='You already have a LolaDesk account with this email — let’s sign you in.';
+      navBtn.textContent = 'Go to sign in';
+      navBtn.onclick = () => { window.location.href = '/login?email=' + encodeURIComponent(state.email||''); };
+    } else {
+      document.getElementById('liveTitle').textContent='Setup Failed';
+      document.getElementById('liveTitle').style.color='#ff5146';
+      document.getElementById('liveSub').textContent='Error: '+msg+' — please try again.';
+      navBtn.textContent = 'Try Again';
+      navBtn.onclick = () => {
+        document.getElementById('liveTitle').style.color='var(--text)';
+        navBtn.textContent = 'Enter your dashboard';
+        navBtn.onclick = enterDashboard;
+        state.step = 1;
+        showStep(1);
+      };
+    }
   }
 }
 
