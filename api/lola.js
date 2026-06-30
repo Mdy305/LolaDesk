@@ -12,6 +12,7 @@ import { executeSkill } from './lib/orchestrator.js';
 import { SKILLS } from './lola-tools.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { detectEliteIntent, deterministicEliteSkillReply } from './lib/lola-elite-skills.js';
 
 const TOOLS = [
   {
@@ -133,7 +134,26 @@ export default async function handler(req, res){
     if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
     let messages = body.messages || [];
-    
+
+    // ── Skill fast-path (orchestrator) ─────────────────────────────────────
+    // Telnyx's inference endpoint rejects tool-calls, so instead of relying on
+    // the model to call tools, we detect intent from the user's words and
+    // answer straight from the skills layer — instant, on-brand, tenant-aware.
+    // No match → fall through to normal conversation below.
+    try{
+      const lastUser = [...messages].reverse().find(m => m && m.role === 'user');
+      const userText = (lastUser && (typeof lastUser.content === 'string' ? lastUser.content : '')) || '';
+      if(userText){
+        const intent = detectEliteIntent(userText);
+        if(intent){
+          const reply = deterministicEliteSkillReply({ tenant, intent, channel:'voice' });
+          if(reply){
+            return res.status(200).json({ content: [{ type:'text', text: reply }], intent, source:'skill' });
+          }
+        }
+      }
+    }catch(e){ /* fall through to conversation */ }
+
     // Step 1: Initial LLM call with tools
     let result = await chat({
       system: body.system,
