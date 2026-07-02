@@ -1,4 +1,4 @@
-import { db, updateTenantFields } from './lib/db.js';
+import { db, updateTenantFields, logUsage } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 
@@ -22,6 +22,24 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 
+/* ── Retail pricing — the recurring-revenue line ─────────────────
+   Telnyx local numbers cost ~$1/mo wholesale; toll-free ~$2/mo.
+   The salon pays retail — env-configurable so pricing is a knob,
+   not a redeploy. Search results return BOTH `cost` (what Telnyx
+   charges you) and `monthly` (what the salon pays), so the UI shows
+   retail and the margin per number is visible in one place. Every
+   purchase logs a `number_rent` usage event at the retail price,
+   which the billing layer can roll into the monthly invoice. */
+const RETAIL = {
+  local: Number(process.env.NUMBER_RETAIL_MONTHLY || 5),
+  toll_free: Number(process.env.NUMBER_RETAIL_TOLLFREE_MONTHLY || 9)
+};
+const WHOLESALE = { local: 1.0, toll_free: 2.0 };
+function pricingFor(type='local'){
+  const t = type === 'toll_free' ? 'toll_free' : 'local';
+  return { cost: WHOLESALE[t], monthly: RETAIL[t], margin: +(RETAIL[t] - WHOLESALE[t]).toFixed(2) };
+}
+
 function authHeaders(){
   return {
     'Content-Type':'application/json',
@@ -42,11 +60,13 @@ async function searchNumbers({ area, country='US', type='local', limit=10 }){
   const r = await fetch(`${TELNYX}/available_phone_numbers?${params.toString()}`, { headers: authHeaders() });
   const data = await r.json();
   // normalise for the front-end
+  const price = pricingFor(type);
   const numbers = (data.data||[]).map(n => ({
     phone_number: n.phone_number,
     city: n.region_information?.find?.(x=>x.region_type==='rate_center')?.region_name
           || n.region_information?.[0]?.region_name || '',
-    monthly: 1.0,             // Telnyx cost; you set retail price in the UI
+    monthly: price.monthly,   // retail — what the salon pays
+    cost: price.cost,         // wholesale — what Telnyx charges you
     features: (n.features||[]).map(f=>f.name)
   }));
   return numbers;
@@ -131,6 +151,14 @@ export default async function handler(req, res){
               const tenant = await resolveTenantForUser(user);
               if(tenant) {
                 await updateTenantFields(tenant.id, { phone_number: body.phone_number });
+                // Recurring revenue line: retail rent for this number,
+                // rolled into the monthly invoice by the billing layer.
+                const price = pricingFor(body.type === 'toll_free' ? 'toll_free' : 'local');
+                await logUsage(tenant.id, 'number_rent', price.monthly, {
+                  phone_number: body.phone_number,
+                  wholesale: price.cost,
+                  margin: price.margin
+                }).catch(()=>{});
               }
             }
           }

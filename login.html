@@ -103,9 +103,22 @@ a{color:inherit;text-decoration:none}
   <div class="foot">New here? <a href="onboarding.html">Set up your salon →</a></div>
 </div>
 
+<script src="lola-orb.js"></script>
 <script>
-// ── orb (shared living renderer) ──
+// ── orb — the same neural particle Lola as the dashboard ──
+// One Lola everywhere: identical engine, so the Lola an owner meets at
+// sign-in IS the Lola on their dashboard. Legacy renderer kept only as
+// a fallback if lola-orb.js somehow failed to load.
 function makeOrb(canvas, size, getActive){
+  if(window.LolaOrb){
+    const inst = LolaOrb.mount(canvas, { size });
+    (function sync(){
+      const want = (getActive && getActive()) ? 'listening' : 'ambient';
+      if(inst.state !== want) inst.setState(want);
+      requestAnimationFrame(sync);
+    })();
+    return inst;
+  }
   const x = canvas.getContext('2d');
   const c = size/2; let t = Math.random()*10; const R = size*0.30;
   (function loop(){

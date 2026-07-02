@@ -2,8 +2,11 @@ import * as square     from './connectors/square.js';
 import * as boulevard  from './connectors/boulevard.js';
 import * as shopify    from './connectors/shopify.js';
 import * as gcal       from './connectors/google-calendar.js';
+import * as vagaro     from './connectors/vagaro.js';
+import * as mindbody   from './connectors/mindbody.js';
+import * as fresha     from './connectors/fresha.js';
 
-const CONNECTORS = { square, boulevard, shopify, google_calendar: gcal };
+const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, shopify, google_calendar: gcal };
 
 export function getConnector(provider){
   const c = CONNECTORS[provider];
@@ -22,7 +25,7 @@ export async function listAllAppointments(tenantIntegrations, range){
   return all.sort((a,b) => new Date(a.starts_at) - new Date(b.starts_at));
 }
 export async function writeAppointment(tenantIntegrations, appointment, { provider } = {}){
-  const target = provider ? tenantIntegrations.find(i => i.provider === provider) : tenantIntegrations.find(i => ['square','boulevard'].includes(i.provider)) || tenantIntegrations[0];
+  const target = provider ? tenantIntegrations.find(i => i.provider === provider) : tenantIntegrations.find(i => ['square','boulevard','vagaro','mindbody','fresha'].includes(i.provider)) || tenantIntegrations[0];
   if(!target) throw new Error('No booking provider connected');
   const c = getConnector(target.provider);
   return c.createAppointment(target, appointment);

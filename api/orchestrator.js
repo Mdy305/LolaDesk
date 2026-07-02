@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+// global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
 import { db } from './lib/db.js';
 import { validateLLMOutput } from './lib/llm-validator.js';
 import { delegateToAgent } from './lib/router.js';

@@ -52,8 +52,39 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-body{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:20px 20px 60px}
 .ob-card{width:100%;max-width:520px}
 .ob-step{display:none}
-.ob-step.active{display:block;animation:fade .4s ease}
+/* ── Motion system — Apple-grade step choreography ──
+   One spring curve everywhere (the iOS sheet curve), direction-aware
+   entry (forward slides from the right, back from the left), and the
+   step's children cascade in with a 40ms stagger so each screen
+   *composes* rather than pops. Honors prefers-reduced-motion. */
+:root{ --ob-spring: cubic-bezier(.22,1,.36,1); }
+.ob-step.active{display:block;animation:obEnterFwd .55s var(--ob-spring) both}
+.ob-step.active.back{animation-name:obEnterBack}
+@keyframes obEnterFwd{from{opacity:0;transform:translateX(26px) scale(.985);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+@keyframes obEnterBack{from{opacity:0;transform:translateX(-26px) scale(.985);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+.ob-step.active > *{animation:obRise .5s var(--ob-spring) both}
+.ob-step.active > *:nth-child(1){animation-delay:.04s}
+.ob-step.active > *:nth-child(2){animation-delay:.08s}
+.ob-step.active > *:nth-child(3){animation-delay:.12s}
+.ob-step.active > *:nth-child(4){animation-delay:.16s}
+.ob-step.active > *:nth-child(5){animation-delay:.20s}
+.ob-step.active > *:nth-child(6){animation-delay:.24s}
+.ob-step.active > *:nth-child(7){animation-delay:.28s}
+.ob-step.active > *:nth-child(n+8){animation-delay:.32s}
+@keyframes obRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* progress dots get a spring pop when they become active/done */
+.ob-dot.active,.ob-dot.done{animation:obDotPop .45s var(--ob-spring)}
+@keyframes obDotPop{0%{transform:scale(.7)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
+/* selection cards lift like physical objects */
+.ob-platform:hover,.ob-persona-card:hover,.ob-plan:hover,.ob-number-card:hover{transform:translateY(-2px)}
+.ob-platform:active,.ob-persona-card:active,.ob-plan:active,.ob-number-card:active{transform:translateY(0) scale(.985);transition-duration:.06s}
+.ob-btn{transition:all .25s var(--ob-spring)}
+.ob-btn:active{transform:scale(.97)}
 @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){
+  .ob-step.active, .ob-step.active > *, .ob-dot.active, .ob-dot.done{animation:none !important}
+  .ob-platform:hover,.ob-persona-card:hover,.ob-plan:hover,.ob-number-card:hover{transform:none}
+}
 .ob-step-title{font-family:var(--ff-serif);font-size:34px;font-weight:300;font-style:italic;text-align:center;margin-bottom:8px;line-height:1.1}
 .ob-step-sub{font-size:14px;font-weight:300;color:var(--text2);text-align:center;margin-bottom:32px;line-height:1.6}
 
@@ -365,6 +396,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
   </div>
 </div>
 
+<script src="lola-orb.js"></script>
 <script>
 const state = {
   step: 0,
@@ -493,9 +525,16 @@ window.validateStep1=()=>{
   next();
 };
 
+let lastShownStep = 0;
 function showStep(n){
-  document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
-  document.querySelector(`.ob-step[data-step="${n}"]`).classList.add('active');
+  const goingBack = n < lastShownStep;
+  lastShownStep = n;
+  document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active','back'));
+  const el = document.querySelector(`.ob-step[data-step="${n}"]`);
+  // retrigger the entry animation even when revisiting the same node
+  void el.offsetWidth;
+  el.classList.add('active');
+  if(goingBack) el.classList.add('back');
   // progress dots (we shift them by 1 visually so step 0 doesn't have a dot)
   for(let i=0;i<4;i++){
     const dot=document.querySelector(`.ob-dot[data-dot="${i}"]`);
@@ -528,25 +567,34 @@ function renderPreview(){
   document.getElementById('previewGreeting').textContent = "Hi! I'm Lola" + (state.name&&state.name!=='Your Salon'?` from ${state.name}`:'') + ". How can I help you today?";
 }
 
-/* preview orb */
+/* preview orb — the SAME neural Lola the owner will meet on their
+   dashboard, not a lookalike. She idles softly during setup, then
+   visibly wakes (flare + speaking resonance) at the go-live moment:
+   the product's "it's alive" beat. Falls back to the simple dot ring
+   only if lola-orb.js failed to load. */
 const pc=document.getElementById('previewCanvas');
-const pctx=pc.getContext('2d');
-let pt=0;
-function drawPreviewOrb(){
-  pctx.clearRect(0,0,130,130);
-  const cx=65,cy=65;
-  for(let i=0;i<40;i++){
-    const a=(i/40)*Math.PI*2;
-    const r=38+Math.sin(pt*.8+i*.4)*4+Math.sin(pt*1.4+i*.9)*2;
-    const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
-    const al=.12+Math.abs(Math.sin(pt*.6+i*.3))*.2;
-    pctx.beginPath();pctx.arc(x,y,1.1,0,Math.PI*2);
-    pctx.fillStyle=`rgba(255,45,142,${al})`;pctx.fill();
-  }
-  pt+=.018;
-  requestAnimationFrame(drawPreviewOrb);
+let previewOrb = null;
+if(window.LolaOrb){
+  previewOrb = LolaOrb.mount(pc, { size: 130 });
+  previewOrb.setState('ambient');
+} else {
+  const pctx=pc.getContext('2d');
+  let pt=0;
+  (function drawPreviewOrb(){
+    pctx.clearRect(0,0,130,130);
+    const cx=65,cy=65;
+    for(let i=0;i<40;i++){
+      const a=(i/40)*Math.PI*2;
+      const r=38+Math.sin(pt*.8+i*.4)*4+Math.sin(pt*1.4+i*.9)*2;
+      const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
+      const al=.12+Math.abs(Math.sin(pt*.6+i*.3))*.2;
+      pctx.beginPath();pctx.arc(x,y,1.1,0,Math.PI*2);
+      pctx.fillStyle=`rgba(255,45,142,${al})`;pctx.fill();
+    }
+    pt+=.018;
+    requestAnimationFrame(drawPreviewOrb);
+  })();
 }
-drawPreviewOrb();
 
 /* GO LIVE sequence */
 window.goLive=()=>{
@@ -565,6 +613,7 @@ window.goLive=()=>{
   ];
   const el=document.getElementById('connecting');
   el.innerHTML='';
+  if(previewOrb) previewOrb.setState('thinking'); // she's being born — synapses firing
   let i=0;
   function addNext(){
     if(i>0){
@@ -661,7 +710,8 @@ async function finishLive(){
       });
     }catch(e){ /* owner can re-provision from Settings later */ }
 
-    // Success State
+    // Success State — Lola visibly wakes: flare + speaking resonance.
+    if(previewOrb){ previewOrb.setState('speaking'); previewOrb.flare(); setTimeout(()=>previewOrb.setState('ambient'), 3800); }
     document.getElementById('liveCheck').style.display='flex';
     document.getElementById('liveTitle').textContent='Lola is live. 🎉';
     let readinessNote = '';

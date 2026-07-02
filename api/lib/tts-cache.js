@@ -28,10 +28,44 @@
 const TTL_MS = 60_000; // 1 minute is generous; Telnyx fetches within seconds
 const store = new Map(); // id -> { buf, expires }
 
+/* ── Keyed reply cache ──────────────────────────────────────────
+   Lola says certain lines constantly: the per-tenant greeting on
+   EVERY inbound call, the "are you still there?" re-prompt, the
+   goodbye, and the deterministic skill replies. Re-synthesizing
+   those through ElevenLabs on every call is pure waste twice over:
+   it adds ~1-2s of first-ring latency (the caller hears silence)
+   and it burns tts_chars — which is margin — on identical text.
+
+   So repeated lines are cached under a stable key (voice + text)
+   with a longer TTL and are NOT consumed on read. First call of the
+   day pays the synthesis; every call after answers instantly and
+   costs zero ElevenLabs characters. Same single-instance caveat as
+   the id store above; the <Say> fallback covers instance misses. */
+const KEYED_TTL_MS = 15 * 60_000;
+const keyed = new Map(); // key -> { id, expires }
+
+export function getKeyedAudioId(key){
+  const entry = keyed.get(key);
+  if(!entry) return null;
+  if(entry.expires < Date.now() || !store.has(entry.id)){ keyed.delete(key); return null; }
+  return entry.id;
+}
+
+export function putAudioKeyed(key, buf){
+  cleanup();
+  const id = 'k' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  store.set(id, { buf, expires: Date.now() + KEYED_TTL_MS });
+  keyed.set(key, { id, expires: Date.now() + KEYED_TTL_MS });
+  return id;
+}
+
 function cleanup(){
   const now = Date.now();
   for(const [id, entry] of store){
     if(entry.expires < now) store.delete(id);
+  }
+  for(const [key, entry] of keyed){
+    if(entry.expires < now || !store.has(entry.id)) keyed.delete(key);
   }
 }
 

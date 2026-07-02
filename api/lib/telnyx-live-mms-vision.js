@@ -19,8 +19,8 @@
  * - Product feedback (client sends photo of previous result)
  */
 
-import { v4 as uuidv4 } from 'uuid';
-import fetch from 'node-fetch';
+import { randomUUID as uuidv4 } from 'crypto'; // built-in — the 'uuid' package was never in package.json and crashed cold deploys
+// global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
 
 const inCallMmsCache = new Map(); // callControlId -> { mmsData, processed, response }
 

@@ -2,7 +2,7 @@
 // Simple worker that polls the jobs table and processes jobs.
 // Run this in a background process (Node) on a worker dyno or server.
 
-import fetch from 'node-fetch';
+// global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
 import { db } from '../api/lib/db.js';
 
 const POLL_INTERVAL_MS = process.env.WORKER_POLL_INTERVAL_MS ? parseInt(process.env.WORKER_POLL_INTERVAL_MS) : 3000;

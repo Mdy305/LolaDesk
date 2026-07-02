@@ -5,7 +5,7 @@
  * with proper error handling, rate limiting, and fallbacks.
  */
 
-import fetch from 'node-fetch';
+// global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
 
 const RATE_LIMIT_DELAY = 500; // ms between requests
 const MAX_RETRIES = 3;

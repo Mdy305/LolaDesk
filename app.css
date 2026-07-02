@@ -138,3 +138,79 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
   font-weight:600 !important;
   letter-spacing:-0.02em !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   APPLE-GRADE POLISH LAYER — motion, focus, physics, loading
+   ════════════════════════════════════════════════════════════════
+   Additive refinement over the design system above; shared by every
+   interior page via this one file. Principles, in Apple's language:
+   one spring for everything, motion that explains (pages compose,
+   they don't pop), objects with weight (press compresses, hover
+   lifts), focus you can see without mouse-user noise, loading that
+   shimmers instead of jumping, and every bit of it optional under
+   prefers-reduced-motion.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --spring: cubic-bezier(.22,1,.36,1);        /* the iOS sheet curve */
+  --spring-snap: cubic-bezier(.3,1.4,.5,1);   /* slight overshoot for tiny elements */
+}
+
+/* Page entrance — the whole main column composes in once */
+.main{animation:pageIn .5s var(--spring) both}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Buttons & pressables get weight: hover lifts, press compresses */
+.btn:active,.icon-btn:active,.buy-btn:active,.connect-btn:active{transform:translateY(0) scale(.965);transition-duration:.06s}
+.btn-primary:active{box-shadow:0 2px 8px rgba(255,45,85,.25)}
+.nav-item:active{transform:scale(.98);transition-duration:.06s}
+
+/* Cards feel like objects — subtle lift on hover, never a jump */
+.card:hover{border-color:var(--border2);box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.kpi{transition:all .3s var(--spring)}
+.kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
+
+/* Focus — visible for keyboard users, invisible for mouse users */
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--pink2);outline-offset:2px;border-radius:6px}
+.ob-input:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;border-color:var(--pink2)!important;box-shadow:0 0 0 3px rgba(255,45,85,.15)}
+
+/* Table rows respond like list items, not spreadsheets */
+.tbl tbody tr{transition:background .18s var(--spring), transform .18s var(--spring)}
+.tbl tbody tr:active{transform:scale(.998)}
+
+/* Staggered list/table reveal — rows cascade, 30ms apart */
+.tbl tbody tr,.list-stagger > *{animation:rowIn .45s var(--spring) both}
+.tbl tbody tr:nth-child(1),.list-stagger > :nth-child(1){animation-delay:.03s}
+.tbl tbody tr:nth-child(2),.list-stagger > :nth-child(2){animation-delay:.06s}
+.tbl tbody tr:nth-child(3),.list-stagger > :nth-child(3){animation-delay:.09s}
+.tbl tbody tr:nth-child(4),.list-stagger > :nth-child(4){animation-delay:.12s}
+.tbl tbody tr:nth-child(5),.list-stagger > :nth-child(5){animation-delay:.15s}
+.tbl tbody tr:nth-child(6),.list-stagger > :nth-child(6){animation-delay:.18s}
+.tbl tbody tr:nth-child(n+7),.list-stagger > :nth-child(n+7){animation-delay:.21s}
+@keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* Skeleton shimmer — content that's coming, not a blank hole.
+   Usage: add class="skeleton" to any placeholder block. */
+.skeleton{position:relative;overflow:hidden;background:var(--surface);border-radius:var(--r-sm);color:transparent!important;pointer-events:none}
+.skeleton::after{content:'';position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);
+  animation:shimmer 1.4s infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
+
+/* Pills pop in with a tiny snap — they're status, they should register */
+.pill{animation:pillIn .35s var(--spring-snap) both}
+@keyframes pillIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+
+/* Empty states breathe instead of sitting flat */
+.empty{animation:pageIn .6s var(--spring) both}
+
+/* Number-price emphasis on the numbers marketplace */
+.num-price-val{transition:color .2s}
+.num-card:hover .num-price-val{color:var(--pink2)}
+
+/* Reduced motion: everything above becomes instant, nothing is lost */
+@media (prefers-reduced-motion: reduce){
+  .main,.tbl tbody tr,.list-stagger > *,.pill,.empty{animation:none!important}
+  .skeleton::after{animation:none}
+  .btn,.icon-btn,.card,.kpi,.nav-item,.tbl tbody tr{transition:none!important}
+}

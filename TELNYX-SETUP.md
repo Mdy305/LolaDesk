@@ -92,3 +92,34 @@ You can't fully test inbound voice without a real Telnyx number pointed at a pub
 - `/api/voice-audio` caches synthesized audio in a single serverless instance's memory for ~60 seconds — fine at current scale. If you see occasional fallback-voice turns under high concurrent call volume, that's a Vercel multi-instance cache miss; see the scaling note at the bottom of `api/lib/tts-cache.js` for the Supabase Storage upgrade path.
 - The 7-agent Telnyx-native system in `api/telnyx-agents.js` (and the "copy config" button in `agents.html`) is a **separate, experimental architecture** — no phone number currently routes to it. The live path is `telnyx-voice.js`'s custom TeXML + Claude/Telnyx-Inference loop described above. Don't be surprised these two systems both reference Lola; only one is wired to real calls today.
 - Porting callbacks should target `https://YOUR-APP.vercel.app/api/webhooks/telnyx`.
+
+---
+
+## Profit & experience levers (built-in)
+
+**Missed-call text-back** — when a caller goes silent twice, Lola gives one warm
+"are you still there?" re-prompt, then says goodbye and instantly texts them
+from the same number: *"Hi, it's Lola from {salon} 💗 Sorry we got cut off! I
+can book you right here…"* The lead that used to evaporate lands in the Inbox
+as a warm SMS conversation. Opt-outs are respected; each send logs `sms_sent`
++ `textback_sent` usage events. No config needed — it's on for every tenant.
+
+**No dead-air hangups** — TeXML `<Gather>` only posts back on speech; silence
+used to end the document and drop the call with no goodbye. A `<Redirect>`
+now brings silence back into `/api/telnyx-voice?silence=N` for the re-prompt →
+goodbye flow above.
+
+**Per-salon speech hints** — every `<Gather>` carries a `hints` list built from
+the tenant's actual service menu ("balayage", "dermaplaning", …) plus core
+booking vocabulary, so recognition is tuned to what THIS salon's callers say.
+
+**Cached synthesis** — the greeting, re-prompt, goodbye, and deterministic
+replies repeat on every call; they now synthesize through ElevenLabs once per
+15-minute window and replay instantly from `api/lib/tts-cache.js`'s keyed
+cache. Faster first ring, zero repeated `tts_chars` spend on identical lines.
+
+**Number resale margin** — `NUMBER_RETAIL_MONTHLY` (default $5) and
+`NUMBER_RETAIL_TOLLFREE_MONTHLY` (default $9) set what salons pay; Telnyx
+wholesale is ~$1/$2. Search results return both `cost` and `monthly`, the
+UI shows retail, and every purchase logs a `number_rent` usage event with the
+margin in metadata for the billing layer to invoice.

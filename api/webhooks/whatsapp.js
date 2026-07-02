@@ -1,63 +1,23 @@
 /**
- * /api/webhooks/whatsapp — Telnyx WhatsApp Webhook
+ * /api/webhooks/whatsapp — Telnyx WhatsApp webhook
  * ════════════════════════════════════════════════════════════════
- * Handles inbound WhatsApp messages routed via Telnyx.
- * 
- * Returns 202 immediately to clear the carrier connection,
- * then processes via the `WhatsAppSessionState` (Redis).
+ * Thin alias onto the real multi-tenant messaging handler.
+ *
+ * The full WhatsApp pipeline already lives in /api/telnyx-sms.js:
+ * it detects payload.type === 'WHATSAPP', resolves the tenant by the
+ * called number, runs the STOP/HELP/START compliance gate and opt-out
+ * check, loads client memory, asks Lola's real brain (lib/llm.js with
+ * her per-tenant persona), persists the conversation, logs
+ * whatsapp_received / whatsapp_sent usage events, and replies via
+ * Telnyx's WhatsApp message shape — all identically to SMS.
+ *
+ * This file exists only so a Telnyx messaging profile can point its
+ * WhatsApp webhook at /api/webhooks/whatsapp instead of
+ * /api/telnyx-sms and get exactly the same behavior. One pipeline,
+ * two URLs — never two implementations.
+ *
+ * (A previous version of this file returned a hardcoded mock reply
+ * and billed a fake tenant id. If you're pointing Telnyx here, you
+ * now get the real Lola.)
  */
-
-import { getSessionState, appendSessionState } from '../lib/redis.js';
-import { flushMeteredTextUsageToStripe } from '../lib/stripe.js';
-
-const TELNYX = 'https://api.telnyx.com/v2';
-
-export default async function handler(req, res){
-  // 1. Instantly clear the carrier connection to prevent Telnyx timeouts
-  res.status(202).end();
-
-  try {
-    const { data } = req.body;
-    if(!data || data.event_type !== 'message.received') return;
-
-    const payload = data.payload;
-    const fromNumber = payload.from.phone_number;
-    const toNumber = payload.to[0].phone_number;
-    const incomingText = payload.text;
-
-    // 2. Manage Distributed State via Redis
-    const history = await appendSessionState(fromNumber, 'user', incomingText);
-
-    // 3. (Mock) Call Telnyx AI Assistant "Lola" with the full Redis history
-    // In production, we'd pass this to the Telnyx assistant chat endpoint
-    const aiResponseText = `Hi! Lola here. I remember everything from our last ${history.length} messages. How can I help book your appointment?`;
-    
-    // Append Lola's response to the Redis state
-    await appendSessionState(fromNumber, 'assistant', aiResponseText);
-
-    // 4. Send the outbound WhatsApp reply via Telnyx
-    if(process.env.TELNYX_API_KEY){
-      await fetch(`${TELNYX}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`
-        },
-        body: JSON.stringify({
-          from: toNumber,
-          to: fromNumber,
-          text: aiResponseText,
-          messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE
-        })
-      });
-    }
-
-    // 5. Automate Metered Billing: charge $0.05 per message
-    // We pass a mock tenantId for the example
-    const tenantId = 't_12345';
-    await flushMeteredTextUsageToStripe(tenantId, 1);
-
-  } catch(e) {
-    console.error('[whatsapp-webhook] Async processing error:', e);
-  }
-}
+export { default } from '../telnyx-sms.js';

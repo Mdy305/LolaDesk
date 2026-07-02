@@ -25,7 +25,7 @@ export default async function handler(req, res){
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         expiresAt: tokens.expires_at || null,
-        metadata: { shop: tokens.shop || shop || null, merchant_id: tokens.merchant_id || null }
+        metadata: { shop: tokens.shop || shop || null, merchant_id: tokens.merchant_id || null, site_id: state.siteId || null }
       });
     }
     res.writeHead(302, { Location: `/settings.html?connect=success&provider=${provider}` });

@@ -36,7 +36,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `auth/signup.js`, `auth/login.js`, `auth/session.js` | Supabase Auth — creates the owner's account + their tenant row + 14-day trial. |
 | `onboard.js` | Saves tenant details; if a website URL is given, the Marketer agent analyzes it and pre-fills services/positioning. |
 | `telnyx-voice.js` | **Real phone calls.** Telnyx hits this on every call. Resolves tenant by called number, asks Lola's brain, speaks the reply in her real ElevenLabs voice via `<Play>` (falls back to a generic `<Say>` only if ElevenLabs fails), persists the conversation. |
-| `telnyx-sms.js` | **Real texts.** Same tenant resolution + memory, plus STOP/HELP/START keyword compliance (10DLC) handled before Lola's AI ever sees the message. |
+| `telnyx-sms.js` | **Real texts — SMS and WhatsApp.** Same tenant resolution + memory, plus STOP/HELP/START keyword compliance (10DLC) handled before Lola's AI ever sees the message. Telnyx WhatsApp payloads (`type: WHATSAPP`) route through this exact pipeline; `webhooks/whatsapp.js` is a thin alias onto it. |
 | `telnyx-numbers.js` | Search & buy phone numbers; auto-attaches voice + SMS on purchase. This is a recurring revenue line (see TELNYX-SETUP.md). |
 | `telnyx-agents.js` | **Experimental, not yet wired to live calls.** Provisions a 7-agent team (Lola + 6 specialists) directly inside Telnyx's own AI Assistant product, as an alternative architecture to the custom TeXML+Claude loop above. No phone number currently routes to it — `agents.html`'s "copy Telnyx config" button exports this for manual import if you want to experiment with it. |
 | `lola-tools.js` | The skill layer (check availability, book, quote pricing, capture leads, escalate) — what Lola's brain calls into to actually do things. |
@@ -45,7 +45,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `voice-audio.js`, `lib/tts-cache.js` | Serves the synthesized ElevenLabs audio at a URL Telnyx's `<Play>` can fetch. |
 | `data.js` | Unified read API every dashboard page calls — tenant-scoped, with a small demo dataset fallback so the UI is never blank during setup. |
 | `billing/checkout.js`, `billing/portal.js`, `billing/webhook.js`, `lib/stripe.js` | Stripe subscriptions — Checkout, customer portal, and a signature-verified webhook that activates/suspends tenants. |
-| `oauth/connect.js`, `oauth/callback.js`, `lib/connectors/*.js` | OAuth to Square, Boulevard, Shopify, Google Calendar. Tokens are **encrypted at rest** (`lib/crypto.js`) — never stored in plaintext. |
+| `oauth/connect.js`, `oauth/callback.js`, `lib/connectors/*.js` | OAuth to Square, Boulevard, Vagaro, Mindbody, Fresha, Shopify, Google Calendar. Tokens are **encrypted at rest** (`lib/crypto.js`) — never stored in plaintext. Vagaro/Mindbody/Fresha show as "Coming soon" until their partner credentials are set (see `.env.example`). |
 | `lib/db.js` | The shared Supabase client + every multi-tenant helper (tenant resolution, client/conversation/booking writes, usage logging, encrypted integration storage). Everything else imports from here. |
 | `lib/llm.js` | Shared LLM client — Telnyx Inference (Kimi-K2.6) by default, or Anthropic Claude directly if `LLM_PROVIDER=anthropic`. Resilient retry on empty responses. |
 | `lib/auth.js` | Supabase Auth helpers (create user, sign in, verify bearer tokens). |

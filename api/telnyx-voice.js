@@ -11,7 +11,9 @@ import {
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
-import { putAudio } from './lib/tts-cache.js';
+import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
+import { sendSMS } from './telnyx-sms.js';
+import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
@@ -65,14 +67,59 @@ function extractVoicePayload(parsed){
   };
 }
 
-function texmlSayAndGather({ say, playUrl }){
+/* ── TeXML builders ─────────────────────────────────────────────
+   Three UX upgrades over the plain Play+Gather loop:
+
+   1. ASR HINTS from the tenant's own menu. Telnyx speech recognition
+      accepts a hints list; feeding it the salon's actual service
+      names ("balayage", "brazilian blowout", "dermaplaning") plus
+      core booking vocabulary makes it hear THIS salon's callers
+      dramatically better than a generic model. Unknown attributes
+      are ignored by the parser, so this degrades safely.
+
+   2. NO MORE DEAD-AIR HANGUPS. Gather only posts back when speech is
+      heard; on silence the document used to simply end — the caller
+      got dropped without a goodbye. Now silence falls through to a
+      <Redirect> back into this handler with a silence counter:
+      first silence → warm "are you still there?" re-prompt; second
+      → graceful goodbye + missed-call TEXT-BACK (below) + <Hangup/>.
+
+   3. MISSED-CALL TEXT-BACK — the single biggest revenue-recovery
+      move a salon line can make. A caller who went silent or gave up
+      gets an instant SMS from Lola's same number inviting them to
+      book by text. The lead that used to evaporate lands in the
+      Inbox as a warm conversation instead. Opt-outs are respected
+      (sendSMS checks the opt-out table) and each send is logged as
+      a usage event for billing.
+   ───────────────────────────────────────────────────────────── */
+function buildHints(tenant){
+  const services = [];
+  try{
+    const list = Array.isArray(tenant?.services) ? tenant.services
+      : (typeof tenant?.services === 'string' ? JSON.parse(tenant.services) : []);
+    for(const s of list||[]) services.push(String(s?.name || s).toLowerCase());
+  }catch{}
+  const core = ['appointment','booking','book','reschedule','cancel','price','how much','availability','today','tomorrow','next week','morning','afternoon'];
+  return [...new Set([...services, ...core])].filter(Boolean).slice(0, 40).join(', ');
+}
+
+function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
   const speakBlock = playUrl
     ? `<Play>${escapeXml(playUrl)}</Play>`
     : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  if(hangupAfter){
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  ${speakBlock}
+  <Hangup/>
+</Response>`;
+  }
+  const hintsAttr = hints ? ` hints="${escapeXml(hints)}"` : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${speakBlock}
-  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto" action="/api/telnyx-voice" method="POST"/>
+  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto"${hintsAttr} action="/api/telnyx-voice" method="POST"/>
+  <Redirect method="POST">/api/telnyx-voice?silence=${silence + 1}</Redirect>
 </Response>`;
 }
 
@@ -104,6 +151,54 @@ export default async function handler(req, res){
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }
+
+  // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
+  // deterministic replies. First caller of the window pays ElevenLabs;
+  // everyone after gets instant answer at zero tts_chars cost.
+  async function speakCached(text){
+    if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
+    const base = process.env.APP_URL.replace(/\/+$/,'');
+    const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${text}`).digest('hex');
+    let id = getKeyedAudioId(key);
+    if(!id){
+      try{
+        const audio = await synthesize(text);
+        id = putAudioKeyed(key, audio);
+        await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
+      }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
+    }
+    return `${base}/api/voice-audio?id=${encodeURIComponent(id)}`;
+  }
+
+  // ── Silence path: Gather timed out and <Redirect> brought us back ──
+  let silence = 0;
+  try{ silence = parseInt(new URL(req.url, 'http://x').searchParams.get('silence') || '0', 10) || 0; }catch{}
+  if(silence > 0){
+    if(silence === 1){
+      // One gentle re-prompt before letting anyone go — a human
+      // receptionist doesn't hang up at the first pause either.
+      const say = `Are you still there? I'm happy to help with booking, prices, or anything else.`;
+      const xml = texmlSayAndGather({ say, playUrl: await speakCached(say), hints: buildHints(tenant), silence });
+      res.setHeader('Content-Type', 'application/xml');
+      return res.status(200).send(xml);
+    }
+    // Second silence: warm goodbye + missed-call text-back, then hang up.
+    const bye = `No worries — I'll text you so you can book whenever suits you. Bye for now!`;
+    if(fromN){
+      try{
+        const textback = `Hi, it's Lola from ${tenant.name} 💗 Sorry we got cut off! I can book you right here — just tell me the service and a day that works.`;
+        const r = await sendSMS({ from: toN, to: fromN, text: textback, tenantId: tenant.id });
+        if(!r?.skipped){
+          await logUsage(tenant.id, 'sms_sent', 1, { source: 'missed_call_textback' });
+          await logUsage(tenant.id, 'textback_sent', 1);
+        }
+      }catch(e){ console.error('[VOICE] textback failed:', e.message); }
+    }
+    const xml = texmlSayAndGather({ say: bye, playUrl: await speakCached(bye), hangupAfter: true });
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  }
+
 
   let client = null;
   let conversation = null;
@@ -248,28 +343,21 @@ export default async function handler(req, res){
     }catch{}
   }
 
-  let playUrl = '';
-  let synthesisError = '';
-  
-  // CRITICAL: Always attempt ElevenLabs before falling back to Polly
-  if(elevenLabsConfigured() && process.env.APP_URL){
-    try{
-      const audio = await synthesize(reply);
-      const id = putAudio(audio);
-      playUrl = `${process.env.APP_URL.replace(/\/+$/,'')}/api/voice-audio?id=${encodeURIComponent(id)}`;
-    }catch(e){
-      synthesisError = String(e.message || e).slice(0, 100);
-      console.error(`[VOICE] ElevenLabs synthesis failed for tenant ${tenant.id}: ${synthesisError}`);
-    }
-  }else{
+  // Synthesis via the keyed cache: the greeting, re-prompts, and
+  // deterministic skill replies repeat constantly across calls — they
+  // synthesize once per cache window and replay instantly (faster
+  // answer, zero repeated ElevenLabs spend). Unique LLM replies simply
+  // pass through the same path. <Say> fallback preserved when empty.
+  if(!elevenLabsConfigured() || !process.env.APP_URL){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
     if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
     if(!process.env.APP_URL) missing.push('APP_URL');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
+  const playUrl = await speakCached(reply);
 
-  const xml = texmlSayAndGather({ say: reply, playUrl });
+  const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');
   return res.status(200).send(xml);
 }
