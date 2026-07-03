@@ -252,6 +252,13 @@
     try{ if(!sharedCtx) sharedCtx = new (global.AudioContext||global.webkitAudioContext)(); if(sharedCtx.state==='suspended') sharedCtx.resume(); return sharedCtx; }
     catch(e){ return null; }
   }
+  // Browsers keep a fresh AudioContext 'suspended' until a user gesture;
+  // Safari even ignores resume() without one. Unlock on the first
+  // interaction so resonance starts working from the second utterance on.
+  try{
+    const unlock = ()=>{ try{ if(sharedCtx && sharedCtx.state==='suspended') sharedCtx.resume(); }catch(e){} };
+    ['pointerdown','touchstart','keydown'].forEach(ev => global.addEventListener(ev, unlock, { passive:true }));
+  }catch(e){}
   function meter(orb, node, ac, onDone){
     try{
       const an = ac.createAnalyser(); an.fftSize = 256;
@@ -270,9 +277,17 @@
   }
 
   // Route an <audio> element (Lola's ElevenLabs playback) into the orb.
+  // CRITICAL RULE: her VOICE outranks the visualization. Once an element
+  // is wired through createMediaElementSource it can ONLY play via the
+  // AudioContext — so if that context isn't actually 'running' (Safari
+  // pre-gesture, autoplay policies), we must NOT touch the element at
+  // all: playback stays native and audible, the orb just doesn't pulse
+  // until the context unlocks on the first tap. Silent Lola is a bug;
+  // a non-pulsing orb is a shrug.
   const wired = new WeakMap();
   function attachAudioElement(orb, el){
     const ac = audioCtx(); if(!ac || !el) return { stop(){} };
+    if(ac.state !== 'running') return { stop(){} }; // voice > visuals
     try{
       let src = wired.get(el);
       if(!src){ src = ac.createMediaElementSource(el); src.connect(ac.destination); wired.set(el, src); }

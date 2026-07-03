@@ -110,6 +110,21 @@
         </div>
       </div>
 
+      <!-- ── Lola on your website — the embed snippet for existing accounts.
+           (New signups get this at the onboarding go-live screen; this card
+           is how everyone else plugs Lola into their site.) ── -->
+      <div class="card">
+        <div class="card-head"><div class="card-title">Lola on your website</div></div>
+        <div class="set-section">
+          <p style="font-size:13px;color:var(--text2);margin:0 0 12px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a chat bubble with <em>your</em> Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
+          <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:stretch">
+            <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#ff7fb8);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
+            <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap">Copy</button>
+          </div>
+          <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:10px 0 0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-head"><div class="card-title">Telecom &amp; Infrastructure</div></div>
         <div class="set-section">
@@ -180,6 +195,27 @@ function showToast(msg, kind){
   t.className = 'save-toast show' + (kind ? ' '+kind : '');
   setTimeout(()=> t.classList.remove('show'), 3200);
 }
+
+/* ── Lola on your website: fetch this tenant's embed snippet ── */
+(async function loadWidgetSnippet(){
+  const codeEl = document.getElementById('widgetEmbedSnippet');
+  const btn = document.getElementById('widgetEmbedCopy');
+  if(!codeEl || !btn) return;
+  try{
+    const token = localStorage.getItem('loladesk_token') || '';
+    const r = await fetch('/api/widget-embed', { headers:{ Authorization:'Bearer '+token } });
+    const d = await r.json();
+    if(!r.ok || !d?.snippet) throw new Error(d?.error || 'no snippet');
+    codeEl.textContent = d.snippet;
+    btn.onclick = async ()=>{
+      try{ await navigator.clipboard.writeText(d.snippet); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy', 1800); }
+      catch{ btn.textContent='Select + copy'; }
+    };
+  }catch(e){
+    codeEl.textContent = 'Could not load your snippet — refresh, or contact support.';
+    btn.style.display = 'none';
+  }
+})();
 
 function renderIntegrations(providers){
   const list = document.getElementById('integrationsList');
