@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pricing — LolaDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.pwrap{max-width:1080px;margin:0 auto;padding:60px 24px 80px}
+.phead{text-align:center;margin-bottom:14px}
+.peyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--pink2);margin-bottom:18px}
+.ptitle{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:48px;line-height:1.05;letter-spacing:-.01em}
+.psub{color:var(--text2);font-size:16px;font-weight:300;max-width:520px;margin:18px auto 0;line-height:1.6}
+.toggle{display:flex;justify-content:center;gap:10px;margin:34px 0 46px;align-items:center;font-size:13px;color:var(--text2)}
+.sw{width:46px;height:26px;border-radius:99px;background:var(--surface2);border:.5px solid var(--border);position:relative;cursor:pointer;transition:.2s}
+.sw.on{background:var(--pink-dim);border-color:var(--pink)}
+.sw .k{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
+.sw.on .k{left:23px;background:var(--pink)}
+.save{color:var(--pink2);font-size:12px}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+@media(max-width:880px){.tiers{grid-template-columns:1fr;max-width:420px;margin:0 auto}}
+.tier{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);padding:30px 26px;display:flex;flex-direction:column;position:relative;transition:.3s}
+.tier:hover{border-color:var(--border2);transform:translateY(-3px)}
+.tier.featured{border-color:var(--pink);box-shadow:0 0 50px rgba(255,45,142,.12)}
+.tier.featured::before{content:'Most popular';position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:4px 14px;border-radius:99px;font-weight:600}
+.tname{font-family:var(--ff-serif);font-style:italic;font-size:26px;font-weight:300}
+.tfor{font-size:12.5px;color:var(--text3);margin-top:3px;min-height:18px}
+.tprice{margin:22px 0 6px;display:flex;align-items:baseline;gap:4px}
+.tprice .amt{font-size:46px;font-weight:300;letter-spacing:-.02em}
+.tprice .per{font-size:14px;color:var(--text3)}
+.tnote{font-size:12px;color:var(--text3);min-height:16px;margin-bottom:22px}
+.feat{list-style:none;display:flex;flex-direction:column;gap:12px;margin-bottom:28px;flex:1}
+.feat li{display:flex;gap:10px;font-size:13.5px;color:var(--text2);line-height:1.45}
+.feat svg{flex-shrink:0;color:var(--pink);margin-top:2px}
+.tcta{padding:13px;border-radius:11px;text-align:center;font-size:14px;font-weight:500;cursor:pointer;transition:.2s;border:.5px solid var(--border)}
+.tcta.ghost{background:transparent;color:var(--text)}
+.tcta.ghost:hover{border-color:var(--border2);background:var(--surface2)}
+.tcta.solid{background:var(--pink);color:#fff;border-color:var(--pink)}
+.tcta.solid:hover{background:var(--pink2)}
+.foot{text-align:center;margin-top:40px;color:var(--text3);font-size:13px}
+.foot a{color:var(--pink2)}
+</style>
+</head>
+<body data-page="settings">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Subscription</h1>
+        <p class="page-sub">Choose a plan to activate your AI Front Desk.</p>
+      </div>
+    </div>
+
+    <div class="pwrap" style="padding-top:20px;">
+      <div class="toggle">
+        <span>Monthly</span>
+        <div class="sw" id="sw"><div class="k"></div></div>
+        <span>Yearly <span class="save">save 20%</span></span>
+      </div>
+
+      <div class="tiers">
+        <!-- Starter -->
+        <div class="tier">
+          <div class="tname">Starter</div>
+          <div class="tfor">Solo & small salons · 1–3 chairs</div>
+          <div class="tprice"><span class="amt" data-m="99" data-y="79">$99</span><span class="per">/mo</span></div>
+          <div class="tnote">Includes your Lola number</div>
+          <ul class="feat">
+            <li>${check} Lola answers & books 24/7</li>
+            <li>${check} Your custom voice</li>
+            <li>${check} Pricing, services & recommendations</li>
+            <li>${check} Lead capture — never lose a caller</li>
+            <li>${check} 1 phone number included</li>
+          </ul>
+          <div class="tcta ghost" data-plan="starter">Select Starter</div>
+        </div>
+
+        <!-- Pro -->
+        <div class="tier featured">
+          <div class="tname">Pro</div>
+          <div class="tfor">Growing salons · 4–10 chairs</div>
+          <div class="tprice"><span class="amt" data-m="399" data-y="319">$399</span><span class="per">/mo</span></div>
+          <div class="tnote">Everything in Starter, plus —</div>
+          <ul class="feat">
+            <li>${check} Multi-stylist resource calendar</li>
+            <li>${check} Win-back & rebooking campaigns</li>
+            <li>${check} Booking platform sync (Square, Google)</li>
+            <li>${check} Live activity & smart insights</li>
+            <li>${check} Priority call handling</li>
+          </ul>
+          <div class="tcta solid" data-plan="pro">Select Pro</div>
+        </div>
+
+        <!-- Med-Spa -->
+        <div class="tier">
+          <div class="tname">Med-Spa</div>
+          <div class="tfor">Med-spas & premium · high volume</div>
+          <div class="tprice"><span class="amt" data-m="599" data-y="479">$599</span><span class="per">/mo</span></div>
+          <div class="tnote">Everything in Pro, plus —</div>
+          <ul class="feat">
+            <li>${check} Highest call capacity</li>
+            <li>${check} Consultation & intake flows</li>
+            <li>${check} Compliance-ready call handling</li>
+            <li>${check} Dedicated onboarding</li>
+            <li>${check} All marketplace integrations</li>
+          </ul>
+          <div class="tcta ghost" data-plan="medspa">Talk to us</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>';
+document.querySelectorAll('.feat li').forEach(li=>{ li.innerHTML = li.innerHTML.replace('${check}', CHECK); });
+
+// monthly/yearly toggle
+const sw=document.getElementById('sw'); let yearly=false;
+sw.addEventListener('click',()=>{ yearly=!yearly; sw.classList.toggle('on',yearly);
+  document.querySelectorAll('.amt').forEach(a=>{ a.textContent='$'+(yearly?a.dataset.y:a.dataset.m); });
+});
+
+// checkout
+window.LolaAuth.ready.then(() => {
+  document.querySelectorAll('.tcta').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const plan=btn.dataset.plan;
+      if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
+      btn.textContent='Loading…';
+      try{
+        const r=await fetch('/api/billing/checkout',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ 
+            plan: plan,
+            tenantId: window.LolaAuth.tenant.id,
+            email: window.LolaAuth.user.email
+          })
+        });
+        const d=await r.json();
+        if(d.url) window.location.href=d.url;
+        else { btn.textContent='Try again'; alert(d.error||'Could not start checkout'); }
+      }catch(e){ btn.textContent='Try again'; }
+    });
+  });
+});
+</script>
+</body>
+</html>

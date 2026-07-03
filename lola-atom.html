@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lola — Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.cmd{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:24px;min-height:calc(100vh - 40px);padding:20px}
+@media(max-width:1100px){.cmd{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:16px}
+.col.center{align-items:center;justify-content:center;position:relative}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);padding:18px 20px}
+.card h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;font-weight:500}
+
+/* ATOM */
+.atom-stage{position:relative;width:100%;max-width:360px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto}
+canvas#atom{position:absolute;inset:0;width:100%;height:100%}
+.atom-label{position:relative;z-index:2;text-align:center;pointer-events:none;margin-top:80%}
+.atom-state{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:23px;color:var(--text);transition:.4s}
+@media(max-width:480px){.atom-state{font-size:19px}}
+.atom-sub{font-size:12px;color:var(--text3);margin-top:4px;letter-spacing:.02em}
+.ask{margin-top:18px;display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;
+  background:rgba(255,45,142,.1);border:.5px solid rgba(255,45,142,.4);color:var(--pink2);cursor:pointer;
+  font-size:13px;letter-spacing:.03em;transition:.3s;pointer-events:auto;z-index:3;position:relative}
+.ask:hover{background:rgba(255,45,142,.18);transform:translateY(-1px)}
+
+/* Ambient Toggle */
+.lola-ambient-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  color: var(--text2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .2s;
+  user-select: none;
+  z-index: 3;
+}
+.lola-ambient-toggle:hover {
+  border-color: var(--pink);
+  background: var(--surface);
+}
+.lola-ambient-toggle .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: all .2s;
+}
+.lola-ambient-toggle.on .dot {
+  background: #2ecc71;
+  box-shadow: 0 0 8px #2ecc71;
+}
+.lola-ambient-toggle.muted .dot {
+  background: #ff4d4d;
+}
+
+/* feed */
+.evt{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:.5px solid var(--border)}
+.evt:last-child{border-bottom:none}
+.evt .ic{width:32px;height:32px;border-radius:9px;background:var(--pink-dim);display:flex;align-items:center;justify-content:center;color:var(--pink2);flex-shrink:0}
+.evt .tx{flex:1;min-width:0}
+.evt .tt{font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt .wn{font-size:11px;color:var(--text3);margin-top:1px}
+.evt.fresh{animation:flashIn .8s ease}
+@keyframes flashIn{0%{background:var(--pink-dim);transform:translateX(-6px);opacity:0}100%{background:transparent;transform:none;opacity:1}}
+
+/* insights */
+.insight{display:flex;gap:11px;padding:13px 14px;border-radius:12px;background:var(--surface2);border:.5px solid var(--border);margin-bottom:10px}
+.insight .b{width:6px;border-radius:3px;flex-shrink:0}
+.insight.warn .b{background:#ffb020;box-shadow:0 0 8px rgba(255,176,32,.5)}
+.insight.info .b{background:var(--pink);box-shadow:0 0 8px var(--pink-glow)}
+.insight p{font-size:13.5px;line-height:1.5;color:var(--text2)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{background:var(--surface2);border-radius:12px;padding:12px;text-align:center}
+.kpi .v{font-size:22px;font-weight:300;color:var(--text)}
+.kpi .l{font-size:10px;color:var(--text3);margin-top:2px;letter-spacing:.04em}
+</style>
+</head>
+<body data-page="overview">
+<div class="app">
+  <main class="main" style="padding:0">
+    <div class="cmd">
+      <!-- LEFT: live feed -->
+      <div class="col">
+        <div class="card">
+          <h3>Live activity</h3>
+          <div id="feed"></div>
+        </div>
+        <div class="card">
+          <h3>Today</h3>
+          <div class="kpis">
+            <div class="kpi"><div class="v" id="kB">—</div><div class="l">BOOKINGS</div></div>
+            <div class="kpi"><div class="v" id="kC">—</div><div class="l">CALLS</div></div>
+            <div class="kpi"><div class="v" id="kL">—</div><div class="l">LEADS</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: the living atom -->
+      <div class="col center">
+        <div class="atom-stage" id="stage" title="Tap or say Hey Lola">
+          <canvas id="atom" width="720" height="720"></canvas>
+          <div class="atom-label">
+            <div class="atom-state" id="atomState">Lola is listening</div>
+            <div class="atom-sub" id="atomSub">all systems live</div>
+          </div>
+        </div>
+        <button class="ask" id="ask"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg> Ask Lola</button>
+        
+        <div class="lola-ambient-toggle" id="ambientToggle" onclick="toggleAmbientListening()" role="button" tabindex="0" aria-label="Tap to toggle always-listening for Lola, mute, or hold to turn off completely">
+          <span class="dot"></span>
+          <span id="ambientToggleLabel">Always listening for "Lola"</span>
+        </div>
+      </div>
+
+      <!-- RIGHT: insights -->
+      <div class="col">
+        <div class="card">
+          <h3>Lola noticed</h3>
+          <div id="insights"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(async function(){
+  // Wait for auth session so we can load the real tenant slug
+  let auth = null;
+  try {
+    auth = await window.LolaAuth.ready;
+  } catch(e) {
+    return; // auth-guard handles redirect
+  }
+  
+  const TENANT = auth?.tenant?.slug || 'mma';
+
+  // ════════ THE LIVING ATOM: Siri Fluid Orb ════════
+  const cv=document.getElementById('atom'), ax=cv.getContext('2d');
+  const AC=360; // center of 720 canvas
+  let t=0, energy=0, energyTarget=0, flare=0, mode='alive';
+
+  const PAL={
+    alive:   [ [255,45,142], [100,20,80], [30,10,30], [255,80,140] ],
+    alert:   [ [255,176,32], [255,80,0], [150,40,0], [255,220,100] ],
+    insight: [ [166,75,255], [100,20,200], [40,10,120], [220,150,255] ]
+  };
+  let curPal = PAL.alive.map(c=>[...c]);
+
+  function draw(){
+    t+=0.016; 
+    energy+=(energyTarget-energy)*0.08; 
+    flare*=0.94;
+    
+    const targetPal = PAL[mode]||PAL.alive;
+    for(let i=0; i<4; i++){
+      curPal[i][0] += (targetPal[i][0] - curPal[i][0])*0.04;
+      curPal[i][1] += (targetPal[i][1] - curPal[i][1])*0.04;
+      curPal[i][2] += (targetPal[i][2] - curPal[i][2])*0.04;
+    }
+
+    ax.clearRect(0,0,720,720);
+    ax.globalCompositeOperation='screen';
+    
+    // Scale pulse for atom dashboard
+    const pulse = 1 + Math.sin(t*2)*0.04 + energy*0.2 + flare*0.4;
+    const R = 150 * pulse; 
+    
+    for(let i=0; i<12; i++){
+      ax.beginPath();
+      let colIdx = i % 4;
+      let color = curPal[colIdx];
+      
+      let lw = 1.5 + (i%3)*1.0 + energy*2.5 + flare*3;
+      let alpha = 0.5 + energy*0.4 + flare*0.5 - (i*0.03);
+      if(alpha>1) alpha=1;
+      
+      ax.lineWidth = lw;
+      ax.strokeStyle = `rgba(${color[0]|0},${color[1]|0},${color[2]|0},${alpha})`;
+      ax.shadowColor = ax.strokeStyle;
+      ax.shadowBlur = 12 + energy*15 + flare*25;
+      
+      let points = [];
+      let segments = 100;
+      for(let j=0; j<=segments; j++){
+        let a = (j/segments)*Math.PI*2;
+        let offset1 = Math.sin(a*3 + t*(0.8+i*0.15)) * (15 + energy*25 + flare*40);
+        let offset2 = Math.cos(a*5 - t*1.2 + i) * (8 + energy*15);
+        let offset3 = Math.sin(a*2 + t*0.7 - i*1.5) * (12 + energy*20);
+        
+        let r = R + offset1 + offset2 + offset3 + (i*3);
+        let x = AC + Math.cos(a)*r;
+        let y = AC + Math.sin(a)*r;
+        points.push({x,y});
+      }
+      
+      ax.moveTo(points[0].x, points[0].y);
+      for(let j=1; j<points.length-2; j++){
+        let xc = (points[j].x + points[j+1].x) / 2;
+        let yc = (points[j].y + points[j+1].y) / 2;
+        ax.quadraticCurveTo(points[j].x, points[j].y, xc, yc);
+      }
+      ax.quadraticCurveTo(points[points.length-2].x, points[points.length-2].y, points[points.length-1].x, points[points.length-1].y);
+      ax.stroke();
+    }
+
+    ax.globalCompositeOperation='lighter';
+    let coreR = R * 0.7 + energy*20 + flare*30;
+    const core = ax.createRadialGradient(AC,AC,0,AC,AC,coreR*1.2);
+    core.addColorStop(0, `rgba(255,255,255,${0.25 + energy*0.3 + flare*0.5})`);
+    core.addColorStop(0.4, `rgba(${curPal[0][0]|0},${curPal[0][1]|0},${curPal[0][2]|0},${0.3 + energy*0.3 + flare*0.4})`);
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ax.fillStyle = core;
+    ax.beginPath(); ax.arc(AC,AC,coreR*1.2,0,7); ax.fill();
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  function setState(m,state,sub){ mode=m;
+    if(state) document.getElementById('atomState').textContent=state;
+    if(sub) document.getElementById('atomSub').textContent=sub;
+    if(m==='alert'){ flare=1; energyTarget=0.6; setTimeout(()=>{mode='alive';energyTarget=0;setState('alive', 'Lola is listening', 'all systems live');},2600); }
+    if(m==='insight'){ energyTarget=0.4; }
+  }
+
+  // ════════ POLL NOTIFICATIONS (the nervous system) ════════
+  let lastTop='';
+  async function poll(){
+    try{
+      const r=await fetch('/api/notifications?tenant='+TENANT);
+      const d=await r.json();
+      // KPIs
+      if(d.counts){ document.getElementById('kB').textContent=d.counts.bookings??0;
+        document.getElementById('kC').textContent=d.counts.calls??0;
+        document.getElementById('kL').textContent=d.counts.leads??0; }
+      // feed
+      const feed=document.getElementById('feed');
+      const ev=d.events||[];
+      const topKey=ev[0]?(ev[0].title+ev[0].when):'';
+      const isNew = topKey && topKey!==lastTop && lastTop!=='';
+      feed.innerHTML = ev.map((e,i)=>`<div class="evt ${isNew&&i===0?'fresh':''}">
+        <div class="ic">${icon(e.icon)}</div>
+        <div class="tx"><div class="tt">${e.title}</div><div class="wn">${e.when||''}</div></div></div>`).join('') || '<div class="atom-sub">Quiet for now.</div>';
+      if(isNew){ setState('alert','Something just came in', ev[0].title); }
+      lastTop=topKey;
+      // insights
+      const ins=d.insights||[];
+      document.getElementById('insights').innerHTML = ins.length? ins.map(i=>
+        `<div class="insight ${i.level==='warn'?'warn':'info'}"><div class="b"></div><p>${i.text}</p></div>`).join('')
+        : '<div class="atom-sub">Nothing needs you right now.</div>';
+      if(ins.some(i=>i.level==='warn')) setState('insight','Lola has something for you','tap to hear it');
+    }catch(e){}
+  }
+  function icon(name){
+    const fillProps = 'width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"';
+    const ic={calendar:`<svg ${fillProps}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`,
+      phone:`<svg ${fillProps}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>`,
+      user:`<svg ${fillProps}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`};
+    return ic[name]||ic.calendar;
+  }
+  poll(); setInterval(poll, 8000);
+
+  // ════════ ASK LOLA (tap atom or button -> voice) ════════
+  document.getElementById('stage').addEventListener('click', openVoice);
+  document.getElementById('ask').addEventListener('click', openVoice);
+  function openVoice(){
+    stopAmbientListening();
+    window.location.href='/lola-live?wake=true';
+  }
+
+  // ════════ AMBIENT WAKE WORD LISTENER ════════
+  let ambientOn = false;
+  let ambientMuted = false;
+  let ambientRecognizing = false;
+  let ambientRecognition = null;
+  const WAKE_WORDS = ['lola', 'hey lola', 'hi lola'];
+  const AMBIENT_STORAGE_KEY = 'loladesk_ambient_listening';
+
+  try {
+    if (localStorage.getItem(AMBIENT_STORAGE_KEY) === '1') {
+      ambientOn = true;
+    }
+  } catch(e) {}
+
+  function setupAmbientRecognition(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) return null;
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = 'en-US';
+    r.onresult = (e)=>{
+      let transcript = '';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        transcript += e.results[i][0].transcript;
+      }
+      const lower = transcript.toLowerCase();
+      for (const word of WAKE_WORDS) {
+        const wakeRe = new RegExp('\\b' + word + '\\b');
+        if (wakeRe.test(lower)) {
+          stopAmbientListening();
+          setState('alert', 'Waking up...', 'Opening voice panel');
+          setTimeout(() => {
+            window.location.href = '/lola-live?wake=true';
+          }, 1000);
+          return;
+        }
+      }
+    };
+    r.onerror = (e)=>{
+      ambientRecognizing = false;
+      if (ambientOn && !ambientMuted) setTimeout(startAmbientListening, 1500);
+    };
+    r.onend = ()=>{
+      ambientRecognizing = false;
+      if (ambientOn && !ambientMuted) setTimeout(startAmbientListening, 500);
+    };
+    return r;
+  }
+
+  function startAmbientListening(){
+    if(!ambientOn || ambientMuted || ambientRecognizing) return;
+    if(!ambientRecognition) ambientRecognition = setupAmbientRecognition();
+    if(!ambientRecognition) return;
+    try{
+      ambientRecognition.start();
+      ambientRecognizing = true;
+      updateAmbientToggleUI();
+    }catch(e){ ambientRecognizing = false; }
+  }
+
+  function stopAmbientListening(){
+    ambientRecognizing = false;
+    if(ambientRecognition) try{ ambientRecognition.stop(); }catch(e){}
+    updateAmbientToggleUI();
+  }
+
+  function updateAmbientToggleUI(){
+    const btn = document.getElementById('ambientToggle');
+    const label = document.getElementById('ambientToggleLabel');
+    if(!btn) return;
+    btn.classList.toggle('on', ambientOn && !ambientMuted);
+    btn.classList.toggle('muted', ambientOn && ambientMuted);
+    if(label) label.textContent = !ambientOn ? 'Always listening for "Lola"'
+      : ambientMuted ? 'Muted — tap to resume, hold to turn off' : 'Listening for "Lola"… (hold to turn off)';
+  }
+
+  window.toggleAmbientListening = function(){
+    if(!ambientOn){
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR){ alert('Always-listening needs Chrome, Edge, or Safari.'); return; }
+      const confirmed = localStorage.getItem('loladesk_ambient_disclosure_ack') === '1' || confirm(
+        'Turning this on keeps this device\'s microphone passively open while the dashboard is open. ' +
+        'Nothing is sent anywhere unless you say "Lola" — only what\'s said after her name is processed. ' +
+        'Let your staff and anyone nearby know this mic is on. You can mute or turn this off anytime (tap to mute, hold to turn off).\n\n' +
+        'Turn on always-listening for Lola?'
+      );
+      if(!confirmed) return;
+      localStorage.setItem('loladesk_ambient_disclosure_ack', '1');
+      ambientOn = true;
+      ambientMuted = false;
+      localStorage.setItem(AMBIENT_STORAGE_KEY, '1');
+      startAmbientListening();
+    } else if(!ambientMuted){
+      ambientMuted = true;
+      stopAmbientListening();
+    } else {
+      ambientOn = false;
+      ambientMuted = false;
+      localStorage.setItem(AMBIENT_STORAGE_KEY, '0');
+      stopAmbientListening();
+    }
+    updateAmbientToggleUI();
+  };
+
+  if (ambientOn) {
+    const startFn = () => {
+      startAmbientListening();
+      document.removeEventListener('click', startFn);
+    };
+    document.addEventListener('click', startFn);
+    startAmbientListening();
+  }
+  updateAmbientToggleUI();
+})();
+</script>
+</body>
+</html>
+

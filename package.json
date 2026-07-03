@@ -1,0 +1,15 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.1078.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "ws": "^8.21.0"
+  },
+  "scripts": {
+    "test:e2e": "node e2e/run.mjs",
+    "e2e:emulator": "node e2e/supabase-emulator.mjs"
+  },
+  "devDependencies": {
+    "pg": "^8.22.0"
+  }
+}
