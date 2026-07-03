@@ -181,6 +181,15 @@ const orb = (window.LolaOrb && orbCanvas)
   : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
 let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
+/* Mini always-alive orb on the widget card — 80px, always ambient */
+(function mountWidgetCardOrb(){
+  const mc = document.getElementById('dashWidgetOrb');
+  if(!mc || !window.LolaOrb) return;
+  const miniOrb = LolaOrb.mount(mc, { size: 80 });
+  miniOrb.setState('ambient');
+})();
+
+
 function setOrbState(s){
   orbState = s;
   orb.setState(s);
@@ -933,10 +942,37 @@ function init(){
   drawRevBars();
   drawCallWave();
   drawPhoneOrb();
-  setOrbState('idle');
-  // warm up voices
+  // Always-alive: start in ambient so synapse network fires immediately.
+  // The orb is Lola's presence — she should never be dark when the
+  // dashboard is open. Full 'ambient' breathing + particle firing from
+  // the first frame, no click required.
+  setOrbState('ambient');
+  // Warm up voices
   if(window.speechSynthesis){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = ()=>speechSynthesis.getVoices(); }
+  // Load the widget snippet silently so the dashboard card can show it
+  // without a separate fetch when the card is first rendered.
+  loadWidgetSnippetForDash();
 }
+
+/* ── Dashboard widget snippet card ──
+   Fetches the tenant's embed snippet and populates both the copy
+   button and the code element in the dashboard widget card. */
+async function loadWidgetSnippetForDash(){
+  try{
+    const tok = (()=>{ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } })();
+    const r = await fetch('/api/widget-embed', { headers:{ Authorization:'Bearer '+tok } });
+    const d = await r.json();
+    if(!r.ok || !d?.snippet) return;
+    const code = document.getElementById('dashWidgetSnippet');
+    const btn = document.getElementById('dashWidgetCopy');
+    if(code) code.textContent = d.snippet;
+    if(btn) btn.onclick = async ()=>{
+      try{ await navigator.clipboard.writeText(d.snippet); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy snippet',1800); }
+      catch(e){ btn.textContent='Select + copy'; }
+    };
+  }catch(e){}
+}
+
 init();
 
 })();

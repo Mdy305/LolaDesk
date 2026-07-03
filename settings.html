@@ -110,20 +110,37 @@
         </div>
       </div>
 
-      <!-- ── Lola on your website — the embed snippet for existing accounts.
-           (New signups get this at the onboarding go-live screen; this card
-           is how everyone else plugs Lola into their site.) ── -->
-      <div class="card">
-        <div class="card-head"><div class="card-title">Lola on your website</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin:0 0 12px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a chat bubble with <em>your</em> Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
-          <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:stretch">
-            <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#ff7fb8);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
-            <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap">Copy</button>
+      <!-- ── Lola on your website — premium card with live orb preview ── -->
+      <div class="card" style="overflow:visible">
+        <div class="card-head">
+          <div class="card-title">Lola on your website</div>
+          <span style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--pink-dim,rgba(255,45,142,.12));color:var(--pink2,#ff6bb0);padding:3px 9px;border-radius:20px">LIVE</span>
+        </div>
+        <div class="set-section" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+          <!-- live orb preview -->
+          <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <div style="position:relative;width:120px;height:120px">
+              <canvas id="settingsWidgetOrb" width="120" height="120" style="border-radius:50%;display:block"></canvas>
+              <!-- glowing ring around preview -->
+              <div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,45,142,.2);pointer-events:none;animation:sRing 3s ease-in-out infinite"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text3,#52525a);text-align:center;line-height:1.4">What visitors<br>see on your site</div>
           </div>
-          <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:10px 0 0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
+          <!-- right side: text + snippet -->
+          <div style="flex:1;min-width:220px">
+            <p style="font-size:13px;color:var(--text2);margin:0 0 14px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a neon-pink Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
+            <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+              <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#ff7fb8);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
+              <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap;flex-shrink:0">Copy</button>
+            </div>
+            <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
+          </div>
         </div>
       </div>
+      <style>
+        @keyframes sRing{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.9;transform:scale(1.04)}}
+      </style>
+
 
       <div class="card">
         <div class="card-head"><div class="card-title">Telecom &amp; Infrastructure</div></div>
@@ -169,7 +186,21 @@
 <script src="auth-guard.js"></script>
 <script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
+<script src="lola-orb.js"></script>
 <script>
+/* Mount the live orb preview in the widget card */
+(function mountSettingsOrb(){
+  function tryMount(){
+    var c = document.getElementById('settingsWidgetOrb');
+    if(c && window.LolaOrb){
+      var o = LolaOrb.mount(c, { size: 120 });
+      o.setState('ambient');
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tryMount);
+  else tryMount();
+})();
+
 const PROVIDER_LOGOS = {
   square:          { bg:'#fff', color:'#000', glyph:'□' },
   boulevard:        { bg:'#1a1a2e', color:'#fff', glyph:'B' },
