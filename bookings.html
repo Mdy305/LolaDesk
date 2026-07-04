@@ -60,9 +60,10 @@
 .now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--pink);box-shadow:0 0 8px var(--pink-glow);z-index:8;pointer-events:none}
 
 /* modal */
-.mw{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(24px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 .mw.open{display:flex}
-.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width:420px;width:100%}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width:420px;width:100%;transition:transform .4s var(--spring-bounce)}
+.mw.open .modal{transform:none}
 .modal h3{font-family:var(--ff-serif);font-size:23px;font-style:italic;font-weight:300;margin-bottom:16px}
 .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
 .fld label{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.04em;text-transform:uppercase}

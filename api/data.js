@@ -244,8 +244,10 @@ function demo(resource, tenant){
       {from:'+13055559012',when:'3h ago',outcome:'booked',durationSec:201,summary:'Rescheduled to next week',booked:true}
     ]},
     inbox:{tenant:name,threads:[
-      {channel:'sms',who:'Sarah Chen',when:'20m ago',preview:'Perfect, see you Friday!',unread:true},
-      {channel:'sms',who:'Maria Lopez',when:'2h ago',preview:'What times do you have?',unread:false}
+      {channel:'web',who:'Website Visitor',when:'just now',preview:'Do you do keratin treatments for curly hair?',unread:true},
+      {channel:'instagram',who:'@bella.styles',when:'5m ago',preview:'I love the balayage you posted! How much is it?',unread:true},
+      {channel:'sms',who:'Sarah Chen',when:'20m ago',preview:'Perfect, see you Friday!',unread:false},
+      {channel:'whatsapp',who:'Maria Lopez',when:'2h ago',preview:'Gracias, nos vemos pronto.',unread:false}
     ]},
     bookings:{tenant:name,bookings:[
       {service:'Balayage',client:'Sarah Chen',stylist:'Michelle',startsAt:'2026-06-20T14:00:00',price:395,status:'confirmed'},

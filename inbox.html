@@ -25,6 +25,7 @@
 .ch-sms{background:var(--mono-dim);color:var(--text)}
 .ch-whatsapp{background:rgba(37,211,102,.15);color:#25d366}
 .ch-email{background:var(--mono-dim);color:var(--text)}
+.ch-web{background:var(--pink-dim);color:var(--pink2);border:0.5px solid var(--pink)}
 /* conversation panel */
 .conv{display:flex;flex-direction:column;overflow:hidden}
 .conv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:0.5px solid var(--border);flex-shrink:0}
@@ -117,7 +118,7 @@ function renderThreads(){
       <div class="thread-body">
         <div class="thread-top"><span class="thread-name">${t.name}</span><span class="thread-time">${t.time}</span></div>
         <div class="thread-msg">${t.preview}</div>
-        <span class="ch ch-${t.ch}" style="margin-top:5px;display:inline-block">${t.ch}</span>
+        <span class="ch ch-${t.ch}" style="margin-top:5px;display:inline-block">${t.ch === 'web' ? 'Web Chat' : t.ch === 'sms' ? 'SMS' : t.ch === 'whatsapp' ? 'WhatsApp' : t.ch === 'instagram' ? 'Instagram' : t.ch}</span>
       </div>
       ${t.unread?'<div class="unread-dot"></div>':''}
     </div>`).join('');
@@ -141,7 +142,7 @@ function renderConv(){
       ${av(t)}
       <div>
         <div style="font-weight:600;font-size:14px">${t.name}</div>
-        <div style="font-size:11px;color:var(--text3)">${t.phone||''} · <span class="ch ch-${t.ch}">${t.ch}</span></div>
+        <div style="font-size:11px;color:var(--text3)">${t.phone||''} · <span class="ch ch-${t.ch}">${t.ch === 'web' ? 'Web Chat' : t.ch === 'sms' ? 'SMS' : t.ch === 'whatsapp' ? 'WhatsApp' : t.ch === 'instagram' ? 'Instagram' : t.ch}</span></div>
       </div>
     </div>
     <div class="conv-head-actions">
