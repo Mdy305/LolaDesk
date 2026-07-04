@@ -9,10 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
-.call-layout{display:grid;grid-template-columns:1fr 360px;gap:16px}
+.call-layout{display:grid;grid-template-columns:1fr 380px;gap:16px}
 @media(max-width:1000px){.call-layout{grid-template-columns:1fr}}
 .call-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
-.call-row:hover{background:var(--surface2)}
+.call-row:hover,.call-row.active{background:var(--surface2)}
 .call-row:last-child{border-bottom:none}
 .call-dir{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .call-dir.in{background:var(--mono-dim);color:var(--text)}
@@ -24,16 +24,29 @@
 .call-outcome{text-align:right}
 .call-time{font-size:11px;color:var(--text3);margin-top:3px}
 /* detail panel */
-.detail{padding:20px}
-.detail-orb{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;font-size:22px;color:#fff;margin-bottom:14px}
+.detail{padding:20px;display:flex;flex-direction:column;gap:0;height:100%;overflow-y:auto}
+.detail-orb{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;font-size:20px;color:#fff;margin-bottom:12px}
 .detail-title{font-size:16px;font-weight:600;margin-bottom:2px}
-.detail-sub{font-size:12px;color:var(--text3);margin-bottom:18px}
-.transcript{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
-.t-line{font-size:13px;line-height:1.5}
-.t-line .who{font-weight:600;color:var(--pink2)}
-.t-line.caller .who{color:var(--text2)}
+.detail-sub{font-size:12px;color:var(--text3);margin-bottom:14px}
+/* audio player */
+.audio-player{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+.play-btn{width:36px;height:36px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;flex-shrink:0;transition:all .15s}
+.play-btn:hover{background:var(--pink2)}
+.audio-timeline{flex:1;display:flex;flex-direction:column;gap:5px}
+.audio-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;cursor:pointer}
+.audio-progress{height:100%;background:linear-gradient(90deg,#ff2d8e,#ff6bb0);width:0%;transition:width .3s linear;border-radius:2px}
+.audio-times{display:flex;justify-content:space-between;font-size:10px;color:var(--text3)}
+/* transcript */
+.transcript{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;padding:14px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);max-height:280px;overflow-y:auto}
+.t-turn{font-size:12.5px;line-height:1.55;padding:6px 8px;border-radius:8px}
+.t-turn.lola{background:var(--pink-dim)}
+.t-turn .who{font-weight:600;font-size:10px;letter-spacing:.04em;display:block;margin-bottom:2px}
+.t-turn.lola .who{color:var(--pink2)}
+.t-turn.caller .who{color:var(--text2)}
 .detail-stat{display:flex;justify-content:space-between;font-size:12px;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.detail-stat:last-child{border-bottom:none}
 .detail-stat-label{color:var(--text3)}
+.detail-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);gap:12px;padding:40px}
 </style>
 </head>
 <body data-page="calls">
@@ -45,14 +58,17 @@
         <p class="page-sub">Every call Lola answered — so you never miss one.</p>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" onclick="location.href='numbers.html'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/></svg>Manage numbers</button>
+        <button class="btn btn-ghost" onclick="location.href='numbers.html'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/></svg>
+          Manage numbers
+        </button>
       </div>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">47</div><div class="kpi-label">Calls today</div><div class="kpi-sub">Lola answered all</div></div>
-      <div class="kpi"><div class="kpi-val mono">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
-      <div class="kpi"><div class="kpi-val">2m 14s</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick & warm</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiTotal">—</div><div class="kpi-label">Calls this month</div><div class="kpi-sub">Lola answered all</div></div>
+      <div class="kpi"><div class="kpi-val mono" id="kpiBooked">—</div><div class="kpi-label">Booked</div><div class="kpi-sub" id="kpiConv">—% conversion</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvg">—</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick &amp; warm</div></div>
       <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lost to voicemail</div><div class="kpi-sub">Lola never sleeps</div></div>
     </div>
 
@@ -61,9 +77,14 @@
         <div class="card-head"><div class="card-title">Recent calls</div></div>
         <div id="callList"></div>
       </div>
-      <div class="card" id="detailCard">
+      <div class="card" id="detailCard" style="overflow:hidden;display:flex;flex-direction:column">
         <div class="card-head"><div class="card-title">Call detail</div></div>
-        <div class="detail" id="detail"></div>
+        <div class="detail" id="detail">
+          <div class="detail-empty">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            <div style="font-size:13px">Select a call to view the transcript</div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -74,61 +95,160 @@
 <script src="sidebar.js"></script>
 <script>
 let CALLS = [];
+let activeAudio = null;
+let activeIdx = -1;
 
 function dirIcon(d){
-  if(d==='in') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9" transform="rotate(180 12 12)"/></svg>';
-  if(d==='out') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg>';
-  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
+  if(d==='missed') return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 0A18 18 0 016 4a2 2 0 010-2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
+  return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 0A18 18 0 016 4a2 2 0 010-2"/></svg>';
 }
-function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return `${m}:${String(s).padStart(2,'0')}`; }
+function outcomeClass(o){ return o==='Booked'||o==='booked'?'mono':o==='Missed'||o==='missed'?'':'' }
+function outcomeLabel(o){ if(!o) return 'Handled'; return o.charAt(0).toUpperCase()+o.slice(1); }
+
 function render(){
-  if(!CALLS.length){ 
+  if(!CALLS.length){
     document.getElementById('callList').innerHTML=`
-      <div class="empty" style="padding:40px 20px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:12px;">
+      <div class="empty" style="padding:40px 20px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:12px">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        <div style="font-weight:500;color:var(--text);font-size:14px;">No calls yet</div>
-        <div style="max-width:240px;line-height:1.5;font-size:13px;">To start receiving live phone calls, you must activate your call center by purchasing a Lola number.</div>
-        <button class="btn" style="margin-top:8px;" onclick="location.href='numbers.html'">Get a Number</button>
-      </div>`; 
-    document.getElementById('detail').innerHTML=''; 
-    return; 
+        <div style="font-weight:500;color:var(--text);font-size:14px">No calls yet</div>
+        <div style="max-width:240px;line-height:1.5;font-size:13px">Get a Lola number and she'll answer every call and log it here.</div>
+        <button class="btn" style="margin-top:8px" onclick="location.href='numbers.html'">Get a Number</button>
+      </div>`;
+    return;
   }
   document.getElementById('callList').innerHTML = CALLS.map((c,i)=>`
-    <div class="call-row" onclick="showDetail(${i})">
+    <div class="call-row ${i===activeIdx?'active':''}" onclick="showDetail(${i})">
       <div class="call-dir ${c.dir}">${dirIcon(c.dir)}</div>
       <div class="call-info">
-        <div class="call-name">${c.name}</div>
-        <div class="call-meta">${c.service} · ${c.dur}</div>
+        <div class="call-name">${c.name||c.num||'Unknown Caller'}</div>
+        <div class="call-meta">${c.num}${c.service?' · '+c.service:''}</div>
       </div>
       <div class="call-outcome">
-        <span class="pill ${c.outcome==='Booked'?'mono':c.outcome.includes('text')?'mono':'gray'}">${c.outcome}</span>
-        <div class="call-time">${c.time}</div>
+        <span class="pill ${c.outcome==='booked'||c.outcome==='Booked'?'mono':''}">${outcomeLabel(c.outcome)}</span>
+        <div class="call-time">${c.time} · ${fmtDur(c.durationSec)}</div>
       </div>
     </div>`).join('');
-  showDetail(0);
 }
+
 function showDetail(i){
-  const c = CALLS[i]; if(!c) return;
+  activeIdx = i;
+  const c = CALLS[i];
+  if(!c) return;
+  render(); // refresh active state
+
+  // Parse transcript into turns
+  let turns = [];
+  if(c.fullTranscript){
+    // Try to parse "Lola: ...\nCaller: ..." format
+    const lines = c.fullTranscript.split('\n').filter(l=>l.trim());
+    turns = lines.map(l=>{
+      const lolaMatch = l.match(/^(Lola|AI|Assistant):\s*(.*)/i);
+      const callerMatch = l.match(/^(Caller|Client|User|Human):\s*(.*)/i);
+      if(lolaMatch) return { who:'Lola', text:lolaMatch[2], role:'lola' };
+      if(callerMatch) return { who:'Caller', text:callerMatch[2], role:'caller' };
+      return { who:'', text:l, role:'caller' };
+    });
+  } else if(c.summary){
+    turns = [{ who:'Lola', text:c.summary, role:'lola' }];
+  }
+
+  const transcriptHtml = turns.length ? `
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Transcript</div>
+    <div class="transcript">${turns.map(t=>
+      `<div class="t-turn ${t.role}">${t.who?`<span class="who">${t.who}</span>`:''}${t.text}</div>`
+    ).join('')}</div>` : '';
+
+  // Audio player if recording exists
+  const audioHtml = c.audioUrl ? `
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Recording</div>
+    <div class="audio-player">
+      <button class="play-btn" id="playBtn_${i}" onclick="togglePlay(${i})">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      </button>
+      <div class="audio-timeline">
+        <div class="audio-bar" onclick="seekAudio(event, ${i})"><div class="audio-progress" id="progress_${i}"></div></div>
+        <div class="audio-times"><span id="curTime_${i}">0:00</span><span>${fmtDur(c.durationSec)}</span></div>
+      </div>
+    </div>
+    <audio id="audio_${i}" src="${c.audioUrl}" preload="none"></audio>` : '';
+
   document.getElementById('detail').innerHTML = `
     <div class="detail-orb">L</div>
-    <div class="detail-title">${c.name}</div>
+    <div class="detail-title">${c.name||'Unknown Caller'}</div>
     <div class="detail-sub">${c.num} · ${c.time}</div>
-    ${c.summary?`<div class="transcript"><div class="t-line lola">${c.summary}</div></div>`:''}
-    <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${c.outcome}</span></div>
-    <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${c.dur}</span></div>
-    <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service||'—'}</span></div>`;
+    ${audioHtml}
+    ${transcriptHtml}
+    <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${outcomeLabel(c.outcome)}</span></div>
+    <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${fmtDur(c.durationSec)}</span></div>
+    ${c.service?`<div class="detail-stat"><span class="detail-stat-label">Service</span><span>${c.service}</span></div>`:''}
+    <div class="detail-stat" style="border:none"><span class="detail-stat-label">Channel</span><span>Voice · Telnyx</span></div>
+  `;
+}
+
+function togglePlay(i){
+  const audio = document.getElementById(`audio_${i}`);
+  const btn = document.getElementById(`playBtn_${i}`);
+  if(!audio) return;
+  if(activeAudio && activeAudio !== audio){ activeAudio.pause(); }
+  if(audio.paused){
+    audio.play();
+    activeAudio = audio;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    audio.addEventListener('timeupdate', ()=>{
+      const pct = audio.duration ? (audio.currentTime/audio.duration)*100 : 0;
+      const p = document.getElementById(`progress_${i}`);
+      const t = document.getElementById(`curTime_${i}`);
+      if(p) p.style.width = pct + '%';
+      if(t) t.textContent = fmtDur(Math.floor(audio.currentTime));
+    });
+    audio.addEventListener('ended', ()=>{
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+      const p = document.getElementById(`progress_${i}`); if(p) p.style.width='0%';
+    }, {once:true});
+  } else {
+    audio.pause();
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+  }
+}
+
+function seekAudio(e, i){
+  const audio = document.getElementById(`audio_${i}`);
+  if(!audio || !audio.duration) return;
+  const bar = e.currentTarget;
+  const pct = e.offsetX / bar.offsetWidth;
+  audio.currentTime = pct * audio.duration;
 }
 
 (async ()=>{
   const data = await LolaData.load('calls');
   const list = (data && data.calls) || [];
   CALLS = list.map(c=>({
-    name: c.from || 'Caller', num: c.from || '', dir: c.booked?'in':'in',
-    outcome: c.booked?'Booked':(c.outcome||'Handled'),
-    service: c.summary ? '' : '', summary: c.summary||'',
-    time: c.when||'', dur: fmtDur(c.durationSec)
+    id: c.id,
+    name: c.from||'Unknown Caller',
+    num: c.from||'',
+    dir: c.outcome==='missed'||c.outcome==='no-answer' ? 'missed' : 'in',
+    outcome: c.outcome||'handled',
+    service: c.service||'',
+    summary: c.summary||'',
+    fullTranscript: c.transcript||c.summary||'',
+    time: c.when||'',
+    durationSec: Number(c.durationSec||c.duration||0),
+    audioUrl: c.audioUrl||c.recording_url||null
   }));
+
+  // Update KPIs from real data
+  const total = CALLS.length;
+  const booked = CALLS.filter(c=>c.outcome==='booked'||c.outcome==='Booked').length;
+  const avgDur = total ? Math.round(CALLS.reduce((s,c)=>s+c.durationSec,0)/total) : 0;
+  const k = document.querySelectorAll('.kpi-val');
+  if(document.getElementById('kpiTotal')) document.getElementById('kpiTotal').textContent = total;
+  if(document.getElementById('kpiBooked')) document.getElementById('kpiBooked').textContent = booked;
+  if(document.getElementById('kpiConv')) document.getElementById('kpiConv').textContent = total ? Math.round(booked/total*100)+'% conversion' : '—';
+  if(document.getElementById('kpiAvg')) document.getElementById('kpiAvg').textContent = fmtDur(avgDur)||'—';
+
   render();
+  if(CALLS.length) showDetail(0);
 })();
 </script>
 </body>

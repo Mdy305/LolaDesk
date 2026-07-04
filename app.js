@@ -975,4 +975,127 @@ async function loadWidgetSnippetForDash(){
 
 init();
 
+/* ─────────────────────────────────────────────────────────────
+   REAL-TIME BOOKING NOTIFICATIONS
+   Polls every 30 s for new calls/bookings and shows a toast with
+   a neon-pink pulse so the owner never misses a booking Lola made.
+   ───────────────────────────────────────────────────────────── */
+(function startRealtimeNotifications(){
+  let lastCallId = null;
+  let firstRun = true;
+
+  async function poll(){
+    try{
+      const tok = (()=>{ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } })();
+      if(!tok) return;
+      const r = await fetch('/api/data?resource=calls', { headers:{ Authorization:'Bearer '+tok } });
+      if(!r.ok) return;
+      const d = await r.json();
+      const calls = (d && d.calls) || [];
+      if(!calls.length) return;
+
+      const latest = calls[0];
+      const latestId = latest.id || latest.when;
+
+      if(firstRun){
+        lastCallId = latestId;
+        firstRun = false;
+        return;
+      }
+
+      if(latestId !== lastCallId){
+        lastCallId = latestId;
+        const isBooked = latest.outcome === 'booked' || latest.booked;
+        const caller = latest.from || 'A client';
+        const service = latest.service || '';
+        const msg = isBooked
+          ? `🌸 Lola just booked ${caller}${service ? ' for ' + service : ''}!`
+          : `📞 New call from ${caller}`;
+        showLolaNotification(msg, isBooked ? 'booking' : 'call');
+      }
+    }catch(e){}
+  }
+
+  // Start polling after 10s (let the page settle), then every 30s
+  setTimeout(()=>{ poll(); setInterval(poll, 30000); }, 10000);
+})();
+
+function showLolaNotification(msg, type){
+  // Remove any existing notification
+  const old = document.getElementById('lolaNotif');
+  if(old) old.remove();
+
+  const n = document.createElement('div');
+  n.id = 'lolaNotif';
+  n.style.cssText = [
+    'position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px)',
+    'background:var(--surface)',
+    'border:0.5px solid ' + (type==='booking' ? 'var(--pink)' : 'var(--border2)'),
+    'border-radius:16px;padding:14px 20px',
+    'display:flex;align-items:center;gap:12px',
+    'box-shadow:0 12px 40px rgba(0,0,0,.4)',
+    type==='booking' ? '0 0 0 1px rgba(255,45,142,.15)' : '',
+    'transition:transform .35s cubic-bezier(.22,1,.36,1)',
+    'z-index:999;max-width:90vw;cursor:pointer'
+  ].join(';');
+
+  const dot = document.createElement('div');
+  dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:' + (type==='booking'?'#ff2d8e':'var(--text3)') + ';flex-shrink:0;animation:notifPulse 1.5s ease-in-out 3';
+  if(!document.getElementById('notifPulseStyle')){
+    const s = document.createElement('style');
+    s.id = 'notifPulseStyle';
+    s.textContent = '@keyframes notifPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,45,142,.5)}50%{box-shadow:0 0 0 8px rgba(255,45,142,0)}}';
+    document.head.appendChild(s);
+  }
+
+  const txt = document.createElement('div');
+  txt.style.cssText = 'font-size:13px;font-weight:500;color:var(--text)';
+  txt.textContent = msg;
+
+  const close = document.createElement('button');
+  close.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1';
+  close.textContent = '×';
+  close.onclick = (e)=>{ e.stopPropagation(); n.style.transform='translateX(-50%) translateY(80px)'; setTimeout(()=>n.remove(), 350); };
+
+  n.appendChild(dot); n.appendChild(txt); n.appendChild(close);
+  n.onclick = ()=>{ location.href='calls.html'; };
+  document.body.appendChild(n);
+
+  // Animate in
+  requestAnimationFrame(()=>{ n.style.transform='translateX(-50%) translateY(0)'; });
+  // Auto-dismiss after 6s
+  setTimeout(()=>{ if(n.parentNode){ n.style.transform='translateX(-50%) translateY(80px)'; setTimeout(()=>n.remove(), 350); } }, 6000);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PENDING PROMPT HANDOFF
+   Clients and Inbox pages can push a pre-filled Lola prompt via
+   sessionStorage. Pick it up here and fire it automatically.
+   ───────────────────────────────────────────────────────────── */
+(function handlePendingPrompt(){
+  try{
+    const prompt = sessionStorage.getItem('lola_pending_prompt');
+    if(!prompt) return;
+    sessionStorage.removeItem('lola_pending_prompt');
+    // Wait for Lola's input to be ready
+    const tryFill = (attempts) => {
+      if(attempts <= 0) return;
+      const inp = document.getElementById('lolaInput') || document.querySelector('.cmd-input') || document.querySelector('[placeholder*="Ask Lola"]');
+      if(inp){
+        inp.value = prompt;
+        inp.dispatchEvent(new Event('input'));
+        inp.focus();
+        // Auto-send after a brief moment so the user sees what's being sent
+        setTimeout(()=>{
+          const sendBtn = document.getElementById('sendBtn') || document.querySelector('.cmd-send');
+          if(sendBtn) sendBtn.click();
+        }, 800);
+      } else {
+        setTimeout(()=>tryFill(attempts-1), 300);
+      }
+    };
+    setTimeout(()=>tryFill(10), 600);
+  }catch(e){}
+})();
+
 })();
