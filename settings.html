@@ -142,19 +142,107 @@
       </style>
 
 
+      <!-- ── JARVIS OPERATOR VOICE CONTROL ── -->
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head">
+          <div class="card-title" style="display:flex;align-items:center;gap:10px">
+            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
+            Jarvis — Owner Voice Control
+          </div>
+          <span id="jarvisBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Not configured</span>
+        </div>
+        <div class="set-section">
+          <p style="font-size:13px;color:var(--text2);margin:0 0 18px">Call your private Jarvis line and Lola hands the phone to you — her owner-mode AI. Move bookings, cancel appointments, broadcast texts to clients: all by voice. Destructive actions need your PIN for a second confirmation.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:flex-end">
+            <div>
+              <label class="set-label">Your cell number <span style="color:var(--text3);font-weight:400">(Lola recognizes this caller ID)</span></label>
+              <input class="set-input" id="fOperatorPhone" placeholder="+1 (305) 555-0100" style="margin:0"/>
+            </div>
+            <div>
+              <label class="set-label">Voice PIN <span style="color:var(--text3);font-weight:400">(4–6 digits, spoken to confirm)</span></label>
+              <input class="set-input" id="fOperatorPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" style="margin:0;letter-spacing:.3em"/>
+            </div>
+            <button class="btn btn-primary" id="btnJarvisSave" onclick="saveOperatorSetup()" style="height:46px;white-space:nowrap">Save Jarvis</button>
+          </div>
+          <p style="font-size:11px;color:var(--text3);margin:12px 0 0">💡 Call the number on the Numbers page labeled "Jarvis" after setup. Lola greets callers normally — your cell rings Jarvis mode.</p>
+        </div>
+      </div>
+
+      <!-- ── LOLA LINK eSIM ── -->
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head">
+          <div class="card-title" style="display:flex;align-items:center;gap:10px">
+            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
+            Lola Link — Always-On Connectivity
+          </div>
+          <span id="esimBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Loading…</span>
+        </div>
+        <div class="set-section">
+          <!-- No eSIM yet -->
+          <div id="esimOffer">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:16px">
+                <div style="font-size:20px;margin-bottom:6px">⚡</div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Uptime failover</div>
+                <div style="font-size:11.5px;color:var(--text2)">Wi-Fi dies → Lola stays alive on LTE. Cost: $2/mo wholesale. ~87% margin.</div>
+              </div>
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:16px">
+                <div style="font-size:20px;margin-bottom:6px">💻</div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">LolaPad tablet</div>
+                <div style="font-size:11.5px;color:var(--text2)">Dashboard always online at reception. 500 MB included, overages billed per MB.</div>
+              </div>
+              <div style="background:linear-gradient(135deg,rgba(255,45,142,.08),transparent);border:0.5px solid rgba(255,45,142,.2);border-radius:var(--r-sm);padding:16px">
+                <div style="font-size:20px;margin-bottom:6px">🔒</div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Churn armor</div>
+                <div style="font-size:11.5px;color:var(--text2)">Hardware on your counter makes canceling LolaDesk mean unplugging a device the front desk needs.</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px">
+              <button class="btn btn-primary" id="btnOrderEsim" onclick="orderEsim()" style="font-size:13px;padding:10px 22px">Get Lola Link — $15/mo</button>
+              <span style="font-size:11.5px;color:var(--text3)">OTA eSIM · 500 MB included · cancel anytime</span>
+            </div>
+          </div>
+          <!-- Has eSIM -->
+          <div id="esimStatus" style="display:none">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
+                <div class="esim-val" id="esimStatusVal" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
+                <div style="font-size:10px;color:var(--text3)">Status</div>
+              </div>
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
+                <div id="esimUsedMb" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
+                <div style="font-size:10px;color:var(--text3)">MB used</div>
+              </div>
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
+                <div id="esimLimitMb" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
+                <div style="font-size:10px;color:var(--text3)">MB included</div>
+              </div>
+              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
+                <div id="esimOverage" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">$0</div>
+                <div style="font-size:10px;color:var(--text3)">Overage this month</div>
+              </div>
+            </div>
+            <!-- usage bar -->
+            <div style="height:5px;background:var(--surface2);border-radius:3px;margin-bottom:18px;overflow:hidden">
+              <div id="esimUsageBar" style="height:100%;border-radius:3px;background:linear-gradient(90deg,#ff2d8e,#ff6bb0);transition:width .6s"></div>
+            </div>
+            <!-- QR/activation code if fresh -->
+            <div id="esimActivation" style="display:none;margin-bottom:18px;padding:14px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm)">
+              <div style="font-size:12px;font-weight:600;margin-bottom:6px">📲 Scan or tap to activate your eSIM</div>
+              <a id="esimActivationLink" href="#" target="_blank" style="font-size:11px;color:var(--pink2);word-break:break-all"></a>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-ghost" id="btnEsimToggle" onclick="toggleEsim()">Pause SIM</button>
+              <button class="btn btn-ghost" onclick="loadEsimStatus()">Refresh usage</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-head"><div class="card-title">Telecom &amp; Infrastructure</div></div>
         <div class="set-section">
           <p style="font-size:13px;color:var(--text2);margin-bottom:16px;margin-top:0;">Ensure Lola never goes offline and handles your actual business calls.</p>
-          
-          <div style="margin-bottom:20px; padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
-            <div style="font-weight:600; font-size:14px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--pink);"></span>
-              Order Private APN SIM
-            </div>
-            <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Ship a physical Telnyx SIM to your salon. Connect your iPads directly to Lola over a private cellular network, bypassing spotty Wi-Fi.</p>
-            <button class="btn btn-primary" id="btnOrderSim" onclick="orderTelnyxSim()" style="font-size:12px;">Ship to Salon ($15/mo)</button>
-          </div>
 
           <div style="padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
             <div style="font-weight:600; font-size:14px; margin-bottom:6px;">Port Business Number</div>
@@ -326,37 +414,160 @@ window.manageBilling = async function(){
   }catch(e){ showToast('Could not open billing portal', 'err'); }
 };
 
-// ── Telecom Wiring ──
-window.orderTelnyxSim = async function(){
-  const btn = document.getElementById('btnOrderSim');
-  const og = btn.textContent;
-  btn.textContent = 'Ordering...';
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/telnyx-sims', {
+// ── Jarvis Operator Setup ──
+(async function loadJarvisSetup(){
+  // Pre-fill the phone from the tenant row if already set
+  try{
+    const auth = await window.LolaAuth.ready;
+    const phone = auth?.tenant?.operator_phone || '';
+    if(phone) document.getElementById('fOperatorPhone').value = phone;
+    const badge = document.getElementById('jarvisBadge');
+    if(phone){
+      badge.textContent = 'Configured ✓';
+      badge.style.background = 'rgba(52,211,113,.12)';
+      badge.style.color = '#34d371';
+    } else {
+      badge.textContent = 'Not configured';
+    }
+  }catch(e){}
+})();
+
+window.saveOperatorSetup = async function(){
+  const btn = document.getElementById('btnJarvisSave');
+  const phone = document.getElementById('fOperatorPhone').value.trim();
+  const pin = document.getElementById('fOperatorPin').value.trim();
+  if(!phone && !pin){ showToast('Enter your phone number and/or PIN.', 'err'); return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const r = await fetch('/api/operator-setup', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address_id: 'mock_addr_123', quantity: 1 })
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
+      body: JSON.stringify({ operator_phone: phone || undefined, pin: pin || undefined })
     });
     const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Failed to order SIM');
-    showToast('SIM ordered! It will arrive in 2-3 business days.', 'ok');
-  } catch(e) {
-    showToast(e.message, 'err');
-  } finally {
-    btn.textContent = og;
+    if(!r.ok) throw new Error(d.error || 'Save failed');
+    const badge = document.getElementById('jarvisBadge');
+    badge.textContent = 'Configured ✓';
+    badge.style.background = 'rgba(52,211,113,.12)';
+    badge.style.color = '#34d371';
+    document.getElementById('fOperatorPin').value = '';
+    showToast('Jarvis is ready. Call your Jarvis line to test.', 'ok');
+  }catch(e){
+    showToast(e.message || 'Could not save — try again', 'err');
+  }finally{
+    btn.disabled = false; btn.textContent = 'Save Jarvis';
+  }
+};
+
+// ── Lola Link eSIM ──
+let esimCurrentStatus = null;
+
+window.loadEsimStatus = async function(){
+  const badge = document.getElementById('esimBadge');
+  try{
+    const r = await fetch('/api/telnyx-esim', {
+      headers: { 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') }
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error);
+    if(!d.esim){
+      // No SIM yet — show the offer panel
+      document.getElementById('esimOffer').style.display = '';
+      document.getElementById('esimStatus').style.display = 'none';
+      badge.textContent = 'Not ordered';
+      badge.style.background = ''; badge.style.color = '';
+      return;
+    }
+    // Has SIM — show status panel
+    esimCurrentStatus = d.esim;
+    document.getElementById('esimOffer').style.display = 'none';
+    document.getElementById('esimStatus').style.display = '';
+    const statusEl = document.getElementById('esimStatusVal');
+    const s = d.esim.status || 'unknown';
+    statusEl.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+    statusEl.style.color = s === 'enabled' || s === 'connected' ? '#34d371' : s === 'suspended' ? '#ff9f0a' : 'var(--text)';
+    badge.textContent = s === 'enabled' || s === 'connected' ? 'Active ✓' : 'Suspended';
+    badge.style.background = s === 'enabled' || s === 'connected' ? 'rgba(52,211,113,.12)' : 'rgba(255,159,10,.12)';
+    badge.style.color = s === 'enabled' || s === 'connected' ? '#34d371' : '#ff9f0a';
+    document.getElementById('esimUsedMb').textContent = d.esim.used_mb ?? '—';
+    document.getElementById('esimLimitMb').textContent = d.esim.data_limit_mb ?? '—';
+    document.getElementById('esimOverage').textContent = d.esim.overage_charge > 0 ? '$'+d.esim.overage_charge.toFixed(2) : '$0';
+    const pct = d.esim.data_limit_mb ? Math.min(100, Math.round((d.esim.used_mb/d.esim.data_limit_mb)*100)) : 0;
+    document.getElementById('esimUsageBar').style.width = pct + '%';
+    document.getElementById('esimUsageBar').style.background = pct > 85 ? 'linear-gradient(90deg,#ff4d4d,#ff9f0a)' : 'linear-gradient(90deg,#ff2d8e,#ff6bb0)';
+    const togBtn = document.getElementById('btnEsimToggle');
+    togBtn.textContent = (s === 'enabled' || s === 'connected') ? 'Pause SIM' : 'Resume SIM';
+    // Activation link for fresh orders
+    const act = d.esim.activation;
+    if(act && (act.activation_code || act.smdp_address)){
+      const url = act.activation_code || `LPA:1$${act.smdp_address}$${act.iccid||''}`;
+      document.getElementById('esimActivation').style.display = '';
+      const link = document.getElementById('esimActivationLink');
+      link.textContent = url; link.href = url;
+    }
+  }catch(e){
+    badge.textContent = 'Error';
+    console.error('[esim]', e);
+  }
+};
+
+window.orderEsim = async function(){
+  const btn = document.getElementById('btnOrderEsim');
+  btn.disabled = true; btn.textContent = 'Ordering your eSIM…';
+  try{
+    const r = await fetch('/api/telnyx-esim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
+      body: JSON.stringify({ action: 'order' })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Order failed');
+    if(d.pending){
+      showToast('eSIM is provisioning — refresh in ~60 seconds.', 'ok');
+    } else {
+      showToast('Lola Link is live! Scan the QR below to activate.', 'ok');
+    }
+    await window.loadEsimStatus();
+  }catch(e){
+    showToast(e.message || 'Could not order — contact support', 'err');
+    btn.disabled = false; btn.textContent = 'Get Lola Link — $15/mo';
+  }
+};
+
+window.toggleEsim = async function(){
+  if(!esimCurrentStatus) return;
+  const s = esimCurrentStatus.status || '';
+  const isOn = s === 'enabled' || s === 'connected';
+  const action = isOn ? 'disable' : 'enable';
+  const btn = document.getElementById('btnEsimToggle');
+  btn.disabled = true; btn.textContent = isOn ? 'Pausing…' : 'Resuming…';
+  try{
+    const r = await fetch('/api/telnyx-esim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
+      body: JSON.stringify({ action })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error);
+    showToast(d.note || (action === 'disable' ? 'SIM paused.' : 'SIM resumed.'), 'ok');
+    await window.loadEsimStatus();
+  }catch(e){
+    showToast(e.message || 'Could not update SIM', 'err');
+  }finally{
     btn.disabled = false;
   }
 };
 
+// Load eSIM status on page load
+(async function(){ try{ await window.loadEsimStatus(); }catch(e){} })();
+
+// ── Number Porting ──
 window.portTelnyxNumber = async function(){
   const num = document.getElementById('fPortNumber').value.trim();
   if(!num){ showToast('Enter a number to port.', 'err'); return; }
-  
   const btn = document.getElementById('btnPortNum');
   const og = btn.textContent;
-  btn.textContent = 'Initiating...';
-  btn.disabled = true;
+  btn.textContent = 'Initiating...'; btn.disabled = true;
   try {
     const r = await fetch('/api/telnyx-porting', {
       method: 'POST',
@@ -370,8 +581,7 @@ window.portTelnyxNumber = async function(){
   } catch(e) {
     showToast(e.message, 'err');
   } finally {
-    btn.textContent = og;
-    btn.disabled = false;
+    btn.textContent = og; btn.disabled = false;
   }
 };
 
