@@ -71,6 +71,16 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 
 
 /* ─── NEW DASH LAYOUT ─── */
+.setup-widget { background:var(--surface); border:0.5px solid var(--pink); border-radius:var(--r); padding:16px 20px; margin-bottom:24px; display:flex; align-items:center; gap:20px; flex-wrap:wrap; box-shadow:0 0 20px var(--pink-glow); }
+.setup-info { flex:1; min-width:200px; }
+.setup-title { font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+.setup-desc { font-size:12px; color:var(--text2); }
+.setup-steps { display:flex; gap:12px; flex-wrap:wrap; }
+.setup-step { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:500; color:var(--text3); background:var(--surface2); padding:6px 12px; border-radius:20px; border:0.5px solid var(--border2); }
+.setup-step.done { color:var(--text); border-color:var(--border); }
+.setup-step.done .check { color:#34d371; }
+.setup-step.active { color:var(--pink2); border-color:var(--pink); background:var(--pink-dim); }
+
 .dash-header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px; }
 .dash-greeting h1 { font-size:28px; font-weight:500; letter-spacing:-.01em; color:var(--text); margin-bottom:4px; }
 .dash-greeting p { font-size:14px; font-weight:300; color:var(--text2); }
@@ -546,6 +556,20 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
         <button class="icon-btn" aria-label="Add"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg></button>
         <button class="icon-btn" aria-label="Calendar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></button>
         <button class="icon-btn" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9zM13.7 21a2 2 0 01-3.4 0"/></svg><span class="dot"></span></button>
+      </div>
+    </div>
+
+    <!-- ONBOARDING WIDGET -->
+    <div class="setup-widget" id="setupWidget">
+      <div class="setup-info">
+        <div class="setup-title">Welcome to LolaDesk! Let's get you set up. 🌸</div>
+        <div class="setup-desc">You're 3/4 of the way there. Complete the final step to unleash Lola's full potential.</div>
+      </div>
+      <div class="setup-steps">
+        <div class="setup-step done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Connect Square</div>
+        <div class="setup-step done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Sync Service Menu</div>
+        <div class="setup-step done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg> Add Team Members</div>
+        <div class="setup-step active" onclick="location.href='numbers.html'" style="cursor:pointer">Claim Lola Phone Number ➔</div>
       </div>
     </div>
 

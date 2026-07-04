@@ -39,10 +39,10 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">$53,200</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ 15% this month</div></div>
-      <div class="kpi"><div class="kpi-val">4</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
-      <div class="kpi"><div class="kpi-val">87%</div><div class="kpi-label">Chair utilization</div><div class="kpi-sub">↑ 9%</div></div>
-      <div class="kpi"><div class="kpi-val pink">312</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Lola booked 81%</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiRev">—</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ this month</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiCount">—</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiUtil">—</div><div class="kpi-label">Avg utilization</div><div class="kpi-sub">↑ 9%</div></div>
+      <div class="kpi"><div class="kpi-val pink" id="kpiAppts">—</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Last 30 days</div></div>
     </div>
 
     <div class="team-grid" id="teamGrid"></div>
@@ -72,6 +72,13 @@ function renderTeam(){ document.getElementById('teamGrid').innerHTML = TEAM.map(
   const list = (data && data.team) || [];
   TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct||(100-i*20), clients:m.clients||0, rating:m.rating||4.8 }));
   renderTeam();
+
+  if(data && data.kpis){
+    document.getElementById('kpiRev').textContent = '$' + (data.kpis.totalRev || 0).toLocaleString();
+    document.getElementById('kpiCount').textContent = list.length;
+    document.getElementById('kpiUtil').textContent = (data.kpis.totalUtil || 0) + '%';
+    document.getElementById('kpiAppts').textContent = (data.kpis.totalAppts || 0).toLocaleString();
+  }
 })();
 </script>
 </body>

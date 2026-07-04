@@ -18,6 +18,9 @@
 .bk-nav button:hover{background:var(--surface);color:var(--text)}
 .bk-today{padding:8px 13px;border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;border:.5px solid var(--border)}
 .bk-today:hover{border-color:var(--border2)}
+.bk-toggle{display:flex;background:var(--surface2);border:.5px solid var(--border);border-radius:9px;padding:2px;margin-left:8px}
+.bk-toggle-btn{padding:6px 12px;font-size:11px;font-weight:500;color:var(--text2);border-radius:7px;transition:all .15s}
+.bk-toggle-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.2)}
 
 /* KPI strip */
 .bk-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -84,6 +87,10 @@
         <button onclick="nav(-1)" aria-label="Prev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button onclick="goToday()" class="bk-today">Today</button>
         <button onclick="nav(1)" aria-label="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6"/></svg></button>
+        <div class="bk-toggle">
+          <button class="bk-toggle-btn active" id="btnDay" onclick="setMode('day')">Day</button>
+          <button class="bk-toggle-btn" id="btnWeek" onclick="setMode('week')">Week</button>
+        </div>
       </div>
       <button class="btn btn-primary" onclick="openBook()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New booking</button>
     </div>
@@ -175,6 +182,7 @@ function seed(){
         if(startMin + svc.dur > (END_HOUR-START_HOUR)*60) break;
         list.push({
           id:`${key}-${st.id}-${i}`,
+          dateKey: key, // added for week view mapping
           stylistId:st.id, startMin, dur:svc.dur,
           service:svc.name, color:svc.color, price:svc.price,
           client: CLIENTS[(off*2+si*3+i+1000)%CLIENTS.length]
@@ -191,86 +199,170 @@ seed();
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOWS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-function nav(dir){ cursor.setDate(cursor.getDate()+dir); render(); }
-function goToday(){ cursor = new Date(); cursor.setHours(0,0,0,0); render(); }
+let viewMode = 'day'; // 'day' or 'week'
+
+function setMode(m){
+  viewMode = m;
+  document.getElementById('btnDay').classList.toggle('active', m==='day');
+  document.getElementById('btnWeek').classList.toggle('active', m==='week');
+  if(m==='week'){
+    // snap to beginning of week (Monday)
+    const dow = cursor.getDay()||7; 
+    cursor.setDate(cursor.getDate() - (dow-1));
+  }
+  render();
+}
+function nav(dir){
+  const days = viewMode === 'week' ? 7 : 1;
+  cursor.setDate(cursor.getDate() + dir*days);
+  render();
+}
+function goToday(){
+  cursor = new Date(); cursor.setHours(0,0,0,0);
+  if(viewMode === 'week'){
+    const dow = cursor.getDay()||7; 
+    cursor.setDate(cursor.getDate() - (dow-1));
+  }
+  render();
+}
 
 function render(){
-  const key = dKey(cursor);
-  const list = APPTS[key] || [];
-  document.getElementById('bkDate').textContent = `${DOWS[cursor.getDay()]}, ${MONTHS[cursor.getMonth()].slice(0,3)} ${cursor.getDate()}`;
-  const closed = cursor.getDay()===0 || cursor.getDay()===1;
-  document.getElementById('bkSub').textContent = closed ? 'Closed' : `${STYLISTS.length} stylists working`;
-
-  // KPIs
-  const rev = list.reduce((s,a)=>s+(a.price||0),0);
-  const hoursAvail = STYLISTS.length * (END_HOUR-START_HOUR);
-  const hoursBooked = list.reduce((s,a)=>s+a.dur,0)/60;
-  document.getElementById('kToday').textContent = list.length;
-  document.getElementById('kRev').textContent = '$'+rev.toLocaleString();
-  document.getElementById('kOpen').textContent = Math.max(0, Math.round(hoursAvail - hoursBooked));
-  document.getElementById('kUtil').textContent = Math.round(hoursBooked/hoursAvail*100)+'%';
-
-  // Build grid
   const grid = document.getElementById('resGrid');
-  grid.style.gridTemplateColumns = `64px repeat(${STYLISTS.length}, minmax(150px, 1fr))`;
   const hours = END_HOUR - START_HOUR;
-  grid.style.gridTemplateRows = `auto repeat(${hours}, ${SLOT_H}px)`;
+  
+  if(viewMode === 'day'){
+    const key = dKey(cursor);
+    const list = APPTS[key] || [];
+    document.getElementById('bkDate').textContent = `${DOWS[cursor.getDay()]}, ${MONTHS[cursor.getMonth()].slice(0,3)} ${cursor.getDate()}`;
+    const closed = cursor.getDay()===0 || cursor.getDay()===1;
+    document.getElementById('bkSub').textContent = closed ? 'Closed' : `${STYLISTS.length} stylists working`;
 
-  let html = `<div class="res-corner"></div>`;
-  // header row: stylist columns
-  STYLISTS.forEach(st=>{
-    html += `<div class="res-head">
-      <div class="av" style="background:${st.color}">${st.name[0]}</div>
-      <div class="nm">${st.name}</div><div class="ro">${st.role}</div>
-    </div>`;
-  });
-  // time rows
-  for(let h=0; h<hours; h++){
-    const hr = START_HOUR + h;
-    const lbl = hr>12?(hr-12)+' PM':(hr===12?'12 PM':hr+' AM');
-    html += `<div class="res-time">${lbl}</div>`;
+    const rev = list.reduce((s,a)=>s+(a.price||0),0);
+    const hoursAvail = STYLISTS.length * (END_HOUR-START_HOUR);
+    const hoursBooked = list.reduce((s,a)=>s+a.dur,0)/60;
+    document.getElementById('kToday').textContent = list.length;
+    document.getElementById('kRev').textContent = '$'+rev.toLocaleString();
+    document.getElementById('kOpen').textContent = Math.max(0, Math.round(hoursAvail - hoursBooked));
+    document.getElementById('kUtil').textContent = Math.round(hoursBooked/hoursAvail*100)+'%';
+
+    grid.style.gridTemplateColumns = `64px repeat(${STYLISTS.length}, minmax(150px, 1fr))`;
+    grid.style.gridTemplateRows = `auto repeat(${hours}, ${SLOT_H}px)`;
+
+    let html = `<div class="res-corner"></div>`;
     STYLISTS.forEach(st=>{
-      html += `<div class="res-cell" data-stylist="${st.id}" data-hour="${hr}" onclick="quickBook('${st.id}',${hr})"></div>`;
+      html += `<div class="res-head">
+        <div class="av" style="background:${st.color}">${st.name[0]}</div>
+        <div class="nm">${st.name}</div><div class="ro">${st.role}</div>
+      </div>`;
     });
-  }
-  grid.innerHTML = html;
-
-  // place appointments (absolute over their stylist column)
-  // Each stylist column width is dynamic, so we position appts inside cells via a per-column overlay.
-  // Simpler: append appts into the first cell of each stylist column with absolute top offset.
-  list.forEach(a=>{
-    const colIndex = STYLISTS.findIndex(s=>s.id===a.stylistId);
-    if(colIndex<0) return;
-    // find the cell at this stylist's column, row 0 (first hour) to anchor
-    const firstCell = grid.querySelector(`.res-cell[data-stylist="${a.stylistId}"][data-hour="${START_HOUR}"]`);
-    if(!firstCell) return;
-    const top = (a.startMin/60)*SLOT_H;
-    const height = Math.max(28,(a.dur/60)*SLOT_H - 4);
-    const startH = START_HOUR + Math.floor(a.startMin/60);
-    const startM = a.startMin%60;
-    const endTotal = a.startMin + a.dur;
-    const endH = START_HOUR + Math.floor(endTotal/60), endM = endTotal%60;
-    const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
-    const el = document.createElement('div');
-    el.className = `appt ${a.color}`;
-    el.style.top = top+'px';
-    el.style.height = height+'px';
-    el.innerHTML = `<div class="t">${fmt(startH,startM)}–${fmt(endH,endM)}</div><div class="s">${a.service}</div><div class="c">${a.client}</div>`;
-    el.onclick = (e)=>{ e.stopPropagation(); showAppt(a); };
-    firstCell.appendChild(el);
-  });
-
-  // now-line if today
-  const now = new Date();
-  if(now.toDateString()===cursor.toDateString()){
-    const mins = (now.getHours()-START_HOUR)*60 + now.getMinutes();
-    if(mins>0 && mins < hours*60){
+    for(let h=0; h<hours; h++){
+      const hr = START_HOUR + h;
+      const lbl = hr>12?(hr-12)+' PM':(hr===12?'12 PM':hr+' AM');
+      html += `<div class="res-time">${lbl}</div>`;
       STYLISTS.forEach(st=>{
-        const c = grid.querySelector(`.res-cell[data-stylist="${st.id}"][data-hour="${START_HOUR}"]`);
-        if(c){ const nl=document.createElement('div'); nl.className='now-line'; nl.style.top=(mins/60*SLOT_H)+'px'; c.appendChild(nl); }
+        html += `<div class="res-cell" data-col="${st.id}" data-hour="${hr}" onclick="quickBook('${st.id}',${hr})"></div>`;
       });
     }
+    grid.innerHTML = html;
+
+    list.forEach(a=>{
+      const firstCell = grid.querySelector(`.res-cell[data-col="${a.stylistId}"][data-hour="${START_HOUR}"]`);
+      if(!firstCell) return;
+      placeAppt(a, firstCell, true);
+    });
+
+    const now = new Date();
+    if(now.toDateString()===cursor.toDateString()){
+      const mins = (now.getHours()-START_HOUR)*60 + now.getMinutes();
+      if(mins>0 && mins < hours*60){
+        STYLISTS.forEach(st=>{
+          const c = grid.querySelector(`.res-cell[data-col="${st.id}"][data-hour="${START_HOUR}"]`);
+          if(c){ const nl=document.createElement('div'); nl.className='now-line'; nl.style.top=(mins/60*SLOT_H)+'px'; c.appendChild(nl); }
+        });
+      }
+    }
+  } else {
+    // WEEK VIEW
+    const endOfWeek = new Date(cursor); endOfWeek.setDate(cursor.getDate()+6);
+    document.getElementById('bkDate').textContent = `${MONTHS[cursor.getMonth()].slice(0,3)} ${cursor.getDate()} – ${endOfWeek.getDate()}`;
+    document.getElementById('bkSub').textContent = 'Full team schedule';
+    
+    const weekDays = [];
+    for(let i=0; i<7; i++){
+      const d = new Date(cursor); d.setDate(cursor.getDate()+i);
+      weekDays.push(d);
+    }
+
+    let totalList = [];
+    weekDays.forEach(d => {
+      totalList = totalList.concat(APPTS[dKey(d)] || []);
+    });
+
+    const rev = totalList.reduce((s,a)=>s+(a.price||0),0);
+    const hoursAvail = STYLISTS.length * (END_HOUR-START_HOUR) * 5; // 5 working days
+    const hoursBooked = totalList.reduce((s,a)=>s+a.dur,0)/60;
+    document.getElementById('kToday').textContent = totalList.length;
+    document.getElementById('kRev').textContent = '$'+rev.toLocaleString();
+    document.getElementById('kOpen').textContent = Math.max(0, Math.round(hoursAvail - hoursBooked));
+    document.getElementById('kUtil').textContent = Math.round(hoursBooked/hoursAvail*100)+'%';
+
+    grid.style.gridTemplateColumns = `64px repeat(7, minmax(130px, 1fr))`;
+    grid.style.gridTemplateRows = `auto repeat(${hours}, ${SLOT_H}px)`;
+
+    let html = `<div class="res-corner"></div>`;
+    weekDays.forEach(d=>{
+      const isToday = new Date().toDateString() === d.toDateString();
+      const num = d.getDate();
+      const dowStr = DOWS[d.getDay()].slice(0,3);
+      html += `<div class="res-head">
+        <div class="nm" style="${isToday?'color:var(--pink2);font-weight:700':''}">${dowStr}</div>
+        <div class="ro" style="font-size:18px;margin-top:2px;${isToday?'color:var(--pink2);font-weight:700':''}">${num}</div>
+      </div>`;
+    });
+
+    for(let h=0; h<hours; h++){
+      const hr = START_HOUR + h;
+      const lbl = hr>12?(hr-12)+' PM':(hr===12?'12 PM':hr+' AM');
+      html += `<div class="res-time">${lbl}</div>`;
+      weekDays.forEach(d=>{
+        const isClosed = d.getDay()===0 || d.getDay()===1;
+        html += `<div class="res-cell" style="${isClosed?'background:var(--surface2)':''}" data-col="${dKey(d)}" data-hour="${hr}" onclick="quickBook(null,${hr})"></div>`;
+      });
+    }
+    grid.innerHTML = html;
+
+    totalList.forEach(a=>{
+      const firstCell = grid.querySelector(`.res-cell[data-col="${a.dateKey}"][data-hour="${START_HOUR}"]`);
+      if(!firstCell) return;
+      placeAppt(a, firstCell, false);
+    });
+
+    const now = new Date();
+    const nowKey = dKey(now);
+    const mins = (now.getHours()-START_HOUR)*60 + now.getMinutes();
+    if(mins>0 && mins < hours*60){
+      const c = grid.querySelector(`.res-cell[data-col="${nowKey}"][data-hour="${START_HOUR}"]`);
+      if(c){ const nl=document.createElement('div'); nl.className='now-line'; nl.style.top=(mins/60*SLOT_H)+'px'; c.appendChild(nl); }
+    }
   }
+}
+
+function placeAppt(a, firstCell, showStylist=false) {
+  const top = (a.startMin/60)*SLOT_H;
+  const height = Math.max(28,(a.dur/60)*SLOT_H - 4);
+  const startH = START_HOUR + Math.floor(a.startMin/60);
+  const startM = a.startMin%60;
+  const endTotal = a.startMin + a.dur;
+  const endH = START_HOUR + Math.floor(endTotal/60), endM = endTotal%60;
+  const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
+  const el = document.createElement('div');
+  el.className = `appt ${a.color}`;
+  el.style.top = top+'px';
+  el.style.height = height+'px';
+  const stName = STYLISTS.find(s=>s.id===a.stylistId)?.name || '';
+  el.innerHTML = `<div class="t">${fmt(startH,startM)}–${fmt(endH,endM)}</div><div class="s">${a.service}</div><div class="c">${a.client}${!showStylist?' · '+stName:''}</div>`;
+  el.onclick = (e)=>{ e.stopPropagation(); showAppt(a); };
+  firstCell.appendChild(el);
 }
 
 function showAppt(a){
@@ -375,6 +467,7 @@ function saveBook(){
       APPTS[key].push({
         id: b.id,
         stylistId,
+        dateKey: key, // added for week view
         startMin,
         dur,
         service: b.service,

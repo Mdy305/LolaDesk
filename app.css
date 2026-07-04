@@ -197,6 +197,42 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
   animation:shimmer 1.4s infinite}
 @keyframes shimmer{to{transform:translateX(100%)}}
 
+.loading-spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── MOBILE BOTTOM SHEETS ─── */
+@media(max-width:768px){
+  /* Any .modal inside a .mw (modal wrapper) becomes a bottom sheet */
+  .mw { align-items: flex-end; padding: 0; }
+  .modal { 
+    max-width: 100%; 
+    border-radius: 24px 24px 0 0; 
+    border-bottom: none;
+    border-left: none;
+    border-right: none;
+    padding: 24px 20px 32px;
+    animation: slideUpSheet 0.35s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+  }
+  
+  /* Add a little drag handle visually */
+  .modal::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border2);
+  }
+
+  @keyframes slideUpSheet {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+}
+
 /* Pills pop in with a tiny snap — they're status, they should register */
 .pill{animation:pillIn .35s var(--spring-snap) both}
 @keyframes pillIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
