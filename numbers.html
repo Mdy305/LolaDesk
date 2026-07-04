@@ -103,14 +103,14 @@ a{color:inherit;text-decoration:none}
   </div>
 
   <div class="results" id="results">
-    <div class="empty">Enter an area code and search to see available numbers.</div>
-  </div>
-
-  <div style="margin-top: 48px; display: none;" id="telecomAssetsSection">
-    <h2 style="font-size: 18px; margin-bottom: 16px; border-bottom: 0.5px solid var(--border); padding-bottom: 8px;">Your Telecom Assets</h2>
+    <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Your Lola Lines</h2>
+    <div id="ownedList" class="results" style="margin-bottom: 24px;"></div>
     
-    <div id="simsList" style="margin-bottom: 24px;"></div>
-    <div id="portingList"></div>
+    <div id="telecomAssets" style="display:none;">
+      <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Telecom Assets</h2>
+      <div id="simsList" class="results" style="margin-bottom: 24px;"></div>
+      <div id="portingList" class="results"></div>
+    </div>
   </div>
 
   <div class="included">
@@ -133,7 +133,7 @@ a{color:inherit;text-decoration:none}
 
 <script src="auth-guard.js"></script>
 <script>
-const RETAIL_MONTHLY = 5; // fallback only — the API now returns server-priced retail per number (NUMBER_RETAIL_MONTHLY env), so pricing is a knob, not a redeploy
+const RETAIL_MONTHLY = 5;
 
 function fmtNumber(e164){
   if(!e164) return '';
@@ -142,20 +142,49 @@ function fmtNumber(e164){
 }
 
 async function loadTelecomAssets() {
-  const section = document.getElementById('telecomAssetsSection');
+  const section = document.getElementById('telecomAssets');
+  const ownedList = document.getElementById('ownedList');
   const simsList = document.getElementById('simsList');
   const portingList = document.getElementById('portingList');
 
   try {
     const token = localStorage.getItem('loladesk_token') || '';
     const headers = token ? { Authorization: 'Bearer ' + token } : {};
-    const [simRes, portRes] = await Promise.all([
+    const [numRes, simRes, portRes] = await Promise.all([
+      fetch('/api/telnyx-numbers?action=list', { headers }),
       fetch('/api/telnyx-sims', { headers }),
       fetch('/api/telnyx-porting', { headers })
     ]);
     
+    const numData = await numRes.json();
     const simData = await simRes.json();
     const portData = await portRes.json();
+    
+    if(numData.ok && numData.numbers && numData.numbers.length > 0){
+      section.style.display = 'block';
+      
+      ownedList.innerHTML = numData.numbers.map((n, idx) => {
+        const isJarvis = idx === 1;
+        const badge = isJarvis ? '<span class="pill mono" style="margin-left:10px">Jarvis Voice Control</span>' : '<span class="pill vip" style="margin-left:10px">Primary Booking Line</span>';
+        const description = isJarvis ? 'Call this number from your cell to command Lola by voice.' : 'Give this number to your clients to book appointments.';
+        
+        return `
+        <div class="num-card" style="margin-bottom: 10px; border-color: ${isJarvis?'var(--border)':'var(--pink)'}">
+          <div class="num-info">
+            <div class="num-number">${fmtNumber(n.phone_number)}${badge}</div>
+            <div class="num-meta" style="margin-top:4px">
+              ${description}
+            </div>
+            <div class="num-meta" style="margin-top:8px">
+              <span class="num-feat">Voice</span>
+              <span class="num-feat">SMS</span>
+            </div>
+          </div>
+        </div>
+      `}).join('');
+    } else {
+      ownedList.innerHTML = '<div class="empty">You don\'t have any Lola lines yet. Search above to get one.</div>';
+    }
 
     let hasAssets = false;
 

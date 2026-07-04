@@ -40,16 +40,24 @@
         <p class="page-sub">What Lola is bringing in — and where it comes from.</p>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost">This month ▾</button>
-        <button class="btn btn-ghost">Export</button>
+        <div style="position:relative;display:inline-block">
+          <button class="btn btn-ghost" id="periodBtn" onclick="togglePeriod()" style="min-width:130px;justify-content:space-between">This month <span style="color:var(--text3)">▾</span></button>
+          <div id="periodMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;z-index:30;min-width:160px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+            <div class="period-opt" onclick="setPeriod('30d','This month')" data-p="30d">This month</div>
+            <div class="period-opt" onclick="setPeriod('90d','Last 90 days')" data-p="90d">Last 90 days</div>
+            <div class="period-opt" onclick="setPeriod('ytd','Year to date')" data-p="ytd">Year to date</div>
+            <div class="period-opt" onclick="setPeriod('all','All time')" data-p="all">All time</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost" id="exportBtn" onclick="exportCSV()">Export CSV</button>
       </div>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">$38,200</div><div class="kpi-label">This month</div><div class="kpi-sub green" style="color:var(--text)">↑ 24% vs last</div></div>
-      <div class="kpi"><div class="kpi-val">$320</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub">↑ 8%</div></div>
-      <div class="kpi"><div class="kpi-val">119</div><div class="kpi-label">Appointments</div><div class="kpi-sub">↑ 8%</div></div>
-      <div class="kpi"><div class="kpi-val pink">$4,200</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Rebookings + win-backs</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiTotal" data-rev-total>—</div><div class="kpi-label">Total revenue</div><div class="kpi-sub" id="kpiPeriodLabel">This month</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvgTicket">—</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub" id="kpiTicketChange">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAppts">—</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Booked by Lola</div></div>
+      <div class="kpi"><div class="kpi-val pink" id="kpiLola">—</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Rebookings + win-backs</div></div>
     </div>
 
     <div class="rev-grid">
@@ -143,9 +151,81 @@ function drawDonutData(services){
 (async ()=>{
   const data = await LolaData.load('revenue'); REV=data;
   drawBarsData(data&&data.months); drawDonutData(data&&data.services);
-  // update any KPI showing total revenue
-  if(data&&data.money){ const k=document.querySelector('[data-rev-total]'); if(k)k.textContent=data.money; }
+  // Update KPIs from real data
+  if(data){
+    const total = data.total || 0;
+    const count = data.bookingCount || 0;
+    const avg = count ? Math.round(total/count) : 0;
+    if(document.getElementById('kpiTotal')) document.getElementById('kpiTotal').textContent = '$'+total.toLocaleString();
+    if(document.getElementById('kpiAvgTicket')) document.getElementById('kpiAvgTicket').textContent = avg ? '$'+avg.toLocaleString() : '—';
+    if(document.getElementById('kpiAppts')) document.getElementById('kpiAppts').textContent = count.toLocaleString();
+  }
+  buildServiceTable(data&&data.services);
 })();
+
+function buildServiceTable(services){
+  if(!services||!services.length) return;
+  const wrap = document.querySelector('.svc-row');
+  if(!wrap) return;
+  const container = wrap.closest('div');
+  if(!container) return;
+  container.innerHTML = services.slice(0,8).map(s=>`
+    <div class="svc-row">
+      <span class="svc-name">${s.name}</span>
+      <span class="svc-count">${s.count||'—'} booked</span>
+      <span class="svc-rev">$${Number(s.value||0).toLocaleString()}</span>
+    </div>`).join('');
+}
+
+let currentPeriod = '30d';
+let currentPeriodLabel = 'This month';
+let REV_CACHE = {};
+
+function togglePeriod(){
+  const m = document.getElementById('periodMenu');
+  m.style.display = m.style.display==='none' ? '' : 'none';
+  document.addEventListener('click', function close(e){
+    if(!e.target.closest('#periodMenu') && !e.target.closest('#periodBtn')){ m.style.display='none'; document.removeEventListener('click',close); }
+  }, {once:false});
+}
+
+async function setPeriod(p, label){
+  document.getElementById('periodMenu').style.display='none';
+  document.getElementById('periodBtn').innerHTML = label + ' <span style="color:var(--text3)">▾</span>';
+  if(document.getElementById('kpiPeriodLabel')) document.getElementById('kpiPeriodLabel').textContent = label;
+  currentPeriod = p; currentPeriodLabel = label;
+  const tok = localStorage.getItem('loladesk_token')||'';
+  try{
+    const r = await fetch('/api/data?resource=revenue&period='+p, { headers:{ Authorization:'Bearer '+tok } });
+    const data = await r.json();
+    if(!data) return;
+    drawBarsData(data.months); drawDonutData(data.services); buildServiceTable(data.services);
+    const total = data.total||0, count = data.bookingCount||0, avg = count?Math.round(total/count):0;
+    if(document.getElementById('kpiTotal')) document.getElementById('kpiTotal').textContent='$'+total.toLocaleString();
+    if(document.getElementById('kpiAvgTicket')) document.getElementById('kpiAvgTicket').textContent=avg?'$'+avg.toLocaleString():'—';
+    if(document.getElementById('kpiAppts')) document.getElementById('kpiAppts').textContent=count.toLocaleString();
+    REV_CACHE[p] = data;
+  }catch(e){ console.error('[rev period]', e); }
+}
+
+function exportCSV(){
+  const btn = document.getElementById('exportBtn');
+  btn.textContent='Exporting…'; btn.disabled=true;
+  try{
+    const services = (REV_CACHE[currentPeriod]||REV).services||[];
+    const months = (REV_CACHE[currentPeriod]||REV).months||[];
+    let csv = 'Service,Revenue\n';
+    services.forEach(s=>{ csv += `"${s.name}",${s.value}\n`; });
+    csv += '\nMonth,Revenue\n';
+    months.forEach(m=>{ csv += `${m.month},${m.value}\n`; });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=`loladesk-revenue-${currentPeriod}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }catch(e){ console.error('[export]',e); }
+  finally{ setTimeout(()=>{ btn.textContent='Export CSV'; btn.disabled=false; }, 800); }
+}
 </script>
 </body>
 </html>
