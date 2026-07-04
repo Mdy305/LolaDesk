@@ -547,6 +547,16 @@ function showStep(n){
     if(line){line.classList.toggle('done',i<n-1);}
   }
   window.scrollTo(0,0);
+
+  // Play contextual audio if going forward or loading the first time.
+  // Requires user interaction, so step 0 audio triggers on click.
+  if(!goingBack){
+    if(n === 0) {
+      document.body.addEventListener('click', () => { playLolaAudio("Welcome to LolaDesk. Are we setting up a single salon, or multiple locations?"); }, {once:true});
+    }
+    else if(n === 1) playLolaAudio("Tell us about your salon.");
+    else if(n === 3) playLolaAudio("Let's connect your booking system.");
+  }
 }
 
 window.next=()=>{
@@ -577,23 +587,24 @@ let previewOrb = null;
 if(window.LolaOrb){
   previewOrb = LolaOrb.mount(pc, { size: 130 });
   previewOrb.setState('ambient');
-} else {
-  const pctx=pc.getContext('2d');
-  let pt=0;
-  (function drawPreviewOrb(){
-    pctx.clearRect(0,0,130,130);
-    const cx=65,cy=65;
-    for(let i=0;i<40;i++){
-      const a=(i/40)*Math.PI*2;
-      const r=38+Math.sin(pt*.8+i*.4)*4+Math.sin(pt*1.4+i*.9)*2;
-      const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
-      const al=.12+Math.abs(Math.sin(pt*.6+i*.3))*.2;
-      pctx.beginPath();pctx.arc(x,y,1.1,0,Math.PI*2);
-      pctx.fillStyle=`rgba(255,45,142,${al})`;pctx.fill();
-    }
-    pt+=.018;
-    requestAnimationFrame(drawPreviewOrb);
-  })();
+}
+
+let currentAudio = null;
+async function playLolaAudio(text){
+  if(currentAudio) currentAudio.pause();
+  try {
+    const r = await fetch('/api/speak', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text}) });
+    if(!r.ok) return;
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+    if(previewOrb) previewOrb.setState('speaking');
+    await currentAudio.play();
+    currentAudio.onended = () => {
+      if(previewOrb) previewOrb.setState('ambient');
+      URL.revokeObjectURL(url);
+    };
+  } catch(e) {}
 }
 
 /* GO LIVE sequence */
@@ -614,6 +625,7 @@ window.goLive=()=>{
   const el=document.getElementById('connecting');
   el.innerHTML='';
   if(previewOrb) previewOrb.setState('thinking'); // she's being born — synapses firing
+  playLolaAudio("I'm provisioning your AI front desk now. Hang tight.");
   let i=0;
   function addNext(){
     if(i>0){
@@ -711,7 +723,8 @@ async function finishLive(){
     }catch(e){ /* owner can re-provision from Settings later */ }
 
     // Success State — Lola visibly wakes: flare + speaking resonance.
-    if(previewOrb){ previewOrb.setState('speaking'); previewOrb.flare(); setTimeout(()=>previewOrb.setState('ambient'), 3800); }
+    if(previewOrb){ previewOrb.flare(); }
+    playLolaAudio("Your Lola is live. Welcome to the future of your front desk.");
     document.getElementById('liveCheck').style.display='flex';
     document.getElementById('liveTitle').textContent='Lola is live. 🎉';
     let readinessNote = '';
