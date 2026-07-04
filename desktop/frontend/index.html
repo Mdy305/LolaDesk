@@ -214,6 +214,103 @@
     border-radius: 50%;
     box-shadow: 0 0 10px var(--pink);
   }
+  /* --- SPATIAL GLASS WINDOWS --- */
+  .spatial-window {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%) scale(0.95);
+    width: 380px;
+    height: 500px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border);
+    border-radius: 32px;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+    padding: 32px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s var(--spring), transform 0.6s var(--spring);
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .spatial-window.active {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateY(-50%) scale(1);
+  }
+  
+  #winKnowledge { left: 40px; }
+  #winCampaign { right: 40px; }
+  
+  .window-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--pink);
+  }
+  
+  .window-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  
+  .drop-zone {
+    flex: 1;
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  
+  .drop-zone:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: var(--pink);
+    color: var(--text);
+  }
+  
+  .input-field {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 12px 16px;
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border 0.3s;
+  }
+  
+  .input-field:focus {
+    border-color: var(--pink);
+  }
+  
+  .action-btn {
+    width: 100%;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s var(--spring);
+  }
+  .action-btn:active {
+    transform: scale(0.95);
+  }
 </style>
 <script type="text/javascript" src="/eel.js"></script>
 </head>
@@ -236,6 +333,9 @@
 </div>
 
 <div class="dock">
+  <button class="dock-btn" id="btnKnowledge" onclick="toggleWindow('winKnowledge')" title="Knowledge Base">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+  </button>
   <button class="dock-btn" id="btnAuth" onclick="triggerAuth()" title="Face Auth">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M12 14c-4 0-6 2-6 2v2h12v-2s-2-2-6-2z"/></svg>
   </button>
@@ -245,6 +345,28 @@
   <button class="dock-btn" id="btnCommand" onclick="triggerCommand()" title="Diagnostic Scan">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
   </button>
+  <button class="dock-btn" id="btnCampaign" onclick="toggleWindow('winCampaign')" title="Campaigns">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+  </button>
+</div>
+
+<!-- Knowledge Base Window -->
+<div class="spatial-window" id="winKnowledge">
+  <div class="window-title">Neural Knowledge</div>
+  <div class="window-desc">Upload salon menus, contact lists, or policies to Lola's brain (.txt or .csv).</div>
+  <label class="drop-zone" id="dropZone">
+    <input type="file" id="fileUpload" style="display:none;" accept=".txt,.csv" onchange="handleFileUpload(event)">
+    Click or drag file to ingest
+  </label>
+</div>
+
+<!-- Campaign Manager Window -->
+<div class="spatial-window" id="winCampaign">
+  <div class="window-title">Campaign Engine</div>
+  <div class="window-desc">Tell Lola what you want to promote. She will draft the SMS/Email using the Knowledge Base.</div>
+  <textarea class="input-field" id="campaignPrompt" rows="4" placeholder="e.g. Draft a weekend promo for our new restorative hair mask..."></textarea>
+  <button class="action-btn" onclick="draftCampaign()">Draft Campaign</button>
+  <div class="window-desc" id="campaignResult" style="color: var(--text); flex:1; overflow-y:auto;"></div>
 </div>
 
 <script src="lola-orb.js"></script>
@@ -346,6 +468,52 @@
     js_lola_set_state('speaking');
     await eel.py_lola_speak(res)();
     setTimeout(() => { js_lola_set_state('ambient'); updateTranscript('',''); }, 6000);
+  }
+
+  // --- Spatial Window Logic ---
+  function toggleWindow(id) {
+    const win = document.getElementById(id);
+    if(win.classList.contains('active')) {
+      win.classList.remove('active');
+    } else {
+      document.querySelectorAll('.spatial-window').forEach(w => w.classList.remove('active'));
+      win.classList.add('active');
+    }
+  }
+
+  async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if(!file) return;
+    
+    document.getElementById('dropZone').textContent = "Ingesting...";
+    js_lola_set_state('thinking');
+    
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+      const content = e.target.result;
+      const res = await eel.py_upload_knowledge(file.name, content)();
+      
+      document.getElementById('dropZone').textContent = "Ingestion Complete";
+      updateTranscript('Knowledge Base', res);
+      js_lola_set_state('ambient');
+      setTimeout(() => updateTranscript('',''), 4000);
+    };
+    reader.readAsText(file);
+  }
+
+  async function draftCampaign() {
+    const prompt = document.getElementById('campaignPrompt').value;
+    if(!prompt) return;
+    
+    document.getElementById('campaignResult').textContent = "Drafting with LLM...";
+    js_lola_set_state('thinking');
+    
+    const res = await eel.py_draft_campaign(prompt)();
+    document.getElementById('campaignResult').textContent = res;
+    
+    updateTranscript('Campaign Engine', "Campaign drafted successfully.");
+    js_lola_set_state('ambient');
+    setTimeout(() => updateTranscript('',''), 4000);
   }
 </script>
 </body>

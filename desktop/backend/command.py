@@ -4,6 +4,7 @@ import db
 import feature
 import weather_fetcher
 import diagnostic
+import knowledge
 import os
 
 # In production, use os.getenv("OPENAI_API_KEY")
@@ -95,10 +96,14 @@ def parse_and_execute(command_text):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     
+    # RAG Injection
+    context = knowledge.get_context()
+    system_prompt = f"You are Lola, a highly advanced AI salon operating system. You have access to tools to control the computer, look through the webcam, and fetch data. Use the provided tools to answer the user's request. If no tool is needed, just answer conversationally in 1-2 sentences. Use the following Knowledge Base context to ensure your answers are perfectly accurate regarding salon operations, menus, and clients:\n{context}"
+    
     payload = {
         "model": "gpt-4o",
         "messages": [
-            {"role": "system", "content": "You are Lola, a highly advanced AI salon operating system. You have access to tools to control the computer, look through the webcam, and fetch data. Use the provided tools to answer the user's request. If no tool is needed, just answer conversationally in 1-2 sentences."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": command_text}
         ],
         "tools": TOOLS,

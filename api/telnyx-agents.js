@@ -14,10 +14,10 @@
 
 const TELNYX = 'https://api.telnyx.com/v2';
 
-function authHeaders(){
+function authHeaders(tenantApiKey){
   return {
     'Content-Type':'application/json',
-    'Authorization':`Bearer ${process.env.TELNYX_API_KEY}`
+    'Authorization':`Bearer ${tenantApiKey || process.env.TELNYX_API_KEY}`
   };
 }
 
@@ -56,7 +56,7 @@ Never apologize for prices. You are the only AI that can run an ultra-luxury sal
   return [lola];
 }
 
-async function createAgent(agent){
+async function createAgent(agent, tenantApiKey){
   const body = {
     name: agent.name,
     model: agent.model,
@@ -66,15 +66,15 @@ async function createAgent(agent){
   };
   const r = await fetch(`${TELNYX}/ai/assistants`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: authHeaders(tenantApiKey),
     body: JSON.stringify(body)
   });
   const data = await r.json();
   return { name: agent.name, status: r.status, data };
 }
 
-async function listAgents(){
-  const r = await fetch(`${TELNYX}/ai/assistants`, { headers: authHeaders() });
+async function listAgents(tenantApiKey){
+  const r = await fetch(`${TELNYX}/ai/assistants`, { headers: authHeaders(tenantApiKey) });
   return r.json();
 }
 
@@ -96,11 +96,12 @@ export default async function handler(req, res){
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
     const tenant = body.tenant || null;
+    const tenantApiKey = tenant?.telnyx_api_key || null;
     const agents = buildAgents(tenant);
 
     const results = [];
     for(const a of agents){
-      results.push(await createAgent(a));
+      results.push(await createAgent(a, tenantApiKey));
     }
     return res.status(200).json({
       ok: true,

@@ -27,8 +27,8 @@ import { tenantToolSecret } from './lib/operator-db.js';
 const TELNYX = 'https://api.telnyx.com/v2';
 const DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B';
 
-function authHeaders(){
-  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}` };
+function authHeaders(tenantApiKey){
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tenantApiKey || process.env.TELNYX_API_KEY}` };
 }
 function appUrl(){ return process.env.APP_URL || 'https://www.loladesk.com'; }
 function toolsUrl(){ return `${appUrl()}/api/operator-tools`; }
@@ -133,13 +133,13 @@ async function createAssistant(tenant, model){
   };
   if(process.env.TELNYX_VOICE_ID) body.voice_settings = { voice: process.env.TELNYX_VOICE_ID };
 
-  const r = await fetch(`${TELNYX}/ai/assistants`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  const r = await fetch(`${TELNYX}/ai/assistants`, { method: 'POST', headers: authHeaders(tenant?.telnyx_api_key), body: JSON.stringify(body) });
   const data = await r.json();
   return { status: r.status, data };
 }
 
-async function listAssistants(){
-  const r = await fetch(`${TELNYX}/ai/assistants`, { headers: authHeaders() });
+async function listAssistants(tenantApiKey){
+  const r = await fetch(`${TELNYX}/ai/assistants`, { headers: authHeaders(tenantApiKey) });
   return r.json();
 }
 

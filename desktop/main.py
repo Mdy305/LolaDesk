@@ -9,6 +9,8 @@ from backend import voice
 from backend.auth import recognize
 from backend import command
 from backend import feature
+from backend import knowledge
+from backend import campaign
 
 # Initialize Eel
 frontend_dir = os.path.join(os.path.dirname(__file__), 'frontend')
@@ -38,6 +40,14 @@ def py_execute_command(cmd):
     print(f"[LOLA] Executing command: {cmd}")
     response = command.parse_and_execute(cmd)
     return response
+
+@eel.expose
+def py_upload_knowledge(filename, content):
+    return knowledge.ingest_file(filename, content)
+
+@eel.expose
+def py_draft_campaign(prompt):
+    return campaign.draft_campaign(prompt)
 
 def start_app():
     print("Starting Jarvis Lola Desktop (Advanced Architecture)...")
