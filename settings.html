@@ -176,7 +176,20 @@
             Lola Link — Always-On Connectivity
           </div>
           <span id="esimBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Loading…</span>
+          <div class="row" style="margin-top:40px">
+          <div class="col-half">
+            <h3 class="section-title">Neural Knowledge Base</h3>
+            <p class="section-desc">Upload salon menus, policies, or client context. Lola reads this live before answering calls or drafting campaigns (RAG).</p>
+            <div style="background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-sm);padding:32px;text-align:center;cursor:pointer;transition:border 0.2s;" onclick="document.getElementById('fileUpload').click()" id="dropZone">
+              <input type="file" id="fileUpload" style="display:none;" accept=".txt,.csv" onchange="uploadKnowledge(event)">
+              <div style="color:var(--text);font-weight:500;margin-bottom:8px;">Click to upload document</div>
+              <div style="color:var(--text2);font-size:13px;">Supports .txt and .csv</div>
+            </div>
+            <div id="uploadResult" style="margin-top:12px;font-size:13px;color:var(--pink);"></div>
+          </div>
         </div>
+
+      </div>
         <div class="set-section">
           <!-- No eSIM yet -->
           <div id="esimOffer">
@@ -422,6 +435,46 @@ window.manageBilling = async function(){
     const phone = auth?.tenant?.operator_phone || '';
     if(phone) document.getElementById('fOperatorPhone').value = phone;
     const badge = document.getElementById('jarvisBadge');
+    
+    async function uploadKnowledge(event) {
+      const file = event.target.files[0];
+      if(!file) return;
+      
+      const dropZone = document.getElementById('dropZone');
+      const result = document.getElementById('uploadResult');
+      dropZone.style.opacity = '0.5';
+      result.textContent = 'Uploading to Lola\'s brain...';
+      
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        const content = e.target.result;
+        const token = localStorage.getItem('lola_token');
+        try {
+          const r = await fetch('/api/knowledge-upload', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ filename: file.name, content })
+          });
+          const data = await r.json();
+          if(data.ok) {
+            result.textContent = `Successfully ingested ${file.name}!`;
+            result.style.color = '#34c759'; // green
+          } else {
+            result.textContent = `Failed: ${data.error}`;
+            result.style.color = 'var(--pink)';
+          }
+        } catch(err) {
+          result.textContent = 'Network error during upload.';
+          result.style.color = 'var(--pink)';
+        }
+        dropZone.style.opacity = '1';
+      };
+      reader.readAsText(file);
+    }
+    
     if(phone){
       badge.textContent = 'Configured ✓';
       badge.style.background = 'rgba(52,211,113,.12)';
