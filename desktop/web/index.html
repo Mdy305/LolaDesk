@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Jarvis Lola OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000000;
+    --text: #ffffff;
+    --text-dim: rgba(255, 255, 255, 0.4);
+    --border: rgba(255, 255, 255, 0.1);
+    --pink: #ff2d8e;
+    --glass: rgba(20, 20, 20, 0.4);
+    --spring: cubic-bezier(0.175, 0.885, 0.32, 1.2);
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The Orb */
+  .orb-container {
+    position: relative;
+    width: 600px;
+    height: 600px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  #orb { width: 100%; height: 100%; pointer-events: none; }
+
+  /* Cinematic Typewriter Transcript */
+  .transcript-container {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 20;
+    width: 80%;
+    max-width: 800px;
+  }
+  
+  .transcript {
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    line-height: 1.4;
+    color: var(--text);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  
+  .transcript.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  
+  .system-status {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 16px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  
+  .system-status.visible { opacity: 1; }
+
+  /* Minimalist Control Dock */
+  .dock {
+    position: absolute;
+    bottom: 40px;
+    display: flex;
+    gap: 16px;
+    background: var(--glass);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 0.5px solid var(--border);
+    padding: 12px 24px;
+    border-radius: 100px;
+    z-index: 30;
+  }
+
+  .dock-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.4s var(--spring);
+  }
+
+  .dock-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.5px;
+  }
+
+  .dock-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.1);
+  }
+  
+  .dock-btn:active {
+    transform: scale(0.95);
+  }
+
+  .dock-btn.active {
+    color: var(--pink);
+    background: rgba(255, 45, 142, 0.1);
+  }
+  
+  /* Top Bar (System info) */
+  .top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 24px 40px;
+    display: flex;
+    justify-content: space-between;
+    z-index: 20;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  
+  .brand {
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0.2em;
+  }
+</style>
+<script type="text/javascript" src="/eel.js"></script>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="brand">LolaDesk OS</div>
+  <div id="clock">00:00</div>
+</div>
+
+<div class="orb-container">
+  <canvas id="orb" width="600" height="600"></canvas>
+</div>
+
+<div class="transcript-container">
+  <div class="transcript" id="transcriptText">System initializing...</div>
+  <div class="system-status" id="systemStatus">Booting kernel</div>
+</div>
+
+<div class="dock">
+  <button class="dock-btn" id="btnAuth" onclick="triggerAuth()" title="Face Auth">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/><path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M12 14c-4 0-6 2-6 2v2h12v-2s-2-2-6-2z"/></svg>
+  </button>
+  <button class="dock-btn" id="btnListen" onclick="triggerListen()" title="Microphone">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+  </button>
+  <button class="dock-btn" id="btnCommand" onclick="triggerCommand()" title="Terminal">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+  </button>
+</div>
+
+<script src="lola-orb.js"></script>
+<script>
+  let lola = null;
+  if(window.LolaOrb) {
+    lola = LolaOrb.mount(document.getElementById('orb'), { size: 600 });
+    lola.setState('ambient');
+  }
+
+  // --- Cinematic Typewriter ---
+  const elTranscript = document.getElementById('transcriptText');
+  const elStatus = document.getElementById('systemStatus');
+  
+  function updateTranscript(text, isStatus = false) {
+    if(isStatus) {
+      elStatus.textContent = text;
+      elStatus.classList.add('visible');
+    } else {
+      elTranscript.classList.remove('visible');
+      setTimeout(() => {
+        elTranscript.textContent = text;
+        elTranscript.classList.add('visible');
+      }, 400); // Wait for fade out
+    }
+  }
+
+  // Hide transcript on boot
+  setTimeout(() => {
+    updateTranscript('');
+    elStatus.textContent = 'System Ready';
+  }, 2000);
+
+  // --- Clock ---
+  setInterval(() => {
+    const d = new Date();
+    document.getElementById('clock').textContent = 
+      d.getHours().toString().padStart(2, '0') + ':' + 
+      d.getMinutes().toString().padStart(2, '0');
+  }, 1000);
+
+  // --- Python Interop ---
+  eel.expose(js_lola_set_state);
+  function js_lola_set_state(state) {
+    if(lola) lola.setState(state);
+    updateTranscript(state.toUpperCase(), true);
+  }
+
+  async function triggerListen() {
+    const btn = document.getElementById('btnListen');
+    btn.classList.add('active');
+    updateTranscript("Listening...", true);
+    if(lola) lola.setState('listening');
+    
+    let res = await eel.py_start_listening()();
+    
+    btn.classList.remove('active');
+    if(res) {
+      updateTranscript(`"${res}"`);
+    }
+    if(lola) lola.setState('ambient');
+    updateTranscript("System Ready", true);
+  }
+
+  async function triggerAuth() {
+    const btn = document.getElementById('btnAuth');
+    btn.classList.add('active');
+    updateTranscript("Authenticating biometrics...", true);
+    if(lola) lola.setState('thinking');
+    
+    let res = await eel.py_face_auth()();
+    
+    btn.classList.remove('active');
+    if(res) {
+      updateTranscript("Identity verified. Welcome.");
+      if(lola) lola.setState('speaking');
+      setTimeout(() => { if(lola) lola.setState('ambient'); }, 2000);
+    } else {
+      updateTranscript("Authentication failed.");
+      if(lola) lola.setState('ambient');
+    }
+  }
+
+  async function triggerCommand() {
+    const btn = document.getElementById('btnCommand');
+    btn.classList.add('active');
+    updateTranscript("Processing command stream...", true);
+    if(lola) lola.setState('thinking');
+    
+    let res = await eel.py_execute_command("play youtube")();
+    
+    btn.classList.remove('active');
+    updateTranscript(res);
+    
+    if(lola) lola.setState('speaking');
+    await eel.py_lola_speak(res)();
+    setTimeout(() => { if(lola) lola.setState('ambient'); }, 2000);
+  }
+</script>
+</body>
+</html>
