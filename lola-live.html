@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Lola</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
@@ -18,13 +18,13 @@
 /* text */
 .copy{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:18px;margin-top:auto;margin-bottom:0;text-align:center;pointer-events:none}
 .lola-name{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:3;
-  font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:30px;letter-spacing:.06em;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;font-size:30px;letter-spacing:.06em;
   color:rgba(255,255,255,.92);pointer-events:none;text-shadow:0 0 30px rgba(255,45,142,.5);
   opacity:0;transition:opacity 1.2s ease}
 .live.awake .lola-name{opacity:0}
-.prompt{position:relative;z-index:3;font-family:var(--ff-serif);font-style:italic;font-weight:300;
+.prompt{position:relative;z-index:3;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;
   font-size:25px;color:rgba(242,242,245,.85);min-height:32px;letter-spacing:.015em;transition:opacity .5s}
-.said{position:relative;z-index:3;max-width:600px;color:var(--text2);font-size:16px;line-height:1.75;
+.said{position:relative;z-index:3;max-width: 100%; max-width: 600px;color:var(--text2);font-size:16px;line-height:1.75;
   min-height:54px;padding:0 28px;font-weight:300}
 .said .q{display:block;color:var(--text3);font-style:italic;font-size:13.5px;margin-bottom:10px;letter-spacing:.02em}
 .dock{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:14px;
@@ -35,10 +35,10 @@
   transition:all .4s cubic-bezier(.2,.8,.2,1)}
 .invoke:hover{border-color:rgba(255,45,142,.5);color:#fff;transform:translateY(-1px);box-shadow:0 10px 40px rgba(255,45,142,.18)}
 .invoke.on{background:rgba(255,45,142,.10);border-color:rgba(255,45,142,.6);color:var(--aura2)}
-.pulse-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.3);transition:.3s}
+.pulse-dot{width: 100%; max-width: 7px;height:7px;border-radius:50%;background:rgba(255,255,255,.3);transition:.3s}
 .invoke.on .pulse-dot{background:var(--aura1);box-shadow:0 0 12px var(--aura1);animation:pd 1.6s ease-in-out infinite}
 @keyframes pd{0%,100%{opacity:.6}50%{opacity:1}}
-.whisper{font-size:11.5px;color:var(--text3);letter-spacing:.03em;max-width:380px;text-align:center;font-weight:300}
+.whisper{font-size:11.5px;color:var(--text3);letter-spacing:.03em;max-width: 100%; max-width: 380px;text-align:center;font-weight:300}
 .err{color:#ff7a7a;font-size:12px;min-height:14px;letter-spacing:.02em}
 @media (prefers-reduced-motion: reduce){ #field,#aura{opacity:.6} }
 </style>
@@ -64,9 +64,9 @@
           </div>
           
           <!-- Keyboard Input Row -->
-          <div id="keyboardInputRow" style="display:none; width:100%; max-width:500px; margin-top:10px; gap:8px; align-items:center; padding: 0 20px; box-sizing: border-box;">
+          <div id="keyboardInputRow" style="display:none; width:100%; max-width: 100%; max-width: 500px; margin-top:10px; gap:8px; align-items:center; padding: 0 20px; box-sizing: border-box;">
             <input id="keyboardText" placeholder="Type your message to Lola..." style="flex:1; background:var(--surface); border:0.5px solid var(--border); border-radius:24px; padding:12px 18px; color:var(--text); font-size:14px; outline:none; transition:border-color .15s; width:100%; box-sizing:border-box;" />
-            <button onclick="sendKeyboardMessage()" style="width:42px; height:42px; border-radius:50%; background:var(--pink); color:#fff; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink: 0; cursor: pointer;">
+            <button onclick="sendKeyboardMessage()" style="width: 100%; max-width: 42px; height:42px; border-radius:50%; background:var(--pink); color:#fff; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink: 0; cursor: pointer;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             </button>
           </div>

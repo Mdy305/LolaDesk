@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Get Started — LolaDesk</title>
 <meta name="description" content="Set up your AI front desk in minutes. Connect your booking system, customize Lola, and go live."/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -20,11 +20,11 @@
   --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --r:14px;--r-sm:10px;--r-lg:20px;
 }
-html,body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;min-height:100vh;letter-spacing:-0.015em}
+html,body{background:var(--bg);color:var(--text);font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;min-height:100vh;letter-spacing:-0.015em}
 ::-webkit-scrollbar{width:0}
 *{scrollbar-width:none}
-button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:inherit;letter-spacing:-0.01em}
-input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
+button{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;cursor:pointer;border:none;background:none;color:inherit;letter-spacing:-0.01em}
+input,select,textarea{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;letter-spacing:-0.01em}
 
 .wrap{min-height:100vh;display:flex;flex-direction:column}
 
@@ -38,10 +38,10 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 /* PROGRESS */
 .ob-progress{display:flex;align-items:center;justify-content:center;gap:0;padding:28px 20px 8px}
 .ob-step-dot{display:flex;align-items:center}
-.ob-dot{width:30px;height:30px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--text3);transition:all .3s;flex-shrink:0}
+.ob-dot{width: 100%; max-width: 30px;height:30px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--text3);transition:all .3s;flex-shrink:0}
 .ob-dot.active{border-color:var(--pink);background:var(--pink-dim);color:var(--pink2);box-shadow:0 0 16px var(--pink-glow)}
 .ob-dot.done{border-color:var(--text);background:var(--mono-dim);color:var(--text)}
-.ob-line{width:46px;height:1px;background:var(--border2);transition:background .3s}
+.ob-line{width: 100%; max-width: 46px;height:1px;background:var(--border2);transition:background .3s}
 .ob-line.done{background:var(--text)}
 .ob-step-labels{display:flex;align-items:center;justify-content:center;gap:0;padding:0 20px 24px}
 .ob-step-label{font-size:10px;color:var(--text3);text-align:center;transition:color .3s}
@@ -85,7 +85,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
   .ob-step.active, .ob-step.active > *, .ob-dot.active, .ob-dot.done{animation:none !important}
   .ob-platform:hover,.ob-persona-card:hover,.ob-plan:hover,.ob-number-card:hover{transform:none}
 }
-.ob-step-title{font-family:var(--ff-serif);font-size:34px;font-weight:300;font-style:italic;text-align:center;margin-bottom:8px;line-height:1.1}
+.ob-step-title{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:34px;font-weight:300;font-style:italic;text-align:center;margin-bottom:8px;line-height:1.1}
 .ob-step-sub{font-size:14px;font-weight:300;color:var(--text2);text-align:center;margin-bottom:32px;line-height:1.6}
 
 /* FORM */
@@ -106,7 +106,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-platform.selected::after{content:'✓';position:absolute;top:12px;right:14px;color:var(--pink2);font-size:14px;font-weight:600}
 .ob-platform-name{font-size:15px;font-weight:600;margin-bottom:3px}
 .ob-platform-desc{font-size:11px;color:var(--text3);line-height:1.4}
-.ob-platform-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;margin-bottom:12px}
+.ob-platform-logo{width: 100%; max-width: 36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;margin-bottom:12px}
 
 /* NUMBER CHOICE */
 .ob-number-choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
@@ -126,14 +126,11 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-persona-card.selected{border-color:var(--pink);background:var(--pink-dim)}
 .ob-persona-name{font-size:14px;font-weight:600;margin-bottom:4px}
 .ob-persona-desc{font-size:11px;color:var(--text3);line-height:1.5}
-.ob-persona-sample{font-size:12px;font-style:italic;color:var(--pink2);margin-top:8px;font-family:var(--ff-serif)}
-
-/* SERVICE ROWS */
-.ob-services{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.ob-persona-sample{font-size:12px;font-style:italic;color:var(--pink2);margin-top:8px;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;flex-direction:column;gap:8px;margin-bottom:12px}
 .ob-service-row{display:grid;grid-template-columns:1fr 100px 90px 36px;gap:8px;align-items:center}
 @media(max-width:480px){.ob-service-row{grid-template-columns:1fr 70px 32px}.ob-service-dur{display:none}}
 .ob-service-row .ob-input{padding:10px 12px;font-size:13px}
-.ob-service-del{width:36px;height:40px;border-radius:var(--r-sm);background:var(--surface);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ob-service-del{width: 100%; max-width: 36px;height:40px;border-radius:var(--r-sm);background:var(--surface);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;transition:all .15s}
 .ob-service-del:hover{color:#ff4444;border-color:rgba(255,68,68,.3)}
 .ob-add-service{font-size:12px;color:var(--pink2);display:inline-flex;align-items:center;gap:6px;margin-top:4px}
 
@@ -142,7 +139,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-plan{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:14px}
 .ob-plan:hover{border-color:var(--border2)}
 .ob-plan.selected{border-color:var(--pink);background:var(--pink-dim)}
-.ob-plan-radio{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border2);flex-shrink:0;transition:all .15s;position:relative}
+.ob-plan-radio{width: 100%; max-width: 20px;height:20px;border-radius:50%;border:1.5px solid var(--border2);flex-shrink:0;transition:all .15s;position:relative}
 .ob-plan.selected .ob-plan-radio{border-color:var(--pink)}
 .ob-plan.selected .ob-plan-radio::after{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--pink)}
 .ob-plan-info{flex:1}
@@ -155,10 +152,10 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 
 /* PREVIEW (final step) */
 .ob-preview{background:radial-gradient(ellipse 90% 80% at 50% 30%,rgba(255,45,142,.06),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;text-align:center;margin-bottom:20px}
-.ob-preview-orb{width:130px;height:130px;margin:0 auto 18px;position:relative;cursor:pointer}
+.ob-preview-orb{width: 100%; max-width: 130px;height:130px;margin:0 auto 18px;position:relative;cursor:pointer}
 .ob-preview-orb canvas{position:absolute;inset:0}
 .ob-preview-name{font-size:24px;font-weight:600;letter-spacing:.24em;text-indent:.24em;margin-bottom:6px}
-.ob-preview-greeting{font-family:var(--ff-serif);font-size:17px;font-style:italic;color:var(--text2);line-height:1.5;max-width:380px;margin:0 auto}
+.ob-preview-greeting{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:17px;font-style:italic;color:var(--text2);line-height:1.5;max-width: 100%; max-width: 380px;margin:0 auto}
 .ob-summary{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:20px}
 .ob-summary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:13px}
 .ob-summary-row:last-child{border-bottom:none}
@@ -175,10 +172,10 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-btn-primary.full{flex:1}
 
 /* GO LIVE */
-.ob-live-check{width:64px;height:64px;border-radius:50%;background:var(--mono-dim);border:1px solid var(--text);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--text)}
+.ob-live-check{width: 100%; max-width: 64px;height:64px;border-radius:50%;background:var(--mono-dim);border:1px solid var(--text);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--text)}
 .ob-connecting{display:flex;flex-direction:column;gap:12px;margin:24px 0}
 .ob-connect-item{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--text2);padding:12px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm)}
-.ob-connect-spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+.ob-connect-spinner{width: 100%; max-width: 16px;height:16px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ob-connect-check{color:var(--text);flex-shrink:0}
 </style>
@@ -755,7 +752,7 @@ async function finishLive(){
         const emb = await er.json();
         if(emb?.snippet){
           const wrap = document.createElement('div');
-          wrap.style.cssText = 'margin:22px auto 0;max-width:520px;text-align:left;animation:fade .6s cubic-bezier(.22,1,.36,1) both';
+          wrap.style.cssText = 'margin:22px auto 0;max-width: 100%; max-width: 520px;text-align:left;animation:fade .6s cubic-bezier(.22,1,.36,1) both';
           wrap.innerHTML = `
             <div style="font-size:14px;font-weight:600;color:var(--text,#fff);margin-bottom:6px">One more superpower: Lola on your website</div>
             <div style="font-size:12.5px;color:var(--muted,#9a93a1);margin-bottom:10px">Paste this once before <code>&lt;/body&gt;</code> on your site — every visitor can chat with Lola and get booked, 24/7.</div>

@@ -2,30 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pricing — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
-.pwrap{max-width:1080px;margin:0 auto;padding:60px 24px 80px}
+.pwrap{max-width: 100%; max-width: 1080px;margin:0 auto;padding:60px 24px 80px}
 .phead{text-align:center;margin-bottom:14px}
 .peyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--pink2);margin-bottom:18px}
-.ptitle{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:48px;line-height:1.05;letter-spacing:-.01em}
-.psub{color:var(--text2);font-size:16px;font-weight:300;max-width:520px;margin:18px auto 0;line-height:1.6}
+.ptitle{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;font-size:48px;line-height:1.05;letter-spacing:-.01em}
+.psub{color:var(--text2);font-size:16px;font-weight:300;max-width: 100%; max-width: 520px;margin:18px auto 0;line-height:1.6}
 .toggle{display:flex;justify-content:center;gap:10px;margin:34px 0 46px;align-items:center;font-size:13px;color:var(--text2)}
-.sw{width:46px;height:26px;border-radius:99px;background:var(--surface2);border:.5px solid var(--border);position:relative;cursor:pointer;transition:.2s}
+.sw{width: 100%; max-width: 46px;height:26px;border-radius:99px;background:var(--surface2);border:.5px solid var(--border);position:relative;cursor:pointer;transition:.2s}
 .sw.on{background:var(--pink-dim);border-color:var(--pink)}
-.sw .k{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
+.sw .k{position:absolute;top:2px;left:2px;width: 100%; max-width: 20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
 .sw.on .k{left:23px;background:var(--pink)}
 .save{color:var(--pink2);font-size:12px}
 .tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-@media(max-width:880px){.tiers{grid-template-columns:1fr;max-width:420px;margin:0 auto}}
+@media(max-width:880px){.tiers{grid-template-columns:1fr;max-width: 100%; max-width: 420px;margin:0 auto}}
 .tier{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);padding:30px 26px;display:flex;flex-direction:column;position:relative;transition:.3s}
 .tier:hover{border-color:var(--border2);transform:translateY(-3px)}
 .tier.featured{border-color:var(--pink);box-shadow:0 0 50px rgba(255,45,142,.12)}
 .tier.featured::before{content:'Most popular';position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:4px 14px;border-radius:99px;font-weight:600}
-.tname{font-family:var(--ff-serif);font-style:italic;font-size:26px;font-weight:300}
+.tname{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-size:26px;font-weight:300}
 .tfor{font-size:12.5px;color:var(--text3);margin-top:3px;min-height:18px}
 .tprice{margin:22px 0 6px;display:flex;align-items:baseline;gap:4px}
 .tprice .amt{font-size:46px;font-weight:300;letter-spacing:-.02em}

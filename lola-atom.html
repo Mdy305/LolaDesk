@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Lola — Command</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
@@ -16,10 +16,10 @@
 .card h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:14px;font-weight:500}
 
 /* ATOM */
-.atom-stage{position:relative;width:100%;max-width:360px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto}
+.atom-stage{position:relative;width:100%;max-width: 100%; max-width: 360px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0 auto}
 canvas#atom{position:absolute;inset:0;width:100%;height:100%}
 .atom-label{position:relative;z-index:2;text-align:center;pointer-events:none;margin-top:80%}
-.atom-state{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:23px;color:var(--text);transition:.4s}
+.atom-state{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;font-size:23px;color:var(--text);transition:.4s}
 @media(max-width:480px){.atom-state{font-size:19px}}
 .atom-sub{font-size:12px;color:var(--text3);margin-top:4px;letter-spacing:.02em}
 .ask{margin-top:18px;display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;
@@ -49,7 +49,7 @@ canvas#atom{position:absolute;inset:0;width:100%;height:100%}
   background: var(--surface);
 }
 .lola-ambient-toggle .dot {
-  width: 7px;
+  width: 100%; max-width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--text3);
@@ -66,7 +66,7 @@ canvas#atom{position:absolute;inset:0;width:100%;height:100%}
 /* feed */
 .evt{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:.5px solid var(--border)}
 .evt:last-child{border-bottom:none}
-.evt .ic{width:32px;height:32px;border-radius:9px;background:var(--pink-dim);display:flex;align-items:center;justify-content:center;color:var(--pink2);flex-shrink:0}
+.evt .ic{width: 100%; max-width: 32px;height:32px;border-radius:9px;background:var(--pink-dim);display:flex;align-items:center;justify-content:center;color:var(--pink2);flex-shrink:0}
 .evt .tx{flex:1;min-width:0}
 .evt .tt{font-size:13.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .evt .wn{font-size:11px;color:var(--text3);margin-top:1px}
@@ -75,7 +75,7 @@ canvas#atom{position:absolute;inset:0;width:100%;height:100%}
 
 /* insights */
 .insight{display:flex;gap:11px;padding:13px 14px;border-radius:12px;background:var(--surface2);border:.5px solid var(--border);margin-bottom:10px}
-.insight .b{width:6px;border-radius:3px;flex-shrink:0}
+.insight .b{width: 100%; max-width: 6px;border-radius:3px;flex-shrink:0}
 .insight.warn .b{background:#ffb020;box-shadow:0 0 8px rgba(255,176,32,.5)}
 .insight.info .b{background:var(--pink);box-shadow:0 0 8px var(--pink-glow)}
 .insight p{font-size:13.5px;line-height:1.5;color:var(--text2)}

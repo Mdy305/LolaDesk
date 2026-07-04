@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Settings — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -19,7 +19,7 @@
 
 .integration{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:0.5px solid var(--border)}
 .integration:last-child{border-bottom:none}
-.int-logo{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
+.int-logo{width: 100%; max-width: 38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
 .int-info{flex:1;min-width:0}
 .int-name{font-size:14px;font-weight:500}
 .int-status{font-size:11px;color:var(--text3)}
@@ -86,7 +86,7 @@
             </label>
             <span style="font-size:13px;font-weight:500;">Enable deposit collection</span>
           </div>
-          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width:100px;margin-bottom:0"></div>
+          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width: 100%; max-width: 100px;margin-bottom:0"></div>
         </div>
       </div>
 
@@ -119,7 +119,7 @@
         <div class="set-section" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
           <!-- live orb preview -->
           <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:10px">
-            <div style="position:relative;width:120px;height:120px">
+            <div style="position:relative;width: 100%; max-width: 120px;height:120px">
               <canvas id="settingsWidgetOrb" width="120" height="120" style="border-radius:50%;display:block"></canvas>
               <!-- glowing ring around preview -->
               <div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,45,142,.2);pointer-events:none;animation:sRing 3s ease-in-out infinite"></div>
@@ -146,7 +146,7 @@
       <div class="card" style="grid-column:1/-1">
         <div class="card-head">
           <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
+            <span style="width: 100%; max-width: 30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
             Jarvis — Owner Voice Control
           </div>
           <span id="jarvisBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Not configured</span>
@@ -172,7 +172,7 @@
       <div class="card" style="grid-column:1/-1">
         <div class="card-head">
           <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
+            <span style="width: 100%; max-width: 30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
             Lola Link — Always-On Connectivity
           </div>
           <span id="esimBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Loading…</span>
@@ -248,7 +248,7 @@
             <div style="font-weight:600; font-size:14px; margin-bottom:6px;">Port Business Number</div>
             <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Move your legacy salon phone number (Verizon, AT&amp;T, etc.) to LolaDesk so Lola can answer the main line.</p>
             <div style="display:flex; gap:10px;">
-              <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width:200px;">
+              <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width: 100%; max-width: 200px;">
               <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Port to Telnyx</button>
             </div>
           </div>

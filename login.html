@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Sign in — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -18,27 +18,26 @@
   --ff-serif:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
 }
-body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
-button{font-family:var(--ff);cursor:pointer;border:none}
-input{font-family:var(--ff)}
-a{color:inherit;text-decoration:none}
+body{background:var(--bg);color:var(--text);font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+button{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;cursor:pointer;border:none}
+input{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;text-decoration:none}
 
-.bg-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;height:760px;pointer-events:none;opacity:.4;z-index:0}
+.bg-orb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width: 100%; max-width: 760px;height:760px;pointer-events:none;opacity:.4;z-index:0}
 
 .back{position:absolute;top:28px;left:32px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:7px;z-index:5;transition:color .2s}
 .back:hover{color:var(--text)}
 
-.card{position:relative;z-index:2;width:100%;max-width:400px;text-align:center}
+.card{position:relative;z-index:2;width:100%;max-width: 100%; max-width: 400px;text-align:center}
 .logo{font-size:18px;font-weight:600;letter-spacing:.2em;margin-bottom:8px}
 .logo-sub{font-size:9px;letter-spacing:.42em;color:var(--text3);margin-bottom:48px}
 
 /* VOICE ORB */
-.voice-orb{width:180px;height:180px;margin:0 auto 28px;position:relative;cursor:pointer;transition:transform .3s}
+.voice-orb{width: 100%; max-width: 180px;height:180px;margin:0 auto 28px;position:relative;cursor:pointer;transition:transform .3s}
 .voice-orb:hover{transform:scale(1.04)}
 .voice-orb canvas{position:absolute;inset:0}
 .voice-orb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:500;letter-spacing:.26em;text-indent:.26em}
 
-.voice-title{font-family:var(--ff-serif);font-size:30px;font-style:italic;font-weight:300;margin-bottom:8px}
+.voice-title{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:30px;font-style:italic;font-weight:300;margin-bottom:8px}
 .voice-state{font-size:13px;color:var(--text3);min-height:20px;margin-bottom:8px;transition:color .3s}
 .voice-state.listening{color:var(--pink2)}
 .voice-transcript{font-size:13px;font-style:italic;color:var(--pink2);min-height:18px;margin-bottom:24px}

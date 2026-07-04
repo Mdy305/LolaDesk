@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Clients — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="app.css"/>
 <style>
 .search-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-.search-box{flex:1;min-width:220px;display:flex;align-items:center;gap:10px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 16px}
+.search-box{flex:1;min-width: 100%; max-width: 220px;display:flex;align-items:center;gap:10px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 16px}
 .search-box input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px}
 .search-box input::placeholder{color:var(--text3)}
 .filter-pill{padding:11px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
@@ -25,11 +25,11 @@
 .detail-panel{width:min(480px,100vw);background:var(--bg2,#0c0c0e);border-left:0.5px solid var(--border2);display:flex;flex-direction:column;overflow:hidden;animation:slideRight .32s cubic-bezier(.22,1,.36,1)}
 @keyframes slideRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
 .dp-head{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:0.5px solid var(--border)}
-.dp-close{width:34px;height:34px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text2);cursor:pointer;border:none;transition:background .15s}
+.dp-close{width: 100%; max-width: 34px;height:34px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text2);cursor:pointer;border:none;transition:background .15s}
 .dp-close:hover{background:var(--surface2)}
 .dp-body{flex:1;overflow-y:auto;padding:22px}
 .dp-hero{display:flex;align-items:center;gap:16px;margin-bottom:22px}
-.dp-av{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:#fff;flex-shrink:0}
+.dp-av{width: 100%; max-width: 56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:#fff;flex-shrink:0}
 .dp-name{font-size:20px;font-weight:600}
 .dp-phone{font-size:13px;color:var(--text3);margin-top:2px}
 .dp-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:22px}

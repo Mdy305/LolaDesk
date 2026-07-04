@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Inbox — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -19,7 +19,7 @@
 .thread-name{font-size:13px;font-weight:500}
 .thread-time{font-size:10px;color:var(--text3);flex-shrink:0}
 .thread-msg{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.unread-dot{width:7px;height:7px;border-radius:50%;background:var(--pink);position:absolute;top:16px;right:14px;flex-shrink:0}
+.unread-dot{width: 100%; max-width: 7px;height:7px;border-radius:50%;background:var(--pink);position:absolute;top:16px;right:14px;flex-shrink:0}
 .ch{font-size:9px;font-weight:500;padding:1px 6px;border-radius:4px}
 .ch-instagram{background:rgba(225,48,108,.15);color:#ff6bb0}
 .ch-sms{background:var(--mono-dim);color:var(--text)}
@@ -42,13 +42,13 @@
 .send-status.sent{color:#34d371}
 .send-status.failed{color:#ff4d4d}
 .conv-input{display:flex;gap:10px;padding:14px 18px;border-top:0.5px solid var(--border);flex-shrink:0;align-items:flex-end}
-.conv-textarea{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:16px;padding:11px 16px;color:var(--text);font-size:13.5px;outline:none;resize:none;font-family:inherit;max-height:120px;overflow-y:auto;line-height:1.5}
+.conv-textarea{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:16px;padding:11px 16px;color:var(--text);font-size:13.5px;outline:none;resize:none;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;max-height:120px;overflow-y:auto;line-height:1.5}
 .conv-textarea:focus{border-color:var(--pink)}
-.send{width:40px;height:40px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;transition:all .15s;flex-shrink:0}
+.send{width: 100%; max-width: 40px;height:40px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;transition:all .15s;flex-shrink:0}
 .send:hover{background:var(--pink2);box-shadow:0 4px 14px var(--pink-glow)}
 .send:disabled{opacity:.5;cursor:default}
 .auto-note{text-align:center;font-size:11px;color:var(--text3);padding:6px;display:flex;align-items:center;justify-content:center;gap:6px}
-.auto-note .lola-orb-dot{width:6px;height:6px;border-radius:50%;background:var(--pink);animation:orbPulse 1.8s ease-in-out infinite}
+.auto-note .lola-orb-dot{width: 100%; max-width: 6px;height:6px;border-radius:50%;background:var(--pink);animation:orbPulse 1.8s ease-in-out infinite}
 @keyframes orbPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
 .empty-conv{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);gap:12px}
 .inbox-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;color:var(--text3);gap:12px;text-align:center}
@@ -64,7 +64,7 @@
       </div>
       <div class="topbar-actions">
         <div style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
-          <span id="realtimeDot" style="width:6px;height:6px;border-radius:50%;background:var(--text3)"></span>
+          <span id="realtimeDot" style="width: 100%; max-width: 6px;height:6px;border-radius:50%;background:var(--text3)"></span>
           <span id="realtimeLabel">Connecting…</span>
         </div>
       </div>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Calls — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -14,7 +14,7 @@
 .call-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
 .call-row:hover,.call-row.active{background:var(--surface2)}
 .call-row:last-child{border-bottom:none}
-.call-dir{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.call-dir{width: 100%; max-width: 30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .call-dir.in{background:var(--mono-dim);color:var(--text)}
 .call-dir.out{background:var(--mono-dim);color:var(--text)}
 .call-dir.missed{background:rgba(255,59,48,.12);color:#ff5146}
@@ -25,12 +25,12 @@
 .call-time{font-size:11px;color:var(--text3);margin-top:3px}
 /* detail panel */
 .detail{padding:20px;display:flex;flex-direction:column;gap:0;height:100%;overflow-y:auto}
-.detail-orb{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family:var(--ff-serif);font-style:italic;font-size:20px;color:#fff;margin-bottom:12px}
+.detail-orb{width: 100%; max-width: 48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-size:20px;color:#fff;margin-bottom:12px}
 .detail-title{font-size:16px;font-weight:600;margin-bottom:2px}
 .detail-sub{font-size:12px;color:var(--text3);margin-bottom:14px}
 /* audio player */
 .audio-player{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px}
-.play-btn{width:36px;height:36px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;flex-shrink:0;transition:all .15s}
+.play-btn{width: 100%; max-width: 36px;height:36px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;flex-shrink:0;transition:all .15s}
 .play-btn:hover{background:var(--pink2)}
 .audio-timeline{flex:1;display:flex;flex-direction:column;gap:5px}
 .audio-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;cursor:pointer}
@@ -112,7 +112,7 @@ function render(){
       <div class="empty" style="padding:40px 20px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:12px">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
         <div style="font-weight:500;color:var(--text);font-size:14px">No calls yet</div>
-        <div style="max-width:240px;line-height:1.5;font-size:13px">Get a Lola number and she'll answer every call and log it here.</div>
+        <div style="max-width: 100%; max-width: 240px;line-height:1.5;font-size:13px">Get a Lola number and she'll answer every call and log it here.</div>
         <button class="btn" style="margin-top:8px" onclick="location.href='numbers.html'">Get a Number</button>
       </div>`;
     return;

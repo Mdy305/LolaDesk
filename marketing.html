@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Marketing — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -15,7 +15,7 @@
 .seg-card:hover{border-color:var(--border2);background:var(--surface2)}
 .seg-card.selected{border-color:var(--pink);background:var(--pink-dim)}
 .seg-card.selected .seg-check{display:flex}
-.seg-check{display:none;position:absolute;top:12px;right:12px;width:20px;height:20px;border-radius:50%;background:var(--pink);align-items:center;justify-content:center}
+.seg-check{display:none;position:absolute;top:12px;right:12px;width: 100%; max-width: 20px;height:20px;border-radius:50%;background:var(--pink);align-items:center;justify-content:center}
 .seg-count{font-size:28px;font-weight:700;color:var(--pink2);line-height:1;margin-bottom:4px}
 .seg-name{font-size:14px;font-weight:600;margin-bottom:4px}
 .seg-desc{font-size:11.5px;color:var(--text3);line-height:1.5}
@@ -24,14 +24,14 @@
 .builder-step{border-bottom:0.5px solid var(--border);padding:18px 22px}
 .builder-step:last-child{border-bottom:none}
 .step-head{display:flex;align-items:center;gap:12px;margin-bottom:0;cursor:pointer;user-select:none}
-.step-num{width:26px;height:26px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;transition:all .2s}
+.step-num{width: 100%; max-width: 26px;height:26px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;transition:all .2s}
 .step-num.done{background:var(--pink);border-color:var(--pink);color:#fff}
 .step-num.active{background:var(--pink-dim);border-color:var(--pink);color:var(--pink2)}
 .step-title{font-size:14px;font-weight:600}
 .step-sub{font-size:12px;color:var(--text3);margin-top:2px}
 .step-body{margin-top:16px;padding-top:16px;border-top:0.5px solid var(--border)}
 /* ── Message editor ── */
-.msg-editor{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:14px;color:var(--text);resize:vertical;min-height:110px;font-family:inherit;line-height:1.6;outline:none;transition:border-color .15s}
+.msg-editor{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:14px;color:var(--text);resize:vertical;min-height:110px;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;line-height:1.6;outline:none;transition:border-color .15s}
 .msg-editor:focus{border-color:var(--pink)}
 .msg-preview{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-size:14px;color:var(--text2);line-height:1.6;position:relative;min-height:60px}
 .msg-preview::before{content:'Preview';position:absolute;top:-9px;left:14px;background:var(--bg);padding:0 6px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--text3);text-transform:uppercase}
@@ -44,19 +44,19 @@
 /* ── Auto campaigns ── */
 .camp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .camp{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:20px;position:relative}
-.camp-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px}
+.camp-icon{width: 100%; max-width: 40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px}
 .camp-title{font-size:14px;font-weight:600;margin-bottom:5px}
 .camp-desc{font-size:12.5px;font-weight:300;color:var(--text2);line-height:1.55;margin-bottom:14px}
 .camp-stats{display:flex;gap:16px}
 .camp-stat-val{font-size:16px;font-weight:600}
 .camp-stat-label{font-size:10px;color:var(--text3)}
-.toggle{position:absolute;top:18px;right:18px;width:40px;height:22px;border-radius:11px;background:var(--pink);cursor:pointer;transition:background .2s;border:none}
-.toggle::after{content:'';position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:all .2s}
+.toggle{position:absolute;top:18px;right:18px;width: 100%; max-width: 40px;height:22px;border-radius:11px;background:var(--pink);cursor:pointer;transition:background .2s;border:none}
+.toggle::after{content:'';position:absolute;top:3px;right:3px;width: 100%; max-width: 16px;height:16px;border-radius:50%;background:#fff;transition:all .2s}
 .toggle.off{background:var(--surface2)}
 .toggle.off::after{right:21px}
 /* ── Schedule options ── */
 .sched-opts{display:flex;gap:10px;flex-wrap:wrap}
-.sched-opt{padding:9px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;cursor:pointer;transition:all .15s;font-family:inherit;color:var(--text)}
+.sched-opt{padding:9px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;cursor:pointer;transition:all .15s;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;color:var(--text)}
 .sched-opt.sel,.sched-opt:hover{border-color:var(--pink);background:var(--pink-dim);color:var(--pink2)}
 /* toast */
 .mkt-toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:0.5px solid var(--pink);border-radius:12px;padding:13px 18px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:50;max-width:320px}
@@ -94,7 +94,7 @@
         <!-- Step 1: Audience -->
         <div style="margin-bottom:22px">
           <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width:22px;height:22px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px" id="step1Num">1</span>
+            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px" id="step1Num">1</span>
             Pick your audience
           </div>
           <div class="seg-grid" id="segGrid">
@@ -105,7 +105,7 @@
         <!-- Step 2: Message -->
         <div style="margin-bottom:22px">
           <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width:22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step2Num">2</span>
+            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step2Num">2</span>
             Write your message
           </div>
           <button class="lola-draft-btn" onclick="lolaWriteIt()">
@@ -120,7 +120,7 @@
         <!-- Step 3: Schedule -->
         <div style="margin-bottom:22px">
           <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width:22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step3Num">3</span>
+            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step3Num">3</span>
             When to send
           </div>
           <div class="sched-opts">
@@ -128,7 +128,7 @@
             <button class="sched-opt" onclick="selectSched(this,'morning')">Tomorrow morning (9am)</button>
             <button class="sched-opt" onclick="selectSched(this,'custom')">Pick a time</button>
           </div>
-          <input type="datetime-local" id="customTime" style="display:none;margin-top:10px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;color:var(--text);font-family:inherit;font-size:13px;outline:none"/>
+          <input type="datetime-local" id="customTime" style="display:none;margin-top:10px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;color:var(--text);font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:13px;outline:none"/>
         </div>
 
         <!-- Send button -->

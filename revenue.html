@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Revenue — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -15,20 +15,20 @@
 .chart-big{font-size:34px;font-weight:600;margin-bottom:4px}
 .chart-change{font-size:13px;color:var(--text);font-weight:500;margin-bottom:18px}
 .donut-wrap{display:flex;align-items:center;gap:20px;padding:20px}
-.donut{position:relative;width:130px;height:130px;flex-shrink:0}
+.donut{position:relative;width: 100%; max-width: 130px;height:130px;flex-shrink:0}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .donut-total{font-size:18px;font-weight:600}
 .donut-label{font-size:10px;color:var(--text3)}
 .legend{flex:1;display:flex;flex-direction:column;gap:10px}
 .legend-item{display:flex;align-items:center;gap:9px;font-size:13px}
-.legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.legend-dot{width: 100%; max-width: 9px;height:9px;border-radius:2px;flex-shrink:0}
 .legend-name{color:var(--text2);flex:1}
 .legend-val{font-weight:500}
 .svc-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:0.5px solid var(--border)}
 .svc-row:last-child{border-bottom:none}
 .svc-name{flex:1;font-size:13.5px;font-weight:500}
 .svc-count{font-size:12px;color:var(--text3);width:80px}
-.svc-rev{font-size:14px;font-weight:600;width:90px;text-align:right}
+.svc-rev{font-size:14px;font-weight:600;width: 100%; max-width: 90px;text-align:right}
 </style>
 </head>
 <body data-page="revenue">
@@ -41,8 +41,8 @@
       </div>
       <div class="topbar-actions">
         <div style="position:relative;display:inline-block">
-          <button class="btn btn-ghost" id="periodBtn" onclick="togglePeriod()" style="min-width:130px;justify-content:space-between">This month <span style="color:var(--text3)">▾</span></button>
-          <div id="periodMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;z-index:30;min-width:160px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+          <button class="btn btn-ghost" id="periodBtn" onclick="togglePeriod()" style="min-width: 100%; max-width: 130px;justify-content:space-between">This month <span style="color:var(--text3)">▾</span></button>
+          <div id="periodMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;z-index:30;min-width: 100%; max-width: 160px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
             <div class="period-opt" onclick="setPeriod('30d','This month')" data-p="30d">This month</div>
             <div class="period-opt" onclick="setPeriod('90d','Last 90 days')" data-p="90d">Last 90 days</div>
             <div class="period-opt" onclick="setPeriod('ytd','Year to date')" data-p="ytd">Year to date</div>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Bookings — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -11,10 +11,10 @@
 <style>
 .bk-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px 20px;flex-wrap:wrap}
 .bk-when{display:flex;align-items:baseline;gap:12px}
-.bk-date{font-family:var(--ff-serif);font-size:34px;font-style:italic;font-weight:300;letter-spacing:-.015em;line-height:1}
+.bk-date{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:34px;font-style:italic;font-weight:300;letter-spacing:-.015em;line-height:1}
 .bk-sub{font-size:13px;color:var(--text3)}
 .bk-nav{display:flex;align-items:center;gap:2px}
-.bk-nav button{width:34px;height:34px;border-radius:9px;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:all .15s}
+.bk-nav button{width: 100%; max-width: 34px;height:34px;border-radius:9px;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:all .15s}
 .bk-nav button:hover{background:var(--surface);color:var(--text)}
 .bk-today{padding:8px 13px;border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;border:.5px solid var(--border)}
 .bk-today:hover{border-color:var(--border2)}
@@ -33,13 +33,13 @@
 /* RESOURCE CALENDAR */
 .cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
 .cal-scroll{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 320px)}
-.res-grid{display:grid;min-width:760px;position:relative}
+.res-grid{display:grid;min-width: 100%; max-width: 760px;position:relative}
 /* columns set inline by JS: 64px + N stylists */
 
 .res-corner{position:sticky;top:0;left:0;z-index:30;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border)}
 .res-head{position:sticky;top:0;z-index:20;background:var(--bg2);border-bottom:.5px solid var(--border);border-right:.5px solid var(--border);padding:12px 10px;text-align:center}
 .res-head:last-child{border-right:none}
-.res-head .av{width:32px;height:32px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
+.res-head .av{width: 100%; max-width: 32px;height:32px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
 .res-head .nm{font-size:12.5px;font-weight:500}
 .res-head .ro{font-size:10px;color:var(--text3);margin-top:1px}
 
@@ -62,14 +62,12 @@
 /* modal */
 .mw{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(24px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 .mw.open{display:flex}
-.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width:420px;width:100%;transition:transform .4s var(--spring-bounce)}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--r-lg);padding:26px;max-width: 100%; max-width: 420px;width:100%;transition:transform .4s var(--spring-bounce)}
 .mw.open .modal{transform:none}
-.modal h3{font-family:var(--ff-serif);font-size:23px;font-style:italic;font-weight:300;margin-bottom:16px}
+.modal h3{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:23px;font-style:italic;font-weight:300;margin-bottom:16px}
 .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
 .fld label{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:.04em;text-transform:uppercase}
-.fld input,.fld select{background:var(--surface);border:.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family:var(--ff)}
-.fld input:focus,.fld select:focus{border-color:var(--pink)}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld input,.fld select{background:var(--surface);border:.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;grid-template-columns:1fr 1fr;gap:10px}
 .macts{display:flex;gap:10px;margin-top:6px}
 .macts .btn{flex:1;justify-content:center}
 .appt-detail{font-size:13px;line-height:1.7;color:var(--text2)}
