@@ -30,8 +30,8 @@
   --spring:cubic-bezier(0.175, 0.885, 0.32, 1.15);
   --spring-bounce:cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-html,body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;overflow-x:hidden;letter-spacing:-0.015em}
-body{min-height:100vh; position: relative;}
+html{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;overflow-x:hidden;letter-spacing:-0.015em}
+body{min-height:100vh; position: relative; background: transparent; margin: 0;}
 
 /* ── Spatial Mesh Aura (Global Background) ── */
 body::before {
@@ -40,9 +40,9 @@ body::before {
   top: -50%; left: -50%; right: -50%; bottom: -50%;
   background: 
     radial-gradient(circle at 10% 20%, rgba(255, 45, 142, 0.15) 0%, transparent 40%),
-    radial-gradient(circle at 90% 80%, rgba(176, 30, 108, 0.1) 0%, transparent 40%),
-    radial-gradient(circle at 50% 50%, rgba(30, 30, 40, 0.3) 0%, transparent 60%);
-  z-index: -1;
+    radial-gradient(circle at 90% 80%, rgba(176, 30, 108, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(30, 30, 40, 0.4) 0%, transparent 60%);
+  z-index: 0;
   animation: drift 25s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -58,7 +58,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 
 /* SHELL */
-.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh; background: transparent;}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh; background: transparent; position: relative; z-index: 1;}
 @media(max-width:1100px){.app{grid-template-columns:1fr}}
 
 /* SIDEBAR */
