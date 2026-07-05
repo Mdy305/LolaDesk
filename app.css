@@ -31,7 +31,27 @@
   --spring-bounce:cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 html{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;overflow-x:hidden;letter-spacing:-0.015em}
-body{min-height:100vh; position: relative; background: var(--bg); margin: 0;}
+body{min-height:100vh; position: relative; background: var(--bg); margin: 0; z-index: 0;}
+
+/* ── Ultra-Premium Neon Pink Aura (Steve Jobs Level) ── */
+body::before {
+  content: "";
+  position: fixed;
+  top: -20%; left: -20%; width: 140%; height: 140%;
+  background: 
+    radial-gradient(circle at 30% 30%, rgba(255, 45, 85, 0.18) 0%, transparent 35%),
+    radial-gradient(circle at 70% 70%, rgba(255, 55, 95, 0.12) 0%, transparent 40%);
+  z-index: -1;
+  animation: siri-breathe 20s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+  pointer-events: none;
+  filter: blur(60px);
+}
+@keyframes siri-breathe {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 0.8;}
+  50% { transform: translate(3%, 5%) scale(1.1) rotate(3deg); opacity: 1;}
+  100% { transform: translate(-2%, -3%) scale(0.95) rotate(-2deg); opacity: 0.7;}
+}
+
 
 ::-webkit-scrollbar{width:0;height:0}*{scrollbar-width:none}
 a{color:inherit;text-decoration:none}
@@ -39,18 +59,18 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 
 /* SHELL */
-.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh; background: var(--bg); position: relative; z-index: 1;}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh; background: transparent; position: relative; z-index: 1;}
 @media(max-width:1100px){.app{grid-template-columns:1fr}}
 
 /* SIDEBAR */
-.sidebar{width:260px;background:rgba(10, 10, 10, 0.65);backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:sticky;top:0;height:100vh;z-index:40;flex-shrink:0}
+.sidebar{width:260px;background:rgba(15, 15, 18, 0.55);backdrop-filter:blur(48px) saturate(200%);-webkit-backdrop-filter:blur(48px) saturate(200%);border-right:0.5px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;padding:24px 0;position:sticky;top:0;height:100vh;z-index:40;flex-shrink:0;box-shadow: 1px 0 24px rgba(0,0,0,0.3);}
 @media(max-width:1100px){.sidebar{display:none}}
 .logo{padding:0 24px 28px;border-bottom:0.5px solid var(--border);margin-bottom:18px}
 .logo-mark{font-size:21px;font-weight:600;letter-spacing:.18em;color:var(--text)}
 .logo-sub{font-size:9px;font-weight:500;letter-spacing:.42em;color:var(--text3);margin-top:3px}
 .nav{display:flex;flex-direction:column;gap:4px;padding:0 14px;flex:1}
 .nav-item{display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:var(--r-sm);color:var(--text2);font-size:14px;font-weight:500;transition:all .3s var(--spring-bounce);cursor:pointer;position:relative}
-.nav-item:hover{background:var(--surface);color:var(--text)}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:var(--text);transform:scale(1.02);}
 .nav-item:active{transform:scale(.98)}
 .nav-item.active{background:rgba(255,255,255,0.06);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04)}
 .nav-item.active::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--pink);box-shadow:0 0 12px var(--pink-glow)}
