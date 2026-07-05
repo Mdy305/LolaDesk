@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Settings — LolaDesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -19,7 +19,7 @@
 
 .integration{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:0.5px solid var(--border)}
 .integration:last-child{border-bottom:none}
-.int-logo{width: 100%; max-width: 38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
+.int-logo{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
 .int-info{flex:1;min-width:0}
 .int-name{font-size:14px;font-weight:500}
 .int-status{font-size:11px;color:var(--text3)}
@@ -66,6 +66,29 @@
         </div>
       </div>
 
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-head"><div class="card-title">Lola's Knowledge</div></div>
+        <div class="set-section">
+          <p style="font-size:13px;color:var(--text2);margin:0 0 14px">Upload your menu, price list, policies, FAQs, or reviews — Lola uses them on every call and text. Upload a client contact list (CSV) to import them straight into your CRM.</p>
+          <style>
+            .kb-tile{display:block;border:1.5px dashed var(--border,#2a2731);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s,background .15s}
+            .kb-tile:hover{border-color:var(--pink,#ff4d97);background:rgba(255,77,151,.05)}
+            .kb-tile-t{font-size:14px;font-weight:700;margin-bottom:3px}
+            .kb-tile-s{font-size:12px;color:var(--text2,#a7a1ac)}
+            .kb-doc{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface,#17151a);border:1px solid var(--border,#2a2731);border-radius:10px;padding:10px 12px;font-size:13px}
+            .kb-doc-x{color:var(--text2,#a7a1ac);cursor:pointer;font-weight:700;padding:0 4px}
+            .kb-doc-x:hover{color:#ff6161}
+          </style>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+            <label class="kb-tile"><input type="file" accept=".pdf,.txt,.md" hidden onchange="kbUpload(this,'document')"><div class="kb-tile-t">Menu / policies / FAQ</div><div class="kb-tile-s">PDF or text — teaches Lola</div></label>
+            <label class="kb-tile"><input type="file" accept=".txt,.csv" hidden onchange="kbUpload(this,'reviews')"><div class="kb-tile-t">Reviews</div><div class="kb-tile-s">.txt or .csv — Lola learns your strengths</div></label>
+            <label class="kb-tile"><input type="file" accept=".csv" hidden onchange="kbUpload(this,'contacts')"><div class="kb-tile-t">Client contact list</div><div class="kb-tile-s">.csv — imports into your CRM</div></label>
+          </div>
+          <div id="kbStatus" style="font-size:12px;color:var(--text2);margin-top:12px;min-height:16px"></div>
+          <div id="kbList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-head"><div class="card-title">Smart Upsell Engine</div></div>
         <div class="set-section">
@@ -86,7 +109,7 @@
             </label>
             <span style="font-size:13px;font-weight:500;">Enable deposit collection</span>
           </div>
-          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width: 100%; max-width: 100px;margin-bottom:0"></div>
+          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width:100px;margin-bottom:0"></div>
         </div>
       </div>
 
@@ -119,7 +142,7 @@
         <div class="set-section" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
           <!-- live orb preview -->
           <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:10px">
-            <div style="position:relative;width: 100%; max-width: 120px;height:120px">
+            <div style="position:relative;width:120px;height:120px">
               <canvas id="settingsWidgetOrb" width="120" height="120" style="border-radius:50%;display:block"></canvas>
               <!-- glowing ring around preview -->
               <div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,45,142,.2);pointer-events:none;animation:sRing 3s ease-in-out infinite"></div>
@@ -146,7 +169,7 @@
       <div class="card" style="grid-column:1/-1">
         <div class="card-head">
           <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width: 100%; max-width: 30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
+            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
             Jarvis — Owner Voice Control
           </div>
           <span id="jarvisBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Not configured</span>
@@ -172,24 +195,11 @@
       <div class="card" style="grid-column:1/-1">
         <div class="card-head">
           <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width: 100%; max-width: 30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
+            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
             Lola Link — Always-On Connectivity
           </div>
           <span id="esimBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Loading…</span>
-          <div class="row" style="margin-top:40px">
-          <div class="col-half">
-            <h3 class="section-title">Neural Knowledge Base</h3>
-            <p class="section-desc">Upload salon menus, policies, or client context. Lola reads this live before answering calls or drafting campaigns (RAG).</p>
-            <div style="background:var(--surface);border:1px dashed var(--border);border-radius:var(--r-sm);padding:32px;text-align:center;cursor:pointer;transition:border 0.2s;" onclick="document.getElementById('fileUpload').click()" id="dropZone">
-              <input type="file" id="fileUpload" style="display:none;" accept=".txt,.csv" onchange="uploadKnowledge(event)">
-              <div style="color:var(--text);font-weight:500;margin-bottom:8px;">Click to upload document</div>
-              <div style="color:var(--text2);font-size:13px;">Supports .txt and .csv</div>
-            </div>
-            <div id="uploadResult" style="margin-top:12px;font-size:13px;color:var(--pink);"></div>
-          </div>
         </div>
-
-      </div>
         <div class="set-section">
           <!-- No eSIM yet -->
           <div id="esimOffer">
@@ -261,7 +271,7 @@
             <div style="font-weight:600; font-size:14px; margin-bottom:6px;">Port Business Number</div>
             <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Move your legacy salon phone number (Verizon, AT&amp;T, etc.) to LolaDesk so Lola can answer the main line.</p>
             <div style="display:flex; gap:10px;">
-              <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width: 100%; max-width: 200px;">
+              <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width:200px;">
               <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Port to Telnyx</button>
             </div>
           </div>
@@ -435,46 +445,6 @@ window.manageBilling = async function(){
     const phone = auth?.tenant?.operator_phone || '';
     if(phone) document.getElementById('fOperatorPhone').value = phone;
     const badge = document.getElementById('jarvisBadge');
-    
-    async function uploadKnowledge(event) {
-      const file = event.target.files[0];
-      if(!file) return;
-      
-      const dropZone = document.getElementById('dropZone');
-      const result = document.getElementById('uploadResult');
-      dropZone.style.opacity = '0.5';
-      result.textContent = 'Uploading to Lola\'s brain...';
-      
-      const reader = new FileReader();
-      reader.onload = async function(e) {
-        const content = e.target.result;
-        const token = localStorage.getItem('lola_token');
-        try {
-          const r = await fetch('/api/knowledge-upload', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ filename: file.name, content })
-          });
-          const data = await r.json();
-          if(data.ok) {
-            result.textContent = `Successfully ingested ${file.name}!`;
-            result.style.color = '#34c759'; // green
-          } else {
-            result.textContent = `Failed: ${data.error}`;
-            result.style.color = 'var(--pink)';
-          }
-        } catch(err) {
-          result.textContent = 'Network error during upload.';
-          result.style.color = 'var(--pink)';
-        }
-        dropZone.style.opacity = '1';
-      };
-      reader.readAsText(file);
-    }
-    
     if(phone){
       badge.textContent = 'Configured ✓';
       badge.style.background = 'rgba(52,211,113,.12)';
@@ -750,5 +720,125 @@ function fmtPlan(plan){
   else if(qs.get('connect') === 'error') showToast(`Couldn't connect ${qs.get('provider')||'that integration'}.`, 'err');
 })();
 </script>
+<script>
+/* ── Lola's Knowledge: browser-side extraction → /api/knowledge ── */
+(function(){
+  const CDN = {
+    pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+    pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+    papa: 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
+  };
+  const loaded = {};
+  function loadScript(url){
+    if(loaded[url]) return loaded[url];
+    loaded[url] = new Promise((resolve,reject)=>{
+      const s=document.createElement('script'); s.src=url; s.onload=resolve; s.onerror=()=>reject(new Error('load failed: '+url));
+      document.head.appendChild(s);
+    });
+    return loaded[url];
+  }
+  const token = ()=> localStorage.getItem('loladesk_token') || '';
+  const status = (m,err)=>{ const el=document.getElementById('kbStatus'); if(el){ el.textContent=m||''; el.style.color = err?'#ff6161':'var(--text2)'; } };
+
+  async function pdfToText(file){
+    await loadScript(CDN.pdf);
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker;
+    const buf = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    let out='';
+    for(let p=1; p<=pdf.numPages && out.length<20000; p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      out += content.items.map(i=>i.str).join(' ') + '\n';
+    }
+    return out.trim();
+  }
+  async function csvRows(file){
+    await loadScript(CDN.papa);
+    const text = await file.text();
+    return window.Papa.parse(text, { header:true, skipEmptyLines:true }).data || [];
+  }
+  function pick(row, keys){
+    const map={}; Object.keys(row).forEach(k=>map[k.toLowerCase().trim()]=row[k]);
+    for(const k of keys){ if(map[k]!=null && String(map[k]).trim()) return String(map[k]).trim(); }
+    return '';
+  }
+
+  window.kbUpload = async function(input, kind){
+    const file = input.files && input.files[0];
+    input.value = '';
+    if(!file) return;
+    if(!token()){ status('Please sign in again to upload.', true); return; }
+    status(`Reading ${file.name}…`);
+    try{
+      let payload;
+      const isPdf = /\.pdf$/i.test(file.name);
+      const isCsv = /\.csv$/i.test(file.name);
+
+      if(kind === 'contacts'){
+        if(!isCsv){ status('Contact lists must be a .csv file.', true); return; }
+        const rows = await csvRows(file);
+        const contacts = rows.map(r=>({
+          name:  pick(r,['name','full name','client','client name','first name']),
+          phone: pick(r,['phone','phone number','mobile','cell','tel','number']),
+          email: pick(r,['email','e-mail','email address'])
+        })).filter(c=>c.phone);
+        if(!contacts.length){ status('No rows with a phone number found. Make sure your CSV has a "phone" column.', true); return; }
+        payload = { kind:'contacts', filename:file.name, contacts };
+      } else {
+        let text = '';
+        if(isPdf) text = await pdfToText(file);
+        else if(isCsv){ const rows = await csvRows(file); text = rows.map(r=>Object.values(r).join(' ')).join('\n'); }
+        else text = await file.text();
+        if(!text.trim()){ status('Could not read any text from that file.', true); return; }
+        payload = { kind, filename:file.name, text };
+      }
+
+      status(`Teaching Lola from ${file.name}…`);
+      const r = await fetch('/api/knowledge', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token() },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'upload failed');
+      if(payload.kind === 'contacts'){
+        status(`Imported ${d.imported} contact${d.imported===1?'':'s'} into your CRM${d.skipped?` (${d.skipped} skipped — no phone)`:''}.`);
+      } else {
+        status(`Added. Lola now knows about ${file.name}.`);
+      }
+      kbRefresh();
+    }catch(e){
+      status('Error: '+(e.message||e), true);
+    }
+  };
+
+  window.kbDelete = async function(id){
+    if(!token()) return;
+    try{
+      await fetch('/api/knowledge?id='+encodeURIComponent(id), { method:'DELETE', headers:{ Authorization:'Bearer '+token() } });
+      kbRefresh();
+    }catch(e){ status('Could not remove: '+(e.message||e), true); }
+  };
+
+  async function kbRefresh(){
+    const list = document.getElementById('kbList');
+    if(!list || !token()) return;
+    try{
+      const r = await fetch('/api/knowledge', { headers:{ Authorization:'Bearer '+token() } });
+      if(!r.ok) return;
+      const d = await r.json();
+      const docs = d.documents || [];
+      list.innerHTML = docs.map(doc=>{
+        const name = String(doc.filename||'Untitled').replace(/[<>&"]/g,'');
+        return `<div class="kb-doc"><span>📄 <strong>${name}</strong> <span style="color:var(--text2)">· ${doc.kind} · ${doc.char_count||0} chars</span></span><span class="kb-doc-x" title="Remove" onclick="kbDelete('${doc.id}')">✕</span></div>`;
+      }).join('');
+    }catch{}
+  }
+  document.addEventListener('DOMContentLoaded', kbRefresh);
+  if(document.readyState !== 'loading') kbRefresh();
+})();
+</script>
 </body>
 </html>
+

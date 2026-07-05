@@ -33,16 +33,22 @@ export function e164(num){
 
 // ── TENANT RESOLUTION ──
 export async function getTenantByPhone(toNumber){
-  const c = db();
-  if(!c) return demoTenant();
   const phone = e164(toNumber);
-  const { data, error } = await c
-    .from('tenants').select('*')
-    .eq('phone_number', phone)
-    .maybeSingle();
-  if(error || !data) return demoTenant();
-  return data;
+  const c = db();
+  if(c){
+    const { data, error } = await c
+      .from('tenants').select('*')
+      .eq('phone_number', phone)
+      .maybeSingle();
+    if(!error && data) return data;
+  }
+  // Security: an unmapped/unprovisioned number must NOT silently resolve to a
+  // real tenant. Only the dedicated demo line may fall back to the demo tenant.
+  const demoNum = process.env.DEMO_FROM_NUMBER ? e164(process.env.DEMO_FROM_NUMBER) : null;
+  if(phone && (phone === demoNum || phone === demoTenant().phone_number)) return demoTenant();
+  return null;
 }
+export function getDemoTenant(){ return demoTenant(); }
 
 // ── Shared Jarvis line: which salon does this CALLER run? ──
 // One operator number serves every tenant: the owner's registered
@@ -361,7 +367,8 @@ export async function saveTenantKnowledge(tenantId, knowledge){
 // ── Build the knowledge text block Lola uses on calls for this tenant ──
 export function tenantKnowledgePrompt(tenant){
   if(!tenant) return '';
-  const k = tenant.knowledge || {};
+  let k = tenant.knowledge || {};
+  if(typeof k === 'string'){ const s=k; try{ k = JSON.parse(s); }catch{ k = s.trim() ? { summary: s } : {}; } }
   const lines = [];
   if(tenant.name) lines.push(`Business: ${tenant.name}`);
   if(tenant.business_mode) lines.push(`Type: ${tenant.business_mode}`);
@@ -378,6 +385,7 @@ export function tenantKnowledgePrompt(tenant){
     const upsellText = k.upsells.map(u => `- When they ask for ${u.trigger}, suggest adding ${u.offer} for $${u.price} (Pitch: "${u.pitch}")`).join('\n');
     lines.push(`UPSELL PROTOCOL:\n${upsellText}`);
   }
+  if(k.documents_digest) lines.push(`REFERENCE KNOWLEDGE (from the salon's uploaded documents & reviews — use these facts when relevant):\n${k.documents_digest}`);
   return lines.join('\n');
 }
 
@@ -503,3 +511,4 @@ export async function listTenantPortRequests(tenantId, limit = 20){
   if(error) throw new Error(error.message);
   return data || [];
 }
+
