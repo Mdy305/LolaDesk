@@ -18,6 +18,7 @@ import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
+import { runLolaAgentReply } from './lib/lola-agent.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
 import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
@@ -30,6 +31,10 @@ function escapeXml(value=''){
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 }
+
+// Keep the raw body intact so the Telnyx webhook signature can be verified.
+// Without this, Vercel pre-parses the body and signature checks are skipped.
+export const config = { api: { bodyParser: false } };
 
 async function readBody(req){
   if(req.body && typeof req.body === 'object'){
@@ -280,12 +285,13 @@ export default async function handler(req, res){
       }
       
       try{
-        const ai = await chat({
+        const ai = await runLolaAgentReply({
+          tenant,
+          clientPhone: fromN,
+          channel: 'voice',
           system: systemPrompt,
           messages,
-          maxTokens: 220,
-          temperature: 0.5,
-          source: 'voice'
+          maxTokens: 220
         });
         
        if(ai.ok && ai.text){
@@ -387,3 +393,4 @@ export default async function handler(req, res){
   res.setHeader('Content-Type', 'application/xml');
   return res.status(200).send(xml);
 }
+
