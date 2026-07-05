@@ -61,23 +61,22 @@
     const sf = S / 240.0;
     const baseR = S * 0.30;
 
-    const N    = opts.particles || Math.min(150, Math.round(S / 4.0));   // bounded neuron count for elegance
+    const N    = opts.particles || Math.min(120, Math.round(S / 4.0));   // fewer but larger particles
     const LINK = baseR * 0.68;                             // synapse connect distance
     const neurons = [];
     for(let i=0;i<N;i++){
       const a = Math.random()*Math.PI*2;
-      const r = baseR * (0.28 + 0.72*Math.pow(Math.random(), 0.50)); // denser shell
+      const r = baseR * (0.15 + 0.85*Math.pow(Math.random(), 0.6)); // denser shell
       neurons.push({
         a, r, r0:r,
         z:    Math.random(),
-        spd:  (0.10 + Math.random()*0.30) * (Math.random()<0.5?-1:1),
+        spd:  (0.05 + Math.random()*0.40) * (Math.random()<0.5?-1:1),
         wob:  Math.random()*Math.PI*2,
-        wobSpd: 0.3 + Math.random()*0.9,
+        wobSpd: 0.2 + Math.random()*1.1,
         x:0, y:0
       });
     }
 
-    const pulses = [];  // {from,to,t,spd}
     const rings  = [];  // {r,alpha,dir,w}
 
     const st = {
@@ -139,17 +138,7 @@
         n.y = C + Math.sin(n.a) * r * 0.95;
       }
 
-      // synapse firing — ALWAYS happens at idle (pulseRate > 0 in all states)
-      if(!REDUCED && Math.random() < st.pal.pulseRate + res*0.25 && pulses.length < 32){
-        const i = (Math.random()*N)|0;
-        let best=-1, bd=1e9;
-        for(let j=0;j<N;j++){
-          if(j===i) continue;
-          const dx=neurons[j].x-neurons[i].x, dy=neurons[j].y-neurons[i].y, d=dx*dx+dy*dy;
-          if(d<bd && d<LINK*LINK*1.5){ bd=d; best=j; }
-        }
-        if(best>=0) pulses.push({ from:i, to:best, t:0, spd:1.4+Math.random()*1.8 });
-      }
+      // No hard synapses/pulses in the fluid design
 
       // resonance rings
       if(!REDUCED && (speaking||listening) && st.levelSm>.10 && Math.random()<st.levelSm*.55 && rings.length<10){
@@ -179,50 +168,20 @@
 
       if(REDUCED){ drawCore(1); return; }
 
-      ctx.globalCompositeOperation = 'screen';
+      ctx.globalCompositeOperation = 'lighter';
 
-      // synapses — always rendered (brighter when active)
-      ctx.lineWidth = 0.7 * Math.max(0.5, sf);
-      for(let i=0;i<N;i++){
-        const a = neurons[i];
-        for(let j=i+1;j<N;j++){
-          const b = neurons[j];
-          const dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy;
-          if(d2>LINK*LINK) continue;
-          const d = Math.sqrt(d2);
-          // idle base alpha raised so connections are always faintly visible
-          const al = (1-d/LINK) * (0.12+e*0.20+res*0.14) * Math.min(a.z,b.z) + .025;
-          ctx.strokeStyle = rgba(mix(P.a,P.b,.5), al);
-          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-        }
-      }
-
-      // neurons
+      // smooth fluid particles instead of hard virus dots
       for(const n of neurons){
-        const sz = (0.8+n.z*1.8+e*1.0+res*1.4) * sf;
-        const al = 0.30+n.z*0.50+e*0.28+f*0.45;
-        ctx.fillStyle = rgba(mix(P.a,P.core,n.z*.6), al);
-        ctx.beginPath(); ctx.arc(n.x,n.y,Math.max(0.2, sz),0,7); ctx.fill();
-      }
-
-      // firing pulses — travel along synapses with a glowing tail
-      for(let k=pulses.length-1;k>=0;k--){
-        const p = pulses[k];
-        p.t += 0.016*p.spd;
-        if(p.t>=1){ pulses.splice(k,1); continue; }
-        const a=neurons[p.from], b=neurons[p.to];
-        const x=lerp(a.x,b.x,p.t), y=lerp(a.y,b.y,p.t);
-        const tail = Math.max(0, p.t-0.15);
-        // tail
-        ctx.strokeStyle = rgba(P.core, .55*(1-p.t));
-        ctx.lineWidth = 1.4 * Math.max(0.5, sf);
-        ctx.beginPath(); ctx.moveTo(lerp(a.x,b.x,tail),lerp(a.y,b.y,tail)); ctx.lineTo(x,y); ctx.stroke();
-        // head glow
-        ctx.fillStyle = rgba(P.core, .90*(1-p.t*.5));
-        ctx.beginPath(); ctx.arc(x,y,2.0*sf,0,7); ctx.fill();
-        // hot white center
-        ctx.fillStyle = rgba([255,255,255], .70*(1-p.t));
-        ctx.beginPath(); ctx.arc(x,y,0.9*sf,0,7); ctx.fill();
+        const sz = (3.0 + n.z*6.0 + e*3.0 + res*5.0 + f*4.0) * sf;
+        const al = (0.20 + n.z*0.35 + e*0.25 + f*0.4) * (1 - Math.min(1, Math.abs(C-n.x)/C));
+        if(al <= 0) continue;
+        
+        const rg = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, sz);
+        rg.addColorStop(0, rgba(mix(P.a, P.core, n.z*.8), Math.min(1, al*1.5)));
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        
+        ctx.fillStyle = rg;
+        ctx.fillRect(n.x - sz, n.y - sz, sz*2, sz*2);
       }
 
       // resonance rings (outward when speaking, inward when listening)
