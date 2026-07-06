@@ -134,6 +134,10 @@ export default async function handler(req,res){
   }
 
   if(!row?.id) return res.status(200).json({ok:true,ignored:'no_tenant'});
+  // Admin control panel: a suspended/cancelled salon does not send/receive Lola texts.
+  if(['suspended','cancelled'].includes(String(row.billing_status||''))){
+    return res.status(200).json({ ok:true, handled:'suspended' });
+  }
   const tName=row.name;
 
   // 10DLC compliance

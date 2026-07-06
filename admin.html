@@ -3,100 +3,117 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>LolaDesk — Admin</title>
+<title>LolaDesk — Admin Control Panel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0b0a0c;--surface:#141216;--surface2:#1b181e;--border:#272229;--border2:#39323c;
-  --text:#f4f1f3;--text2:#a7a1ac;--text3:#6f6975;--pink:#ff4d97;
-  --ok:#39d98a;--warn:#ffcf5c;--bad:#ff6161;--info:#5ea0ff;
-  --ff:ui-rounded,'SF Pro Rounded','Nunito',system-ui,sans-serif;
-}
+:root{--bg:#0b0a0c;--surface:#141216;--surface2:#1b181e;--border:#272229;--border2:#39323c;
+--text:#f4f1f3;--text2:#a7a1ac;--text3:#6f6975;--pink:#ff4d97;--ok:#39d98a;--warn:#ffcf5c;--bad:#ff6161;--info:#5ea0ff;
+--ff:ui-rounded,'SF Pro Rounded','Nunito',system-ui,sans-serif}
 body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;letter-spacing:-.01em;min-height:100vh}
 .wrap{max-width:1200px;margin:0 auto;padding:28px 24px 80px}
-.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px}
-.brand{font-size:16px;font-weight:800;letter-spacing:.16em}
-.brand .lola{color:var(--pink)}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px}
+.brand{font-size:16px;font-weight:800;letter-spacing:.16em}.brand .lola{color:var(--pink)}
 .brand small{display:block;font-size:9px;letter-spacing:.34em;color:var(--text3);margin-top:2px;font-weight:700}
 .sub{font-size:13px;color:var(--text2);font-weight:500}
-h2{font-size:13px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:28px 0 12px}
-.grid{display:grid;gap:14px}
-.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tabs{display:flex;gap:8px;margin-bottom:20px}
+.tab{font-size:13px;font-weight:700;padding:8px 16px;border-radius:999px;background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer}
+.tab.on{background:var(--pink);color:#fff;border-color:var(--pink)}
+h2{font-size:13px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:26px 0 12px}
+.grid{display:grid;gap:14px}.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px}
 .kpi-label{font-size:12px;color:var(--text3);font-weight:700;margin-bottom:8px}
-.kpi-val{font-size:28px;font-weight:800;line-height:1}
-.kpi-val.sm{font-size:22px}
+.kpi-val{font-size:28px;font-weight:800;line-height:1}.kpi-val.sm{font-size:22px}
 .kpi-sub{font-size:12px;color:var(--text2);margin-top:6px;font-weight:600}
 .pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:capitalize}
-.pill.active{background:rgba(57,217,138,.15);color:var(--ok)}
-.pill.trial{background:rgba(94,160,255,.15);color:var(--info)}
-.pill.past_due{background:rgba(255,207,92,.15);color:var(--warn)}
-.pill.cancelled{background:rgba(255,97,97,.15);color:var(--bad)}
+.pill.active{background:rgba(57,217,138,.15);color:var(--ok)}.pill.trial{background:rgba(94,160,255,.15);color:var(--info)}
+.pill.past_due{background:rgba(255,207,92,.15);color:var(--warn)}.pill.cancelled,.pill.suspended{background:rgba(255,97,97,.15);color:var(--bad)}
 .pill.plan{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:800;padding:10px 12px;border-bottom:1px solid var(--border)}
 td{padding:12px;border-bottom:1px solid var(--border);font-weight:600;vertical-align:middle}
-tr:last-child td{border-bottom:none}
-td .name{font-weight:800}
-td .muted{color:var(--text3);font-weight:600;font-size:12px}
-.num{font-variant-numeric:tabular-nums}
-.right{text-align:right}
-.state{padding:60px 20px;text-align:center;color:var(--text2);font-weight:600}
-.bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface2);margin-top:10px}
-.bar span{display:block;height:100%}
+tr.row{cursor:pointer}tr.row:hover td{background:var(--surface2)}
+td .name{font-weight:800}td .muted{color:var(--text3);font-weight:600;font-size:12px}
+.num{font-variant-numeric:tabular-nums}.right{text-align:right}
+.state{padding:56px 20px;text-align:center;color:var(--text2);font-weight:600}
+.bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface2);margin-top:10px}.bar span{display:block;height:100%}
 .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--text2);font-weight:600}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
-@media(max-width:640px){ .hide-sm{display:none} }
+.field{margin-bottom:14px}.label{font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block}
+select,input[type=text],input[type=number],textarea{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font:inherit;font-size:14px;font-weight:600;outline:none}
+select:focus,input:focus,textarea:focus{border-color:var(--pink)}
+.btn{font:inherit;font-size:13px;font-weight:800;padding:10px 16px;border-radius:999px;border:none;cursor:pointer;background:var(--pink);color:#fff}
+.btn.ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
+.btn.danger{background:rgba(255,97,97,.15);color:var(--bad)}
+.btn.sm{padding:6px 12px;font-size:12px}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;font-size:13px;font-weight:700}
+.sw{width:40px;height:22px;border-radius:999px;background:var(--border2);position:relative;cursor:pointer;transition:background .15s;flex-shrink:0}
+.sw.on{background:var(--pink)}.sw::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s}.sw.on::after{left:20px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;z-index:50}
+.overlay.show{display:flex}
+.modal{background:var(--bg);border:1px solid var(--border2);border-radius:18px;width:100%;max-width:560px;padding:24px}
+.modal h3{font-size:20px;font-weight:800;margin-bottom:2px}.modal .mono{color:var(--text3);font-size:12px;font-weight:600;margin-bottom:18px}
+.close{float:right;color:var(--text3);cursor:pointer;font-size:20px;font-weight:800;line-height:1}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 18px;font-size:13px;font-weight:700;z-index:100;display:none}
+.mini{font-size:12px;color:var(--text2);font-weight:600;padding:6px 0;border-bottom:1px solid var(--border)}
+@media(max-width:640px){.hide-sm{display:none}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="brand"><span class="lola">LOLA</span>DESK<small>ADMIN · PLATFORM</small></div>
+    <div class="brand"><span class="lola">LOLA</span>DESK<small>ADMIN · CONTROL PANEL</small></div>
     <div class="sub" id="genAt">Loading…</div>
   </div>
-
+  <div class="tabs">
+    <div class="tab on" data-tab="customers" onclick="switchTab('customers')">Customers</div>
+    <div class="tab" data-tab="settings" onclick="switchTab('settings')">Platform settings</div>
+  </div>
   <div id="content"><div class="state">Loading platform data…</div></div>
 </div>
 
-<script>
-const $ = s => document.querySelector(s);
-const esc = v => String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const token = () => localStorage.getItem('loladesk_token') || '';
-const fmtDate = d => d ? new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'}) : '—';
-const money = n => '$'+Number(n||0).toLocaleString();
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
 
-async function load(){
-  const content = $('#content');
-  if(!token()){ content.innerHTML = '<div class="state">Please <a href="/login" style="color:var(--pink)">sign in</a> as the platform owner to view this dashboard.</div>'; return; }
-  try{
-    const r = await fetch('/api/admin', { headers:{ Authorization:'Bearer '+token() } });
-    if(r.status===403){ content.innerHTML = '<div class="state">This account isn\'t on the admin allowlist. Add your email to ADMIN_EMAILS in Vercel.</div>'; return; }
-    if(r.status===401){ content.innerHTML = '<div class="state">Your session expired. Please <a href="/login" style="color:var(--pink)">sign in</a> again.</div>'; return; }
-    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||('HTTP '+r.status)); }
-    render(await r.json());
-  }catch(e){
-    content.innerHTML = '<div class="state">Couldn\'t load: '+esc(e.message||e)+'</div>';
-  }
+<script>
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const token=()=>localStorage.getItem('loladesk_token')||'';
+const fmtDate=d=>d?new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'}):'—';
+const money=n=>'$'+Number(n||0).toLocaleString();
+const FEATURES=['voice','campaigns','knowledge','whatsapp','prospecting'];
+let DATA=null, TAB='customers';
+
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2200);}
+async function api(action,params){
+  const r=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({action,...params})});
+  const d=await r.json(); if(!r.ok) throw new Error(d.error||('HTTP '+r.status)); return d;
 }
 
-function render(d){
-  $('#genAt').textContent = 'Updated '+new Date(d.generatedAt).toLocaleTimeString();
-  const s = d.membership.statusCounts||{};
-  const a = d.analytics||{};
+async function load(){
+  const content=$('#content');
+  if(!token()){content.innerHTML='<div class="state">Please <a href="/login" style="color:var(--pink)">sign in</a> as the platform owner.</div>';return;}
+  try{
+    const r=await fetch('/api/admin',{headers:{Authorization:'Bearer '+token()}});
+    if(r.status===403){content.innerHTML='<div class="state">This account isn\'t on the admin allowlist. Add your email to ADMIN_EMAILS in Vercel.</div>';return;}
+    if(r.status===401){content.innerHTML='<div class="state">Session expired. <a href="/login" style="color:var(--pink)">Sign in</a> again.</div>';return;}
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||('HTTP '+r.status));}
+    DATA=await r.json(); $('#genAt').textContent='Updated '+new Date(DATA.generatedAt).toLocaleTimeString(); renderTab();
+  }catch(e){content.innerHTML='<div class="state">Couldn\'t load: '+esc(e.message||e)+'</div>';}
+}
+function switchTab(t){TAB=t;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));renderTab();}
+function renderTab(){ TAB==='settings'?renderSettings():renderCustomers(); }
 
-  const statusBar = (()=>{
-    const order=[['active','var(--ok)'],['trial','var(--info)'],['past_due','var(--warn)'],['cancelled','var(--bad)']];
-    const total=d.totals.customers||1;
-    const segs = order.map(([k,c])=>`<span style="width:${((s[k]||0)/total*100)}%;background:${c}"></span>`).join('');
-    const legend = order.map(([k,c])=>`<span><span class="dot" style="background:${c}"></span>${k.replace('_',' ')} · ${s[k]||0}</span>`).join('');
-    return `<div class="bar">${segs}</div><div class="legend">${legend}</div>`;
-  })();
-
-  const rows = (d.customers||[]).map(cu=>`
-    <tr>
+function renderCustomers(){
+  const d=DATA,s=d.membership.statusCounts||{},a=d.analytics||{};
+  const order=[['active','var(--ok)'],['trial','var(--info)'],['past_due','var(--warn)'],['suspended','var(--bad)'],['cancelled','#6f6975']];
+  const total=d.totals.customers||1;
+  const segs=order.map(([k,c])=>`<span style="width:${((s[k]||0)/total*100)}%;background:${c}"></span>`).join('');
+  const legend=order.map(([k,c])=>`<span><span class="dot" style="background:${c}"></span>${k.replace('_',' ')} · ${s[k]||0}</span>`).join('');
+  const rows=(d.customers||[]).map((cu,i)=>`
+    <tr class="row" onclick="openTenant(${i})">
       <td><div class="name">${esc(cu.name||'—')}</div><div class="muted">${esc(cu.email||cu.slug||'')}</div></td>
       <td><span class="pill plan">${esc(cu.plan)}</span></td>
       <td><span class="pill ${esc(cu.status)}">${esc(String(cu.status).replace('_',' '))}</span></td>
@@ -105,39 +122,98 @@ function render(d){
       <td class="num right hide-sm">${cu.sms30}</td>
       <td class="num right">${cu.bookings30}</td>
       <td class="num right">${money(cu.revenue30)}</td>
-    </tr>`).join('') || '<tr><td colspan="8" class="state">No customers yet.</td></tr>';
-
-  $('#content').innerHTML = `
+    </tr>`).join('')||'<tr><td colspan="8" class="state">No customers yet.</td></tr>';
+  $('#content').innerHTML=`
     <h2>Overview</h2>
     <div class="grid kpis">
-      <div class="card"><div class="kpi-label">Customers</div><div class="kpi-val">${d.totals.customers}</div><div class="kpi-sub">${d.membership.trialsEndingSoon} trial${d.membership.trialsEndingSoon===1?'':'s'} ending soon</div></div>
+      <div class="card"><div class="kpi-label">Customers</div><div class="kpi-val">${d.totals.customers}</div><div class="kpi-sub">${d.membership.trialsEndingSoon} trial(s) ending soon</div></div>
       <div class="card"><div class="kpi-label">MRR (active)</div><div class="kpi-val">${d.totals.mrrMoney}</div><div class="kpi-sub">recurring / month</div></div>
       <div class="card"><div class="kpi-label">Active</div><div class="kpi-val sm" style="color:var(--ok)">${s.active||0}</div><div class="kpi-sub">Trial ${s.trial||0} · Past-due ${s.past_due||0}</div></div>
       <div class="card"><div class="kpi-label">Booked revenue · 30d</div><div class="kpi-val sm">${money(a.revenue30)}</div><div class="kpi-sub">${a.bookings30} bookings</div></div>
     </div>
-
-    <h2>Membership</h2>
-    <div class="card">${statusBar}</div>
-
+    <h2>Membership</h2><div class="card"><div class="bar">${segs}</div><div class="legend">${legend}</div></div>
     <h2>Customer service · last 30 days</h2>
     <div class="grid kpis">
       <div class="card"><div class="kpi-label">Calls handled</div><div class="kpi-val sm">${a.calls30}</div><div class="kpi-sub">${a.booked30} booked on call</div></div>
       <div class="card"><div class="kpi-label">Texts handled</div><div class="kpi-val sm">${a.sms30}</div></div>
       <div class="card"><div class="kpi-label">Bookings</div><div class="kpi-val sm">${a.bookings30}</div></div>
-      <div class="card"><div class="kpi-label">Avg interaction quality</div><div class="kpi-val sm">${a.qualityAvg==null?'—':a.qualityAvg}</div><div class="kpi-sub">across all tenants</div></div>
+      <div class="card"><div class="kpi-label">Avg quality</div><div class="kpi-val sm">${a.qualityAvg==null?'—':a.qualityAvg}</div><div class="kpi-sub">all tenants</div></div>
     </div>
+    <h2>Customers · click to manage</h2>
+    <div class="card" style="padding:4px 4px 0;overflow-x:auto"><table>
+      <thead><tr><th>Salon</th><th>Plan</th><th>Status</th><th class="hide-sm">Joined</th><th class="right">Calls</th><th class="right hide-sm">Texts</th><th class="right">Books</th><th class="right">Rev 30d</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
 
-    <h2>Customers</h2>
-    <div class="card" style="padding:4px 4px 0;overflow-x:auto">
-      <table>
-        <thead><tr>
-          <th>Salon</th><th>Plan</th><th>Status</th><th class="hide-sm">Joined</th>
-          <th class="right">Calls</th><th class="right hide-sm">Texts</th><th class="right">Books</th><th class="right">Rev 30d</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+function openTenant(i){
+  const cu=DATA.customers[i]; if(!cu) return;
+  const m=$('#modal');
+  const statuses=(DATA.meta?.statuses)||['active','trial','past_due','cancelled','suspended'];
+  const plans=(DATA.meta?.plans)||['starter','pro','medspa'];
+  const feats=FEATURES.map(f=>`<div class="toggle">${f}<div class="sw ${cu.features&&cu.features[f]?'on':''}" onclick="toggleFeat('${cu.id}',this,'${f}')"></div></div>`).join('');
+  m.innerHTML=`
+    <span class="close" onclick="closeModal()">×</span>
+    <h3>${esc(cu.name||'—')}</h3><div class="mono">${esc(cu.email||'')} · ${esc(cu.phone||'no number')}</div>
+    <div class="field"><label class="label">Status</label>
+      <div class="row2"><select id="mStatus">${statuses.map(s=>`<option ${s===cu.status?'selected':''}>${s}</option>`).join('')}</select>
+      <button class="btn sm" onclick="saveStatus('${cu.id}')">Save</button></div></div>
+    <div class="field"><label class="label">Plan</label>
+      <div class="row2"><select id="mPlan">${plans.map(p=>`<option ${p===cu.plan?'selected':''}>${p}</option>`).join('')}</select>
+      <button class="btn sm" onclick="savePlan('${cu.id}')">Save</button></div></div>
+    <div class="field"><label class="label">Trial</label>
+      <div class="row2"><span class="mono">ends ${fmtDate(cu.trialEndsAt)}</span>
+      <button class="btn sm ghost" onclick="extendTrial('${cu.id}',14)">+14 days</button>
+      <button class="btn sm ghost" onclick="extendTrial('${cu.id}',30)">+30 days</button></div></div>
+    <div class="field"><label class="label">Features</label>${feats}</div>
+    <div class="field"><label class="label">Internal note</label>
+      <textarea id="mNote" rows="2" placeholder="Notes only you see">${esc(cu.note||'')}</textarea>
+      <div style="margin-top:6px"><button class="btn sm ghost" onclick="saveNote('${cu.id}')">Save note</button></div></div>
+    <div id="mDetail" class="field"><label class="label">Recent activity</label><div class="mono">Loading…</div></div>
+    <div class="row2" style="justify-content:space-between;margin-top:18px">
+      <button class="btn danger" onclick="delTenant('${cu.id}','${esc(cu.name)}')">Delete customer</button>
+      <button class="btn ghost" onclick="closeModal()">Close</button></div>`;
+  $('#overlay').classList.add('show');
+  api('tenant.detail',{tenantId:cu.id}).then(dt=>{
+    const calls=(dt.recentCalls||[]).slice(0,5).map(c=>`<div class="mini">📞 ${esc(c.from_number||'')} · ${esc(c.outcome||'')} · ${fmtDate(c.created_at)}</div>`).join('');
+    const books=(dt.recentBookings||[]).slice(0,5).map(b=>`<div class="mini">📅 ${esc(b.service||'')} · ${esc(b.client_name||'')} · ${money(b.price)}</div>`).join('');
+    $('#mDetail').innerHTML=`<label class="label">Recent activity · ${dt.clientCount} clients</label>${calls||''}${books||''}${(!calls&&!books)?'<div class="mono">No recent calls or bookings.</div>':''}`;
+  }).catch(()=>{});
+}
+function closeModal(){$('#overlay').classList.remove('show');}
+
+async function saveStatus(id){try{await api('tenant.set_status',{tenantId:id,status:$('#mStatus').value});toast('Status updated');load();closeModal();}catch(e){toast(e.message);}}
+async function savePlan(id){try{await api('tenant.set_plan',{tenantId:id,plan:$('#mPlan').value});toast('Plan updated');load();closeModal();}catch(e){toast(e.message);}}
+async function extendTrial(id,days){try{await api('tenant.extend_trial',{tenantId:id,days});toast('Trial extended '+days+'d');load();closeModal();}catch(e){toast(e.message);}}
+async function saveNote(id){try{await api('tenant.set_note',{tenantId:id,note:$('#mNote').value});toast('Note saved');}catch(e){toast(e.message);}}
+async function toggleFeat(id,el,f){const on=!el.classList.contains('on');el.classList.toggle('on',on);try{await api('tenant.set_features',{tenantId:id,features:{[f]:on}});toast(f+(on?' on':' off'));}catch(e){el.classList.toggle('on',!on);toast(e.message);}}
+async function delTenant(id,name){if(!confirm('Permanently delete "'+name+'" and all its data? This cannot be undone.'))return;try{await api('tenant.delete',{tenantId:id,confirm:true});toast('Deleted');load();closeModal();}catch(e){toast(e.message);}}
+
+function renderSettings(){
+  const cfg=(DATA&&DATA.config)||{};
+  $('#content').innerHTML=`
+    <h2>Global defaults</h2>
+    <div class="card">
+      <div class="field"><label class="label">Default assistant name</label><input type="text" id="cName" value="${esc(cfg.default_persona_name||'Lola')}"></div>
+      <div class="field"><label class="label">Default greeting / persona prompt</label><textarea id="cPrompt" rows="3" placeholder="Applied to new salons that haven't customized Lola">${esc(cfg.default_prompt||'')}</textarea></div>
+      <div class="field"><label class="label">Dashboard announcement banner (blank = none)</label><input type="text" id="cBanner" value="${esc(cfg.announcement||'')}"></div>
+      <button class="btn" onclick="saveDefaults()">Save defaults</button>
+    </div>
+    <h2>Plan pricing (for MRR + display)</h2>
+    <div class="card">
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+        ${['starter','pro','medspa'].map(p=>`<div class="field"><label class="label">${p} $/mo</label><input type="number" id="price_${p}" value="${esc((cfg.plan_prices&&cfg.plan_prices[p])|| (DATA.meta?.planPrice?.[p]??''))}"></div>`).join('')}
+      </div>
+      <button class="btn" onclick="savePrices()">Save prices</button>
+    </div>
+    <h2>Connectors enabled platform-wide</h2>
+    <div class="card">
+      ${['square','vagaro','mindbody','fresha','google'].map(k=>`<div class="toggle">${k}<div class="sw ${(cfg.connectors&&cfg.connectors[k])!==false?'on':''}" onclick="this.classList.toggle('on')" data-conn="${k}"></div></div>`).join('')}
+      <button class="btn" style="margin-top:8px" onclick="saveConnectors()">Save connectors</button>
     </div>`;
 }
+async function saveDefaults(){try{await api('config.set',{config:{default_persona_name:$('#cName').value,default_prompt:$('#cPrompt').value,announcement:$('#cBanner').value}});toast('Defaults saved');load();}catch(e){toast(e.message);}}
+async function savePrices(){const pp={};['starter','pro','medspa'].forEach(p=>{const v=parseInt($('#price_'+p).value);if(!isNaN(v))pp[p]=v;});try{await api('config.set',{config:{plan_prices:pp}});toast('Prices saved');load();}catch(e){toast(e.message);}}
+async function saveConnectors(){const conn={};document.querySelectorAll('[data-conn]').forEach(el=>conn[el.dataset.conn]=el.classList.contains('on'));try{await api('config.set',{config:{connectors:conn}});toast('Connectors saved');load();}catch(e){toast(e.message);}}
 
 load();
 </script>

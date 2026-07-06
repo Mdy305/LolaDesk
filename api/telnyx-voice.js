@@ -159,6 +159,11 @@ export default async function handler(req, res){
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }
+  // Admin control panel: a suspended/cancelled salon does not take calls.
+  if(['suspended','cancelled'].includes(String(tenant.billing_status||''))){
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Joanna-Neural">This salon is not currently accepting calls. Goodbye.</Say><Hangup/></Response>');
+  }
 
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;
