@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LolaDesk — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0a0c;--surface:#141216;--surface2:#1b181e;--border:#272229;--border2:#39323c;
+  --text:#f4f1f3;--text2:#a7a1ac;--text3:#6f6975;--pink:#ff4d97;
+  --ok:#39d98a;--warn:#ffcf5c;--bad:#ff6161;--info:#5ea0ff;
+  --ff:ui-rounded,'SF Pro Rounded','Nunito',system-ui,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;letter-spacing:-.01em;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 24px 80px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px}
+.brand{font-size:16px;font-weight:800;letter-spacing:.16em}
+.brand .lola{color:var(--pink)}
+.brand small{display:block;font-size:9px;letter-spacing:.34em;color:var(--text3);margin-top:2px;font-weight:700}
+.sub{font-size:13px;color:var(--text2);font-weight:500}
+h2{font-size:13px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:28px 0 12px}
+.grid{display:grid;gap:14px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px}
+.kpi-label{font-size:12px;color:var(--text3);font-weight:700;margin-bottom:8px}
+.kpi-val{font-size:28px;font-weight:800;line-height:1}
+.kpi-val.sm{font-size:22px}
+.kpi-sub{font-size:12px;color:var(--text2);margin-top:6px;font-weight:600}
+.pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:capitalize}
+.pill.active{background:rgba(57,217,138,.15);color:var(--ok)}
+.pill.trial{background:rgba(94,160,255,.15);color:var(--info)}
+.pill.past_due{background:rgba(255,207,92,.15);color:var(--warn)}
+.pill.cancelled{background:rgba(255,97,97,.15);color:var(--bad)}
+.pill.plan{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:800;padding:10px 12px;border-bottom:1px solid var(--border)}
+td{padding:12px;border-bottom:1px solid var(--border);font-weight:600;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+td .name{font-weight:800}
+td .muted{color:var(--text3);font-weight:600;font-size:12px}
+.num{font-variant-numeric:tabular-nums}
+.right{text-align:right}
+.state{padding:60px 20px;text-align:center;color:var(--text2);font-weight:600}
+.bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface2);margin-top:10px}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--text2);font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+@media(max-width:640px){ .hide-sm{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span class="lola">LOLA</span>DESK<small>ADMIN · PLATFORM</small></div>
+    <div class="sub" id="genAt">Loading…</div>
+  </div>
+
+  <div id="content"><div class="state">Loading platform data…</div></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const token = () => localStorage.getItem('loladesk_token') || '';
+const fmtDate = d => d ? new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'}) : '—';
+const money = n => '$'+Number(n||0).toLocaleString();
+
+async function load(){
+  const content = $('#content');
+  if(!token()){ content.innerHTML = '<div class="state">Please <a href="/login" style="color:var(--pink)">sign in</a> as the platform owner to view this dashboard.</div>'; return; }
+  try{
+    const r = await fetch('/api/admin', { headers:{ Authorization:'Bearer '+token() } });
+    if(r.status===403){ content.innerHTML = '<div class="state">This account isn\'t on the admin allowlist. Add your email to ADMIN_EMAILS in Vercel.</div>'; return; }
+    if(r.status===401){ content.innerHTML = '<div class="state">Your session expired. Please <a href="/login" style="color:var(--pink)">sign in</a> again.</div>'; return; }
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||('HTTP '+r.status)); }
+    render(await r.json());
+  }catch(e){
+    content.innerHTML = '<div class="state">Couldn\'t load: '+esc(e.message||e)+'</div>';
+  }
+}
+
+function render(d){
+  $('#genAt').textContent = 'Updated '+new Date(d.generatedAt).toLocaleTimeString();
+  const s = d.membership.statusCounts||{};
+  const a = d.analytics||{};
+
+  const statusBar = (()=>{
+    const order=[['active','var(--ok)'],['trial','var(--info)'],['past_due','var(--warn)'],['cancelled','var(--bad)']];
+    const total=d.totals.customers||1;
+    const segs = order.map(([k,c])=>`<span style="width:${((s[k]||0)/total*100)}%;background:${c}"></span>`).join('');
+    const legend = order.map(([k,c])=>`<span><span class="dot" style="background:${c}"></span>${k.replace('_',' ')} · ${s[k]||0}</span>`).join('');
+    return `<div class="bar">${segs}</div><div class="legend">${legend}</div>`;
+  })();
+
+  const rows = (d.customers||[]).map(cu=>`
+    <tr>
+      <td><div class="name">${esc(cu.name||'—')}</div><div class="muted">${esc(cu.email||cu.slug||'')}</div></td>
+      <td><span class="pill plan">${esc(cu.plan)}</span></td>
+      <td><span class="pill ${esc(cu.status)}">${esc(String(cu.status).replace('_',' '))}</span></td>
+      <td class="num hide-sm">${fmtDate(cu.createdAt)}</td>
+      <td class="num right">${cu.calls30}</td>
+      <td class="num right hide-sm">${cu.sms30}</td>
+      <td class="num right">${cu.bookings30}</td>
+      <td class="num right">${money(cu.revenue30)}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="state">No customers yet.</td></tr>';
+
+  $('#content').innerHTML = `
+    <h2>Overview</h2>
+    <div class="grid kpis">
+      <div class="card"><div class="kpi-label">Customers</div><div class="kpi-val">${d.totals.customers}</div><div class="kpi-sub">${d.membership.trialsEndingSoon} trial${d.membership.trialsEndingSoon===1?'':'s'} ending soon</div></div>
+      <div class="card"><div class="kpi-label">MRR (active)</div><div class="kpi-val">${d.totals.mrrMoney}</div><div class="kpi-sub">recurring / month</div></div>
+      <div class="card"><div class="kpi-label">Active</div><div class="kpi-val sm" style="color:var(--ok)">${s.active||0}</div><div class="kpi-sub">Trial ${s.trial||0} · Past-due ${s.past_due||0}</div></div>
+      <div class="card"><div class="kpi-label">Booked revenue · 30d</div><div class="kpi-val sm">${money(a.revenue30)}</div><div class="kpi-sub">${a.bookings30} bookings</div></div>
+    </div>
+
+    <h2>Membership</h2>
+    <div class="card">${statusBar}</div>
+
+    <h2>Customer service · last 30 days</h2>
+    <div class="grid kpis">
+      <div class="card"><div class="kpi-label">Calls handled</div><div class="kpi-val sm">${a.calls30}</div><div class="kpi-sub">${a.booked30} booked on call</div></div>
+      <div class="card"><div class="kpi-label">Texts handled</div><div class="kpi-val sm">${a.sms30}</div></div>
+      <div class="card"><div class="kpi-label">Bookings</div><div class="kpi-val sm">${a.bookings30}</div></div>
+      <div class="card"><div class="kpi-label">Avg interaction quality</div><div class="kpi-val sm">${a.qualityAvg==null?'—':a.qualityAvg}</div><div class="kpi-sub">across all tenants</div></div>
+    </div>
+
+    <h2>Customers</h2>
+    <div class="card" style="padding:4px 4px 0;overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Salon</th><th>Plan</th><th>Status</th><th class="hide-sm">Joined</th>
+          <th class="right">Calls</th><th class="right hide-sm">Texts</th><th class="right">Books</th><th class="right">Rev 30d</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+load();
+</script>
+</body>
+</html>
+
