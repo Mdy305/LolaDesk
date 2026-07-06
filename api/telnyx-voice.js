@@ -19,6 +19,7 @@ import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { runLolaAgentReply } from './lib/lola-agent.js';
+import { channelAllowed } from './lib/plans.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
 import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
@@ -163,6 +164,11 @@ export default async function handler(req, res){
   if(['suspended','cancelled'].includes(String(tenant.billing_status||''))){
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Joanna-Neural">This salon is not currently accepting calls. Goodbye.</Say><Hangup/></Response>');
+  }
+  // Plan entitlement: phone answering is a Pro/Med Spa channel (admin can unlock per tenant).
+  if(!channelAllowed(tenant, 'voice')){
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Joanna-Neural">Phone answering is not included on this plan. Please upgrade in your LolaDesk dashboard. Goodbye.</Say><Hangup/></Response>');
   }
 
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,

@@ -7,6 +7,7 @@ import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { runLolaAgentReply } from './lib/lola-agent.js';
+import { channelAllowed } from './lib/plans.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 
 
@@ -137,6 +138,10 @@ export default async function handler(req,res){
   // Admin control panel: a suspended/cancelled salon does not send/receive Lola texts.
   if(['suspended','cancelled'].includes(String(row.billing_status||''))){
     return res.status(200).json({ ok:true, handled:'suspended' });
+  }
+  // Plan entitlement: WhatsApp is a Pro/Med Spa channel (admin can unlock per tenant). SMS is on every plan.
+  if(channel==='whatsapp' && !channelAllowed(row, 'whatsapp')){
+    return res.status(200).json({ ok:true, handled:'whatsapp_not_on_plan' });
   }
   const tName=row.name;
 
