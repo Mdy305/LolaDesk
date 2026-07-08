@@ -2,28 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Lola</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
-:root{ --gold:#f0c87a; --aura1:#ff2d8e; --aura2:#ff6bb0; --aura3:#a64bff; --aura4:#ff9ec9; }
+:root{ --gold:#f0c87a; --aura1:#ccff00; --aura2:#ff6bb0; --aura3:#a64bff; --aura4:#e6ff85; }
 .live{position:relative;min-height:calc(100vh - 40px);overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
 /* atmosphere layers */
 #field{position:absolute;inset:0;width:100%;height:100%;z-index:0}
 #aura{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:1;filter:blur(.2px)}
-
+.veil{position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:radial-gradient(120% 80% at 50% 46%, transparent 30%, rgba(7,7,8,.55) 78%, var(--bg) 100%)}
 /* text */
 .copy{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:18px;margin-top:auto;margin-bottom:0;text-align:center;pointer-events:none}
 .lola-name{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:3;
-  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;font-size:30px;letter-spacing:.06em;
-  color:rgba(255,255,255,.92);pointer-events:none;text-shadow:0 0 30px rgba(255,45,142,.5);
+  font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:30px;letter-spacing:.06em;
+  color:rgba(255,255,255,.92);pointer-events:none;text-shadow:0 0 30px rgba(204,255,0,.5);
   opacity:0;transition:opacity 1.2s ease}
 .live.awake .lola-name{opacity:0}
-.prompt{position:relative;z-index:3;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;
+.prompt{position:relative;z-index:3;font-family:var(--ff-serif);font-style:italic;font-weight:300;
   font-size:25px;color:rgba(242,242,245,.85);min-height:32px;letter-spacing:.015em;transition:opacity .5s}
-.said{position:relative;z-index:3;max-width: 100%; max-width: 600px;color:var(--text2);font-size:16px;line-height:1.75;
+.said{position:relative;z-index:3;max-width:600px;color:var(--text2);font-size:16px;line-height:1.75;
   min-height:54px;padding:0 28px;font-weight:300}
 .said .q{display:block;color:var(--text3);font-style:italic;font-size:13.5px;margin-bottom:10px;letter-spacing:.02em}
 .dock{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;gap:14px;
@@ -32,21 +31,23 @@
   background:rgba(255,255,255,.03);border:.5px solid rgba(255,255,255,.10);backdrop-filter:blur(20px);
   color:rgba(242,242,245,.7);font-size:13px;letter-spacing:.04em;font-weight:400;
   transition:all .4s cubic-bezier(.2,.8,.2,1)}
-.invoke:hover{border-color:rgba(255,45,142,.5);color:#fff;transform:translateY(-1px);box-shadow:0 10px 40px rgba(255,45,142,.18)}
-.invoke.on{background:rgba(255,45,142,.10);border-color:rgba(255,45,142,.6);color:var(--aura2)}
-.pulse-dot{width: 100%; max-width: 7px;height:7px;border-radius:50%;background:rgba(255,255,255,.3);transition:.3s}
+.invoke:hover{border-color:rgba(204,255,0,.5);color:#fff;transform:translateY(-1px);box-shadow:0 10px 40px rgba(204,255,0,.18)}
+.invoke.on{background:rgba(204,255,0,.10);border-color:rgba(204,255,0,.6);color:var(--aura2)}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.3);transition:.3s}
 .invoke.on .pulse-dot{background:var(--aura1);box-shadow:0 0 12px var(--aura1);animation:pd 1.6s ease-in-out infinite}
 @keyframes pd{0%,100%{opacity:.6}50%{opacity:1}}
-.whisper{font-size:11.5px;color:var(--text3);letter-spacing:.03em;max-width: 100%; max-width: 380px;text-align:center;font-weight:300}
+.whisper{font-size:11.5px;color:var(--text3);letter-spacing:.03em;max-width:380px;text-align:center;font-weight:300}
 .err{color:#ff7a7a;font-size:12px;min-height:14px;letter-spacing:.02em}
 @media (prefers-reduced-motion: reduce){ #field,#aura{opacity:.6} }
 </style>
 </head>
-<body data-page="lola-live" style="background:#000;">
+<body data-page="lola-live">
 <div class="app">
   <main class="main" style="padding:0">
     <div class="live" id="live">
-      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:1; pointer-events:none;"><canvas id="lolaOrbCanvas"></canvas></div>
+      <canvas id="field"></canvas>
+      <canvas id="aura" width="900" height="900"></canvas>
+      <div class="veil"></div>
       <div class="lola-name" id="lolaName">Lola</div>
 
       <div class="copy">
@@ -61,9 +62,9 @@
           </div>
           
           <!-- Keyboard Input Row -->
-          <div id="keyboardInputRow" style="display:none; width:100%; max-width: 100%; max-width: 500px; margin-top:10px; gap:8px; align-items:center; padding: 0 20px; box-sizing: border-box;">
+          <div id="keyboardInputRow" style="display:none; width:100%; max-width:500px; margin-top:10px; gap:8px; align-items:center; padding: 0 20px; box-sizing: border-box;">
             <input id="keyboardText" placeholder="Type your message to Lola..." style="flex:1; background:var(--surface); border:0.5px solid var(--border); border-radius:24px; padding:12px 18px; color:var(--text); font-size:14px; outline:none; transition:border-color .15s; width:100%; box-sizing:border-box;" />
-            <button onclick="sendKeyboardMessage()" style="width: 100%; max-width: 42px; height:42px; border-radius:50%; background:var(--pink); color:#fff; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink: 0; cursor: pointer;">
+            <button onclick="sendKeyboardMessage()" style="width:42px; height:42px; border-radius:50%; background:var(--pink); color:#fff; display:flex; align-items:center; justify-content:center; transition:background .15s; flex-shrink: 0; cursor: pointer;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             </button>
           </div>
@@ -76,32 +77,124 @@
   </main>
 </div>
 
-<script src="lola-orb.js"></script>
 <script src="auth-guard.js"></script>
 <script src="sidebar.js"></script>
 <script>
-// ════════ THE ORB ════════
-const orbCanvas = document.getElementById('lolaOrbCanvas');
-let orb = null;
-if (window.LolaOrb && orbCanvas) {
-  // Mobile responsive sizing
-  const sz = Math.min(420, window.innerWidth * 0.85);
-  orbCanvas.style.width = sz + 'px';
-  orbCanvas.style.height = sz + 'px';
-  orb = LolaOrb.mount(orbCanvas, { size: sz, particles: 140 });
-  orb.setState('idle');
-  window.orb = orb;
+// ════════ ATMOSPHERE: drifting particle field ════════
+const field=document.getElementById('field'), fx=field.getContext('2d');
+let FW,FH, parts=[];
+function sizeField(){ FW=field.width=field.offsetWidth; FH=field.height=field.offsetHeight;
+  parts=Array.from({length:100},()=>({x:Math.random()*FW,y:Math.random()*FH,
+    r:Math.random()*1.2+.2,s:Math.random()*.15+.02,o:Math.random()*.2+.05,
+    h:Math.random()*40-20})); }
+window.addEventListener('resize',sizeField); setTimeout(sizeField,30);
+function drawField(){
+  fx.clearRect(0,0,FW,FH);
+  for(const p of parts){ p.y-=p.s; if(p.y<-5){p.y=FH+5;p.x=Math.random()*FW;}
+    fx.beginPath(); fx.arc(p.x,p.y,p.r,0,7);
+    fx.fillStyle=`rgba(255,${150+p.h},${190+p.h*.5},${p.o*(.3+amp*.5)})`; fx.fill(); }
+  requestAnimationFrame(drawField);
 }
 
-// Global amplitude for mic / voice
-let ampTarget = 0;
-function tickOrbLevel() {
-  if (window.orb) window.orb.setLevel(ampTarget);
-  requestAnimationFrame(tickOrbLevel);
-}
-tickOrbLevel();
+// ════════ THE AURA: Steve Jobs Level Siri Fluid Orb ════════
+const aura=document.getElementById('aura'), ax=aura.getContext('2d');
+const AC=450; // center of 900 canvas
+let mode='asleep', amp=0, ampTarget=0, t=0, bloom=0, bloomTarget=0;
 
-// ════════ INTERACTION ════════
+// emotional color palette for the ribbons
+const PAL={
+  asleep:[ [255,45,142], [100,20,80], [30,10,30], [255,80,140] ],
+  listening:[ [255,107,176], [166,75,255], [60,20,180], [255,200,255] ],
+  thinking:[ [255,150,120], [255,45,142], [180,40,120], [255,220,180] ],
+  speaking:[ [255,158,201], [255,45,142], [200,80,255], [255,255,255] ]
+};
+
+let curPal = PAL.asleep.map(c=>[...c]);
+
+function drawAura(){
+  t+=0.016;
+  amp+=(ampTarget-amp)*0.15;
+  bloom+=(bloomTarget-bloom)*0.05;
+  
+  const targetPal = PAL[mode]||PAL.asleep;
+  for(let i=0; i<4; i++){
+    curPal[i][0] += (targetPal[i][0] - curPal[i][0])*0.04;
+    curPal[i][1] += (targetPal[i][1] - curPal[i][1])*0.04;
+    curPal[i][2] += (targetPal[i][2] - curPal[i][2])*0.04;
+  }
+
+  ax.clearRect(0,0,900,900);
+  ax.globalCompositeOperation='screen';
+  
+  const R = 150 + bloom*30 + amp*70; // base radius
+  
+  // draw 12 ribbons
+  for(let i=0; i<12; i++){
+    ax.beginPath();
+    let colIdx = i % 4;
+    let color = curPal[colIdx];
+    
+    // thickness and opacity
+    let lw = 1.5 + (i%3)*1.0 + amp*2.5;
+    let alpha = 0.5 + bloom*0.3 + amp*0.4 - (i*0.03);
+    if(alpha>1) alpha=1;
+    
+    ax.lineWidth = lw;
+    ax.strokeStyle = `rgba(${color[0]|0},${color[1]|0},${color[2]|0},${alpha})`;
+    ax.shadowColor = ax.strokeStyle;
+    ax.shadowBlur = 12 + amp*20;
+    
+    // ribbon geometry
+    let points = [];
+    let segments = 100;
+    for(let j=0; j<=segments; j++){
+      let a = (j/segments)*Math.PI*2;
+      // complex sine wave noise for this layer
+      let offset1 = Math.sin(a*3 + t*(0.8+i*0.15)) * (15 + amp*35);
+      let offset2 = Math.cos(a*5 - t*1.2 + i) * (8 + amp*20);
+      let offset3 = Math.sin(a*2 + t*0.7 - i*1.5) * (12 + amp*25);
+      
+      let r = R + offset1 + offset2 + offset3 + (i*4);
+      
+      let x = AC + Math.cos(a)*r;
+      let y = AC + Math.sin(a)*r;
+      points.push({x,y});
+    }
+    
+    ax.moveTo(points[0].x, points[0].y);
+    for(let j=1; j<points.length-2; j++){
+      let xc = (points[j].x + points[j+1].x) / 2;
+      let yc = (points[j].y + points[j+1].y) / 2;
+      ax.quadraticCurveTo(points[j].x, points[j].y, xc, yc);
+    }
+    ax.quadraticCurveTo(
+      points[points.length-2].x, 
+      points[points.length-2].y, 
+      points[points.length-1].x, 
+      points[points.length-1].y
+    );
+    
+    ax.stroke();
+  }
+
+  // Draw inner luminous core
+  ax.globalCompositeOperation='lighter';
+  let coreR = R * 0.7 + amp*30;
+  const core = ax.createRadialGradient(AC,AC,0,AC,AC,coreR*1.2);
+  core.addColorStop(0, `rgba(255,255,255,${0.25 + amp*0.4})`);
+  core.addColorStop(0.4, `rgba(${curPal[0][0]|0},${curPal[0][1]|0},${curPal[0][2]|0},${0.3 + amp*0.3})`);
+  core.addColorStop(1, 'rgba(0,0,0,0)');
+  ax.fillStyle = core;
+  ax.beginPath(); ax.arc(AC,AC,coreR*1.2,0,7); ax.fill();
+
+  requestAnimationFrame(drawAura);
+}
+drawField(); drawAura();
+
+// position aura canvas responsively (scale to ~340px visual)
+function sizeAura(){ const px=Math.min(380, window.innerWidth*0.7); aura.style.width=px+'px'; aura.style.height=px+'px'; }
+window.addEventListener('resize',sizeAura); sizeAura();
+
 // ════════ INTERACTION ════════
 const promptEl=document.getElementById('prompt'), saidEl=document.getElementById('said');
 const invoke=document.getElementById('invoke'), invokeLabel=document.getElementById('invokeLabel');
@@ -109,12 +202,7 @@ const whisper=document.getElementById('whisper'), errEl=document.getElementById(
 const liveEl=document.getElementById('live'), lolaName=document.getElementById('lolaName');
 let powered=false, awake=false, history=[], recog=null, audioEl=null, micStream=null, idleTimer=null;
 
-function setMode(m) { 
-  if (window.orb) {
-    if (m === 'asleep') window.orb.setState('idle');
-    else window.orb.setState(m);
-  }
-}
+function setMode(m){ mode=m; bloomTarget = (m==='asleep')?0:1; }
 function setPrompt(txt){ promptEl.textContent=txt; }
 
 async function startMic(){

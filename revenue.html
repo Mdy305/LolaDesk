@@ -2,11 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Revenue — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .rev-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
@@ -15,20 +12,20 @@
 .chart-big{font-size:34px;font-weight:600;margin-bottom:4px}
 .chart-change{font-size:13px;color:var(--text);font-weight:500;margin-bottom:18px}
 .donut-wrap{display:flex;align-items:center;gap:20px;padding:20px}
-.donut{position:relative;width: 100%; max-width: 130px;height:130px;flex-shrink:0}
+.donut{position:relative;width:130px;height:130px;flex-shrink:0}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .donut-total{font-size:18px;font-weight:600}
 .donut-label{font-size:10px;color:var(--text3)}
 .legend{flex:1;display:flex;flex-direction:column;gap:10px}
 .legend-item{display:flex;align-items:center;gap:9px;font-size:13px}
-.legend-dot{width: 100%; max-width: 9px;height:9px;border-radius:2px;flex-shrink:0}
+.legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
 .legend-name{color:var(--text2);flex:1}
 .legend-val{font-weight:500}
 .svc-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:0.5px solid var(--border)}
 .svc-row:last-child{border-bottom:none}
 .svc-name{flex:1;font-size:13.5px;font-weight:500}
 .svc-count{font-size:12px;color:var(--text3);width:80px}
-.svc-rev{font-size:14px;font-weight:600;width: 100%; max-width: 90px;text-align:right}
+.svc-rev{font-size:14px;font-weight:600;width:90px;text-align:right}
 </style>
 </head>
 <body data-page="revenue">
@@ -40,24 +37,16 @@
         <p class="page-sub">What Lola is bringing in — and where it comes from.</p>
       </div>
       <div class="topbar-actions">
-        <div style="position:relative;display:inline-block">
-          <button class="btn btn-ghost" id="periodBtn" onclick="togglePeriod()" style="min-width: 100%; max-width: 130px;justify-content:space-between">This month <span style="color:var(--text3)">▾</span></button>
-          <div id="periodMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;z-index:30;min-width: 100%; max-width: 160px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
-            <div class="period-opt" onclick="setPeriod('30d','This month')" data-p="30d">This month</div>
-            <div class="period-opt" onclick="setPeriod('90d','Last 90 days')" data-p="90d">Last 90 days</div>
-            <div class="period-opt" onclick="setPeriod('ytd','Year to date')" data-p="ytd">Year to date</div>
-            <div class="period-opt" onclick="setPeriod('all','All time')" data-p="all">All time</div>
-          </div>
-        </div>
-        <button class="btn btn-ghost" id="exportBtn" onclick="exportCSV()">Export CSV</button>
+        <button class="btn btn-ghost">This month ▾</button>
+        <button class="btn btn-ghost">Export</button>
       </div>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val" id="kpiTotal" data-rev-total>—</div><div class="kpi-label">Total revenue</div><div class="kpi-sub" id="kpiPeriodLabel">This month</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiAvgTicket">—</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub" id="kpiTicketChange">—</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiAppts">—</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Booked by Lola</div></div>
-      <div class="kpi"><div class="kpi-val pink" id="kpiLola">—</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Rebookings + win-backs</div></div>
+      <div class="kpi"><div class="kpi-val">$38,200</div><div class="kpi-label">This month</div><div class="kpi-sub green" style="color:var(--text)">↑ 24% vs last</div></div>
+      <div class="kpi"><div class="kpi-val">$320</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub">↑ 8%</div></div>
+      <div class="kpi"><div class="kpi-val">119</div><div class="kpi-label">Appointments</div><div class="kpi-sub">↑ 8%</div></div>
+      <div class="kpi"><div class="kpi-val pink">$4,200</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Rebookings + win-backs</div></div>
     </div>
 
     <div class="rev-grid">
@@ -77,7 +66,7 @@
             <div class="donut-center"><div class="donut-total">$38.2K</div><div class="donut-label">Total</div></div>
           </div>
           <div class="legend">
-            <div class="legend-item"><span class="legend-dot" style="background:#ff2d8e"></span><span class="legend-name">Blonde Services</span><span class="legend-val">48%</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#ccff00"></span><span class="legend-name">Blonde Services</span><span class="legend-val">48%</span></div>
             <div class="legend-item"><span class="legend-dot" style="background:#ff6bb0"></span><span class="legend-name">Extensions</span><span class="legend-val">28%</span></div>
             <div class="legend-item"><span class="legend-dot" style="background:#c44d8a"></span><span class="legend-name">Color</span><span class="legend-val">16%</span></div>
             <div class="legend-item"><span class="legend-dot" style="background:#7a3a5c"></span><span class="legend-name">Cut & Style</span><span class="legend-val">8%</span></div>
@@ -113,7 +102,7 @@ function drawBars(){
   bars.forEach((b,i)=>{
     const bh=b*H*0.88, bx=i*bw+4, by=H-bh;
     const g=x.createLinearGradient(0,by,0,H);
-    g.addColorStop(0,'#ff2d8e'); g.addColorStop(1,'rgba(255,45,142,.25)');
+    g.addColorStop(0,'#ccff00'); g.addColorStop(1,'rgba(204,255,0,.25)');
     x.fillStyle=g;
     x.beginPath();
     if(x.roundRect) x.roundRect(bx,by,bw-8,bh,3); else x.rect(bx,by,bw-8,bh);
@@ -124,7 +113,7 @@ function drawDonut(){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15;
   x.clearRect(0,0,130,130);
-  const segs=[{v:48,c:'#ff2d8e'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
   let s=-Math.PI/2;
   segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,s,s+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();s+=a;});
 }
@@ -135,97 +124,25 @@ function drawBarsData(months){
   let vals = months && months.length ? months.map(m=>m.value) : [0.4,0.55,0.7,0.6,0.85,0.95].map(v=>v*10000);
   const max=Math.max(...vals,1); const bw=W/vals.length;
   vals.forEach((v,i)=>{ const bh=(v/max)*H*0.88, bx=i*bw+4, by=H-bh;
-    const g=x.createLinearGradient(0,by,0,H); g.addColorStop(0,'#ff2d8e'); g.addColorStop(1,'rgba(255,45,142,.25)');
+    const g=x.createLinearGradient(0,by,0,H); g.addColorStop(0,'#ccff00'); g.addColorStop(1,'rgba(204,255,0,.25)');
     x.fillStyle=g; x.beginPath(); if(x.roundRect)x.roundRect(bx,by,bw-8,bh,3);else x.rect(bx,by,bw-8,bh); x.fill(); });
 }
 function drawDonutData(services){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15; x.clearRect(0,0,130,130);
-  const palette=['#ff2d8e','#ff6bb0','#c44d8a','#7a3a5c','#9a5fc4'];
+  const palette=['#ccff00','#ff6bb0','#c44d8a','#7a3a5c','#9a5fc4'];
   let segs;
   if(services && services.length){ const tot=services.reduce((a,b)=>a+b.value,0)||1;
     segs=services.slice(0,5).map((sv,i)=>({v:(sv.value/tot)*100,c:palette[i%palette.length]})); }
-  else segs=[{v:48,c:'#ff2d8e'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  else segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
   let a0=-Math.PI/2; segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,a0,a0+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();a0+=a;});
 }
 (async ()=>{
   const data = await LolaData.load('revenue'); REV=data;
   drawBarsData(data&&data.months); drawDonutData(data&&data.services);
-  // Update KPIs from real data
-  if(data){
-    const total = data.total || 0;
-    const count = data.bookingCount || 0;
-    const avg = count ? Math.round(total/count) : 0;
-    if(document.getElementById('kpiTotal')) document.getElementById('kpiTotal').textContent = '$'+total.toLocaleString();
-    if(document.getElementById('kpiAvgTicket')) document.getElementById('kpiAvgTicket').textContent = avg ? '$'+avg.toLocaleString() : '—';
-    if(document.getElementById('kpiAppts')) document.getElementById('kpiAppts').textContent = count.toLocaleString();
-  }
-  buildServiceTable(data&&data.services);
+  // update any KPI showing total revenue
+  if(data&&data.money){ const k=document.querySelector('[data-rev-total]'); if(k)k.textContent=data.money; }
 })();
-
-function buildServiceTable(services){
-  if(!services||!services.length) return;
-  const wrap = document.querySelector('.svc-row');
-  if(!wrap) return;
-  const container = wrap.closest('div');
-  if(!container) return;
-  container.innerHTML = services.slice(0,8).map(s=>`
-    <div class="svc-row">
-      <span class="svc-name">${s.name}</span>
-      <span class="svc-count">${s.count||'—'} booked</span>
-      <span class="svc-rev">$${Number(s.value||0).toLocaleString()}</span>
-    </div>`).join('');
-}
-
-let currentPeriod = '30d';
-let currentPeriodLabel = 'This month';
-let REV_CACHE = {};
-
-function togglePeriod(){
-  const m = document.getElementById('periodMenu');
-  m.style.display = m.style.display==='none' ? '' : 'none';
-  document.addEventListener('click', function close(e){
-    if(!e.target.closest('#periodMenu') && !e.target.closest('#periodBtn')){ m.style.display='none'; document.removeEventListener('click',close); }
-  }, {once:false});
-}
-
-async function setPeriod(p, label){
-  document.getElementById('periodMenu').style.display='none';
-  document.getElementById('periodBtn').innerHTML = label + ' <span style="color:var(--text3)">▾</span>';
-  if(document.getElementById('kpiPeriodLabel')) document.getElementById('kpiPeriodLabel').textContent = label;
-  currentPeriod = p; currentPeriodLabel = label;
-  const tok = localStorage.getItem('loladesk_token')||'';
-  try{
-    const r = await fetch('/api/data?resource=revenue&period='+p, { headers:{ Authorization:'Bearer '+tok } });
-    const data = await r.json();
-    if(!data) return;
-    drawBarsData(data.months); drawDonutData(data.services); buildServiceTable(data.services);
-    const total = data.total||0, count = data.bookingCount||0, avg = count?Math.round(total/count):0;
-    if(document.getElementById('kpiTotal')) document.getElementById('kpiTotal').textContent='$'+total.toLocaleString();
-    if(document.getElementById('kpiAvgTicket')) document.getElementById('kpiAvgTicket').textContent=avg?'$'+avg.toLocaleString():'—';
-    if(document.getElementById('kpiAppts')) document.getElementById('kpiAppts').textContent=count.toLocaleString();
-    REV_CACHE[p] = data;
-  }catch(e){ console.error('[rev period]', e); }
-}
-
-function exportCSV(){
-  const btn = document.getElementById('exportBtn');
-  btn.textContent='Exporting…'; btn.disabled=true;
-  try{
-    const services = (REV_CACHE[currentPeriod]||REV).services||[];
-    const months = (REV_CACHE[currentPeriod]||REV).months||[];
-    let csv = 'Service,Revenue\n';
-    services.forEach(s=>{ csv += `"${s.name}",${s.value}\n`; });
-    csv += '\nMonth,Revenue\n';
-    months.forEach(m=>{ csv += `${m.month},${m.value}\n`; });
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href=url; a.download=`loladesk-revenue-${currentPeriod}-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-  }catch(e){ console.error('[export]',e); }
-  finally{ setTimeout(()=>{ btn.textContent='Export CSV'; btn.disabled=false; }, 800); }
-}
 </script>
 </body>
 </html>

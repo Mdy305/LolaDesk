@@ -269,6 +269,30 @@ check('Lola REMEMBERS the website visitor', r.code===200 && webMem.length>0, web
 const webConv = (await sql.query(`select count(*)::int n from messages m join conversations c on c.id=m.conversation_id where c.tenant_id=$1 and c.channel='web'`, [t.id])).rows[0];
 check('web conversations persist to the shared substrate', webConv.n >= 4, `${webConv.n} msgs`);
 
+
+/* 13 — ADMIN COMMAND: platform control, hard-gated */
+const admin = (await import('../api/admin.js')).default;
+r = makeRes();
+await admin(get('/api/admin'), r);
+check('admin without token → 401', r.code===401, `code=${r.code}`);
+delete process.env.ADMIN_EMAILS;
+r = makeRes();
+await admin(get('/api/admin', { authorization:'Bearer '+tok }), r);
+check('admin with owner token but no allowlist → 403', r.code===403, `code=${r.code}`);
+process.env.ADMIN_EMAILS = 'ops@loladesk.com, E2E@salon.com';
+r = makeRes();
+await admin(get('/api/admin', { authorization:'Bearer '+tok }), r);
+check('allowlisted email sees platform metrics + roster', r.code===200 && r.body?.metrics?.tenants>=2 && JSON.stringify(r.body.tenants).includes('E2E Beauty Bar'), `tenants=${r.body?.metrics?.tenants}`);
+const otherId = (await sql.query(`select id from tenants where owner_email='other@salon.com'`)).rows[0].id;
+r = makeRes();
+await admin(post({ action:'suspend', tenant_id: otherId }, { authorization:'Bearer '+tok }), r);
+const susp = (await sql.query(`select billing_status from tenants where id=$1`, [otherId])).rows[0];
+check('suspend flips billing_status (data untouched)', r.code===200 && susp.billing_status==='suspended', susp.billing_status);
+r = makeRes();
+await admin(post({ action:'activate', tenant_id: otherId }, { authorization:'Bearer '+tok }), r);
+const act2 = (await sql.query(`select billing_status from tenants where id=$1`, [otherId])).rows[0];
+check('activate restores instantly', r.code===200 && act2.billing_status==='active', act2.billing_status);
+
 /* ── summary ── */
 const fails = results.filter(x=>!x.ok);
 console.log('\n' + '─'.repeat(50));

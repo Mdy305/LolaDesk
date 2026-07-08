@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /bookings
+Disallow: /calls
+Disallow: /clients
+Disallow: /inbox
+Disallow: /revenue
+Disallow: /team
+Disallow: /numbers
+Disallow: /marketing
+Disallow: /marketer
+Disallow: /subscription
+Disallow: /agents
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://www.loladesk.com/sitemap.xml

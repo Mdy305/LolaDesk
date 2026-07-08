@@ -4,20 +4,18 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Get Started — LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="description" content="Set up your AI front desk in minutes. Connect your booking system, customize Lola, and go live."/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#070708;--bg2:#0c0c0e;--surface:#121214;--surface2:#16161a;
   --border:#1e1e22;--border2:#28282e;
   --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
-  --pink:#ff2d8e;--pink2:#ff6bb0;--pink-dim:rgba(255,45,142,.12);--pink-glow:rgba(255,45,142,.4);
+  --pink:#ccff00;--pink2:#ff6bb0;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
   
-  --ff-serif:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
+  --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
   --r:14px;--r-sm:10px;--r-lg:20px;
 }
 html,body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;min-height:100vh;letter-spacing:-0.015em}
@@ -92,7 +90,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-field{margin-bottom:20px}
 .ob-label{font-size:13px;font-weight:500;color:var(--text2);margin-bottom:8px;display:block}
 .ob-input{width:100%;background:var(--surface);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px 18px;color:var(--text);font-size:15px;outline:none;transition:all .2s cubic-bezier(0.25,0.8,0.25,1)}
-.ob-input:focus{border-color:var(--pink);box-shadow:0 0 16px rgba(255,45,85,0.2)}
+.ob-input:focus{border-color:var(--pink);box-shadow:0 0 16px rgba(204,255,0,0.2)}
 .ob-input::placeholder{color:var(--text3)}
 .ob-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:480px){.ob-row{grid-template-columns:1fr}}
@@ -154,7 +152,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-plan-badge{font-size:9px;font-weight:600;background:var(--pink);color:#fff;padding:2px 7px;border-radius:5px;margin-left:8px;letter-spacing:.06em}
 
 /* PREVIEW (final step) */
-.ob-preview{background:radial-gradient(ellipse 90% 80% at 50% 30%,rgba(255,45,142,.06),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;text-align:center;margin-bottom:20px}
+.ob-preview{background:radial-gradient(ellipse 90% 80% at 50% 30%,rgba(204,255,0,.06),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;text-align:center;margin-bottom:20px}
 .ob-preview-orb{width:130px;height:130px;margin:0 auto 18px;position:relative;cursor:pointer}
 .ob-preview-orb canvas{position:absolute;inset:0}
 .ob-preview-name{font-size:24px;font-weight:600;letter-spacing:.24em;text-indent:.24em;margin-bottom:6px}
@@ -181,6 +179,16 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 .ob-connect-spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 .ob-connect-check{color:var(--text);flex-shrink:0}
+</style>
+<style>
+/* ═══ VOLT CONTRAST — neon surfaces take dark ink, Apple-style ═══ */
+.btn-primary, .price-btn.primary, .pcta.primary, .buy-btn, .ob-btn,
+.connect-btn, .btn.btn-primary { color:#10140a !important; }
+
+.snd,.me{color:#10140a}</style>
+<style>
+/* ghost variants stay light-ink (they sit on dark, not on volt) */
+.btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
 </style>
 </head>
 <body>
@@ -293,17 +301,17 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
         <div class="ob-plans" id="plans">
           <div class="ob-plan" data-plan="starter" data-price="99" onclick="selectPlan(this)">
             <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Solo</div><div class="ob-plan-desc">Website chat + text · no phone line</div></div>
+            <div class="ob-plan-info"><div class="ob-plan-name">Solo</div><div class="ob-plan-desc">Chat + SMS · 1 platform</div></div>
             <div class="ob-plan-price"><div class="ob-plan-price-val">$99</div><div class="ob-plan-price-per">/month</div></div>
           </div>
           <div class="ob-plan selected" data-plan="pro" data-price="399" onclick="selectPlan(this)">
             <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Pro <span class="ob-plan-badge">POPULAR</span></div><div class="ob-plan-desc">Phone + WhatsApp + text + web · 750 min</div></div>
+            <div class="ob-plan-info"><div class="ob-plan-name">Pro <span class="ob-plan-badge">POPULAR</span></div><div class="ob-plan-desc">+ Voice calls · ElevenLabs · Photo AI · CRM</div></div>
             <div class="ob-plan-price"><div class="ob-plan-price-val">$399</div><div class="ob-plan-price-per">/month</div></div>
           </div>
           <div class="ob-plan" data-plan="medspa" data-price="599" onclick="selectPlan(this)">
             <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Med Spa</div><div class="ob-plan-desc">Everything + consult flow · 1,500 min</div></div>
+            <div class="ob-plan-info"><div class="ob-plan-name">Med Spa</div><div class="ob-plan-desc">+ HIPAA-aware consultation flow</div></div>
             <div class="ob-plan-price"><div class="ob-plan-price-val">$599</div><div class="ob-plan-price-per">/month</div></div>
           </div>
         </div>
@@ -356,7 +364,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
             </div>
             <div class="ob-number-card" data-number-mode="port" onclick="selectNumberMode(this)">
               <div class="ob-number-title">Keep my current number</div>
-              <div class="ob-number-desc">We submit your Telnyx transfer and keep you live with a temporary number until completion.</div>
+              <div class="ob-number-desc">We handle the carrier transfer for you and keep you live on a temporary number until it completes.</div>
             </div>
           </div>
         </div>
@@ -589,7 +597,7 @@ if(window.LolaOrb){
       const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
       const al=.12+Math.abs(Math.sin(pt*.6+i*.3))*.2;
       pctx.beginPath();pctx.arc(x,y,1.1,0,Math.PI*2);
-      pctx.fillStyle=`rgba(255,45,142,${al})`;pctx.fill();
+      pctx.fillStyle=`rgba(204,255,0,${al})`;pctx.fill();
     }
     pt+=.018;
     requestAnimationFrame(drawPreviewOrb);
@@ -674,7 +682,7 @@ async function finishLive(){
     let portingNote = '';
     if(created.session && state.numberMode === 'port'){
       const token = created.session.access_token || '';
-      const rr = await fetch('/api/telnyx-porting', {
+      const rr = await fetch('/api/carrier-porting', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
         body: JSON.stringify({
@@ -699,8 +707,8 @@ async function finishLive(){
         : ' Your number transfer request was submitted.';
     }
 
-    // Auto-provision both Telnyx assistants (client-facing Lola + operator
-    // Jarvis) for this brand-new tenant. Non-blocking: if it hiccups the owner
+    // Auto-provision both voice lines (client-facing Lola + the owner's private
+    // private line) for this brand-new tenant. Non-blocking: if it hiccups the owner
     // still gets in and can re-provision from Settings — never hard-fail signup.
     try{
       document.getElementById('liveSub').textContent='Provisioning your AI front desk…';
@@ -747,7 +755,7 @@ async function finishLive(){
             <div style="font-size:14px;font-weight:600;color:var(--text,#fff);margin-bottom:6px">One more superpower: Lola on your website</div>
             <div style="font-size:12.5px;color:var(--muted,#9a93a1);margin-bottom:10px">Paste this once before <code>&lt;/body&gt;</code> on your site — every visitor can chat with Lola and get booked, 24/7.</div>
             <div style="display:flex;gap:8px;align-items:stretch">
-              <code id="embedSnippet" style="flex:1;display:block;background:#141216;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;font-size:11px;color:#ff9ec9;overflow-x:auto;white-space:nowrap">${emb.snippet.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>
+              <code id="embedSnippet" style="flex:1;display:block;background:#141216;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;font-size:11px;color:#e6ff85;overflow-x:auto;white-space:nowrap">${emb.snippet.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>
               <button id="copyEmbed" class="ob-btn" style="white-space:nowrap">Copy</button>
             </div>`;
           document.getElementById('liveNav').parentNode.insertBefore(wrap, document.getElementById('liveNav'));
@@ -813,4 +821,3 @@ renderServices();
 </script>
 </body>
 </html>
-

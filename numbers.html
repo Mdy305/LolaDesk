@@ -2,40 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Get Your Lola Number — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#000;--surface:#101012;--surface2:#16161a;
   --border:#1c1c20;--border2:#28282e;
   --text:#f4f4f7;--text2:#9a9aa2;--text3:#56565e;
-  --pink:#ff2d8e;--pink2:#ff6bb0;--pink-dim:rgba(255,45,142,.12);--pink-glow:rgba(255,45,142,.5);
+  --pink:#ccff00;--pink2:#ff6bb0;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.5);
   
-  --ff-serif:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  --ff:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
+  --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
 }
-body{background:var(--bg);color:var(--text);font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;padding:0 0 60px}
-button{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;cursor:pointer;border:none}
-input,select{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;text-decoration:none}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;min-height:100vh;padding:0 0 60px}
+button{font-family:var(--ff);cursor:pointer;border:none}
+input,select{font-family:var(--ff)}
+a{color:inherit;text-decoration:none}
 
 .top{padding:20px 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border)}
 .logo{font-size:17px;font-weight:600;letter-spacing:.18em}
 .back{font-size:13px;color:var(--text2);display:flex;align-items:center;gap:7px}
 .back:hover{color:var(--text)}
 
-.wrap{max-width: 100%; max-width: 760px;margin:0 auto;padding:48px 24px}
+.wrap{max-width:760px;margin:0 auto;padding:48px 24px}
 .head{text-align:center;margin-bottom:40px}
 .head-tag{font-size:12px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--pink2);margin-bottom:14px}
-.head-title{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:clamp(32px,5vw,52px);font-style:italic;font-weight:300;line-height:1.05;margin-bottom:12px}
-.head-sub{font-size:15px;font-weight:300;color:var(--text2);max-width: 100%; max-width: 460px;margin:0 auto;line-height:1.6}
+.head-title{font-family:var(--ff-serif);font-size:clamp(32px,5vw,52px);font-style:italic;font-weight:300;line-height:1.05;margin-bottom:12px}
+.head-sub{font-size:15px;font-weight:300;color:var(--text2);max-width:460px;margin:0 auto;line-height:1.6}
 
 /* search bar */
 .search-bar{display:flex;gap:10px;margin-bottom:28px;flex-wrap:wrap}
-.search-input{flex:1;min-width: 100%; max-width: 180px;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:14px 16px;color:var(--text);font-size:15px;outline:none;transition:border-color .15s}
+.search-input{flex:1;min-width:180px;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:14px 16px;color:var(--text);font-size:15px;outline:none;transition:border-color .15s}
 .search-input:focus{border-color:var(--pink)}
 .search-input::placeholder{color:var(--text3)}
 .search-select{background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:14px 16px;color:var(--text);font-size:15px;outline:none}
@@ -59,7 +57,7 @@ input,select{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', s
 
 .empty{text-align:center;padding:48px 20px;color:var(--text3);font-size:14px}
 .loading{text-align:center;padding:40px;color:var(--text2)}
-.spinner{width: 100%; max-width: 24px;height:24px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
+.spinner{width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* what's included */
@@ -102,14 +100,14 @@ input,select{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', s
   </div>
 
   <div class="results" id="results">
-    <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Your Lola Lines</h2>
-    <div id="ownedList" class="results" style="margin-bottom: 24px;"></div>
+    <div class="empty">Enter an area code and search to see available numbers.</div>
+  </div>
+
+  <div style="margin-top: 48px; display: none;" id="telecomAssetsSection">
+    <h2 style="font-size: 18px; margin-bottom: 16px; border-bottom: 0.5px solid var(--border); padding-bottom: 8px;">Your Telecom Assets</h2>
     
-    <div id="telecomAssets" style="display:none;">
-      <h2 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text);">Telecom Assets</h2>
-      <div id="simsList" class="results" style="margin-bottom: 24px;"></div>
-      <div id="portingList" class="results"></div>
-    </div>
+    <div id="simsList" style="margin-bottom: 24px;"></div>
+    <div id="portingList"></div>
   </div>
 
   <div class="included">
@@ -132,7 +130,7 @@ input,select{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', s
 
 <script src="auth-guard.js"></script>
 <script>
-const RETAIL_MONTHLY = 5;
+const RETAIL_MONTHLY = 5; // fallback only — the API now returns server-priced retail per number (NUMBER_RETAIL_MONTHLY env), so pricing is a knob, not a redeploy
 
 function fmtNumber(e164){
   if(!e164) return '';
@@ -141,49 +139,20 @@ function fmtNumber(e164){
 }
 
 async function loadTelecomAssets() {
-  const section = document.getElementById('telecomAssets');
-  const ownedList = document.getElementById('ownedList');
+  const section = document.getElementById('telecomAssetsSection');
   const simsList = document.getElementById('simsList');
   const portingList = document.getElementById('portingList');
 
   try {
     const token = localStorage.getItem('loladesk_token') || '';
     const headers = token ? { Authorization: 'Bearer ' + token } : {};
-    const [numRes, simRes, portRes] = await Promise.all([
-      fetch('/api/telnyx-numbers?action=list', { headers }),
+    const [simRes, portRes] = await Promise.all([
       fetch('/api/telnyx-sims', { headers }),
       fetch('/api/telnyx-porting', { headers })
     ]);
     
-    const numData = await numRes.json();
     const simData = await simRes.json();
     const portData = await portRes.json();
-    
-    if(numData.ok && numData.numbers && numData.numbers.length > 0){
-      section.style.display = 'block';
-      
-      ownedList.innerHTML = numData.numbers.map((n, idx) => {
-        const isJarvis = idx === 1;
-        const badge = isJarvis ? '<span class="pill mono" style="margin-left:10px">Jarvis Voice Control</span>' : '<span class="pill vip" style="margin-left:10px">Primary Booking Line</span>';
-        const description = isJarvis ? 'Call this number from your cell to command Lola by voice.' : 'Give this number to your clients to book appointments.';
-        
-        return `
-        <div class="num-card" style="margin-bottom: 10px; border-color: ${isJarvis?'var(--border)':'var(--pink)'}">
-          <div class="num-info">
-            <div class="num-number">${fmtNumber(n.phone_number)}${badge}</div>
-            <div class="num-meta" style="margin-top:4px">
-              ${description}
-            </div>
-            <div class="num-meta" style="margin-top:8px">
-              <span class="num-feat">Voice</span>
-              <span class="num-feat">SMS</span>
-            </div>
-          </div>
-        </div>
-      `}).join('');
-    } else {
-      ownedList.innerHTML = '<div class="empty">You don\'t have any Lola lines yet. Search above to get one.</div>';
-    }
 
     let hasAssets = false;
 
@@ -281,7 +250,7 @@ async function buy(phone, btn){
     }else{
       btn.disabled = false;
       btn.textContent = 'Get this number';
-      showToast('Could not complete — check your Telnyx billing.');
+      showToast('Could not complete — check your billing details.');
     }
   }catch(e){
     btn.disabled = false;

@@ -6,22 +6,13 @@ import { getTenantByPhone, getTenantByOperatorPhone, upsertClient, getClientMemo
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
-import { runLolaAgentReply } from './lib/lola-agent.js';
-import { channelAllowed } from './lib/plans.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 
 
-// NOTE: 'cancel' and 'yes' are intentionally NOT opt-out/opt-in keywords —
-// in a salon context a bare "cancel" means cancel my appointment and "yes"
-// means confirm. Treating them as STOP/START unsubscribes real clients.
-const STOP=['stop','stopall','unsubscribe','quit','end'];
-const START=['start','unstop'];
+const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
+const START=['start','unstop','yes'];
 const HELP=['help','info'];
 const kw=(t,l)=>l.includes(String(t||'').trim().toLowerCase());
-
-// Keep the raw body intact so the Telnyx webhook signature can be verified.
-// Without this, Vercel pre-parses the body and signature checks are skipped.
-export const config = { api: { bodyParser: false } };
 
 async function readBody(req){
   if(req.body && typeof req.body === 'object'){
@@ -135,14 +126,6 @@ export default async function handler(req,res){
   }
 
   if(!row?.id) return res.status(200).json({ok:true,ignored:'no_tenant'});
-  // Admin control panel: a suspended/cancelled salon does not send/receive Lola texts.
-  if(['suspended','cancelled'].includes(String(row.billing_status||''))){
-    return res.status(200).json({ ok:true, handled:'suspended' });
-  }
-  // Plan entitlement: WhatsApp is a Pro/Med Spa channel (admin can unlock per tenant). SMS is on every plan.
-  if(channel==='whatsapp' && !channelAllowed(row, 'whatsapp')){
-    return res.status(200).json({ ok:true, handled:'whatsapp_not_on_plan' });
-  }
   const tName=row.name;
 
   // 10DLC compliance
@@ -189,29 +172,30 @@ export default async function handler(req,res){
 
   const intent = detectLolaIntent(text);
   const mood = detectConversationMood(text);
-  // Lola runs her real front-desk skills (check availability, book, reschedule,
-  // cancel) on text — the same tools the dashboard chat uses. If the agent or
-  // LLM is unavailable, fall back to the deterministic reply so texts never go dark.
-  let reply = '';
+  let reply = deterministicSkillReply({
+    tenant: row,
+    intent,
+    channel: 'sms',
+    clientName: client?.name ? String(client.name).split(' ')[0] : ''
+  }) || 'Thanks for texting! How can I help you book?';
   try{
-    const agent = await runLolaAgentReply({
-      tenant: row,
-      clientPhone: fromN,
-      channel,
-      system: buildLolaSystemPrompt({ tenant: row, channel, intent, mood, memoryBlock: buildClientMemoryBlock(clientProfile) }),
-      messages: hist,
-      maxTokens: 280
-    });
-    if(agent.ok && agent.text) reply = agent.text;
+    if(!reply || intent === 'general' || intent === 'recommendation'){
+      const r=await chat({
+        system:buildLolaSystemPrompt({
+          tenant: row,
+          channel,
+          intent,
+          mood,
+          memoryBlock: buildClientMemoryBlock(clientProfile)
+        }),
+        messages:hist,
+        maxTokens:240,
+        temperature:0.6,
+        source:channel
+      });
+      if(r.ok&&r.text) reply=r.text;
+    }
   }catch{}
-  if(!reply){
-    reply = deterministicSkillReply({
-      tenant: row,
-      intent,
-      channel: 'sms',
-      clientName: client?.name ? String(client.name).split(' ')[0] : ''
-    }) || 'Thanks for texting! How can I help you book?';
-  }
 
   try{
     const quality = evaluateInteractionQuality({
@@ -242,4 +226,3 @@ export default async function handler(req,res){
   try{ await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id,type}); }catch(e){ console.error(`[${channel}] send err:`,e.message); }
   return res.status(200).json({ok:true});
 }
-

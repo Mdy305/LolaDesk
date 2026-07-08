@@ -24,47 +24,10 @@ const TELNYX = 'https://api.telnyx.com/v2';
 function appUrl(){ return process.env.APP_URL || 'https://www.loladesk.com'; }
 function authHeaders(){ return { 'Content-Type':'application/json', 'Authorization':`Bearer ${process.env.TELNYX_API_KEY}` }; }
 
-// Helper to create a managed account (Step 1)
-async function createManagedAccount(tenant, userEmail) {
-  const payload = {
-    email: userEmail,
-    business_name: tenant.name || 'Tenant Salon',
-    rolling_window_limit_in_dollars: 200.00 // Cap spend to protect Master Wallet
-  };
-  const r = await fetch(`${TELNYX}/managed_accounts`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload)
-  });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error(`Failed to create Managed Account: ${err}`);
-  }
-  const j = await r.json();
-  return j.data.id; // org ID
-}
-
-// Helper to generate a scoped API key (Step 2)
-async function generateTenantApiKey(orgId) {
-  const r = await fetch(`${TELNYX}/managed_accounts/${orgId}/api_keys`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({})
-  });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error(`Failed to create API Key: ${err}`);
-  }
-  const j = await r.json();
-  return j.data.api_key;
-}
-
 // Existing assistants whose name contains this tenant's salon name -> skip.
-async function existingFor(salonName, tenantApiKey){
+async function existingFor(salonName){
   try{
-    const r = await fetch(`${TELNYX}/ai/assistants`, { 
-      headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${tenantApiKey || process.env.TELNYX_API_KEY}` }
-    });
+    const r = await fetch(`${TELNYX}/ai/assistants`, { headers: authHeaders() });
     const j = await r.json();
     const list = (j && (j.data || j.assistants?.data || j.assistants)) || [];
     const needle = String(salonName||'').toLowerCase();
@@ -103,25 +66,8 @@ export default async function handler(req, res){
   const tenantArg = { slug: tenant.slug, name: tenant.name, owner_name: tenant.owner_name };
 
   try{
-    let telnyx_org_id = tenant.telnyx_org_id;
-    let telnyx_api_key = tenant.telnyx_api_key;
-    
-    // Step 1 & 2: Provision Isolated Managed Account if not exists
-    if (!telnyx_org_id || !telnyx_api_key) {
-      console.log(`[Provision] Creating Managed Account for ${tenant.name}...`);
-      telnyx_org_id = await createManagedAccount(tenant, user.email);
-      telnyx_api_key = await generateTenantApiKey(telnyx_org_id);
-      
-      // Save to Supabase (Step 4)
-      await c.from('tenants').update({ telnyx_org_id, telnyx_api_key }).eq('id', tenant.id);
-      console.log(`[Provision] Sub-Org ${telnyx_org_id} created and scoped key generated.`);
-    }
-
-    const have = await existingFor(tenant.name, telnyx_api_key);
+    const have = await existingFor(tenant.name);
     const out = { ok:true, skipped:{} };
-
-    // Pass the scoped API key down to the agent builders (Step 3)
-    tenantArg.telnyx_api_key = telnyx_api_key;
 
     // 1) Client-facing Lola (front desk)
     if(have.client){ out.client = { skipped:true, id: have.client.id }; out.skipped.client = true; }

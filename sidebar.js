@@ -30,7 +30,7 @@
     { id:'bookings', label:'Bookings', href:'bookings.html' },
     { id:'revenue',  label:'Revenue',  href:'revenue.html' },
     { id:'team',     label:'Team',     href:'team.html' },
-    { id:'marketing',label:'Email',href:'marketing.html' },
+    { id:'marketing',label:'Marketing',href:'marketing.html' },
     { id:'marketer', label:'Control Plane', href:'marketer.html#control', badge:'AI', pink:true },
     { id:'settings', label:'Settings', href:'settings.html' }
   ];
@@ -50,7 +50,7 @@
       <div class="logo-sub">DESK</div>
     </div>
     <nav class="nav">${navHTML}</nav>
-    <div style="margin: 0 16px 20px; padding: 12px; background: linear-gradient(135deg, rgba(255,45,142,0.08), rgba(176,30,108,0.04)); border: 0.5px solid var(--pink-dim); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+    <div style="margin: 0 16px 20px; padding: 12px; background: linear-gradient(135deg, rgba(204,255,0,0.08), rgba(176,30,108,0.04)); border: 0.5px solid var(--pink-dim); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
       <div style="font-size: 20px; filter: drop-shadow(0 0 6px var(--pink));">🔥</div>
       <div>
         <div style="font-size: 12px; font-weight: 600; color: var(--pink2);">12-Day Streak</div>

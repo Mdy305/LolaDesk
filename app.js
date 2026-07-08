@@ -181,15 +181,6 @@ const orb = (window.LolaOrb && orbCanvas)
   : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
 let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
-/* Mini always-alive orb on the widget card — 80px, always ambient */
-(function mountWidgetCardOrb(){
-  const mc = document.getElementById('dashWidgetOrb');
-  if(!mc || !window.LolaOrb) return;
-  const miniOrb = LolaOrb.mount(mc, { size: 80 });
-  miniOrb.setState('ambient');
-})();
-
-
 function setOrbState(s){
   orbState = s;
   orb.setState(s);
@@ -224,13 +215,13 @@ function drawRevLine(){
   x.clearRect(0,0,W,H);
   const pts=[0.3,0.35,0.32,0.45,0.4,0.55,0.5,0.62,0.58,0.72,0.68,0.85,0.8];
   const grad=x.createLinearGradient(0,0,W,0);
-  grad.addColorStop(0,'#ff2d8e'); grad.addColorStop(1,'#ff6bb0');
+  grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'#ff6bb0');
   // area
   x.beginPath();
   pts.forEach((p,i)=>{ const px=(i/(pts.length-1))*W, py=H-(p*H*0.85)-6; i?x.lineTo(px,py):x.moveTo(px,py); });
   x.lineTo(W,H); x.lineTo(0,H); x.closePath();
   const fill=x.createLinearGradient(0,0,0,H);
-  fill.addColorStop(0,'rgba(255,45,142,.18)'); fill.addColorStop(1,'rgba(255,45,142,0)');
+  fill.addColorStop(0,'rgba(204,255,0,.18)'); fill.addColorStop(1,'rgba(204,255,0,0)');
   x.fillStyle=fill; x.fill();
   // line
   x.beginPath();
@@ -238,8 +229,8 @@ function drawRevLine(){
   x.strokeStyle=grad; x.lineWidth=2; x.lineJoin='round'; x.stroke();
   // end dot
   const lx=W, ly=H-(pts[pts.length-1]*H*0.85)-6;
-  x.beginPath(); x.arc(lx-3,ly,3.5,0,Math.PI*2); x.fillStyle='#ff2d8e'; x.fill();
-  x.beginPath(); x.arc(lx-3,ly,7,0,Math.PI*2); x.fillStyle='rgba(255,45,142,.2)'; x.fill();
+  x.beginPath(); x.arc(lx-3,ly,3.5,0,Math.PI*2); x.fillStyle='#ccff00'; x.fill();
+  x.beginPath(); x.arc(lx-3,ly,7,0,Math.PI*2); x.fillStyle='rgba(204,255,0,.2)'; x.fill();
 }
 
 function drawDonut(){
@@ -248,7 +239,7 @@ function drawDonut(){
   const x=c.getContext('2d');
   const cx=60,cy=60,r=48,lw=14;
   x.clearRect(0,0,120,120);
-  const segs=[{v:48,c:'#ff2d8e'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
   let start=-Math.PI/2;
   segs.forEach(s=>{
     const ang=(s.v/100)*Math.PI*2;
@@ -269,7 +260,7 @@ function drawRevBars(){
   bars.forEach((b,i)=>{
     const bh=b*H*0.9, bx=i*bw+3, by=H-bh;
     const grad=x.createLinearGradient(0,by,0,H);
-    grad.addColorStop(0,'#ff2d8e'); grad.addColorStop(1,'rgba(255,45,142,.3)');
+    grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'rgba(204,255,0,.3)');
     x.fillStyle=grad;
     x.beginPath();
     if(x.roundRect) x.roundRect(bx,by,bw-6,bh,3); else x.rect(bx,by,bw-6,bh);
@@ -897,14 +888,14 @@ function drawPhoneOrb(){
     // halo
     const halo = px.createRadialGradient(cx,cy,6,cx,cy,72);
     const hA = 0.12 + breath*0.12;
-    halo.addColorStop(0,`rgba(255,45,142,${hA})`);
-    halo.addColorStop(1,'rgba(255,45,142,0)');
+    halo.addColorStop(0,`rgba(204,255,0,${hA})`);
+    halo.addColorStop(1,'rgba(204,255,0,0)');
     px.fillStyle=halo; px.fillRect(0,0,150,150);
     // core
     const core = px.createRadialGradient(cx,cy,0,cx,cy,38);
     const cA = 0.25 + breath*0.2;
     core.addColorStop(0,`rgba(255,120,190,${cA})`);
-    core.addColorStop(1,'rgba(255,45,142,0)');
+    core.addColorStop(1,'rgba(204,255,0,0)');
     px.fillStyle=core; px.fillRect(0,0,150,150);
     for(let i=0;i<46;i++){
       const a=(i/46)*Math.PI*2;
@@ -942,160 +933,10 @@ function init(){
   drawRevBars();
   drawCallWave();
   drawPhoneOrb();
-  // Always-alive: start in ambient so synapse network fires immediately.
-  // The orb is Lola's presence — she should never be dark when the
-  // dashboard is open. Full 'ambient' breathing + particle firing from
-  // the first frame, no click required.
-  setOrbState('ambient');
-  // Warm up voices
+  setOrbState('idle');
+  // warm up voices
   if(window.speechSynthesis){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = ()=>speechSynthesis.getVoices(); }
-  // Load the widget snippet silently so the dashboard card can show it
-  // without a separate fetch when the card is first rendered.
-  loadWidgetSnippetForDash();
 }
-
-/* ── Dashboard widget snippet card ──
-   Fetches the tenant's embed snippet and populates both the copy
-   button and the code element in the dashboard widget card. */
-async function loadWidgetSnippetForDash(){
-  try{
-    const tok = (()=>{ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } })();
-    const r = await fetch('/api/widget-embed', { headers:{ Authorization:'Bearer '+tok } });
-    const d = await r.json();
-    if(!r.ok || !d?.snippet) return;
-    const code = document.getElementById('dashWidgetSnippet');
-    const btn = document.getElementById('dashWidgetCopy');
-    if(code) code.textContent = d.snippet;
-    if(btn) btn.onclick = async ()=>{
-      try{ await navigator.clipboard.writeText(d.snippet); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy snippet',1800); }
-      catch(e){ btn.textContent='Select + copy'; }
-    };
-  }catch(e){}
-}
-
 init();
-
-/* ─────────────────────────────────────────────────────────────
-   REAL-TIME BOOKING NOTIFICATIONS
-   Polls every 30 s for new calls/bookings and shows a toast with
-   a neon-pink pulse so the owner never misses a booking Lola made.
-   ───────────────────────────────────────────────────────────── */
-(function startRealtimeNotifications(){
-  let lastCallId = null;
-  let firstRun = true;
-
-  async function poll(){
-    try{
-      const tok = (()=>{ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } })();
-      if(!tok) return;
-      const r = await fetch('/api/data?resource=calls', { headers:{ Authorization:'Bearer '+tok } });
-      if(!r.ok) return;
-      const d = await r.json();
-      const calls = (d && d.calls) || [];
-      if(!calls.length) return;
-
-      const latest = calls[0];
-      const latestId = latest.id || latest.when;
-
-      if(firstRun){
-        lastCallId = latestId;
-        firstRun = false;
-        return;
-      }
-
-      if(latestId !== lastCallId){
-        lastCallId = latestId;
-        const isBooked = latest.outcome === 'booked' || latest.booked;
-        const caller = latest.from || 'A client';
-        const service = latest.service || '';
-        const msg = isBooked
-          ? `🌸 Lola just booked ${caller}${service ? ' for ' + service : ''}!`
-          : `📞 New call from ${caller}`;
-        showLolaNotification(msg, isBooked ? 'booking' : 'call');
-      }
-    }catch(e){}
-  }
-
-  // Start polling after 10s (let the page settle), then every 30s
-  setTimeout(()=>{ poll(); setInterval(poll, 30000); }, 10000);
-})();
-
-function showLolaNotification(msg, type){
-  // Remove any existing notification
-  const old = document.getElementById('lolaNotif');
-  if(old) old.remove();
-
-  const n = document.createElement('div');
-  n.id = 'lolaNotif';
-  n.style.cssText = [
-    'position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px)',
-    'background:var(--surface)',
-    'border:0.5px solid ' + (type==='booking' ? 'var(--pink)' : 'var(--border2)'),
-    'border-radius:16px;padding:14px 20px',
-    'display:flex;align-items:center;gap:12px',
-    'box-shadow:0 12px 40px rgba(0,0,0,.4)',
-    type==='booking' ? '0 0 0 1px rgba(255,45,142,.15)' : '',
-    'transition:transform .35s cubic-bezier(.22,1,.36,1)',
-    'z-index:999;max-width:90vw;cursor:pointer'
-  ].join(';');
-
-  const dot = document.createElement('div');
-  dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:' + (type==='booking'?'#ff2d8e':'var(--text3)') + ';flex-shrink:0;animation:notifPulse 1.5s ease-in-out 3';
-  if(!document.getElementById('notifPulseStyle')){
-    const s = document.createElement('style');
-    s.id = 'notifPulseStyle';
-    s.textContent = '@keyframes notifPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,45,142,.5)}50%{box-shadow:0 0 0 8px rgba(255,45,142,0)}}';
-    document.head.appendChild(s);
-  }
-
-  const txt = document.createElement('div');
-  txt.style.cssText = 'font-size:13px;font-weight:500;color:var(--text)';
-  txt.textContent = msg;
-
-  const close = document.createElement('button');
-  close.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1';
-  close.textContent = '×';
-  close.onclick = (e)=>{ e.stopPropagation(); n.style.transform='translateX(-50%) translateY(80px)'; setTimeout(()=>n.remove(), 350); };
-
-  n.appendChild(dot); n.appendChild(txt); n.appendChild(close);
-  n.onclick = ()=>{ location.href='calls.html'; };
-  document.body.appendChild(n);
-
-  // Animate in
-  requestAnimationFrame(()=>{ n.style.transform='translateX(-50%) translateY(0)'; });
-  // Auto-dismiss after 6s
-  setTimeout(()=>{ if(n.parentNode){ n.style.transform='translateX(-50%) translateY(80px)'; setTimeout(()=>n.remove(), 350); } }, 6000);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   PENDING PROMPT HANDOFF
-   Clients and Inbox pages can push a pre-filled Lola prompt via
-   sessionStorage. Pick it up here and fire it automatically.
-   ───────────────────────────────────────────────────────────── */
-(function handlePendingPrompt(){
-  try{
-    const prompt = sessionStorage.getItem('lola_pending_prompt');
-    if(!prompt) return;
-    sessionStorage.removeItem('lola_pending_prompt');
-    // Wait for Lola's input to be ready
-    const tryFill = (attempts) => {
-      if(attempts <= 0) return;
-      const inp = document.getElementById('lolaInput') || document.querySelector('.cmd-input') || document.querySelector('[placeholder*="Ask Lola"]');
-      if(inp){
-        inp.value = prompt;
-        inp.dispatchEvent(new Event('input'));
-        inp.focus();
-        // Auto-send after a brief moment so the user sees what's being sent
-        setTimeout(()=>{
-          const sendBtn = document.getElementById('sendBtn') || document.querySelector('.cmd-send');
-          if(sendBtn) sendBtn.click();
-        }, 800);
-      } else {
-        setTimeout(()=>tryFill(attempts-1), 300);
-      }
-    };
-    setTimeout(()=>tryFill(10), 600);
-  }catch(e){}
-})();
 
 })();

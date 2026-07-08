@@ -20,8 +20,6 @@ create table if not exists tenants (
   booking_url     text,
   phone_number    text unique,                          -- their Lola number, E.164
   plan            text default 'starter',               -- starter | pro | medspa | enterprise
-  telnyx_org_id   text,
-  telnyx_api_key  text,
   stripe_customer_id  text,
   trial_ends_at   timestamptz,
   services        jsonb default '[]'::jsonb,            -- [{name, price, duration}]

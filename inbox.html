@@ -2,56 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Inbox — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .inbox-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;height:calc(100vh - 180px);min-height:480px}
 @media(max-width:900px){.inbox-layout{grid-template-columns:1fr;height:auto}}
 .thread-list{overflow-y:auto}
-.thread{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s;position:relative}
+.thread{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
 .thread:hover,.thread.active{background:var(--surface2)}
 .thread-body{flex:1;min-width:0}
 .thread-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
 .thread-name{font-size:13px;font-weight:500}
 .thread-time{font-size:10px;color:var(--text3);flex-shrink:0}
 .thread-msg{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.unread-dot{width: 100%; max-width: 7px;height:7px;border-radius:50%;background:var(--pink);position:absolute;top:16px;right:14px;flex-shrink:0}
 .ch{font-size:9px;font-weight:500;padding:1px 6px;border-radius:4px}
 .ch-instagram{background:rgba(225,48,108,.15);color:#ff6bb0}
 .ch-sms{background:var(--mono-dim);color:var(--text)}
 .ch-whatsapp{background:rgba(37,211,102,.15);color:#25d366}
 .ch-email{background:var(--mono-dim);color:var(--text)}
-.ch-web{background:var(--pink-dim);color:var(--pink2);border:0.5px solid var(--pink)}
-/* conversation panel */
-.conv{display:flex;flex-direction:column;overflow:hidden}
-.conv-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:0.5px solid var(--border);flex-shrink:0}
-.conv-head-left{display:flex;align-items:center;gap:12px}
-.conv-head-actions{display:flex;gap:8px}
+.conv{display:flex;flex-direction:column}
+.conv-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:0.5px solid var(--border)}
 .conv-msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
 .bubble{max-width:75%;font-size:13.5px;line-height:1.5;padding:10px 14px;border-radius:14px}
 .bubble.them{align-self:flex-start;background:var(--surface2);border-bottom-left-radius:3px}
 .bubble.us{align-self:flex-end;background:var(--pink-dim);border-bottom-right-radius:3px}
-.bubble-meta{font-size:10px;color:var(--text3);margin-top:4px;display:flex;align-items:center;gap:6px}
-.lola-tag{font-size:9px;color:var(--pink2);font-weight:600}
-.send-status{font-size:9px}
-.send-status.sending{color:var(--text3)}
-.send-status.sent{color:#34d371}
-.send-status.failed{color:#ff4d4d}
-.conv-input{display:flex;gap:10px;padding:14px 18px;border-top:0.5px solid var(--border);flex-shrink:0;align-items:flex-end}
-.conv-textarea{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:16px;padding:11px 16px;color:var(--text);font-size:13.5px;outline:none;resize:none;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;max-height:120px;overflow-y:auto;line-height:1.5}
-.conv-textarea:focus{border-color:var(--pink)}
-.send{width: 100%; max-width: 40px;height:40px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;transition:all .15s;flex-shrink:0}
-.send:hover{background:var(--pink2);box-shadow:0 4px 14px var(--pink-glow)}
-.send:disabled{opacity:.5;cursor:default}
-.auto-note{text-align:center;font-size:11px;color:var(--text3);padding:6px;display:flex;align-items:center;justify-content:center;gap:6px}
-.auto-note .lola-orb-dot{width: 100%; max-width: 6px;height:6px;border-radius:50%;background:var(--pink);animation:orbPulse 1.8s ease-in-out infinite}
-@keyframes orbPulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
-.empty-conv{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);gap:12px}
-.inbox-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;color:var(--text3);gap:12px;text-align:center}
+.bubble-meta{font-size:10px;color:var(--text3);margin-top:4px}
+.lola-tag{font-size:9px;color:var(--pink2);font-weight:600;margin-left:6px}
+.conv-input{display:flex;gap:10px;padding:14px 18px;border-top:0.5px solid var(--border)}
+.conv-input input{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:24px;padding:11px 16px;color:var(--text);font-size:13.5px;outline:none}
+.conv-input input:focus{border-color:var(--pink)}
+.send{width:40px;height:40px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center}
+.auto-note{text-align:center;font-size:11px;color:var(--text3);padding:6px}
 </style>
 </head>
 <body data-page="inbox">
@@ -62,30 +44,16 @@
         <h1 class="page-title">Inbox</h1>
         <p class="page-sub">Every channel, one place. Lola replies in seconds.</p>
       </div>
-      <div class="topbar-actions">
-        <div style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px">
-          <span id="realtimeDot" style="width: 100%; max-width: 6px;height:6px;border-radius:50%;background:var(--text3)"></span>
-          <span id="realtimeLabel">Connecting…</span>
-        </div>
-      </div>
     </div>
 
     <div class="inbox-layout">
       <div class="card thread-list" id="threads"></div>
-      <div class="card conv" id="convCard">
-        <div class="conv-head" id="convHead" style="display:none"></div>
-        <div class="conv-msgs" id="convMsgs">
-          <div class="empty-conv">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <div style="font-size:14px;font-weight:500;color:var(--text2)">Pick a conversation</div>
-            <div style="font-size:12px">Lola handles replies — jump in any time</div>
-          </div>
-        </div>
-        <div class="conv-input" id="convInput" style="display:none">
-          <textarea class="conv-textarea" id="reply" placeholder="Override Lola — send a manual reply…" rows="1" onInput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
-          <button class="send" id="sendBtn" onclick="sendReply()">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 2L11 13M22 2L15 22 11 13 2 9l20-7z"/></svg>
-          </button>
+      <div class="card conv">
+        <div class="conv-head" id="convHead"></div>
+        <div class="conv-msgs" id="convMsgs"></div>
+        <div class="conv-input">
+          <input id="reply" placeholder="Type a reply, or let Lola handle it…"/>
+          <button class="send" onclick="sendReply()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
         </div>
       </div>
     </div>
@@ -97,191 +65,44 @@
 <script src="sidebar.js"></script>
 <script>
 let THREADS = [];
-let active = -1;
-let TENANT_PHONE = '';  // The Lola number to send FROM
 
+let active = 0;
 function initial(n){ return (n.match(/[A-Za-z]/)||['#'])[0].toUpperCase(); }
-function av(t){ return `<span class="av"><span class="av-initial">${initial(t.name)}</span></span>`; }
+function av(t,sz){ return `<span class="av ${sz||''}"><span class="av-initial">${initial(t.name)}</span>${t.img?`<img src="${t.img}" onerror="this.style.opacity=0">`:''}</span>`; }
 
 function renderThreads(){
-  if(!THREADS.length){
-    document.getElementById('threads').innerHTML = `<div class="inbox-empty">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <div style="font-size:14px;font-weight:500;color:var(--text2)">No messages yet</div>
-      <div style="font-size:12px">Lola will show every inbound conversation here</div>
-    </div>`;
-    return;
-  }
   document.getElementById('threads').innerHTML = THREADS.map((t,i)=>`
     <div class="thread ${i===active?'active':''}" onclick="openThread(${i})">
-      ${av(t)}
+      ${av(t,'')}
       <div class="thread-body">
         <div class="thread-top"><span class="thread-name">${t.name}</span><span class="thread-time">${t.time}</span></div>
         <div class="thread-msg">${t.preview}</div>
-        <span class="ch ch-${t.ch}" style="margin-top:5px;display:inline-block">${t.ch === 'web' ? 'Web Chat' : t.ch === 'sms' ? 'SMS' : t.ch === 'whatsapp' ? 'WhatsApp' : t.ch === 'instagram' ? 'Instagram' : t.ch}</span>
+        <span class="ch ch-${t.ch}" style="margin-top:5px;display:inline-block">${t.ch}</span>
       </div>
-      ${t.unread?'<div class="unread-dot"></div>':''}
     </div>`).join('');
 }
-
-function openThread(i){
-  active = i;
-  THREADS[i].unread = false;
-  renderThreads();
-  renderConv();
-}
-
+function openThread(i){ active=i; renderThreads(); renderConv(); }
 function renderConv(){
   const t = THREADS[active];
-  if(!t) return;
-
-  document.getElementById('convHead').style.display = 'flex';
-  document.getElementById('convInput').style.display = 'flex';
-  document.getElementById('convHead').innerHTML = `
-    <div class="conv-head-left">
-      ${av(t)}
-      <div>
-        <div style="font-weight:600;font-size:14px">${t.name}</div>
-        <div style="font-size:11px;color:var(--text3)">${t.phone||''} · <span class="ch ch-${t.ch}">${t.ch === 'web' ? 'Web Chat' : t.ch === 'sms' ? 'SMS' : t.ch === 'whatsapp' ? 'WhatsApp' : t.ch === 'instagram' ? 'Instagram' : t.ch}</span></div>
-      </div>
-    </div>
-    <div class="conv-head-actions">
-      ${t.phone?`<button class="btn btn-ghost" style="font-size:12px;padding:7px 14px" onclick="callClient('${t.phone}')">Call</button>`:''}
-    </div>`;
-
-  const msgs = document.getElementById('convMsgs');
-  msgs.innerHTML = t.msgs.map(m=>`
-    <div class="bubble ${m.role}">
-      ${m.text}
-      <div class="bubble-meta">
-        ${m.time}
-        ${m.lola?'<span class="lola-tag">· Lola</span>':''}
-        ${m.status==='sending'?'<span class="send-status sending">Sending…</span>':''}
-        ${m.status==='sent'?'<span class="send-status sent">✓ Sent</span>':''}
-        ${m.status==='failed'?'<span class="send-status failed">Failed</span>':''}
-      </div>
-    </div>`).join('') + `<div class="auto-note"><div class="lola-orb-dot"></div>Lola is managing this conversation</div>`;
-
-  msgs.scrollTop = msgs.scrollHeight;
+  document.getElementById('convHead').innerHTML = `${av(t,'')}<div><div style="font-weight:600;font-size:14px">${t.name}</div><div style="font-size:11px;color:var(--text3)"><span class="ch ch-${t.ch}">${t.ch}</span></div></div>`;
+  document.getElementById('convMsgs').innerHTML = t.msgs.map(([who,txt,time,lola])=>`
+    <div class="bubble ${who}">${txt}<div class="bubble-meta">${time}${lola?'<span class="lola-tag">· Lola</span>':''}</div></div>`).join('')
+    + `<div class="auto-note">Lola is handling this conversation automatically</div>`;
+  const m = document.getElementById('convMsgs'); m.scrollTop = m.scrollHeight;
 }
-
-async function sendReply(){
+function sendReply(){
   const inp = document.getElementById('reply');
-  const text = inp.value.trim();
-  if(!text) return;
-  const t = THREADS[active];
-  if(!t || !t.phone) { showToast('No phone number for this contact.', 'err'); return; }
-
-  const sendBtn = document.getElementById('sendBtn');
-  sendBtn.disabled = true;
-  inp.value = '';
-  inp.style.height = '';
-
-  // Optimistic UI — message shows immediately
-  const msgIdx = t.msgs.length;
-  t.msgs.push({ role:'us', text, time:'just now', lola:false, status:'sending' });
-  renderConv();
-
-  try{
-    const token = window.LolaAuth?.token || localStorage.getItem('loladesk_token') || '';
-    const r = await fetch('/api/telnyx-sms', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body: JSON.stringify({ from: TENANT_PHONE, to: t.phone, text })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error||'Send failed');
-    t.msgs[msgIdx].status = 'sent';
-  }catch(e){
-    t.msgs[msgIdx].status = 'failed';
-    t.msgs[msgIdx].text += ' ⚠';
-  }finally{
-    sendBtn.disabled = false;
-    renderConv();
-  }
+  if(!inp.value.trim()) return;
+  THREADS[active].msgs.push(['us', inp.value.trim(), 'now', false]);
+  inp.value=''; renderConv();
 }
-
-// Enter to send (Shift+Enter for newline)
-document.getElementById('reply').addEventListener('keydown', e=>{
-  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendReply(); }
-});
-
-window.callClient = function(phone){
-  sessionStorage.setItem('lola_pending_prompt', `Call ${phone} — I need to speak to this client.`);
-  location.href = 'dashboard.html';
-};
-
-function showToast(msg, kind){
-  const existing = document.getElementById('inboxToast');
-  if(existing) existing.remove();
-  const t = document.createElement('div');
-  t.id = 'inboxToast';
-  t.style.cssText = `position:fixed;bottom:24px;right:24px;background:var(--surface);border:0.5px solid ${kind==='err'?'#ff6b6b':'var(--border2)'};border-radius:12px;padding:12px 18px;font-size:13px;color:${kind==='err'?'#ff6b6b':'var(--text)'};box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:50;animation:fadeInUp .25s ease`;
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(()=>t.remove(), 3000);
-}
-
-/* ── Supabase Realtime — live new message indicator ── */
-async function startRealtime(tenantId){
-  const dot = document.getElementById('realtimeDot');
-  const label = document.getElementById('realtimeLabel');
-  try{
-    const SUPA_URL = window.__SUPA_URL__ || '';
-    const SUPA_KEY = window.__SUPA_ANON__ || '';
-    if(!SUPA_URL || !window.RealtimeChannel) throw new Error('no realtime');
-    // Realtime not available without supabase-js — use polling fallback
-    throw new Error('use polling');
-  }catch{
-    // Polling fallback — every 30s refresh thread list silently
-    dot.style.background = '#34d371';
-    label.textContent = 'Live';
-    setInterval(async ()=>{
-      const data = await LolaData.load('inbox').catch(()=>null);
-      if(!data || !data.threads) return;
-      const freshList = data.threads.map(t=>({
-        id:t.id, channel:t.channel||'sms', name:t.who||'Client',
-        phone:t.from_number||t.phone||'', ch:t.channel||'sms',
-        time:t.when||'', preview:t.preview||'', unread:!!t.unread, msgs:[]
-      }));
-      // Merge: don't overwrite messages in active thread
-      freshList.forEach((fresh,i)=>{
-        const existing = THREADS.find(th=>th.id===fresh.id);
-        if(existing){
-          fresh.msgs = existing.msgs;
-          fresh.unread = existing.unread;
-        } else if(fresh.preview){
-          fresh.msgs = [{ role:'them', text:fresh.preview, time:fresh.time, lola:false }];
-          // New thread arrived — flash the dot
-          dot.style.background = '#ff2d8e';
-          setTimeout(()=>dot.style.background='#34d371', 1500);
-        }
-      });
-      const prevLen = THREADS.length;
-      THREADS = freshList;
-      renderThreads();
-    }, 30000);
-  }
-}
-
+document.getElementById('reply').addEventListener('keydown',e=>{ if(e.key==='Enter') sendReply(); });
 (async ()=>{
-  // Wait for auth
-  let auth; try{ auth = await window.LolaAuth.ready; }catch(e){ return; }
-  TENANT_PHONE = auth?.tenant?.phone_number || '';
-
   const data = await LolaData.load('inbox');
   const list = (data && data.threads) || [];
-  THREADS = list.map(t=>({
-    id:t.id, channel:t.channel||'sms', name:t.who||'Client',
-    phone:t.from_number||t.phone||'', ch:t.channel||'sms',
-    time:t.when||'', preview:t.preview||'', unread:!!t.unread,
-    msgs: t.preview ? [{ role:'them', text:t.preview, time:t.when||'', lola:false }] : []
-  }));
-
-  renderThreads();
-  if(THREADS.length) openThread(0);
-
-  await startRealtime(auth?.tenant?.id);
+  THREADS = list.map(t=>({ name:t.who||'Client', ch:t.channel||'sms', time:t.when||'', preview:t.preview||'', img:'', msgs: t.preview?[['them',t.preview,t.when||'',false]]:[] }));
+  if(!THREADS.length){ document.getElementById('threads').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No messages yet.</div>'; }
+  else { renderThreads(); renderConv(); }
 })();
 </script>
 </body>

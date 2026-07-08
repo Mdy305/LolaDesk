@@ -106,50 +106,7 @@ export default async function handler(req,res){
       }
       case 'team': {
         const team=Array.isArray(tenant.team)?tenant.team:[];
-        const baseTeam = team.length ? team : [{name:tenant.owner_name||'Owner',role:'Owner'}];
-        
-        // aggregate real stats from bookings
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        const { data: bookings=[] } = await c.from('bookings').select('stylist,price,client,durationMin').eq('tenant_id',tid).gte('startsAt', thirtyDaysAgo);
-        
-        const enhancedTeam = baseTeam.map((m, i) => {
-          let name = m.name;
-          let myBookings = bookings.filter(b => b.stylist && b.stylist.toLowerCase() === name.toLowerCase());
-          if(myBookings.length === 0 && bookings.length > 0 && i === 0) {
-             // fallback: assign some bookings to the first person if none matched precisely
-             myBookings = bookings.slice(0, Math.floor(bookings.length/2));
-          }
-          
-          const rev = myBookings.reduce((sum, b) => sum + (b.price || 0), 0);
-          const clients = new Set(myBookings.map(b => b.client)).size;
-          const hoursBooked = myBookings.reduce((sum, b) => sum + (b.durationMin || 60), 0) / 60;
-          const hoursAvail = 40 * 4; // approx 160 hrs in a month
-          const pct = Math.min(100, Math.max(10, Math.round((hoursBooked / hoursAvail) * 100)));
-          
-          return {
-            name,
-            role: m.role || 'Stylist',
-            rev: rev > 0 ? rev : (10000 - i * 2000), // fallback if 0
-            change: 5 + i,
-            pct: pct > 10 ? pct : (80 - i * 10),
-            clients: clients > 0 ? clients : (40 - i * 5),
-            rating: 4.8 + (i%3)*0.1
-          };
-        });
-        
-        const totalRev = enhancedTeam.reduce((sum, m) => sum + m.rev, 0);
-        const totalUtil = Math.round(enhancedTeam.reduce((sum, m) => sum + m.pct, 0) / enhancedTeam.length);
-        const totalAppts = bookings.length || 150;
-
-        return res.status(200).json({ 
-          tenant:tenant.name, 
-          team:enhancedTeam,
-          kpis: {
-            totalRev,
-            totalUtil,
-            totalAppts
-          }
-        });
+        return res.status(200).json({ tenant:tenant.name, team:team.length?team:[{name:tenant.owner_name||'Owner',role:'Owner'}] });
       }
       case 'agents': {
         const topology = summarizeTopology();
@@ -244,10 +201,8 @@ function demo(resource, tenant){
       {from:'+13055559012',when:'3h ago',outcome:'booked',durationSec:201,summary:'Rescheduled to next week',booked:true}
     ]},
     inbox:{tenant:name,threads:[
-      {channel:'web',who:'Website Visitor',when:'just now',preview:'Do you do keratin treatments for curly hair?',unread:true},
-      {channel:'instagram',who:'@bella.styles',when:'5m ago',preview:'I love the balayage you posted! How much is it?',unread:true},
-      {channel:'sms',who:'Sarah Chen',when:'20m ago',preview:'Perfect, see you Friday!',unread:false},
-      {channel:'whatsapp',who:'Maria Lopez',when:'2h ago',preview:'Gracias, nos vemos pronto.',unread:false}
+      {channel:'sms',who:'Sarah Chen',when:'20m ago',preview:'Perfect, see you Friday!',unread:true},
+      {channel:'sms',who:'Maria Lopez',when:'2h ago',preview:'What times do you have?',unread:false}
     ]},
     bookings:{tenant:name,bookings:[
       {service:'Balayage',client:'Sarah Chen',stylist:'Michelle',startsAt:'2026-06-20T14:00:00',price:395,status:'confirmed'},

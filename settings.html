@@ -4,9 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Settings — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
 <style>
 .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -66,29 +64,6 @@
         </div>
       </div>
 
-      <div class="card" style="grid-column:1/-1">
-        <div class="card-head"><div class="card-title">Lola's Knowledge</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin:0 0 14px">Upload your menu, price list, policies, FAQs, or reviews — Lola uses them on every call and text. Upload a client contact list (CSV) to import them straight into your CRM.</p>
-          <style>
-            .kb-tile{display:block;border:1.5px dashed var(--border,#2a2731);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s,background .15s}
-            .kb-tile:hover{border-color:var(--pink,#ff4d97);background:rgba(255,77,151,.05)}
-            .kb-tile-t{font-size:14px;font-weight:700;margin-bottom:3px}
-            .kb-tile-s{font-size:12px;color:var(--text2,#a7a1ac)}
-            .kb-doc{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface,#17151a);border:1px solid var(--border,#2a2731);border-radius:10px;padding:10px 12px;font-size:13px}
-            .kb-doc-x{color:var(--text2,#a7a1ac);cursor:pointer;font-weight:700;padding:0 4px}
-            .kb-doc-x:hover{color:#ff6161}
-          </style>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
-            <label class="kb-tile"><input type="file" accept=".pdf,.txt,.md" hidden onchange="kbUpload(this,'document')"><div class="kb-tile-t">Menu / policies / FAQ</div><div class="kb-tile-s">PDF or text — teaches Lola</div></label>
-            <label class="kb-tile"><input type="file" accept=".txt,.csv" hidden onchange="kbUpload(this,'reviews')"><div class="kb-tile-t">Reviews</div><div class="kb-tile-s">.txt or .csv — Lola learns your strengths</div></label>
-            <label class="kb-tile"><input type="file" accept=".csv" hidden onchange="kbUpload(this,'contacts')"><div class="kb-tile-t">Client contact list</div><div class="kb-tile-s">.csv — imports into your CRM</div></label>
-          </div>
-          <div id="kbStatus" style="font-size:12px;color:var(--text2);margin-top:12px;min-height:16px"></div>
-          <div id="kbList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
-        </div>
-      </div>
-
       <div class="card">
         <div class="card-head"><div class="card-title">Smart Upsell Engine</div></div>
         <div class="set-section">
@@ -118,12 +93,12 @@
         <div class="set-section" style="padding-top:6px" id="integrationsList">
           <div class="integration">
             <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
-            <div class="int-info"><div class="int-name">Telnyx</div><div class="int-status">Voice &amp; SMS — your Lola number</div></div>
+            <div class="int-info"><div class="int-name">Voice &amp; Text</div><div class="int-status">Your Lola phone line — calls &amp; texts</div></div>
             <button class="connect-btn connected">Active</button>
           </div>
           <div class="integration">
             <div class="int-logo" style="background:#25d366;color:#fff">W</div>
-            <div class="int-info"><div class="int-name">Telnyx WhatsApp</div><div class="int-status">Multi-channel support &amp; campaigns via WhatsApp</div></div>
+            <div class="int-info"><div class="int-name">WhatsApp</div><div class="int-status">Chat &amp; campaigns on WhatsApp</div></div>
             <button class="connect-btn connected">Active</button>
           </div>
           <div class="integration">
@@ -133,132 +108,18 @@
         </div>
       </div>
 
-      <!-- ── Lola on your website — premium card with live orb preview ── -->
-      <div class="card" style="overflow:visible">
-        <div class="card-head">
-          <div class="card-title">Lola on your website</div>
-          <span style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--pink-dim,rgba(255,45,142,.12));color:var(--pink2,#ff6bb0);padding:3px 9px;border-radius:20px">LIVE</span>
-        </div>
-        <div class="set-section" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
-          <!-- live orb preview -->
-          <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:10px">
-            <div style="position:relative;width:120px;height:120px">
-              <canvas id="settingsWidgetOrb" width="120" height="120" style="border-radius:50%;display:block"></canvas>
-              <!-- glowing ring around preview -->
-              <div style="position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,45,142,.2);pointer-events:none;animation:sRing 3s ease-in-out infinite"></div>
-            </div>
-            <div style="font-size:10px;color:var(--text3,#52525a);text-align:center;line-height:1.4">What visitors<br>see on your site</div>
-          </div>
-          <!-- right side: text + snippet -->
-          <div style="flex:1;min-width:220px">
-            <p style="font-size:13px;color:var(--text2);margin:0 0 14px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a neon-pink Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
-            <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-              <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#ff7fb8);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
-              <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap;flex-shrink:0">Copy</button>
-            </div>
-            <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
-          </div>
-        </div>
-      </div>
-      <style>
-        @keyframes sRing{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.9;transform:scale(1.04)}}
-      </style>
-
-
-      <!-- ── JARVIS OPERATOR VOICE CONTROL ── -->
-      <div class="card" style="grid-column:1/-1">
-        <div class="card-head">
-          <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">🎙️</span>
-            Jarvis — Owner Voice Control
-          </div>
-          <span id="jarvisBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Not configured</span>
-        </div>
+      <!-- ── Lola on your website — the embed snippet for existing accounts.
+           (New signups get this at the onboarding go-live screen; this card
+           is how everyone else plugs Lola into their site.) ── -->
+      <div class="card">
+        <div class="card-head"><div class="card-title">Lola on your website</div></div>
         <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin:0 0 18px">Call your private Jarvis line and Lola hands the phone to you — her owner-mode AI. Move bookings, cancel appointments, broadcast texts to clients: all by voice. Destructive actions need your PIN for a second confirmation.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:flex-end">
-            <div>
-              <label class="set-label">Your cell number <span style="color:var(--text3);font-weight:400">(Lola recognizes this caller ID)</span></label>
-              <input class="set-input" id="fOperatorPhone" placeholder="+1 (305) 555-0100" style="margin:0"/>
-            </div>
-            <div>
-              <label class="set-label">Voice PIN <span style="color:var(--text3);font-weight:400">(4–6 digits, spoken to confirm)</span></label>
-              <input class="set-input" id="fOperatorPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" style="margin:0;letter-spacing:.3em"/>
-            </div>
-            <button class="btn btn-primary" id="btnJarvisSave" onclick="saveOperatorSetup()" style="height:46px;white-space:nowrap">Save Jarvis</button>
+          <p style="font-size:13px;color:var(--text2);margin:0 0 12px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a chat bubble with <em>your</em> Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
+          <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:stretch">
+            <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#dcff66);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
+            <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap">Copy</button>
           </div>
-          <p style="font-size:11px;color:var(--text3);margin:12px 0 0">💡 Call the number on the Numbers page labeled "Jarvis" after setup. Lola greets callers normally — your cell rings Jarvis mode.</p>
-        </div>
-      </div>
-
-      <!-- ── LOLA LINK eSIM ── -->
-      <div class="card" style="grid-column:1/-1">
-        <div class="card-head">
-          <div class="card-title" style="display:flex;align-items:center;gap:10px">
-            <span style="width:30px;height:30px;border-radius:8px;background:rgba(255,45,142,.12);display:flex;align-items:center;justify-content:center;font-size:15px">📡</span>
-            Lola Link — Always-On Connectivity
-          </div>
-          <span id="esimBadge" style="font-size:10px;font-weight:600;letter-spacing:.08em;background:var(--surface2);color:var(--text3);padding:3px 9px;border-radius:20px">Loading…</span>
-        </div>
-        <div class="set-section">
-          <!-- No eSIM yet -->
-          <div id="esimOffer">
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:16px">
-                <div style="font-size:20px;margin-bottom:6px">⚡</div>
-                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Uptime failover</div>
-                <div style="font-size:11.5px;color:var(--text2)">Wi-Fi dies → Lola stays alive on LTE. Cost: $2/mo wholesale. ~87% margin.</div>
-              </div>
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:16px">
-                <div style="font-size:20px;margin-bottom:6px">💻</div>
-                <div style="font-size:13px;font-weight:600;margin-bottom:4px">LolaPad tablet</div>
-                <div style="font-size:11.5px;color:var(--text2)">Dashboard always online at reception. 500 MB included, overages billed per MB.</div>
-              </div>
-              <div style="background:linear-gradient(135deg,rgba(255,45,142,.08),transparent);border:0.5px solid rgba(255,45,142,.2);border-radius:var(--r-sm);padding:16px">
-                <div style="font-size:20px;margin-bottom:6px">🔒</div>
-                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Churn armor</div>
-                <div style="font-size:11.5px;color:var(--text2)">Hardware on your counter makes canceling LolaDesk mean unplugging a device the front desk needs.</div>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:14px">
-              <button class="btn btn-primary" id="btnOrderEsim" onclick="orderEsim()" style="font-size:13px;padding:10px 22px">Get Lola Link — $15/mo</button>
-              <span style="font-size:11.5px;color:var(--text3)">OTA eSIM · 500 MB included · cancel anytime</span>
-            </div>
-          </div>
-          <!-- Has eSIM -->
-          <div id="esimStatus" style="display:none">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
-                <div class="esim-val" id="esimStatusVal" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
-                <div style="font-size:10px;color:var(--text3)">Status</div>
-              </div>
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
-                <div id="esimUsedMb" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
-                <div style="font-size:10px;color:var(--text3)">MB used</div>
-              </div>
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
-                <div id="esimLimitMb" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">—</div>
-                <div style="font-size:10px;color:var(--text3)">MB included</div>
-              </div>
-              <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;text-align:center">
-                <div id="esimOverage" style="font-size:18px;font-weight:600;color:var(--text);line-height:1;margin-bottom:4px">$0</div>
-                <div style="font-size:10px;color:var(--text3)">Overage this month</div>
-              </div>
-            </div>
-            <!-- usage bar -->
-            <div style="height:5px;background:var(--surface2);border-radius:3px;margin-bottom:18px;overflow:hidden">
-              <div id="esimUsageBar" style="height:100%;border-radius:3px;background:linear-gradient(90deg,#ff2d8e,#ff6bb0);transition:width .6s"></div>
-            </div>
-            <!-- QR/activation code if fresh -->
-            <div id="esimActivation" style="display:none;margin-bottom:18px;padding:14px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm)">
-              <div style="font-size:12px;font-weight:600;margin-bottom:6px">📲 Scan or tap to activate your eSIM</div>
-              <a id="esimActivationLink" href="#" target="_blank" style="font-size:11px;color:var(--pink2);word-break:break-all"></a>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn btn-ghost" id="btnEsimToggle" onclick="toggleEsim()">Pause SIM</button>
-              <button class="btn btn-ghost" onclick="loadEsimStatus()">Refresh usage</button>
-            </div>
-          </div>
+          <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:10px 0 0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
         </div>
       </div>
 
@@ -266,13 +127,22 @@
         <div class="card-head"><div class="card-title">Telecom &amp; Infrastructure</div></div>
         <div class="set-section">
           <p style="font-size:13px;color:var(--text2);margin-bottom:16px;margin-top:0;">Ensure Lola never goes offline and handles your actual business calls.</p>
+          
+          <div style="margin-bottom:20px; padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
+            <div style="font-weight:600; font-size:14px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--pink);"></span>
+              Order Private APN SIM
+            </div>
+            <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Lola Link — a dedicated cellular connection for your salon. Your front-desk iPad stays connected to Lola even when the Wi-Fi drops.</p>
+            <button class="btn btn-primary" id="btnOrderSim" onclick="orderTelnyxSim()" style="font-size:12px;">Ship to Salon ($15/mo)</button>
+          </div>
 
           <div style="padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
             <div style="font-weight:600; font-size:14px; margin-bottom:6px;">Port Business Number</div>
             <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Move your legacy salon phone number (Verizon, AT&amp;T, etc.) to LolaDesk so Lola can answer the main line.</p>
             <div style="display:flex; gap:10px;">
               <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width:200px;">
-              <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Port to Telnyx</button>
+              <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Bring my number</button>
             </div>
           </div>
         </div>
@@ -297,21 +167,7 @@
 <script src="auth-guard.js"></script>
 <script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
-<script src="lola-orb.js"></script>
 <script>
-/* Mount the live orb preview in the widget card */
-(function mountSettingsOrb(){
-  function tryMount(){
-    var c = document.getElementById('settingsWidgetOrb');
-    if(c && window.LolaOrb){
-      var o = LolaOrb.mount(c, { size: 120 });
-      o.setState('ambient');
-    }
-  }
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tryMount);
-  else tryMount();
-})();
-
 const PROVIDER_LOGOS = {
   square:          { bg:'#fff', color:'#000', glyph:'□' },
   boulevard:        { bg:'#1a1a2e', color:'#fff', glyph:'B' },
@@ -364,12 +220,12 @@ function renderIntegrations(providers){
   const staticRows = `
           <div class="integration">
             <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
-            <div class="int-info"><div class="int-name">Telnyx</div><div class="int-status">Voice &amp; SMS — your Lola number</div></div>
+            <div class="int-info"><div class="int-name">Voice &amp; Text</div><div class="int-status">Your Lola phone line — calls &amp; texts</div></div>
             <button class="connect-btn connected">Active</button>
           </div>
           <div class="integration">
             <div class="int-logo" style="background:#25d366;color:#fff">W</div>
-            <div class="int-info"><div class="int-name">Telnyx WhatsApp</div><div class="int-status">Multi-channel support &amp; campaigns via WhatsApp</div></div>
+            <div class="int-info"><div class="int-name">WhatsApp</div><div class="int-status">Chat &amp; campaigns on WhatsApp</div></div>
             <button class="connect-btn connected">Active</button>
           </div>`;
   const rows = (providers||[]).map(p=>{
@@ -437,162 +293,39 @@ window.manageBilling = async function(){
   }catch(e){ showToast('Could not open billing portal', 'err'); }
 };
 
-// ── Jarvis Operator Setup ──
-(async function loadJarvisSetup(){
-  // Pre-fill the phone from the tenant row if already set
-  try{
-    const auth = await window.LolaAuth.ready;
-    const phone = auth?.tenant?.operator_phone || '';
-    if(phone) document.getElementById('fOperatorPhone').value = phone;
-    const badge = document.getElementById('jarvisBadge');
-    if(phone){
-      badge.textContent = 'Configured ✓';
-      badge.style.background = 'rgba(52,211,113,.12)';
-      badge.style.color = '#34d371';
-    } else {
-      badge.textContent = 'Not configured';
-    }
-  }catch(e){}
-})();
-
-window.saveOperatorSetup = async function(){
-  const btn = document.getElementById('btnJarvisSave');
-  const phone = document.getElementById('fOperatorPhone').value.trim();
-  const pin = document.getElementById('fOperatorPin').value.trim();
-  if(!phone && !pin){ showToast('Enter your phone number and/or PIN.', 'err'); return; }
-  btn.disabled = true; btn.textContent = 'Saving…';
-  try{
-    const r = await fetch('/api/operator-setup', {
+// ── Telecom Wiring ──
+window.orderTelnyxSim = async function(){
+  const btn = document.getElementById('btnOrderSim');
+  const og = btn.textContent;
+  btn.textContent = 'Ordering...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/carrier-sims', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
-      body: JSON.stringify({ operator_phone: phone || undefined, pin: pin || undefined })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address_id: 'mock_addr_123', quantity: 1 })
     });
     const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Save failed');
-    const badge = document.getElementById('jarvisBadge');
-    badge.textContent = 'Configured ✓';
-    badge.style.background = 'rgba(52,211,113,.12)';
-    badge.style.color = '#34d371';
-    document.getElementById('fOperatorPin').value = '';
-    showToast('Jarvis is ready. Call your Jarvis line to test.', 'ok');
-  }catch(e){
-    showToast(e.message || 'Could not save — try again', 'err');
-  }finally{
-    btn.disabled = false; btn.textContent = 'Save Jarvis';
-  }
-};
-
-// ── Lola Link eSIM ──
-let esimCurrentStatus = null;
-
-window.loadEsimStatus = async function(){
-  const badge = document.getElementById('esimBadge');
-  try{
-    const r = await fetch('/api/telnyx-esim', {
-      headers: { 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') }
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error);
-    if(!d.esim){
-      // No SIM yet — show the offer panel
-      document.getElementById('esimOffer').style.display = '';
-      document.getElementById('esimStatus').style.display = 'none';
-      badge.textContent = 'Not ordered';
-      badge.style.background = ''; badge.style.color = '';
-      return;
-    }
-    // Has SIM — show status panel
-    esimCurrentStatus = d.esim;
-    document.getElementById('esimOffer').style.display = 'none';
-    document.getElementById('esimStatus').style.display = '';
-    const statusEl = document.getElementById('esimStatusVal');
-    const s = d.esim.status || 'unknown';
-    statusEl.textContent = s.charAt(0).toUpperCase() + s.slice(1);
-    statusEl.style.color = s === 'enabled' || s === 'connected' ? '#34d371' : s === 'suspended' ? '#ff9f0a' : 'var(--text)';
-    badge.textContent = s === 'enabled' || s === 'connected' ? 'Active ✓' : 'Suspended';
-    badge.style.background = s === 'enabled' || s === 'connected' ? 'rgba(52,211,113,.12)' : 'rgba(255,159,10,.12)';
-    badge.style.color = s === 'enabled' || s === 'connected' ? '#34d371' : '#ff9f0a';
-    document.getElementById('esimUsedMb').textContent = d.esim.used_mb ?? '—';
-    document.getElementById('esimLimitMb').textContent = d.esim.data_limit_mb ?? '—';
-    document.getElementById('esimOverage').textContent = d.esim.overage_charge > 0 ? '$'+d.esim.overage_charge.toFixed(2) : '$0';
-    const pct = d.esim.data_limit_mb ? Math.min(100, Math.round((d.esim.used_mb/d.esim.data_limit_mb)*100)) : 0;
-    document.getElementById('esimUsageBar').style.width = pct + '%';
-    document.getElementById('esimUsageBar').style.background = pct > 85 ? 'linear-gradient(90deg,#ff4d4d,#ff9f0a)' : 'linear-gradient(90deg,#ff2d8e,#ff6bb0)';
-    const togBtn = document.getElementById('btnEsimToggle');
-    togBtn.textContent = (s === 'enabled' || s === 'connected') ? 'Pause SIM' : 'Resume SIM';
-    // Activation link for fresh orders
-    const act = d.esim.activation;
-    if(act && (act.activation_code || act.smdp_address)){
-      const url = act.activation_code || `LPA:1$${act.smdp_address}$${act.iccid||''}`;
-      document.getElementById('esimActivation').style.display = '';
-      const link = document.getElementById('esimActivationLink');
-      link.textContent = url; link.href = url;
-    }
-  }catch(e){
-    badge.textContent = 'Error';
-    console.error('[esim]', e);
-  }
-};
-
-window.orderEsim = async function(){
-  const btn = document.getElementById('btnOrderEsim');
-  btn.disabled = true; btn.textContent = 'Ordering your eSIM…';
-  try{
-    const r = await fetch('/api/telnyx-esim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
-      body: JSON.stringify({ action: 'order' })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Order failed');
-    if(d.pending){
-      showToast('eSIM is provisioning — refresh in ~60 seconds.', 'ok');
-    } else {
-      showToast('Lola Link is live! Scan the QR below to activate.', 'ok');
-    }
-    await window.loadEsimStatus();
-  }catch(e){
-    showToast(e.message || 'Could not order — contact support', 'err');
-    btn.disabled = false; btn.textContent = 'Get Lola Link — $15/mo';
-  }
-};
-
-window.toggleEsim = async function(){
-  if(!esimCurrentStatus) return;
-  const s = esimCurrentStatus.status || '';
-  const isOn = s === 'enabled' || s === 'connected';
-  const action = isOn ? 'disable' : 'enable';
-  const btn = document.getElementById('btnEsimToggle');
-  btn.disabled = true; btn.textContent = isOn ? 'Pausing…' : 'Resuming…';
-  try{
-    const r = await fetch('/api/telnyx-esim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+(window.LolaAuth?.token||'') },
-      body: JSON.stringify({ action })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error);
-    showToast(d.note || (action === 'disable' ? 'SIM paused.' : 'SIM resumed.'), 'ok');
-    await window.loadEsimStatus();
-  }catch(e){
-    showToast(e.message || 'Could not update SIM', 'err');
-  }finally{
+    if(!r.ok) throw new Error(d.error || 'Failed to order SIM');
+    showToast('SIM ordered! It will arrive in 2-3 business days.', 'ok');
+  } catch(e) {
+    showToast(e.message, 'err');
+  } finally {
+    btn.textContent = og;
     btn.disabled = false;
   }
 };
 
-// Load eSIM status on page load
-(async function(){ try{ await window.loadEsimStatus(); }catch(e){} })();
-
-// ── Number Porting ──
 window.portTelnyxNumber = async function(){
   const num = document.getElementById('fPortNumber').value.trim();
   if(!num){ showToast('Enter a number to port.', 'err'); return; }
+  
   const btn = document.getElementById('btnPortNum');
   const og = btn.textContent;
-  btn.textContent = 'Initiating...'; btn.disabled = true;
+  btn.textContent = 'Initiating...';
+  btn.disabled = true;
   try {
-    const r = await fetch('/api/telnyx-porting', {
+    const r = await fetch('/api/carrier-porting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone_numbers: [num], tenantId: window.LolaData?.currentTenant?.slug })
@@ -604,7 +337,8 @@ window.portTelnyxNumber = async function(){
   } catch(e) {
     showToast(e.message, 'err');
   } finally {
-    btn.textContent = og; btn.disabled = false;
+    btn.textContent = og;
+    btn.disabled = false;
   }
 };
 
@@ -720,125 +454,5 @@ function fmtPlan(plan){
   else if(qs.get('connect') === 'error') showToast(`Couldn't connect ${qs.get('provider')||'that integration'}.`, 'err');
 })();
 </script>
-<script>
-/* ── Lola's Knowledge: browser-side extraction → /api/knowledge ── */
-(function(){
-  const CDN = {
-    pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-    pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-    papa: 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js'
-  };
-  const loaded = {};
-  function loadScript(url){
-    if(loaded[url]) return loaded[url];
-    loaded[url] = new Promise((resolve,reject)=>{
-      const s=document.createElement('script'); s.src=url; s.onload=resolve; s.onerror=()=>reject(new Error('load failed: '+url));
-      document.head.appendChild(s);
-    });
-    return loaded[url];
-  }
-  const token = ()=> localStorage.getItem('loladesk_token') || '';
-  const status = (m,err)=>{ const el=document.getElementById('kbStatus'); if(el){ el.textContent=m||''; el.style.color = err?'#ff6161':'var(--text2)'; } };
-
-  async function pdfToText(file){
-    await loadScript(CDN.pdf);
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker;
-    const buf = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-    let out='';
-    for(let p=1; p<=pdf.numPages && out.length<20000; p++){
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      out += content.items.map(i=>i.str).join(' ') + '\n';
-    }
-    return out.trim();
-  }
-  async function csvRows(file){
-    await loadScript(CDN.papa);
-    const text = await file.text();
-    return window.Papa.parse(text, { header:true, skipEmptyLines:true }).data || [];
-  }
-  function pick(row, keys){
-    const map={}; Object.keys(row).forEach(k=>map[k.toLowerCase().trim()]=row[k]);
-    for(const k of keys){ if(map[k]!=null && String(map[k]).trim()) return String(map[k]).trim(); }
-    return '';
-  }
-
-  window.kbUpload = async function(input, kind){
-    const file = input.files && input.files[0];
-    input.value = '';
-    if(!file) return;
-    if(!token()){ status('Please sign in again to upload.', true); return; }
-    status(`Reading ${file.name}…`);
-    try{
-      let payload;
-      const isPdf = /\.pdf$/i.test(file.name);
-      const isCsv = /\.csv$/i.test(file.name);
-
-      if(kind === 'contacts'){
-        if(!isCsv){ status('Contact lists must be a .csv file.', true); return; }
-        const rows = await csvRows(file);
-        const contacts = rows.map(r=>({
-          name:  pick(r,['name','full name','client','client name','first name']),
-          phone: pick(r,['phone','phone number','mobile','cell','tel','number']),
-          email: pick(r,['email','e-mail','email address'])
-        })).filter(c=>c.phone);
-        if(!contacts.length){ status('No rows with a phone number found. Make sure your CSV has a "phone" column.', true); return; }
-        payload = { kind:'contacts', filename:file.name, contacts };
-      } else {
-        let text = '';
-        if(isPdf) text = await pdfToText(file);
-        else if(isCsv){ const rows = await csvRows(file); text = rows.map(r=>Object.values(r).join(' ')).join('\n'); }
-        else text = await file.text();
-        if(!text.trim()){ status('Could not read any text from that file.', true); return; }
-        payload = { kind, filename:file.name, text };
-      }
-
-      status(`Teaching Lola from ${file.name}…`);
-      const r = await fetch('/api/knowledge', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token() },
-        body: JSON.stringify(payload)
-      });
-      const d = await r.json();
-      if(!r.ok) throw new Error(d.error || 'upload failed');
-      if(payload.kind === 'contacts'){
-        status(`Imported ${d.imported} contact${d.imported===1?'':'s'} into your CRM${d.skipped?` (${d.skipped} skipped — no phone)`:''}.`);
-      } else {
-        status(`Added. Lola now knows about ${file.name}.`);
-      }
-      kbRefresh();
-    }catch(e){
-      status('Error: '+(e.message||e), true);
-    }
-  };
-
-  window.kbDelete = async function(id){
-    if(!token()) return;
-    try{
-      await fetch('/api/knowledge?id='+encodeURIComponent(id), { method:'DELETE', headers:{ Authorization:'Bearer '+token() } });
-      kbRefresh();
-    }catch(e){ status('Could not remove: '+(e.message||e), true); }
-  };
-
-  async function kbRefresh(){
-    const list = document.getElementById('kbList');
-    if(!list || !token()) return;
-    try{
-      const r = await fetch('/api/knowledge', { headers:{ Authorization:'Bearer '+token() } });
-      if(!r.ok) return;
-      const d = await r.json();
-      const docs = d.documents || [];
-      list.innerHTML = docs.map(doc=>{
-        const name = String(doc.filename||'Untitled').replace(/[<>&"]/g,'');
-        return `<div class="kb-doc"><span>📄 <strong>${name}</strong> <span style="color:var(--text2)">· ${doc.kind} · ${doc.char_count||0} chars</span></span><span class="kb-doc-x" title="Remove" onclick="kbDelete('${doc.id}')">✕</span></div>`;
-      }).join('');
-    }catch{}
-  }
-  document.addEventListener('DOMContentLoaded', kbRefresh);
-  if(document.readyState !== 'loading') kbRefresh();
-})();
-</script>
 </body>
 </html>
-

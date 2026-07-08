@@ -2,11 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Team — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
@@ -19,7 +16,7 @@
 .member-change{font-size:12px;font-weight:500;margin-bottom:16px}
 .member-change.up{color:var(--text)}
 .member-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:14px}
-.member-bar-fill{height:100%;background:linear-gradient(90deg,#ff2d8e,#ff6bb0);border-radius:3px}
+.member-bar-fill{height:100%;background:linear-gradient(90deg,#ccff00,#ff6bb0);border-radius:3px}
 .member-stats{display:flex;gap:18px}
 .member-stat-val{font-size:15px;font-weight:600}
 .member-stat-label{font-size:11px;color:var(--text3)}
@@ -39,10 +36,10 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val" id="kpiRev">—</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ this month</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiCount">—</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiUtil">—</div><div class="kpi-label">Avg utilization</div><div class="kpi-sub">↑ 9%</div></div>
-      <div class="kpi"><div class="kpi-val pink" id="kpiAppts">—</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Last 30 days</div></div>
+      <div class="kpi"><div class="kpi-val">$53,200</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ 15% this month</div></div>
+      <div class="kpi"><div class="kpi-val">4</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
+      <div class="kpi"><div class="kpi-val">87%</div><div class="kpi-label">Chair utilization</div><div class="kpi-sub">↑ 9%</div></div>
+      <div class="kpi"><div class="kpi-val pink">312</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Lola booked 81%</div></div>
     </div>
 
     <div class="team-grid" id="teamGrid"></div>
@@ -72,13 +69,6 @@ function renderTeam(){ document.getElementById('teamGrid').innerHTML = TEAM.map(
   const list = (data && data.team) || [];
   TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct||(100-i*20), clients:m.clients||0, rating:m.rating||4.8 }));
   renderTeam();
-
-  if(data && data.kpis){
-    document.getElementById('kpiRev').textContent = '$' + (data.kpis.totalRev || 0).toLocaleString();
-    document.getElementById('kpiCount').textContent = list.length;
-    document.getElementById('kpiUtil').textContent = (data.kpis.totalUtil || 0) + '%';
-    document.getElementById('kpiAppts').textContent = (data.kpis.totalAppts || 0).toLocaleString();
-  }
 })();
 </script>
 </body>

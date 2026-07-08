@@ -2,65 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Marketing — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
-/* ── Audience segment cards ── */
-.seg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:24px}
-.seg-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:18px;cursor:pointer;transition:all .18s;position:relative}
-.seg-card:hover{border-color:var(--border2);background:var(--surface2)}
-.seg-card.selected{border-color:var(--pink);background:var(--pink-dim)}
-.seg-card.selected .seg-check{display:flex}
-.seg-check{display:none;position:absolute;top:12px;right:12px;width: 100%; max-width: 20px;height:20px;border-radius:50%;background:var(--pink);align-items:center;justify-content:center}
-.seg-count{font-size:28px;font-weight:700;color:var(--pink2);line-height:1;margin-bottom:4px}
-.seg-name{font-size:14px;font-weight:600;margin-bottom:4px}
-.seg-desc{font-size:11.5px;color:var(--text3);line-height:1.5}
-/* ── Campaign builder steps ── */
-.builder{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:20px}
-.builder-step{border-bottom:0.5px solid var(--border);padding:18px 22px}
-.builder-step:last-child{border-bottom:none}
-.step-head{display:flex;align-items:center;gap:12px;margin-bottom:0;cursor:pointer;user-select:none}
-.step-num{width: 100%; max-width: 26px;height:26px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;transition:all .2s}
-.step-num.done{background:var(--pink);border-color:var(--pink);color:#fff}
-.step-num.active{background:var(--pink-dim);border-color:var(--pink);color:var(--pink2)}
-.step-title{font-size:14px;font-weight:600}
-.step-sub{font-size:12px;color:var(--text3);margin-top:2px}
-.step-body{margin-top:16px;padding-top:16px;border-top:0.5px solid var(--border)}
-/* ── Message editor ── */
-.msg-editor{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:14px;color:var(--text);resize:vertical;min-height:110px;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;line-height:1.6;outline:none;transition:border-color .15s}
-.msg-editor:focus{border-color:var(--pink)}
-.msg-preview{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-size:14px;color:var(--text2);line-height:1.6;position:relative;min-height:60px}
-.msg-preview::before{content:'Preview';position:absolute;top:-9px;left:14px;background:var(--bg);padding:0 6px;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--text3);text-transform:uppercase}
-.char-count{font-size:11px;color:var(--text3);text-align:right;margin-top:5px}
-.char-count.warn{color:#ff9f0a}
-.char-count.over{color:#ff4d4d}
-/* ── Lola AI draft ── */
-.lola-draft-btn{display:inline-flex;align-items:center;gap:7px;background:var(--pink-dim);border:0.5px solid rgba(255,45,142,.3);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--pink2);cursor:pointer;transition:all .15s;margin-bottom:12px}
-.lola-draft-btn:hover{background:rgba(255,45,142,.18)}
-/* ── Auto campaigns ── */
-.camp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-.camp{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:20px;position:relative}
-.camp-icon{width: 100%; max-width: 40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px}
-.camp-title{font-size:14px;font-weight:600;margin-bottom:5px}
-.camp-desc{font-size:12.5px;font-weight:300;color:var(--text2);line-height:1.55;margin-bottom:14px}
-.camp-stats{display:flex;gap:16px}
-.camp-stat-val{font-size:16px;font-weight:600}
-.camp-stat-label{font-size:10px;color:var(--text3)}
-.toggle{position:absolute;top:18px;right:18px;width: 100%; max-width: 40px;height:22px;border-radius:11px;background:var(--pink);cursor:pointer;transition:background .2s;border:none}
-.toggle::after{content:'';position:absolute;top:3px;right:3px;width: 100%; max-width: 16px;height:16px;border-radius:50%;background:#fff;transition:all .2s}
+.camp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.camp{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:22px;position:relative}
+.camp-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.camp-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.camp-desc{font-size:13px;font-weight:300;color:var(--text2);line-height:1.55;margin-bottom:18px}
+.camp-stats{display:flex;gap:20px;margin-bottom:16px}
+.camp-stat-val{font-size:18px;font-weight:600}
+.camp-stat-label{font-size:11px;color:var(--text3)}
+.toggle{position:absolute;top:22px;right:22px;width:42px;height:24px;border-radius:12px;background:var(--text);cursor:pointer;transition:background .2s}
+.toggle::after{content:'';position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:all .2s}
 .toggle.off{background:var(--surface2)}
-.toggle.off::after{right:21px}
-/* ── Schedule options ── */
-.sched-opts{display:flex;gap:10px;flex-wrap:wrap}
-.sched-opt{padding:9px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;cursor:pointer;transition:all .15s;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;color:var(--text)}
-.sched-opt.sel,.sched-opt:hover{border-color:var(--pink);background:var(--pink-dim);color:var(--pink2)}
-/* toast */
-.mkt-toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:0.5px solid var(--pink);border-radius:12px;padding:13px 18px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:50;max-width:320px}
-.mkt-toast.show{opacity:1;transform:translateY(0)}
+.toggle.off::after{right:20px}
 </style>
 </head>
 <body data-page="marketing">
@@ -69,305 +26,68 @@
     <div class="topbar">
       <div class="page-head">
         <h1 class="page-title">Marketing</h1>
-        <p class="page-sub">Pick an audience. Write a message. Lola handles the rest.</p>
+        <p class="page-sub">Campaigns Lola runs automatically to grow your salon.</p>
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost" id="btnPreview" onclick="togglePreview()" style="display:none">Preview message</button>
+        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>New campaign</button>
       </div>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val pink" id="kpiRev">—</div><div class="kpi-label">Revenue from campaigns</div><div class="kpi-sub">Last 30 days</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiRuns">—</div><div class="kpi-label">Campaigns sent</div><div class="kpi-sub">Last 30 days</div></div>
-      <div class="kpi"><div class="kpi-val mono">34%</div><div class="kpi-label">Avg response rate</div><div class="kpi-sub">↑ above industry avg</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiActive">3</div><div class="kpi-label">Auto campaigns</div><div class="kpi-sub">Running 24/7</div></div>
+      <div class="kpi"><div class="kpi-val pink">$8,400</div><div class="kpi-label">Revenue from campaigns</div><div class="kpi-sub">This month</div></div>
+      <div class="kpi"><div class="kpi-val">142</div><div class="kpi-label">Clients re-engaged</div><div class="kpi-sub">By Lola</div></div>
+      <div class="kpi"><div class="kpi-val mono">34%</div><div class="kpi-label">Response rate</div><div class="kpi-sub">↑ above avg</div></div>
+      <div class="kpi"><div class="kpi-val">3</div><div class="kpi-label">Active campaigns</div><div class="kpi-sub">Running 24/7</div></div>
     </div>
 
-    <!-- ══ MANUAL CAMPAIGN BUILDER ══ -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-head">
-        <div class="card-title">New campaign</div>
-        <span style="font-size:11px;color:var(--text3)">Step-by-step · Lola writes it for you</span>
-      </div>
-      <div style="padding:20px">
-
-        <!-- Step 1: Audience -->
-        <div style="margin-bottom:22px">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px" id="step1Num">1</span>
-            Pick your audience
-          </div>
-          <div class="seg-grid" id="segGrid">
-            <div style="padding:40px;color:var(--text3);text-align:center;grid-column:1/-1">Loading your clients…</div>
-          </div>
-        </div>
-
-        <!-- Step 2: Message -->
-        <div style="margin-bottom:22px">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step2Num">2</span>
-            Write your message
-          </div>
-          <button class="lola-draft-btn" onclick="lolaWriteIt()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
-            Let Lola write it
-          </button>
-          <textarea class="msg-editor" id="msgEditor" placeholder="Write your message… or let Lola draft it above." oninput="updateCharCount(this)"></textarea>
-          <div class="char-count" id="charCount">0 / 160</div>
-          <div class="msg-preview" id="msgPreview" style="margin-top:14px;display:none"></div>
-        </div>
-
-        <!-- Step 3: Schedule -->
-        <div style="margin-bottom:22px">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            <span style="width: 100%; max-width: 22px;height:22px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;font-size:10px" id="step3Num">3</span>
-            When to send
-          </div>
-          <div class="sched-opts">
-            <button class="sched-opt sel" onclick="selectSched(this,'now')">Send now</button>
-            <button class="sched-opt" onclick="selectSched(this,'morning')">Tomorrow morning (9am)</button>
-            <button class="sched-opt" onclick="selectSched(this,'custom')">Pick a time</button>
-          </div>
-          <input type="datetime-local" id="customTime" style="display:none;margin-top:10px;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;color:var(--text);font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:13px;outline:none"/>
-        </div>
-
-        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:24px;margin-bottom:24px;">
-      <h3 style="font-weight:500;margin-bottom:16px;">AI Campaign Drafter</h3>
-      <p style="color:var(--text2);font-size:14px;margin-bottom:16px;">Tell Lola what you want to promote. She will read your Knowledge Base and draft a highly-converting email/SMS.</p>
-      <textarea id="campaignPrompt" style="width:100%;height:100px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:16px;color:var(--text);resize:none;margin-bottom:16px;" placeholder="e.g. Draft a weekend promo for our new restorative hair mask..."></textarea>
-      <button onclick="draftCampaign()" style="background:var(--pink);color:#fff;padding:12px 24px;border-radius:var(--r-sm);font-weight:500;transition:all 0.2s;">Draft Campaign</button>
-      <div id="campaignResult" style="margin-top:16px;font-size:14px;color:var(--text);white-space:pre-wrap;"></div>
-    </div>
-
-    <!-- Active Automations -->
-        <div style="display:flex;align-items:center;gap:14px">
-          <button class="btn btn-primary" id="btnSend" onclick="sendCampaign()" style="padding:12px 28px;font-size:14px">
-            Send to <span id="sendCount">—</span> clients
-          </button>
-          <div id="sendStatus" style="font-size:13px;color:var(--text3)">Select an audience to get started</div>
+    <div class="camp-grid">
+      <div class="camp">
+        <div class="toggle"></div>
+        <div class="camp-icon" style="background:var(--pink-dim);color:var(--pink2)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 109-9M3 12a9 9 0 019-9M3 12h18"/></svg></div>
+        <div class="camp-title">Rebooking reminders</div>
+        <div class="camp-desc">Lola texts clients when they're due for their next color or treatment, with a one-tap booking link.</div>
+        <div class="camp-stats">
+          <div><div class="camp-stat-val">23</div><div class="camp-stat-label">Sent this week</div></div>
+          <div><div class="camp-stat-val mono" style="color:var(--text)">$4,200</div><div class="camp-stat-label">Recovered</div></div>
         </div>
       </div>
-    </div>
-
-    <!-- ══ AUTO CAMPAIGNS ══ -->
-    <div class="card">
-      <div class="card-head">
-        <div class="card-title">Automatic campaigns</div>
-        <span style="font-size:11px;color:var(--text3)">Lola runs these 24/7 — no action needed</span>
+      <div class="camp">
+        <div class="toggle"></div>
+        <div class="camp-icon" style="background:var(--mono-dim);color:var(--text)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg></div>
+        <div class="camp-title">Birthday offers</div>
+        <div class="camp-desc">A warm birthday message with a special treat — sent automatically the week of each client's birthday.</div>
+        <div class="camp-stats">
+          <div><div class="camp-stat-val">5</div><div class="camp-stat-label">This week</div></div>
+          <div><div class="camp-stat-val mono" style="color:var(--text)">$1,100</div><div class="camp-stat-label">Booked</div></div>
+        </div>
       </div>
-      <div style="padding:20px">
-        <div class="camp-grid">
-          <div class="camp">
-            <button class="toggle" title="Toggle campaign"></button>
-            <div class="camp-icon" style="background:var(--pink-dim)">🔄</div>
-            <div class="camp-title">Rebooking reminders</div>
-            <div class="camp-desc">Texts clients when they're due for their next service with a one-tap booking link.</div>
-            <div class="camp-stats">
-              <div><div class="camp-stat-val" id="winbackCount">—</div><div class="camp-stat-label">Due now</div></div>
-              <div><div class="camp-stat-val" style="color:var(--pink2)">↑ Auto</div><div class="camp-stat-label">Running</div></div>
-            </div>
-          </div>
-          <div class="camp">
-            <button class="toggle" title="Toggle campaign"></button>
-            <div class="camp-icon" style="background:var(--mono-dim)">🎂</div>
-            <div class="camp-title">Birthday messages</div>
-            <div class="camp-desc">A personal birthday message with a special offer, sent the week of each client's birthday.</div>
-            <div class="camp-stats">
-              <div><div class="camp-stat-val" id="vipCount">—</div><div class="camp-stat-label">VIP clients</div></div>
-              <div><div class="camp-stat-val" style="color:var(--pink2)">↑ Auto</div><div class="camp-stat-label">Running</div></div>
-            </div>
-          </div>
-          <div class="camp">
-            <button class="toggle" title="Toggle campaign"></button>
-            <div class="camp-icon" style="background:var(--mono-dim)">💌</div>
-            <div class="camp-title">Win-back lapsed clients</div>
-            <div class="camp-desc">Reaches out to clients who haven't visited in 90+ days with a personal invitation to return.</div>
-            <div class="camp-stats">
-              <div><div class="camp-stat-val" id="lapsedCount">—</div><div class="camp-stat-label">Lapsed</div></div>
-              <div><div class="camp-stat-val" style="color:var(--pink2)">↑ Auto</div><div class="camp-stat-label">Running</div></div>
-            </div>
-          </div>
+      <div class="camp">
+        <div class="toggle"></div>
+        <div class="camp-icon" style="background:var(--mono-dim);color:var(--text)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8"/></svg></div>
+        <div class="camp-title">Win-back lapsed clients</div>
+        <div class="camp-desc">Lola reaches out to clients who haven't visited in 90+ days with a personal invitation to return.</div>
+        <div class="camp-stats">
+          <div><div class="camp-stat-val">38</div><div class="camp-stat-label">Re-engaged</div></div>
+          <div><div class="camp-stat-val mono" style="color:var(--text)">$3,100</div><div class="camp-stat-label">Recovered</div></div>
         </div>
       </div>
     </div>
   </main>
 </div>
-<div class="mkt-toast" id="mktToast"></div>
 
 <script src="auth-guard.js"></script>
 <script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
-let SEGMENTS = [];
-let selectedSegment = null;
-let schedMode = 'now';
-let TENANT_PHONE = '';
-
-function showToast(msg, err){
-  const t = document.getElementById('mktToast');
-  t.textContent = msg;
-  t.style.borderColor = err ? '#ff6b6b' : 'var(--pink)';
-  t.style.color = err ? '#ff6b6b' : 'var(--text)';
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 3500);
-}
-
-function updateCharCount(el){
-  const len = el.value.length;
-  const cc = document.getElementById('charCount');
-  cc.textContent = `${len} / 160`;
-  cc.className = 'char-count' + (len>160?' over':len>140?' warn':'');
-  // update preview
-  const prev = document.getElementById('msgPreview');
-  if(el.value.trim()){
-    prev.style.display='';
-    prev.textContent = el.value;
-  } else {
-    prev.style.display='none';
-  }
-}
-
-function selectSegment(el, id){
-  document.querySelectorAll('.seg-card').forEach(c=>c.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedSegment = SEGMENTS.find(s=>s.id===id);
-  const count = selectedSegment ? selectedSegment.count : 0;
-  document.getElementById('sendCount').textContent = count;
-  document.getElementById('sendStatus').textContent = selectedSegment
-    ? `${count} client${count!==1?'s':''} will receive this message`
-    : 'Select an audience to get started';
-  document.getElementById('step2Num').style.background = 'var(--pink)';
-  document.getElementById('step2Num').style.color = '#fff';
-  document.getElementById('step2Num').style.border = 'none';
-}
-
-function selectSched(el, mode){
-  document.querySelectorAll('.sched-opt').forEach(b=>b.classList.remove('sel'));
-  el.classList.add('sel');
-  schedMode = mode;
-  document.getElementById('customTime').style.display = mode==='custom' ? '' : 'none';
-}
-
-async function lolaWriteIt(){
-  if(!selectedSegment){ showToast('Pick an audience first.', true); return; }
-  const btn = document.querySelector('.lola-draft-btn');
-  btn.textContent = '✨ Writing…';
-  btn.style.opacity = '.7';
-  try{
-    const tok = window.LolaAuth?.token || localStorage.getItem('loladesk_token') || '';
-    const prompt = `Write a warm, personalized SMS marketing message for a hair salon. Audience: "${selectedSegment.name}" — ${selectedSegment.desc}. Make it feel human and genuine, not salesy. Under 155 characters. End with a clear CTA to book. No hashtags.`;
-    const r = await fetch('/api/lola-brain', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
-      body: JSON.stringify({ message: prompt, system: 'You are a luxury hair salon marketing expert. Write exactly one SMS. No explanation, no quotes — just the message.' })
-    });
-    const d = await r.json();
-    const text = d.reply || d.text || d.message || '';
-    if(text){
-      document.getElementById('msgEditor').value = text.trim();
-      updateCharCount(document.getElementById('msgEditor'));
-    }
-  }catch(e){
-    showToast('Could not reach Lola — write your own message.', true);
-  }finally{
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01"/></svg> Let Lola write it`;
-    btn.style.opacity = '1';
-  }
-}
-
-async function sendCampaign(){
-  const msg = document.getElementById('msgEditor').value.trim();
-  if(!selectedSegment){ showToast('Pick an audience first.', true); return; }
-  if(!msg){ showToast('Write a message first.', true); return; }
-
-  const btn = document.getElementById('btnSend');
-  const status = document.getElementById('sendStatus');
-  btn.disabled = true; btn.textContent = 'Sending…';
-
-  try{
-    const tok = window.LolaAuth?.token || localStorage.getItem('loladesk_token') || '';
-    const payload = {
-      segment: selectedSegment.id,
-      message: msg,
-      schedule: schedMode,
-      scheduledAt: schedMode==='custom' ? document.getElementById('customTime').value : null
-    };
-    const r = await fetch('/api/marketing-automations', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
-      body: JSON.stringify(payload)
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error||'Send failed');
-    showToast(`🌸 Sent to ${selectedSegment.count} client${selectedSegment.count!==1?'s':''}!`);
-    btn.textContent = '✓ Sent!';
-    btn.style.background = '#34d371';
-    status.textContent = 'Campaign delivered successfully';
-    setTimeout(()=>{
-      btn.disabled = false; btn.textContent = `Send to ${selectedSegment.count} clients`;
-      btn.style.background = '';
-    }, 3000);
-  }catch(e){
-    showToast(e.message||'Could not send — try again', true);
-    btn.disabled = false; btn.textContent = `Send to ${selectedSegment?.count||'—'} clients`;
-  }
-}
-
-// Load real data
+document.querySelectorAll('.toggle').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('off')));
 (async ()=>{
-  try{ const auth = await window.LolaAuth.ready; TENANT_PHONE = auth?.tenant?.phone_number||''; }catch(e){}
   const data = await LolaData.load('marketing');
-  if(data && data.segments){
-    SEGMENTS = data.segments;
-    document.getElementById('segGrid').innerHTML = SEGMENTS.map(s=>`
-      <div class="seg-card" onclick="selectSegment(this,'${s.id}')">
-        <div class="seg-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
-        <div class="seg-count">${s.count}</div>
-        <div class="seg-name">${s.name}</div>
-        <div class="seg-desc">${s.desc}</div>
-      </div>`).join('');
-    // Update auto campaign counts
-    const winback = SEGMENTS.find(s=>s.id==='winback');
-    const vip = SEGMENTS.find(s=>s.id==='vip');
-    if(winback) document.getElementById('winbackCount').textContent = winback.count;
-    if(vip) document.getElementById('vipCount').textContent = vip.count;
-    const lapsed = SEGMENTS.find(s=>s.id==='winback');
-    if(lapsed) document.getElementById('lapsedCount').textContent = lapsed.count;
-  }
-  if(data && data.roi){
-    document.getElementById('kpiRev').textContent = data.roi.campaignRevenue30 > 0
-      ? '$'+data.roi.campaignRevenue30.toLocaleString() : '—';
-    document.getElementById('kpiRuns').textContent = data.roi.campaignRuns30 || '—';
-  }
-  document.querySelectorAll('.toggle').forEach(t=>t.addEventListener('click',()=>t.classList.toggle('off')));
+  if(!data||!data.segments) return;
+  const winback = data.segments.find(x=>x.id==='winback');
+  // update the win-back card count if present (first .camp-stat-val in last card)
+  const cards=document.querySelectorAll('.camp');
+  if(winback && cards.length){ const last=cards[cards.length-1]; const v=last.querySelector('.camp-stat-val'); if(v)v.textContent=winback.count; }
 })();
-
-  async function draftCampaign() {
-    const prompt = document.getElementById('campaignPrompt').value;
-    if(!prompt) return;
-    
-    document.getElementById('campaignResult').innerHTML = "<em>Drafting with AI...</em>";
-    const token = localStorage.getItem('lola_token');
-    
-    try {
-      const r = await fetch('/api/campaign-draft', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ prompt })
-      });
-      const data = await r.json();
-      if(data.ok) {
-        document.getElementById('campaignResult').textContent = data.draft;
-      } else {
-        document.getElementById('campaignResult').textContent = "Error: " + data.error;
-      }
-    } catch(e) {
-      document.getElementById('campaignResult').textContent = "Failed to reach server.";
-    }
-  }
 </script>
 </body>
 </html>

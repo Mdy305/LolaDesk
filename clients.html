@@ -2,15 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Clients — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .search-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-.search-box{flex:1;min-width: 100%; max-width: 220px;display:flex;align-items:center;gap:10px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 16px}
+.search-box{flex:1;min-width:220px;display:flex;align-items:center;gap:10px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 16px}
 .search-box input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px}
 .search-box input::placeholder{color:var(--text3)}
 .filter-pill{padding:11px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);font-size:13px;color:var(--text2);cursor:pointer;transition:all .15s}
@@ -18,30 +15,6 @@
 .cell-name{display:flex;align-items:center;gap:12px}
 .cell-name-txt{font-weight:500}
 .cell-sub{font-size:11px;color:var(--text3)}
-/* ── Client detail panel ── */
-.detail-overlay{position:fixed;inset:0;z-index:80;display:none;align-items:stretch}
-.detail-overlay.open{display:flex}
-.detail-scrim{flex:1;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);cursor:pointer}
-.detail-panel{width:min(480px,100vw);background:var(--bg2,#0c0c0e);border-left:0.5px solid var(--border2);display:flex;flex-direction:column;overflow:hidden;animation:slideRight .32s cubic-bezier(.22,1,.36,1)}
-@keyframes slideRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
-.dp-head{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:0.5px solid var(--border)}
-.dp-close{width: 100%; max-width: 34px;height:34px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text2);cursor:pointer;border:none;transition:background .15s}
-.dp-close:hover{background:var(--surface2)}
-.dp-body{flex:1;overflow-y:auto;padding:22px}
-.dp-hero{display:flex;align-items:center;gap:16px;margin-bottom:22px}
-.dp-av{width: 100%; max-width: 56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#ff2d8e,#b01e6c);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:#fff;flex-shrink:0}
-.dp-name{font-size:20px;font-weight:600}
-.dp-phone{font-size:13px;color:var(--text3);margin-top:2px}
-.dp-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:22px}
-.dp-stat{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;text-align:center}
-.dp-stat-val{font-size:18px;font-weight:600;line-height:1;margin-bottom:4px}
-.dp-stat-label{font-size:10px;color:var(--text3)}
-.dp-section{margin-bottom:20px}
-.dp-section-title{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:10px}
-.dp-notes{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px;font-size:13px;color:var(--text2);line-height:1.6;min-height:64px}
-.dp-tag{display:inline-flex;align-items:center;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:4px 10px;font-size:11px;color:var(--text2);margin:0 4px 4px 0}
-.dp-actions{display:flex;gap:10px;flex-wrap:wrap;padding:16px 22px;border-top:0.5px solid var(--border);background:var(--surface)}
-.dp-actions .btn{flex:1;justify-content:center;min-width:0}
 </style>
 </head>
 <body data-page="clients">
@@ -85,156 +58,55 @@
   </main>
 </div>
 
-<!-- ── CLIENT DETAIL PANEL ── -->
-<div class="detail-overlay" id="detailOverlay">
-  <div class="detail-scrim" onclick="closeDetail()"></div>
-  <div class="detail-panel" id="detailPanel">
-    <div class="dp-head">
-      <div style="font-size:15px;font-weight:600">Client Profile</div>
-      <button class="dp-close" onclick="closeDetail()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-    <div class="dp-body" id="dpBody"></div>
-    <div class="dp-actions" id="dpActions"></div>
-  </div>
-</div>
-
 <script src="auth-guard.js"></script>
 <script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
 <script>
 let CLIENTS = [];
+
 let activeFilter = 'all';
-
 function initial(n){ return (n.match(/[A-Za-z]/)||['?'])[0].toUpperCase(); }
-function avatar(c){ return `<span class="av"><span class="av-initial">${initial(c.name)}</span></span>`; }
+function avatar(c){
+  return `<span class="av"><span class="av-initial">${initial(c.name)}</span></span>`;
+}
 function daysSince(d){ if(!d) return null; return Math.floor((Date.now()-new Date(d))/86400000); }
-function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }catch(e){ return d; } }
-function fmtMoney(n){ return '$'+(Number(n||0).toLocaleString()); }
-
+function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }catch(e){ return d; } }
 function render(){
   const q = (document.getElementById('search').value||'').toLowerCase();
   const rows = CLIENTS.filter(c=>{
     if(activeFilter==='vip' && !c.vip) return false;
     if(activeFilter==='due' && !c.due) return false;
-    return (c.name||'').toLowerCase().includes(q) || (c.service||'').toLowerCase().includes(q) || (c.phone||'').includes(q);
+    return (c.name||'').toLowerCase().includes(q) || (c.service||'').toLowerCase().includes(q);
   });
-  document.getElementById('rows').innerHTML = rows.length ? rows.map((c,i)=>`
-    <tr onclick="openClient(${CLIENTS.indexOf(c)})" style="cursor:pointer">
+  document.getElementById('rows').innerHTML = rows.length ? rows.map(c=>`
+    <tr onclick="openClient('${(c.name||'').replace(/'/g,'')}')">
       <td><div class="cell-name">${avatar(c)}<div><div class="cell-name-txt">${c.name}</div>${c.phone?`<div class="cell-sub">${c.phone}</div>`:''}</div>${c.vip?'<span class="pill vip" style="margin-left:4px">VIP</span>':''}</div></td>
       <td style="color:var(--text2)">${c.service||'—'}</td>
-      <td style="font-weight:500">${fmtMoney(c.ltv)}</td>
+      <td style="font-weight:500">$${(c.ltv||0).toLocaleString()}</td>
       <td style="color:var(--text2)">${fmtDate(c.lastVisit)}</td>
       <td>${c.due?'<span class="pill mono">Due to rebook</span>':'<span class="pill mono">Active</span>'}</td>
     </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No clients yet — Lola will add them as she handles calls.</div></td></tr>';
 }
-
 function filterBy(el, f){
   document.querySelectorAll('.filter-pill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active'); activeFilter=f; render();
 }
+function openClient(name){ /* future: client detail */ }
 document.getElementById('search').addEventListener('input', render);
 
-/* ── CLIENT DETAIL PANEL ── */
-function openClient(idx){
-  const c = CLIENTS[idx]; if(!c) return;
-  const days = daysSince(c.lastVisit);
-  const dueText = days===null ? 'No visits yet' : days > 60 ? `${days} days ago — overdue` : `${days} days ago`;
-  const dueColor = days > 90 ? '#ff4d4d' : days > 60 ? '#ff9f0a' : 'var(--text2)';
-
-  document.getElementById('dpBody').innerHTML = `
-    <div class="dp-hero">
-      <div class="dp-av">${initial(c.name)}</div>
-      <div>
-        <div class="dp-name">${c.name}${c.vip?' <span class="pill vip" style="font-size:9px;vertical-align:middle">VIP</span>':''}</div>
-        ${c.phone?`<div class="dp-phone">${c.phone}</div>`:''}
-        ${c.email?`<div class="dp-phone">${c.email}</div>`:''}
-      </div>
-    </div>
-
-    <div class="dp-stats">
-      <div class="dp-stat">
-        <div class="dp-stat-val" style="color:var(--pink2)">${fmtMoney(c.ltv)}</div>
-        <div class="dp-stat-label">Lifetime value</div>
-      </div>
-      <div class="dp-stat">
-        <div class="dp-stat-val">${fmtDate(c.lastVisit)}</div>
-        <div class="dp-stat-label">Last visit</div>
-      </div>
-      <div class="dp-stat">
-        <div class="dp-stat-val" style="color:${dueColor};font-size:13px">${dueText}</div>
-        <div class="dp-stat-label">Visit recency</div>
-      </div>
-    </div>
-
-    ${c.service?`<div class="dp-section">
-      <div class="dp-section-title">Preferred service</div>
-      <div style="font-size:14px;font-weight:500;color:var(--pink2)">${c.service}</div>
-    </div>`:''}
-
-    ${c.stylist?`<div class="dp-section">
-      <div class="dp-section-title">Preferred stylist</div>
-      <div style="font-size:14px">${c.stylist}</div>
-    </div>`:''}
-
-    ${(c.tags&&c.tags.length)?`<div class="dp-section">
-      <div class="dp-section-title">Tags</div>
-      <div>${c.tags.map(t=>`<span class="dp-tag">${t}</span>`).join('')}</div>
-    </div>`:''}
-
-    <div class="dp-section">
-      <div class="dp-section-title">Lola's notes</div>
-      <div class="dp-notes">${c.notes||'No notes yet — Lola will add context from every interaction.'}</div>
-    </div>
-
-    ${days!==null && days>60?`<div style="background:rgba(255,159,10,.08);border:0.5px solid rgba(255,159,10,.25);border-radius:var(--r-sm);padding:14px;margin-bottom:16px">
-      <div style="font-size:12px;font-weight:600;color:#ff9f0a;margin-bottom:4px">⚡ Rebooking opportunity</div>
-      <div style="font-size:12px;color:var(--text2)">This client is ${days} days overdue. Tap "Ask Lola" to draft a personalized win-back message now.</div>
-    </div>`:''}
-  `;
-
-  document.getElementById('dpActions').innerHTML = `
-    <button class="btn btn-primary" onclick="askLolaAboutClient('${c.name.replace(/'/g,"\\'")}')">Ask Lola about ${c.name.split(' ')[0]}</button>
-    ${c.phone?`<button class="btn btn-ghost" onclick="smsClient('${c.phone.replace(/'/g,"\\'")}','${c.name.replace(/'/g,"\\'")}')">📱 Text</button>`:''}
-  `;
-
-  document.getElementById('detailOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeDetail(){
-  document.getElementById('detailOverlay').classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-window.askLolaAboutClient = function(name){
-  closeDetail();
-  // Navigate to dashboard with pre-filled Lola prompt
-  sessionStorage.setItem('lola_pending_prompt', `Tell me everything about ${name} — LTV, last visit, what she usually gets, and suggest a win-back message if she's overdue.`);
-  location.href = 'dashboard.html';
-};
-
-window.smsClient = function(phone, name){
-  closeDetail();
-  sessionStorage.setItem('lola_pending_prompt', `Draft a warm, personalized re-engagement SMS for ${name} at ${phone} — suggest rebooking for their usual service.`);
-  location.href = 'dashboard.html';
-};
-
-// Close on Escape
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDetail(); });
-
-// Load real data
+// load REAL data
 (async ()=>{
   const data = await LolaData.load('clients');
   const list = (data && data.clients) || [];
   CLIENTS = list.map(c=>({
-    name:c.name, phone:c.phone, email:c.email, service:c.lastService, ltv:c.ltv,
-    lastVisit:c.lastVisit, vip:c.vip, stylist:c.stylist, notes:c.notes, tags:c.tags||[],
+    name:c.name, phone:c.phone, service:c.lastService, ltv:c.ltv,
+    lastVisit:c.lastVisit, vip:c.vip,
     due: (()=>{ const d=daysSince(c.lastVisit); return d!=null && d>60; })()
   }));
-  // Update KPIs from real data
-  const total=CLIENTS.length, vips=CLIENTS.filter(c=>c.vip).length, due=CLIENTS.filter(c=>c.due).length;
+  // update KPIs from real data
+  const total=CLIENTS.length;
+  const vips=CLIENTS.filter(c=>c.vip).length;
+  const due=CLIENTS.filter(c=>c.due).length;
   const k=document.querySelectorAll('.kpi-val');
   if(k[0]) k[0].textContent=total.toLocaleString();
   if(k[1]) k[1].textContent=vips;

@@ -2,17 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Marketer — LolaDesk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,200;1,300;1,400&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .mk-hero{background:radial-gradient(ellipse 100% 90% at 50% 0%,rgba(168,85,247,.08),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;margin-bottom:22px}
 .mk-hero-row{display:flex;align-items:center;gap:24px}
-.mk-icon{width: 100%; max-width: 64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#a855f7,#7e22ce);display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0;box-shadow:0 8px 28px rgba(168,85,247,.3)}
-.mk-title{font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-size:32px;font-style:italic;font-weight:300;line-height:1.05;margin-bottom:5px}
+.mk-icon{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#a855f7,#7e22ce);display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0;box-shadow:0 8px 28px rgba(168,85,247,.3)}
+.mk-title{font-family:var(--ff-serif);font-size:32px;font-style:italic;font-weight:300;line-height:1.05;margin-bottom:5px}
 .mk-sub{font-size:13.5px;font-weight:300;color:var(--text2);line-height:1.55}
 
 /* Tab nav */
@@ -26,7 +23,7 @@
 
 /* Input row */
 .url-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
-.url-input{flex:1;min-width: 100%; max-width: 220px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:13px 16px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+.url-input{flex:1;min-width:220px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:13px 16px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
 .url-input:focus{border-color:var(--pink)}
 .url-input::placeholder{color:var(--text3)}
 .url-btn{padding:13px 22px;background:var(--pink);color:#fff;border-radius:var(--r);font-size:14px;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all .15s}
@@ -51,7 +48,8 @@
 .list-marker{color:var(--pink2);flex-shrink:0;margin-top:2px}
 
 /* loading */
-.thinking{display:flex;align-items:center;gap:11px;padding:18px;color:var(--text2);font-size:13px;font-style:italic;font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; max-width: 6px;height:6px;border-radius:50%;background:var(--pink);animation:tdot 1.2s ease-in-out infinite}
+.thinking{display:flex;align-items:center;gap:11px;padding:18px;color:var(--text2);font-size:13px;font-style:italic;font-family:var(--ff-serif)}
+.thinking-dot{width:6px;height:6px;border-radius:50%;background:var(--pink);animation:tdot 1.2s ease-in-out infinite}
 .thinking-dot:nth-child(2){animation-delay:.15s}
 .thinking-dot:nth-child(3){animation-delay:.3s}
 @keyframes tdot{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
@@ -280,7 +278,7 @@ function renderAnalysis(d){
   out.innerHTML = `
     <div class="result-block">
       <div class="rb-label">Summary</div>
-      <div class="rb-title" style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300">${d.title || d.url}</div>
+      <div class="rb-title" style="font-family:var(--ff-serif);font-style:italic;font-weight:300">${d.title || d.url}</div>
       <div class="rb-text">${d.summary||''}</div>
     </div>
 
@@ -361,7 +359,7 @@ function renderStrategy(d){
   out.innerHTML = `
     <div class="result-block">
       <div class="rb-label">Strategic position</div>
-      <div class="rb-title" style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;font-style:italic;font-weight:300;font-size:24px">${d.headline}</div>
+      <div class="rb-title" style="font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:24px">${d.headline}</div>
       ${d.positioning_shift?`<div class="rb-text" style="margin-top:10px"><b style="color:var(--text)">Positioning shift:</b> ${d.positioning_shift}</div>`:''}
       ${d.north_star_metric?`<div class="rb-text" style="margin-top:10px"><b style="color:var(--text)">North-star metric:</b> ${d.north_star_metric}</div>`:''}
     </div>
