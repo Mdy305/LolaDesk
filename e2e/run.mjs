@@ -293,6 +293,29 @@ await admin(post({ action:'activate', tenant_id: otherId }, { authorization:'Bea
 const act2 = (await sql.query(`select billing_status from tenants where id=$1`, [otherId])).rows[0];
 check('activate restores instantly', r.code===200 && act2.billing_status==='active', act2.billing_status);
 
+
+/* 14 — JARVIS INTELLIGENCE: Lola notices things unprompted */
+const { observe, briefingLine, observationsBlock } = await import('../api/lib/lola-intelligence.js');
+// Seed a scenario against the SAME tenant `t`: overdue VIP + cancellation today
+const cx = (await sql.query(`insert into clients (tenant_id,name,phone_number,is_vip,last_visit,opted_out) values ($1,'Nina Ross','+13055557001',true,(now()-interval '60 days')::date,false) returning id`, [t.id])).rows[0];
+await sql.query(`insert into bookings (tenant_id,service,starts_at,price,status) values ($1,'Balayage',(now()-interval '2 hours'),395,'cancelled')`, [t.id]);
+await sql.query(`update clients set last_visit=(now()-interval '55 days')::date where id=$1`, [cx.id]);
+
+const obs = await observe(tRow);
+check('Lola generates proactive observations from real data', Array.isArray(obs) && obs.length > 0, `${obs.length} observations`);
+check('observations include a concrete suggested action', obs.some(o => o.action), obs.map(o=>o.severity).join(','));
+check('VIP-overdue risk surfaced', obs.some(o => o.kind==='vip_slipping' || o.kind==='fill_cancellation'), obs.map(o=>o.kind).join(','));
+const line = await briefingLine(tRow);
+check('briefingLine is spoken-ready (non-empty, one sentence)', typeof line==='string' && line.length>0 && line.length<220, line.slice(0,70));
+const block = await observationsBlock(tRow);
+check('observationsBlock feeds the owner prompt', block.includes('NOTICED'), '');
+
+/* strategic memory persists across owner turns */
+const { setOwnerMemory, getOwnerMemory } = await import('../api/lib/db.js');
+await setOwnerMemory(t.id, 'strategy', { notes:'(2026-07-07) planning a summer balayage promo', updated:'2026-07-07' });
+const back = await getOwnerMemory(t.id);
+check('strategic memory persists (Lola continues the thread)', back.some(r => r.key==='strategy' && /balayage promo/.test(JSON.stringify(r.value))), '');
+
 /* ── summary ── */
 const fails = results.filter(x=>!x.ok);
 console.log('\n' + '─'.repeat(50));

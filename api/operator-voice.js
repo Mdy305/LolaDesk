@@ -29,7 +29,7 @@ import {
   getOrStartConversation, logMessage
 } from './lib/db.js';
 import { OPERATOR_SKILLS } from './operator-tools.js';
-import { answerOwner } from './lib/owner-brain.js';
+import { answerOwner, briefingLine } from './lib/owner-brain.js';
 import { getConversationHistory } from './lib/db.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
@@ -187,7 +187,12 @@ export default async function handler(req, res){
   if(!speech){
     try{ await logUsage(tenant.id, 'operator_call', 1, { call_id: callId }); }catch{}
     const name = tenant.owner_name ? ` ${String(tenant.owner_name).split(' ')[0]}` : '';
-    const greet = `Hey${name}, it's Lola. Ask me about your day, revenue, or who's due — or tell me to move, cancel, or text clients.`;
+    // Jarvis-style: lead with what she NOTICED, not a generic prompt.
+    let brief = '';
+    try{ brief = await briefingLine(tenant); }catch{}
+    const greet = brief
+      ? `Hey${name}, it's Lola. ${brief}`
+      : `Hey${name}, it's Lola. Your day's looking smooth — ask me about revenue, who's due, or tell me to move, cancel, book, or text clients.`;
     return xmlOut(texml({ say: greet, playUrl: await speakCached(greet) }));
   }
 
