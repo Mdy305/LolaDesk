@@ -21,18 +21,19 @@
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };
 
+  // Seven items. Jobs rule: every item earns its place or leaves.
+  // Calls lives inside Inbox (one conversation surface, two views).
+  // Marketing lives inside Growth Studio. Numbers/Team/Billing live
+  // inside Settings. No hardcoded fake badges — a business tool that
+  // lies about numbers loses the room.
   const items = [
-    { id:'overview', label:'Overview', href:'lola-atom.html' },
-    { id:'clients',  label:'Clients',  href:'clients.html' },
-    { id:'calls',    label:'Calls',    href:'calls.html', badge:'12' },
-    { id:'inbox',    label:'Inbox',    href:'inbox.html', badge:'8' },
-    { id:'numbers',  label:'Numbers',  href:'numbers.html', badge:'New', mono:true },
-    { id:'bookings', label:'Bookings', href:'bookings.html' },
-    { id:'revenue',  label:'Revenue',  href:'revenue.html' },
-    { id:'team',     label:'Team',     href:'team.html' },
-    { id:'marketing',label:'Marketing',href:'marketing.html' },
-    { id:'marketer', label:'Control Plane', href:'marketer.html#control', badge:'AI', pink:true },
-    { id:'settings', label:'Settings', href:'settings.html' }
+    { id:'overview', label:'Home',          href:'dashboard.html' },
+    { id:'bookings', label:'Calendar',      href:'bookings.html' },
+    { id:'inbox',    label:'Inbox',         href:'inbox.html' },
+    { id:'clients',  label:'Clients',       href:'clients.html' },
+    { id:'revenue',  label:'Revenue',       href:'revenue.html' },
+    { id:'marketer', label:'Growth Studio', href:'marketer.html#control', badge:'AI', pink:true },
+    { id:'settings', label:'Settings',      href:'settings.html' }
   ];
 
   const navHTML = items.map(it => `
@@ -68,12 +69,14 @@
   // mobile bar
   const mobile = document.createElement('nav');
   mobile.className = 'mobile-bar';
+  // The center orb is Lola herself — the signature tap. Everything
+  // else mirrors the desktop truth exactly (one nav, two renders).
   const mb = [
-    { id:'overview', href:'lola-atom.html', label:'Home', icon:icons.overview },
-    { id:'clients', href:'clients.html', label:'Clients', icon:icons.clients },
-    { id:'lola', href:'lola-atom.html', label:'', orb:true },
+    { id:'overview', href:'dashboard.html', label:'Home', icon:icons.overview },
+    { id:'bookings', href:'bookings.html', label:'Calendar', icon:icons.bookings },
+    { id:'lola', href:'lola-live.html', label:'', orb:true },
     { id:'inbox', href:'inbox.html', label:'Inbox', icon:icons.inbox },
-    { id:'revenue', href:'revenue.html', label:'More', icon:icons.revenue }
+    { id:'settings', href:'settings.html', label:'More', icon:icons.settings }
   ];
   mobile.innerHTML = mb.map(m => m.orb
     ? `<a class="mb-item" href="${m.href}"><div class="mb-orb">L</div></a>`

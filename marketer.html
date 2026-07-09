@@ -8,7 +8,7 @@
 <style>
 .mk-hero{background:radial-gradient(ellipse 100% 90% at 50% 0%,rgba(168,85,247,.08),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;margin-bottom:22px}
 .mk-hero-row{display:flex;align-items:center;gap:24px}
-.mk-icon{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#a855f7,#7e22ce);display:flex;align-items:center;justify-content:center;font-size:30px;flex-shrink:0;box-shadow:0 8px 28px rgba(168,85,247,.3)}
+.mk-icon{width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 32% 30%,#e6ff85,#ccff00 55%,#3a5a00);flex-shrink:0;box-shadow:0 8px 28px rgba(204,255,0,.35)}
 .mk-title{font-family:var(--ff-serif);font-size:32px;font-style:italic;font-weight:300;line-height:1.05;margin-bottom:5px}
 .mk-sub{font-size:13.5px;font-weight:300;color:var(--text2);line-height:1.55}
 
@@ -103,19 +103,19 @@
 
     <div class="mk-hero">
       <div class="mk-hero-row">
-        <div class="mk-icon">🧠</div>
+        <div class="mk-icon" aria-hidden="true"></div>
         <div>
-          <h1 class="mk-title">Marketer + Control Plane.</h1>
-          <p class="mk-sub">Drop in any website, generate strategy, run campaigns, and orchestrate specialized AI agents from one place. This is the command layer for Lola, Ops, Growth, Website, Reputation, Citation, and Publication execution.</p>
+          <h1 class="mk-title">Marketing that runs itself.</h1>
+          <p class="mk-sub">Paste any website — yours or a competitor’s. Lola studies it, writes the strategy, and puts her team of seven specialists to work: campaigns, reviews, content, and follow-through. You approve; she executes.</p>
         </div>
       </div>
     </div>
 
     <div class="mk-tabs">
-      <button class="mk-tab active" data-tab="analyze" onclick="switchTab(event,'analyze')">URL Analyzer</button>
+      <button class="mk-tab active" data-tab="analyze" onclick="switchTab(event,'analyze')">Analyze</button>
       <button class="mk-tab" data-tab="strategy" onclick="switchTab(event,'strategy')">Strategy</button>
-      <button class="mk-tab" data-tab="campaign" onclick="switchTab(event,'campaign')">Campaign Manager</button>
-      <button class="mk-tab" data-tab="control" onclick="switchTab(event,'control')">Control Plane</button>
+      <button class="mk-tab" data-tab="campaign" onclick="switchTab(event,'campaign')">Campaigns</button>
+      <button class="mk-tab" data-tab="control" onclick="switchTab(event,'control')">Your Team</button>
     </div>
 
     <!-- TAB 1: ANALYZE -->
@@ -165,7 +165,7 @@
     <div class="pane" id="pane-control">
       <div class="cp-head">
         <div>
-          <div class="cp-title">🧠 Orchestrator Control Plane</div>
+          <div class="cp-title">One brain. Seven specialists.</div>
           <div class="cp-sub">One brain, seven specialized agents: Lola (Voice), Ops, Growth, Website, Reputation, Citation, and Publication. Dispatch checks and task runs directly from here.</div>
         </div>
         <div class="cp-orch" id="cpOrchestrator">
@@ -520,19 +520,19 @@ function renderControlPlane(data){
 
   const orch = document.getElementById('cpOrchestrator');
   orch.innerHTML = `
-    <div class="cp-orch-name">${orchestrator.emoji || '🧠'} ${orchestrator.name || 'Orchestrator'}</div>
-    <div class="cp-orch-role">${orchestrator.description || 'Routes work to specialized agents.'}</div>
+    <div class="cp-orch-name">${orchestrator.name || 'Lola'}</div>
+    <div class="cp-orch-role">${orchestrator.description || 'One brain routes every task to the right specialist \u2014 you talk to Lola, she runs the team.'}</div>
   `;
 
   const defaultTask = (agent) => {
     const byId = {
       lola: 'Run voice QA check on current call flow and identify booking leakage.',
-      ops: 'Audit today’s booking queue and surface highest-priority operational actions.',
+      ops: 'Audit today\u2019s booking queue and surface highest-priority operational actions.',
       growth: 'Run local SEO + GMB optimization check with top 3 growth moves.',
       website: 'Review booking widget and CRO path; propose the highest-impact UX fix.',
       reputation: 'Audit review response backlog and draft high-signal responses.',
       citation: 'Run NAP consistency scan and list mismatched citations to fix.',
-      publication: 'Generate this week’s publication plan for local visibility.'
+      publication: 'Generate this week\u2019s publication plan for local visibility.'
     };
     return byId[agent.id] || `Run a full check-in for ${agent.name}.`;
   };
@@ -540,35 +540,51 @@ function renderControlPlane(data){
   document.getElementById('cpGrid').innerHTML = agents.map((a, i) => {
     const statusId = `cpStatus${i}`;
     const task = defaultTask(a).replace(/'/g, '&apos;');
+    const live = a.on !== false;
     return `
       <div class="cp-card">
         <div class="cp-card-top">
-          <div class="cp-name">${a.emoji || ''} ${a.name || a.id}</div>
-          <span class="cp-chip">${(a.on === false ? 'OFFLINE' : 'READY')}</span>
+          <div class="cp-name">${a.name || a.id}</div>
+          <span class="cp-chip" style="${live ? 'color:#ccff00;border-color:rgba(204,255,0,.35)' : ''}">${live ? '\u25cf Ready' : 'Paused'}</span>
         </div>
-        <div class="cp-lane">${a.title || ''} · ${a.lane || ''}</div>
+        <div class="cp-lane">${a.lane || ''}</div>
         <div class="cp-desc">${a.description || ''}</div>
         <div class="cp-actions">
-          <button class="cp-btn primary" onclick="dispatchAgent('${a.id}','${task}','${statusId}')">Run check</button>
-          <button class="cp-btn" onclick="dispatchAgent('${a.id}','${('Execute task: ' + task).replace(/'/g, '&apos;')}','${statusId}')">Execute</button>
+          <button class="cp-btn primary" onclick="dispatchAgent('${a.id}','${task}','${statusId}')">Put to work</button>
         </div>
         <div class="cp-status" id="${statusId}"></div>
-      </div>
-    `;
-  }).join('') || `<div class="result-block"><div class="rb-text">No control-plane agents found.</div></div>`;
+      </div>`;
+  }).join('');
 }
 
-async function loadControlPlane(){
-  if(controlPlaneLoaded) return;
-  controlPlaneLoaded = true;
-  const grid = document.getElementById('cpGrid');
-  grid.innerHTML = thinking('Loading orchestrator topology…');
+function controlStatus(el, text, tone){
+  if(!el) return;
+  el.textContent = text || '';
+  el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5a4d' : 'var(--text3)';
+}
+
+async function dispatchAgent(agentId, task, statusId){
+  const statusEl = document.getElementById(statusId);
+  controlStatus(statusEl, 'Dispatching…');
   try{
-    const r = await fetch('/api/data?resource=agents');
+    const r = await fetch('/api/orchestrator', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        route_to: agentId,
+        task,
+        tenant: { slug: 'demo' }
+      })
+    });
     const d = await r.json();
-    renderControlPlane(d);
+    if(!d.ok){
+      controlStatus(statusEl, d.error || 'Dispatch failed', 'bad');
+      return;
+    }
+    const routed = d.routed?.agent?.name || agentId;
+    controlStatus(statusEl, `Delegated to ${routed}.`, 'ok');
   }catch(e){
-    grid.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Control plane unavailable: ${e.message}</div></div>`;
+    controlStatus(statusEl, e.message || 'Dispatch error', 'bad');
   }
 }
 

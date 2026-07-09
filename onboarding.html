@@ -555,7 +555,29 @@ function showStep(n){
     if(line){line.classList.toggle('done',i<n-1);}
   }
   window.scrollTo(0,0);
+  // ── WIZARD FEEL: the machine meets you halfway ──
+  // Autofocus the first input of every step (typing starts instantly),
+  // and animate the step in on the brand spring.
+  try{
+    const stepEl = document.querySelectorAll('.ob-step')[n] || document.querySelector('.ob-step.active');
+    if(stepEl){
+      stepEl.style.animation = 'obIn .45s cubic-bezier(.22,1,.36,1) both';
+      const first = stepEl.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
+      if(first) setTimeout(()=>{ try{ first.focus({ preventScroll:false }); }catch(e){} }, 80);
+    }
+  }catch(e){}
 }
+
+// Enter advances — one key, forward motion, like it should be.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter') return;
+  const tag = (document.activeElement?.tagName||'').toLowerCase();
+  if(tag === 'textarea' || tag === 'button' || tag === 'a') return;
+  const stepEl = document.querySelector('.ob-step.active') || [...document.querySelectorAll('.ob-step')].find(el => el.offsetParent);
+  const primary = stepEl?.querySelector('.ob-btn-primary, .ob-btn.ob-btn-primary');
+  if(primary && !primary.disabled){ e.preventDefault(); primary.click(); }
+});
+
 
 window.next=()=>{
   saveStep();
