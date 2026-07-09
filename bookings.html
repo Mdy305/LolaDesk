@@ -136,7 +136,7 @@
 let STYLISTS = [
   { id:'meddy', name:'Meddy', role:'Master Colorist', color:'#ccff00' },
   { id:'michelle', name:'Michelle', role:'Senior Stylist', color:'#5ac8fa' },
-  { id:'alice', name:'Alice', role:'Senior Stylist', color:'#ffb020' },
+  { id:'alice', name:'Alice', role:'Senior Stylist', color:'#ffc043' },
   { id:'samantha', name:'Samantha', role:'Stylist', color:'#34d171' }
 ];
 const SERVICES = [
@@ -346,7 +346,7 @@ function saveBook(){
   // Load database team
   const teamData = await LolaData.load('team');
   if(teamData && teamData.team && teamData.team.length > 0) {
-    const colors = ['#ccff00', '#5ac8fa', '#ffb020', '#34d171', '#f472b6', '#a64bff'];
+    const colors = ['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
     STYLISTS = teamData.team.map((m, i) => ({
       id: m.name.toLowerCase().replace(/[^a-z]/g,''),
       name: m.name,

@@ -12,7 +12,7 @@
   --bg:#070708;--bg2:#0c0c0e;--surface:#121214;--surface2:#16161a;
   --border:#1e1e22;--border2:#28282e;
   --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
-  --pink:#ccff00;--pink2:#ff6bb0;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
+  --pink:#ccff00;--pink2:#dcff66;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
   
   --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
   --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
@@ -132,7 +132,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 @media(max-width:480px){.ob-service-row{grid-template-columns:1fr 70px 32px}.ob-service-dur{display:none}}
 .ob-service-row .ob-input{padding:10px 12px;font-size:13px}
 .ob-service-del{width:36px;height:40px;border-radius:var(--r-sm);background:var(--surface);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;transition:all .15s}
-.ob-service-del:hover{color:#ff4444;border-color:rgba(255,68,68,.3)}
+.ob-service-del:hover{color:#ff5a4d;border-color:rgba(255,68,68,.3)}
 .ob-add-service{font-size:12px;color:var(--pink2);display:inline-flex;align-items:center;gap:6px;margin-top:4px}
 
 /* PRICING */
@@ -278,7 +278,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
             <input class="ob-input" id="f-password" type="password" placeholder="At least 8 characters"/>
           </div>
         </div>
-        <div class="ob-err" id="ob-err0" style="color:#ff7a7a;font-size:12.5px;min-height:16px;margin-bottom:4px"></div>
+        <div class="ob-err" id="ob-err0" style="color:#ff7a6d;font-size:12.5px;min-height:16px;margin-bottom:4px"></div>
         <div class="ob-nav">
           <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
           <button class="ob-btn ob-btn-primary full" onclick="validateStep1()">Continue</button>
@@ -380,7 +380,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-loa"/> I have Letter of Authorization (LOA)</label>
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-bill"/> I have a recent bill copy</label>
         </div>
-        <div class="ob-err" id="ob-err3" style="color:#ff7a7a;font-size:12.5px;min-height:16px;margin:8px 0 4px"></div>
+        <div class="ob-err" id="ob-err3" style="color:#ff7a6d;font-size:12.5px;min-height:16px;margin:8px 0 4px"></div>
 <div class="ob-nav">
           <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
           <button class="ob-btn ob-btn-primary full" onclick="validateStep3AndGoLive()">Start 14-day free trial</button>
@@ -785,7 +785,7 @@ async function finishLive(){
       navBtn.onclick = () => { window.location.href = '/login?email=' + encodeURIComponent(state.email||''); };
     } else {
       document.getElementById('liveTitle').textContent='Setup Failed';
-      document.getElementById('liveTitle').style.color='#ff5146';
+      document.getElementById('liveTitle').style.color='#ff5a4d';
       document.getElementById('liveSub').textContent='Error: '+msg+' — please try again.';
       navBtn.textContent = 'Try Again';
       navBtn.onclick = () => {

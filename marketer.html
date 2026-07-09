@@ -38,7 +38,7 @@
 .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chip{font-size:12px;background:var(--surface2);border:0.5px solid var(--border);padding:5px 11px;border-radius:20px;color:var(--text2)}
 .chip.good{background:var(--mono-dim);color:var(--text);border-color:transparent}
-.chip.bad{background:rgba(255,59,48,.12);color:#ff5146;border-color:transparent}
+.chip.bad{background:rgba(255,59,48,.12);color:#ff5a4d;border-color:transparent}
 
 .result-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:760px){.result-grid{grid-template-columns:1fr}}
@@ -253,11 +253,11 @@ async function runAnalyze(){
       body: JSON.stringify({ action:'analyze', url })
     });
     const d = await r.json();
-    if(!d.ok){ out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5146">Could not fetch that URL — ${d.error||'unknown'}</div></div>`; btn.disabled=false; return; }
+    if(!d.ok){ out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Could not fetch that URL — ${d.error||'unknown'}</div></div>`; btn.disabled=false; return; }
     lastAnalysis = d;
     renderAnalysis(d);
   }catch(e){
-    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5146">Error: ${e.message}</div></div>`;
+    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Error: ${e.message}</div></div>`;
   }
   btn.disabled = false;
 }
@@ -303,8 +303,8 @@ function renderAnalysis(d){
         ${(d.strengths||[]).map(s=>`<div class="list-item"><span class="list-marker" style="color:var(--text)">✓</span><span>${s}</span></div>`).join('')}
       </div>
       <div class="result-block">
-        <div class="rb-label" style="color:#ff5146">Gaps</div>
-        ${(d.gaps||[]).map(s=>`<div class="list-item"><span class="list-marker" style="color:#ff5146">✗</span><span>${s}</span></div>`).join('')}
+        <div class="rb-label" style="color:#ff5a4d">Gaps</div>
+        ${(d.gaps||[]).map(s=>`<div class="list-item"><span class="list-marker" style="color:#ff5a4d">✗</span><span>${s}</span></div>`).join('')}
       </div>
     </div>
 
@@ -338,7 +338,7 @@ async function runStrategy(){
     const d = await r.json();
     renderStrategy(d);
   }catch(e){
-    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5146">Error: ${e.message}</div></div>`;
+    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Error: ${e.message}</div></div>`;
   }
   btn.disabled = false;
 }
@@ -439,7 +439,7 @@ async function draftCampaign(type, audience, channel){
     const d = await r.json();
     renderCampaign(d);
   }catch(e){
-    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5146">Error: ${e.message}</div></div>`;
+    out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Error: ${e.message}</div></div>`;
   }
 }
 
@@ -486,7 +486,7 @@ let controlPlaneLoaded = false;
 function controlStatus(el, text, tone){
   if(!el) return;
   el.textContent = text || '';
-  el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5146' : 'var(--text3)';
+  el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5a4d' : 'var(--text3)';
 }
 
 async function dispatchAgent(agentId, task, statusId){
@@ -568,7 +568,7 @@ async function loadControlPlane(){
     const d = await r.json();
     renderControlPlane(d);
   }catch(e){
-    grid.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5146">Control plane unavailable: ${e.message}</div></div>`;
+    grid.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Control plane unavailable: ${e.message}</div></div>`;
   }
 }
 

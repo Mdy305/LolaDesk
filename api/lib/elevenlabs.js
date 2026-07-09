@@ -37,7 +37,29 @@ export function isConfigured(){
  * always: that's the entire point of the brand-consistency goal, and
  * an override parameter here would be a backdoor around it.
  */
-export async function synthesize(text, { modelId, outputFormat, signal } = {}) {
+/* ── EMOTIONAL REGISTERS — the difference between reading and feeling ──
+   One fixed voice setting makes every sentence land identically: the
+   apology sounds like the upsell. Humans modulate. Three registers,
+   layered over Lola's base voice:
+     warm     — default conversational presence
+     empathic — steadier, softer style: apologies, bad news, "I hear you"
+     bright   — livelier, more expressive: confirmations, wins, welcomes
+   registerForText() picks one from the reply's own words, so the
+   emotion always matches the content with zero extra latency. */
+const REGISTERS = {
+  warm:     {},                                          // base settings as-is
+  empathic: { stability: 0.72, style: 0.18 },            // calm, close, caring
+  bright:   { stability: 0.38, style: 0.66 }             // lifted, energetic
+};
+
+export function registerForText(text){
+  const t = String(text||'').toLowerCase();
+  if(/\b(so sorry|i'm sorry|unfortunately|i understand|that's frustrating|i hear you|my apologies|missed you)\b/.test(t)) return 'empathic';
+  if(/\b(perfect|you're all set|booked|confirmed|can't wait|amazing|wonderful|see you (then|soon|friday|saturday)|welcome back|great choice)\b/.test(t)) return 'bright';
+  return 'warm';
+}
+
+export async function synthesize(text, { modelId, outputFormat, signal, register } = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voice = process.env.ELEVENLABS_VOICE_ID;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
@@ -56,7 +78,7 @@ export async function synthesize(text, { modelId, outputFormat, signal } = {}) {
     body: JSON.stringify({
       text: String(text).slice(0, 2500),
       model_id: modelId || process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5',
-      voice_settings: LOLA_VOICE_SETTINGS
+      voice_settings: { ...LOLA_VOICE_SETTINGS, ...(REGISTERS[register] || {}) }
     })
   });
 

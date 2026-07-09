@@ -67,9 +67,9 @@
           </div>
           <div class="legend">
             <div class="legend-item"><span class="legend-dot" style="background:#ccff00"></span><span class="legend-name">Blonde Services</span><span class="legend-val">48%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#ff6bb0"></span><span class="legend-name">Extensions</span><span class="legend-val">28%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#c44d8a"></span><span class="legend-name">Color</span><span class="legend-val">16%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#7a3a5c"></span><span class="legend-name">Cut & Style</span><span class="legend-val">8%</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#a8e000"></span><span class="legend-name">Extensions</span><span class="legend-val">28%</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#8fd400"></span><span class="legend-name">Color</span><span class="legend-val">16%</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#3a5a00"></span><span class="legend-name">Cut & Style</span><span class="legend-val">8%</span></div>
           </div>
         </div>
       </div>
@@ -113,7 +113,7 @@ function drawDonut(){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15;
   x.clearRect(0,0,130,130);
-  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#a8e000'},{v:16,c:'#84c400'},{v:8,c:'#3a5a00'}];
   let s=-Math.PI/2;
   segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,s,s+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();s+=a;});
 }
@@ -130,11 +130,11 @@ function drawBarsData(months){
 function drawDonutData(services){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15; x.clearRect(0,0,130,130);
-  const palette=['#ccff00','#ff6bb0','#c44d8a','#7a3a5c','#9a5fc4'];
+  const palette=['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
   let segs;
   if(services && services.length){ const tot=services.reduce((a,b)=>a+b.value,0)||1;
     segs=services.slice(0,5).map((sv,i)=>({v:(sv.value/tot)*100,c:palette[i%palette.length]})); }
-  else segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  else segs=[{v:48,c:'#ccff00'},{v:28,c:'#a8e000'},{v:16,c:'#84c400'},{v:8,c:'#3a5a00'}];
   let a0=-Math.PI/2; segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,a0,a0+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();a0+=a;});
 }
 (async ()=>{

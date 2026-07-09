@@ -75,7 +75,7 @@ export async function buildOwnerSystemPrompt(tenant, { channel = 'voice' } = {})
   }catch{}
 
   const voiceRules = channel === 'voice'
-    ? `You are SPEAKING on a phone call: keep replies to 1–3 short sentences, no lists, no markdown, natural spoken rhythm. If a topic truly needs depth, give the headline and offer to text the details.`
+    ? `You are SPEAKING on a phone call: 1–3 short sentences, no lists, no markdown. Contractions always; vary your openers; mirror the owner's energy; say numbers like a person ("three ninety-five"). Refer back to earlier in the conversation — that's what listening sounds like. If a topic truly needs depth, give the headline and offer to text the details.`
     : `You are texting: keep replies under 3 short sentences, plain text, no markdown.`;
 
   return [

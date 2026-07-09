@@ -215,7 +215,7 @@ function drawRevLine(){
   x.clearRect(0,0,W,H);
   const pts=[0.3,0.35,0.32,0.45,0.4,0.55,0.5,0.62,0.58,0.72,0.68,0.85,0.8];
   const grad=x.createLinearGradient(0,0,W,0);
-  grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'#ff6bb0');
+  grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'#dcff66');
   // area
   x.beginPath();
   pts.forEach((p,i)=>{ const px=(i/(pts.length-1))*W, py=H-(p*H*0.85)-6; i?x.lineTo(px,py):x.moveTo(px,py); });
@@ -239,7 +239,7 @@ function drawDonut(){
   const x=c.getContext('2d');
   const cx=60,cy=60,r=48,lw=14;
   x.clearRect(0,0,120,120);
-  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#ff6bb0'},{v:16,c:'#c44d8a'},{v:8,c:'#7a3a5c'}];
+  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#dcff66'},{v:16,c:'#8fd400'},{v:8,c:'#3a5a00'}];
   let start=-Math.PI/2;
   segs.forEach(s=>{
     const ang=(s.v/100)*Math.PI*2;

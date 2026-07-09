@@ -128,6 +128,8 @@ export function detectLolaIntent(text){
   if(hasAny(t, ['which stylist','who is best','recommend a stylist','whoever is','specific person','work with'])) return 'stylist_match';
   
   // PRICING & VALUE
+  // 'refer' is specific; check before generic pricing words like 'discount'
+  if(hasAny(t, ['refer','bring a friend','tell my friend','recommend you to'])) return 'referral_incentive';
   if(hasAny(t, ['price','cost','how much','quote','expensive','discount','cheap','promo','deal'])) return 'pricing';
   if(hasAny(t, ['loyalty','reward','points','member','frequent','vip'])) return 'loyalty';
   if(hasAny(t, ['first time','new client','first visit','never been'])) return 'first_time_discount';
@@ -146,11 +148,10 @@ export function detectLolaIntent(text){
   
   // LEAD & CONVERSION
   if(hasAny(t, ['just browsing','not ready','thinking about it','maybe later','not sure yet','interested but'])) return 'lead_capture';
-  if(hasAny(t, ['refer','bring a friend','tell my friend','recommend you to'])) return 'referral_incentive';
   if(hasAny(t, ['gift card','someone gave me','gift','birthday gift'])) return 'gift_card';
   
   // GROUP/EVENT BOOKINGS
-  if(hasAny(t, ['group','wedding','bridesmaids','event','party','bridal party'])) return 'event_package';
+  if(hasAny(t, ['group','wedding','getting married','bridesmaids','event','party','bridal','quincea','prom','photoshoot'])) return 'event_package';
   
   // OWNER/OPERATIONS
   if(hasAny(t, ['no show','rebook','follow up','follow-up','fill gaps','retention','owner','stylist dashboard','schedule gaps'])) return 'owner_assistant';

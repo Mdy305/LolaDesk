@@ -214,7 +214,9 @@ export function detectEliteIntent(text) {
   if (hasAny(t, ['vip', 'premium member', 'elite tier', 'membership tier'])) return 'vip_enrollment';
   if (hasAny(t, ['birthday', 'birth month', 'anniversary special'])) return 'birthday_offer';
   if (hasAny(t, ['haven\'t been', 'miss you', 'comeback', 'long time'])) return 'churn_prevention';
-  if (hasAny(t, ['refer my', 'sister', 'friend', 'family', 'mom', 'daughter'])) return 'family_referral';
+  // Referral requires referral INTENT, not a bare family word — "my
+  // daughter is getting married" must never trigger a referral pitch.
+  if (hasAny(t, ['refer my', 'sign up my', 'enroll my', 'bring my sister', 'bring my mom', 'bring my daughter', 'bring my friend', 'family discount', 'family plan', 'refer a friend'])) return 'family_referral';
 
   // TIER 14: MARKETING
   if (hasAny(t, ['how many bookings', 'campaign performance', 'roi', 'conversion rate'])) return 'campaign_tracker';

@@ -13,7 +13,7 @@ import {
   updateCallByTelnyxId
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
-import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
+import { synthesize, isConfigured as elevenLabsConfigured, registerForText } from './lib/elevenlabs.js';
 import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
@@ -158,14 +158,15 @@ export default async function handler(req, res){
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;
   // everyone after gets instant answer at zero tts_chars cost.
-  async function speakCached(text){
+  async function speakCached(text, register){
     if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
+    const reg = register || registerForText(text);
     const base = process.env.APP_URL.replace(/\/+$/,'');
-    const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${text}`).digest('hex');
+    const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
     let id = getKeyedAudioId(key);
     if(!id){
       try{
-        const audio = await synthesize(text);
+        const audio = await synthesize(text, { register: reg });
         id = putAudioKeyed(key, audio);
         await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
       }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
@@ -174,8 +175,13 @@ export default async function handler(req, res){
   }
 
   // ── Silence path: Gather timed out and <Redirect> brought us back ──
-  let silence = 0;
-  try{ silence = parseInt(new URL(req.url, 'http://x').searchParams.get('silence') || '0', 10) || 0; }catch{}
+  let silence = 0, continueText = '';
+  try{
+    const sp = new URL(req.url, 'http://x').searchParams;
+    silence = parseInt(sp.get('silence') || '0', 10) || 0;
+    const c = sp.get('continue');
+    if(c) continueText = Buffer.from(c, 'base64url').toString('utf8').slice(0, 600);
+  }catch{}
   if(silence > 0){
     if(silence === 1){
       // One gentle re-prompt before letting anyone go — a human
@@ -215,10 +221,11 @@ export default async function handler(req, res){
     }
   }catch{}
 
-  const speech = String(payload.speechResult || '').trim();
+  let speech = String(payload.speechResult || '').trim();
   let reply = '';
 
   const telnyxCallId = payload.callSid || payload.callControlId || '';
+  if(continueText && !speech) speech = continueText; // second leg of the instant-ack flow
   if(!speech){
     const name = client?.name ? ` ${client.name.split(' ')[0]}` : '';
     reply = `Hi${name}, this is Lola at ${tenant.name}. How can I help you today?`;
@@ -254,6 +261,32 @@ export default async function handler(req, res){
       clientName: client?.name ? String(client.name).split(' ')[0] : ''
     });
 
+    /* ── NO DEAD AIR, EVER ─────────────────────────────────────────
+       The single biggest machine "tell" is the 2–4s of silence while
+       the LLM thinks and the voice renders. Humans never go silent —
+       they say "mm, let me check…" within a heartbeat. So: if the
+       answer needs the LLM (no deterministic reply), we respond to
+       Telnyx IMMEDIATELY with a short cached acknowledgment and a
+       <Redirect> that carries the caller's words back to us; the
+       second leg does the real thinking WHILE the ack is playing.
+       Perceived response time: under half a second, every turn.
+       (Deterministic answers skip this — they're already instant.) */
+    const isContinuation = !!continueText;
+    if(!reply && !isContinuation){
+      const ACKS = [
+        `Mm-hm, one sec…`,
+        `Sure — let me check that for you…`,
+        `Okay, give me just a second…`,
+        `Got it — one moment…`
+      ];
+      const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
+      const state = Buffer.from(speech).toString('base64url');
+      const ackUrl = await speakCached(ack, 'warm');
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
+      res.setHeader('Content-Type', 'application/xml');
+      return res.status(200).send(xml);
+    }
+
     let history = [];
     try{
       if(conversation?.id) history = await getConversationHistory(conversation.id, 10);
@@ -270,6 +303,16 @@ export default async function handler(req, res){
         memoryBlock: buildClientMemoryBlock(clientProfile)
       });
       
+      // ── SPOKEN HUMANITY — how a person sounds, not a system ──
+      systemPrompt += `\nHOW YOU SPEAK (this is a live phone call):
+- Contractions always: "you're", "we've", "can't". One thought per sentence. Two sentences is usually perfect; three max.
+- Vary how you open — never start consecutive replies the same way. Tiny natural interjections ("Oh nice!", "Mm, good question") sparingly, only when they'd be genuine.
+- Use the caller's first name occasionally when you know it — once every few turns, never every turn.
+- Mirror their energy: excited caller gets lift, stressed caller gets calm and unhurried.
+- Refer back to what THEY said earlier in this call — it's what listening sounds like.
+- Say numbers like a person: "three ninety-five", "two thirty tomorrow afternoon".
+- Never sound like a list or a menu. If offering options, weave them into one flowing sentence.`;
+
       // Add MCP tools availability to system prompt
       systemPrompt += '\n' + buildMCPToolsPrompt();
       
@@ -381,7 +424,9 @@ export default async function handler(req, res){
     if(!process.env.APP_URL) missing.push('APP_URL');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
-  const playUrl = await speakCached(reply);
+  // clean for the mouth: no markdown, no newlines, spoken-length cap
+  reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
+  const playUrl = await speakCached(reply, registerForText(reply));
 
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');

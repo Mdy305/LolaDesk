@@ -12,7 +12,7 @@
   --bg:#070708;--bg2:#0c0c0e;--surface:#121214;--surface2:#16161a;
   --border:#1e1e22;--border2:#28282e;
   --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
-  --pink:#ccff00;--pink2:#ff6bb0;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
+  --pink:#ccff00;--pink2:#dcff66;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
   
   
   
@@ -156,10 +156,10 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .lola-ambient-toggle:hover{border-color:var(--pink)}
 .lola-ambient-toggle .dot{width:7px;height:7px;border-radius:50%;background:var(--text2);transition:all .2s}
 .lola-ambient-toggle.on .dot{background:#2ecc71;box-shadow:0 0 8px #2ecc71}
-.lola-ambient-toggle.muted .dot{background:#ff4d4d}
+.lola-ambient-toggle.muted .dot{background:#ff5a4d}
 .usage-banner{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r-sm);margin:4px 0 14px;font-size:13px}
-.usage-banner.near{background:rgba(255,180,0,.1);border:0.5px solid rgba(255,180,0,.35);color:#ffb800}
-.usage-banner.over{background:rgba(255,77,77,.1);border:0.5px solid rgba(255,77,77,.4);color:#ff6b6b}
+.usage-banner.near{background:rgba(255,180,0,.1);border:0.5px solid rgba(255,180,0,.35);color:#ffc043}
+.usage-banner.over{background:rgba(255,77,77,.1);border:0.5px solid rgba(255,77,77,.4);color:#ff7a6d}
 .usage-banner-text{flex:1}
 .usage-banner-cta{padding:6px 14px;border-radius:16px;font-size:12px;font-weight:600;background:currentColor;color:var(--bg)!important;opacity:.9;cursor:pointer;border:none;white-space:nowrap}
 .usage-banner-cta:hover{opacity:1}
@@ -264,8 +264,8 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .call-card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:16px}
 .call-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .call-status{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;color:var(--text2)}
-.call-rec{display:flex;align-items:center;gap:5px;font-size:11px;color:#ff4444}
-.call-rec-dot{width:7px;height:7px;border-radius:50%;background:#ff4444;animation:recblink 1.2s ease-in-out infinite}
+.call-rec{display:flex;align-items:center;gap:5px;font-size:11px;color:#ff5a4d}
+.call-rec-dot{width:7px;height:7px;border-radius:50%;background:#ff5a4d;animation:recblink 1.2s ease-in-out infinite}
 @keyframes recblink{0%,100%{opacity:1}50%{opacity:.3}}
 .call-avatar{width:64px;height:64px;border-radius:50%;margin:0 auto 10px;background:linear-gradient(135deg,#ccff00,#b01e6c);display:flex;align-items:center;justify-content:center;position:relative}
 .call-avatar::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1.5px solid var(--pink);opacity:.4;animation:callpulse 2s ease-out infinite}
@@ -289,8 +289,8 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .call-controls{display:flex;gap:8px;justify-content:center}
 .call-ctrl{width:38px;height:38px;border-radius:50%;background:var(--surface2);border:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all .15s}
 .call-ctrl:hover{color:var(--text);border-color:var(--border2)}
-.call-ctrl.end{background:#ff3b30;color:#fff;border-color:#ff3b30}
-.call-ctrl.end:hover{background:#ff5146}
+.call-ctrl.end{background:#ff453a;color:#fff;border-color:#ff453a}
+.call-ctrl.end:hover{background:#ff5a4d}
 
 /* ─── INBOX ─── */
 .inbox-tabs{display:flex;gap:4px;padding:0 16px 12px;flex-wrap:wrap}
@@ -304,7 +304,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .inbox-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .inbox-name{font-size:12.5px;font-weight:500;color:var(--text)}
 .inbox-channel{font-size:9px;font-weight:500;padding:1px 6px;border-radius:4px;letter-spacing:.04em}
-.ch-instagram{background:rgba(225,48,108,.15);color:#ff6bb0}
+.ch-instagram{background:rgba(204,255,0,.15);color:#dcff66}
 .ch-sms{background:var(--mono-dim);color:var(--text)}
 .ch-whatsapp{background:rgba(37,211,102,.15);color:#25d366}
 .ch-email{background:var(--mono-dim);color:var(--text)}
@@ -396,8 +396,8 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
 .desk-item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:13px 18px;border-bottom:0.5px solid var(--border);align-items:start}
 .desk-item:last-child{border-bottom:none}
 .desk-pri{width:9px;height:9px;border-radius:50%;margin-top:6px;box-shadow:0 0 8px rgba(204,255,0,.45)}
-.desk-pri.critical{background:#ff4d4d}
-.desk-pri.high{background:#ff9f0a}
+.desk-pri.critical{background:#ff5a4d}
+.desk-pri.high{background:#ffb340}
 .desk-pri.medium{background:#5ac8fa}
 .desk-title{font-size:12.5px;font-weight:500;color:var(--text);line-height:1.4}
 .desk-sub{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4}
@@ -668,9 +668,9 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
             <div class="donut"><canvas id="donutChart" width="100" height="100"></canvas></div>
             <div class="donut-legend" style="font-size:11px;">
               <div class="legend-item"><span class="legend-dot" style="background:#ccff00"></span>Blonde Services <span style="margin-left:auto">48%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#ff6bb0"></span>Extensions <span style="margin-left:auto">28%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#c44d8a"></span>Color <span style="margin-left:auto">16%</span></div>
-              <div class="legend-item"><span class="legend-dot" style="background:#7a3a5c"></span>Haircut & Style <span style="margin-left:auto">8%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#8affc4"></span>Extensions <span style="margin-left:auto">28%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#8fd400"></span>Color <span style="margin-left:auto">16%</span></div>
+              <div class="legend-item"><span class="legend-dot" style="background:#3a5a00"></span>Haircut & Style <span style="margin-left:auto">8%</span></div>
             </div>
           </div>
         </div>
@@ -1145,7 +1145,7 @@ button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:in
       insights.push({
         title: 'High No-Show Risk',
         desc: 'You lost an estimated <strong>$1,600</strong> to 4 no-shows this month. <a href="settings.html" style="color:var(--pink2);text-decoration:none">Enable Deposit Protection</a> to fix this.',
-        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff4444" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff5a4d" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
       });
     }
 
