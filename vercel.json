@@ -1,5 +1,25 @@
 {
   "cleanUrls": true,
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/start",     "destination": "/onboarding.html" },
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/login",     "destination": "/login.html" },
+    { "source": "/admin",     "destination": "/admin.html" },
+    { "source": "/clients",   "destination": "/clients.html" },
+    { "source": "/calls",     "destination": "/calls.html" },
+    { "source": "/inbox",     "destination": "/inbox.html" },
+    { "source": "/bookings",  "destination": "/bookings.html" },
+    { "source": "/revenue",   "destination": "/revenue.html" },
+    { "source": "/settings",  "destination": "/settings.html" },
+    { "source": "/numbers",   "destination": "/numbers.html" },
+    { "source": "/marketer",  "destination": "/marketer.html" },
+    { "source": "/pricing",   "destination": "/pricing.html" }
+  ],
   "redirects": [
     {
       "source": "/landing",
