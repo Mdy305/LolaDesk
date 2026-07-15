@@ -7,6 +7,7 @@ import {
   updateTenantFields
 } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { telnyxConfigStatus } from './lib/runtime-config.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 
@@ -155,8 +156,9 @@ export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if(req.method === 'OPTIONS') return res.status(200).end();
 
-  if(!process.env.TELNYX_API_KEY){
-    return res.status(500).json({ error: 'Missing TELNYX_API_KEY env var' });
+  const config = telnyxConfigStatus();
+  if(!config.ok){
+    return res.status(503).json({ error: config.message });
   }
 
   try{

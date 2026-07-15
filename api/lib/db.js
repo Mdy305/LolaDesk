@@ -5,17 +5,18 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { encrypt, decrypt } from './crypto.js';
+import { supabaseConfigStatus } from './runtime-config.js';
 
 let _client = null;
+export const DEMO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export function db(){
   if(_client) return _client;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if(!url || !key){
+  const status = supabaseConfigStatus();
+  if(!status.ok){
     // graceful: handlers can detect and fall back to demo mode
     return null;
   }
-  _client = createClient(url, key, {
+  _client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false }
   });
   return _client;
@@ -32,16 +33,20 @@ export function e164(num){
 }
 
 // ── TENANT RESOLUTION ──
-export async function getTenantByPhone(toNumber){
+export async function findTenantByPhone(toNumber, { allowDemoFallback = true } = {}){
   const c = db();
-  if(!c) return demoTenant();
+  if(!c) return allowDemoFallback ? demoTenant() : null;
   const phone = e164(toNumber);
   const { data, error } = await c
     .from('tenants').select('*')
     .eq('phone_number', phone)
     .maybeSingle();
-  if(error || !data) return demoTenant();
+  if(error || !data) return allowDemoFallback ? demoTenant() : null;
   return data;
+}
+
+export async function getTenantByPhone(toNumber){
+  return findTenantByPhone(toNumber, { allowDemoFallback: true });
 }
 
 // ── Shared Jarvis line: which salon does this CALLER run? ──
@@ -91,7 +96,7 @@ export async function getTenantBySlug(slug){
 
 function demoTenant(){
   return {
-    id: '00000000-0000-0000-0000-000000000000',
+    id: DEMO_TENANT_ID,
     slug: 'demo',
     name: 'MMΛ Salon',
     owner_name: 'Meddy',

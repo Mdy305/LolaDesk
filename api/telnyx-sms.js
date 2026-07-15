@@ -2,11 +2,12 @@
  * /api/telnyx-sms — Telnyx SMS webhook · MULTI-TENANT + 10DLC compliant
  * Handles both API v1 (form-encoded) and API v2 (JSON) from Telnyx.
  */
-import { getTenantByPhone, getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
+import { findTenantByPhone, getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
+import { telnyxConfigStatus } from './lib/runtime-config.js';
 
 
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
@@ -41,7 +42,9 @@ function extract(raw){
 
 export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,type='SMS',channel='sms'}){
   const isWhatsApp = String(type||channel||'').toUpperCase() === 'WHATSAPP';
-  if(!skipOptOut){ try{ const t=tenantId||(await getTenantByPhone(from))?.id; if(t&&await isOptedOut(t,to)) return {skipped:true}; }catch{} }
+  if(!skipOptOut){ try{ const t=tenantId||(await findTenantByPhone(from, { allowDemoFallback:false }))?.id; if(t&&await isOptedOut(t,to)) return {skipped:true, reason:'opted_out'}; }catch{} }
+  const config = telnyxConfigStatus();
+  if(!config.ok) return { ok:false, skipped:true, reason:config.message };
   
   const payload = { from, to };
   if(isWhatsApp){
@@ -86,10 +89,11 @@ export default async function handler(req,res){
   const fromN=e164(body.from), toN=e164(body.to), text=body.text||'', type=body.type||'SMS';
   const isWhatsApp = String(type).toUpperCase() === 'WHATSAPP';
   const channel = isWhatsApp ? 'whatsapp' : 'sms';
+  if(!fromN || !toN) return res.status(200).json({ ok:true, ignored:'malformed_payload' });
   console.log(`[${channel}]`,{from:fromN,to:toN,text:text.slice(0,40)});
 
   let row=null;
-  try{ row=await getTenantByPhone(toN); }catch{}
+  try{ row=await findTenantByPhone(toN, { allowDemoFallback:false }); }catch{}
 
   /* ── OWNER TEXTING THE JARVIS LINE ─────────────────────────────
      The shared owner number belongs to NO tenant, so a text to it
@@ -101,8 +105,7 @@ export default async function handler(req,res){
      Jarvis, second transport. 10DLC STOP/START gates don't apply
      (this is the owner's own tool, not marketing), but the exchange
      is persisted to the same operator audit trail. */
-  const DEMO_ID = '00000000-0000-0000-0000-000000000000';
-  if(!row?.id || row.id === DEMO_ID){
+  if(!row?.id){
     const ownerTenant = await getTenantByOperatorPhone(fromN).catch(()=>null);
     if(ownerTenant?.id){
       let conv=null, hist=[];
@@ -124,8 +127,6 @@ export default async function handler(req,res){
       return res.status(200).json({ ok:true, handled:'owner_chat' });
     }
   }
-
-  if(!row?.id) return res.status(200).json({ok:true,ignored:'no_tenant'});
   const tName=row.name;
 
   // 10DLC compliance

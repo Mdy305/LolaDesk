@@ -1,6 +1,6 @@
 import {
   e164,
-  getTenantByPhone,
+  findTenantByPhone,
   upsertClient,
   getClientMemory,
   setClientMemory,
@@ -146,11 +146,16 @@ export default async function handler(req, res){
   const payload = extractVoicePayload(parsed);
   const toN = e164(payload.to);
   const fromN = e164(payload.from);
+  if(!toN){
+    const xml = texmlSayAndGather({ say: 'Sorry, we could not verify this number yet. Please try again shortly.', hangupAfter: true });
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  }
 
   let tenant = null;
-  try{ tenant = await getTenantByPhone(toN); }catch{}
+  try{ tenant = await findTenantByPhone(toN, { allowDemoFallback:false }); }catch{}
   if(!tenant?.id){
-    const xml = texmlSayAndGather({ say: 'Sorry, we cannot route this call yet. Please try again shortly.' });
+    const xml = texmlSayAndGather({ say: 'Sorry, we cannot route this call yet. Please try again shortly.', hangupAfter: true });
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }

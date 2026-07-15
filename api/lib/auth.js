@@ -12,20 +12,20 @@
  * ENV: SUPABASE_URL, SUPABASE_SERVICE_KEY (already set for db.js)
  */
 import { createClient } from '@supabase/supabase-js';
+import { supabaseConfigStatus } from './runtime-config.js';
 
 let _admin = null;
 export function admin(){
   if(_admin) return _admin;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if(!url || !key) return null;
-  _admin = createClient(url, key, { auth: { autoRefreshToken:false, persistSession:false } });
+  const status = supabaseConfigStatus();
+  if(!status.ok) return null;
+  _admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken:false, persistSession:false } });
   return _admin;
 }
 
 // Create an auth user (email confirmed) and return it
 export async function createUser({ email, password, name }){
-  const a = admin(); if(!a) throw new Error('Auth not configured');
+  const a = admin(); if(!a) throw new Error(supabaseConfigStatus().message || 'Auth not configured');
   const { data, error } = await a.auth.admin.createUser({
     email, password, email_confirm: true, user_metadata: { name }
   });
@@ -35,7 +35,7 @@ export async function createUser({ email, password, name }){
 
 // Sign in with email+password -> returns session (access + refresh tokens)
 export async function signIn({ email, password }){
-  const a = admin(); if(!a) throw new Error('Auth not configured');
+  const a = admin(); if(!a) throw new Error(supabaseConfigStatus().message || 'Auth not configured');
   const { data, error } = await a.auth.signInWithPassword({ email, password });
   if(error) throw new Error(error.message);
   return data; // { user, session }

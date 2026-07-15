@@ -54,16 +54,45 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 ## Run it locally
 
 ```bash
+npm install
 python3 -m http.server 8080
 # open http://localhost:8080/index.html — the marketing site
 # open http://localhost:8080/dashboard.html — straight to the dashboard (demo data without env vars)
 ```
 
 The `api/*.js` files are Vercel serverless functions and won't run under the plain Python server — use `vercel dev` for those, or just deploy to a Vercel preview to test the full stack.
+For local webhook testing there is also a tiny Node entrypoint:
+
+```bash
+node index.js
+```
+
+That exposes `POST /api/telnyx-voice` plus the live voice-stream websocket bootstrap without requiring Express.
 
 ## Deploy
 
 See `DEPLOY.md` for the Git → Vercel flow, `SUPABASE-SETUP.md` for the database, `TELNYX-SETUP.md` for voice/SMS, and `.env.example` for the full list of environment variables this code actually reads — keep that file in sync if you add a new `process.env.X` anywhere.
+
+### Core env vars
+
+- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
+- Telnyx: `TELNYX_API_KEY`
+- Telnyx webhook verification: `TELNYX_PUBLIC_KEY`
+- Voice playback on calls/dashboard: `APP_URL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`
+- Number provisioning / porting: `TELNYX_VOICE_APP_ID`, `TELNYX_MESSAGING_PROFILE`
+
+When the required env vars are missing, LolaDesk now fails with clearer config errors instead of silently routing live traffic to demo behavior.
+
+## Onboarding architecture
+
+The onboarding wizard now saves a resumable local draft and is organized around four explicit stages:
+
+1. **Tenant** — workspace/business context
+2. **Identity** — owner role + job level
+3. **Skill** — Lola persona/style selection
+4. **UX** — dashboard mode, motion profile, booking/Telnyx setup
+
+The dashboard session handoff now carries role, job level, persona style, and motion preferences so Lola can stay concise, confident, warm, and proactive while adjusting the UX by operator level.
 
 ## Multi-tenant: one codebase, every salon
 
