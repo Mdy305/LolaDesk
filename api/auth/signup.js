@@ -17,7 +17,7 @@ export default async function handler(req, res){
   if(req.method!=='POST') return res.status(405).json({ error:'POST only' });
   try{
     const b = typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const { email, password, name, salonName, location, hours, plan, websiteUrl, businessMode } = b;
+    const { email, password, name, salonName, location, hours, plan, websiteUrl, bookingUrl, businessMode } = b;
     if(!email || !password) return res.status(400).json({ error:'email and password required' });
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
@@ -30,6 +30,7 @@ export default async function handler(req, res){
     const tenant = await upsertTenant({
       slug, name: salonName || 'My Salon', owner_name: name, owner_email: email,
       location: location||'', hours: hours||'', plan: plan||'starter',
+      booking_url: bookingUrl || '',
       website_url: websiteUrl||'', business_mode: businessMode||'salon',
       trial_ends_at: trialEnds
     });

@@ -22,8 +22,11 @@ const DEFAULT_TENANT = {
   // Lola persona — tunable per salon
   persona: {
     name: 'Lola',
-    energy: 'warm, intelligent, lightly playful Valley Girl confidence',
-    voice: 'Samantha'
+    tone: 'concise, confident, warm, proactive',
+    style: 'executive_concise',
+    jobLevel: 'manager',
+    voice: 'Samantha',
+    motion: 'resonant'
   },
   // Services drive Lola's booking knowledge
   services: [
@@ -59,6 +62,54 @@ const TENANT = (function(){
   return DEFAULT_TENANT;
 })();
 
+function normalizeJobLevel(value){
+  const raw = String(value || '').toLowerCase();
+  if(raw === 'executive' || raw === 'c_suite' || raw === 'c-suite') return 'executive';
+  if(raw === 'director') return 'director';
+  if(raw === 'individual_contributor' || raw === 'ic' || raw === 'specialist') return 'individual_contributor';
+  return 'manager';
+}
+
+function normalizePersona(persona = {}){
+  const style = String(persona.style || persona.energy || 'executive_concise').toLowerCase();
+  const normalizedStyle = style.includes('technical') ? 'technical_deep_dive'
+    : style.includes('warm') ? 'warm_professional'
+    : 'executive_concise';
+  return {
+    name: persona.name || 'Lola',
+    tone: persona.tone || 'concise, confident, warm, proactive',
+    style: normalizedStyle,
+    jobLevel: normalizeJobLevel(persona.jobLevel || TENANT.jobLevel),
+    voice: persona.voice || 'Samantha',
+    motion: persona.motion || 'resonant'
+  };
+}
+
+function buildInsightsForJobLevel(jobLevel){
+  if(jobLevel === 'executive'){
+    return [
+      { icon:'📈', cls:'rebook', text:'Weekly revenue snapshot is ready', sub:'Summary first, risk second', prompt:'Give me an executive summary of this week with one risk and one action.' },
+      { icon:'⚠️', cls:'gap', text:'Two schedule gaps are affecting revenue', sub:'Decision-ready in one view', prompt:'What is the fastest action to recover this week\'s open time?' },
+      { icon:'🤝', cls:'gift', text:'VIP follow-up opportunity detected', sub:'High-value retention move', prompt:'Draft a concise VIP follow-up I can approve fast.' }
+    ];
+  }
+  if(jobLevel === 'individual_contributor'){
+    return [
+      { icon:'🛠️', cls:'rebook', text:'Three client actions need hands-on follow-up', sub:'Detailed next steps ready', prompt:'Walk me through the next three client actions with detail.' },
+      { icon:'🗓️', cls:'gap', text:'Tomorrow\'s open slot can be filled', sub:'Operational playbook ready', prompt:'Give me the operational steps to fill tomorrow\'s gap.' },
+      { icon:'💬', cls:'gift', text:'Reply drafts are queued', sub:'Detail-rich but concise', prompt:'Draft the client replies with enough detail to send now.' }
+    ];
+  }
+  return [
+    { icon:'💜', cls:'rebook', text:'3 clients are due for rebooking', sub:'Average revenue $650', prompt:'Draft rebooking messages for my 3 clients who are due' },
+    { icon:'🔥', cls:'gap', text:'Thursday has a 2pm–4pm gap', sub:'Potential revenue $400', prompt:'How should I fill the Thursday 2-4pm gap?' },
+    { icon:'🎁', cls:'gift', text:'Send birthday offer to 5 clients', sub:'This week', prompt:'Draft a birthday offer for the 5 clients with birthdays this week' }
+  ];
+}
+
+TENANT.persona = normalizePersona(TENANT.persona || {});
+TENANT.jobLevel = TENANT.jobLevel || TENANT.persona.jobLevel;
+
 /* Backend proxy endpoint — keeps the API key server-side.
    For demo it falls back to direct call. In production point this
    at your Cloudflare Worker / Vercel function. */
@@ -77,9 +128,7 @@ const DATA = {
     { time: '4:00 PM', service: 'Blowout', client: 'Sophie Wilson', img: 'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=80&q=80' }
   ],
   insights: [
-    { icon: '💜', cls: 'rebook', text: '3 clients are due for rebooking', sub: 'Average revenue $650', prompt: 'Draft rebooking messages for my 3 clients who are due' },
-    { icon: '🔥', cls: 'gap', text: 'Thursday has a 2pm–4pm gap', sub: 'Potential revenue $400', prompt: 'How should I fill the Thursday 2-4pm gap?' },
-    { icon: '🎁', cls: 'gift', text: 'Send birthday offer to 5 clients', sub: 'This week', prompt: 'Draft a birthday offer for the 5 clients with birthdays this week' }
+    ...buildInsightsForJobLevel(TENANT.jobLevel)
   ],
   inbox: [
     { name: 'Sarah Johnson', channel: 'instagram', chLabel: 'Instagram', time: '2m', msg: 'Hi! Do you have any availability…', unread: true, img: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&q=80' },
@@ -286,17 +335,25 @@ function drawCallWave(){
    LOLA AI BRAIN
    ───────────────────────────────────────────────────────────── */
 function buildSystemPrompt(){
+  const persona = TENANT.persona || {};
   const svc = TENANT.services.map(s=>`${s.name} — $${s.price} (${s.duration})${s.note?' · '+s.note:''}`).join('\n');
   const team = TENANT.team.map(t=>`${t.name} (${t.role})`).join(', ');
+  const audienceMode = persona.jobLevel === 'executive'
+    ? 'Start with the business summary, then give one recommendation and one risk.'
+    : persona.jobLevel === 'director'
+      ? 'Start with the recommendation, then include the operational tradeoff.'
+      : persona.jobLevel === 'individual_contributor'
+        ? 'Include enough implementation detail to act immediately.'
+        : 'Lead with action, then call out risks or follow-up.';
   return `You are ${TENANT.persona.name} — the AI front desk running ${TENANT.name}, a salon in ${TENANT.location}. You are speaking with ${TENANT.owner}, the owner, inside the LolaDesk command dashboard.
 
-You are the smartest salon AI ever built. You act as a 5-star Beverly Hills luxury hotel concierge: incredibly attentive, upscale, warm, slightly bubbly, and highly capable. Your personality is ${TENANT.persona.energy}. You never say "Great question!" or "I'd be happy to help!". You cut straight to the luxurious, specific answer.
+You are professional, concise, confident, warm, and proactive. Sound like a trusted chief of staff for the salon — never robotic, never overblown, never making claims you cannot back up. Your configured style is ${persona.style}; your tone is ${persona.tone}. You never say "Great question!" or "I'd be happy to help!".
 
-WHO YOU HELP: ${TENANT.owner} runs the salon. You help them book clients, draft messages, handle calls, fill schedule gaps, re-engage lapsed clients, and grow revenue. You have full operational awareness.
+WHO YOU HELP: ${TENANT.owner} (${TENANT.role || 'Owner'}) runs the salon at a ${persona.jobLevel} level. You help them book clients, draft messages, handle calls, fill schedule gaps, re-engage lapsed clients, and grow revenue.
 
-RESPONSE STYLE: Maximum 3 short sentences unless asked for detail. Specific numbers, real names, clear next actions. When you draft a client message, write it ready-to-send in quotes. Use *asterisks* around service names.
+RESPONSE STYLE: Maximum 3 short sentences unless asked for detail. Specific numbers, real names, clear next actions. ${audienceMode} When you draft a client message, write it ready-to-send in quotes. Use *asterisks* around service names.
 
-PROFIT MAXIMIZATION: You are obsessed with maximizing the ticket size. Always suggest luxurious upsells and add-ons dynamically when discussing client bookings. (e.g., "Since she's coming in for a balayage, we *have* to suggest the restorative gloss.")
+PROFIT MAXIMIZATION: Look for tasteful upsells and add-ons when they genuinely fit the booking or client context.
 
 SERVICES & PRICES:
 ${svc}
@@ -306,9 +363,9 @@ TEAM: ${team}
 BOOKING: ${TENANT.bookingUrl} · WhatsApp ${TENANT.whatsapp} · Phone ${TENANT.phone}
 HOURS: Tue–Sat, Noon–8pm. Appointment only.
 
-PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
+PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note the pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
 
-You are the only AI that can run an ultra-luxury salon. Act like it — but stay warm and bubbly.`;
+Never overclaim, never invent live numbers, and keep the answer useful enough to act on immediately.`;
 }
 
 let chatHistory = [];
@@ -317,15 +374,15 @@ let chatBusy = false;
 function humanFallbackFor(message=''){
   const t = String(message || '').toLowerCase();
   if(t.includes('book') || t.includes('appointment') || t.includes('availability')){
-    return 'Absolutely — I can handle that now. Share the client name, service, and preferred day/time.';
+    return 'I can handle that now. Send the client name, service, and preferred day/time.';
   }
   if(t.includes('price') || t.includes('cost') || t.includes('quote')){
-    return 'Of course. Tell me the exact service and I will give you a clear price and timing answer.';
+    return 'Send the exact service and I’ll give you the clean price and timing answer.';
   }
   if(t.includes('message') || t.includes('text') || t.includes('reply')){
-    return 'Perfect — I am on it. Paste the client message and I will draft a ready-to-send reply.';
+    return 'Paste the client message and I’ll draft the ready-to-send reply.';
   }
-  return 'I am with you. Give me the next detail and I will handle it right now.';
+  return 'Send the next detail and I’ll move it forward.';
 }
 
 async function callLola(message){

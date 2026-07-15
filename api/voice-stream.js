@@ -1,7 +1,7 @@
 import { WebSocketServer } from 'ws';
 import url from 'url';
 import {
-  getTenantByPhone, upsertClient, getOrStartConversation,
+  findTenantByPhone, upsertClient, getOrStartConversation,
   logMessage, getConversationHistory, logUsage, e164, tenantKnowledgePrompt
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
@@ -94,7 +94,8 @@ class CallContext {
   async initialize() {
     try {
       // 1. Tenant lookup
-      const row = await getTenantByPhone(this.toN);
+      const row = await findTenantByPhone(this.toN, { allowDemoFallback:false });
+      if(!row?.id) throw new Error('unknown tenant phone number');
       this.tenantId = row?.id;
       this.tenant = shape(row);
 

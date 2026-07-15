@@ -23,17 +23,20 @@ function pickProvider(source){
   return 'telnyx';
 }
 
-export async function chat({ system='', messages=[], maxTokens=600, temperature=0.7, model, source='', tools=null } = {}){
+export async function chat({ system='', messages=[], maxTokens=600, temperature=0.7, model, source='', tools=null, jsonMode=false } = {}){
   const p = pickProvider(source);
-  if(p === 'anthropic') return chatAnthropic({ system, messages, maxTokens, temperature, model, tools });
-  return chatTelnyx({ system, messages, maxTokens, temperature, model, tools });
+  if(p === 'anthropic') return chatAnthropic({ system, messages, maxTokens, temperature, model, tools, jsonMode });
+  return chatTelnyx({ system, messages, maxTokens, temperature, model, tools, jsonMode });
 }
 
-async function chatTelnyx({ system, messages, maxTokens, temperature, model, tools }){
+async function chatTelnyx({ system, messages, maxTokens, temperature, model, tools, jsonMode }){
   if(!process.env.TELNYX_API_KEY) return { ok:false, text:'', provider:'telnyx', error:'Missing TELNYX_API_KEY' };
   const m = model || DEFAULT_TELNYX_MODEL;
   const oai = [];
-  if(system) oai.push({ role:'system', content:system });
+  const finalSystem = jsonMode
+    ? [system, 'Return valid JSON only. Do not wrap it in markdown fences.'].filter(Boolean).join('\n')
+    : system;
+  if(finalSystem) oai.push({ role:'system', content:finalSystem });
   for(const msg of messages) {
     if(msg.role === 'tool') {
       oai.push({ role: 'tool', tool_call_id: msg.tool_call_id, name: msg.name, content: msg.content });
@@ -50,6 +53,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model, too
     try{
       const payload = { model:m, messages:oai, max_tokens:budgets[i], temperature:i>1?0.6:temperature };
       if(tools && tools.length > 0 && !dropTools) payload.tools = tools;
+      if(jsonMode) payload.response_format = { type:'json_object' };
 
       const r = await fetch(TELNYX_INFERENCE, {
         method:'POST',
@@ -79,16 +83,19 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, model, too
   return { ok:false, text:'', provider:'telnyx', model:m, error:'all attempts failed: '+(last.error||'') };
 }
 
-async function chatAnthropic({ system, messages, maxTokens, temperature, model, tools }){
+async function chatAnthropic({ system, messages, maxTokens, temperature, model, tools, jsonMode }){
   if(!process.env.ANTHROPIC_API_KEY) return { ok:false, text:'', provider:'anthropic', error:'Missing ANTHROPIC_API_KEY — add credits at console.anthropic.com' };
   const m = model || DEFAULT_ANTHROPIC_MODEL;
+  const finalSystem = jsonMode
+    ? [system, 'Return valid JSON only. Do not wrap it in markdown fences.'].filter(Boolean).join('\n')
+    : system;
   let lastError = 'unknown';
   for(let attempt=0;attempt<2;attempt++){
     try{
       const r = await fetch(ANTHROPIC_API, {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'x-api-key':process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
-        body: JSON.stringify({ model:m, max_tokens:maxTokens, temperature, system, messages })
+        body: JSON.stringify({ model:m, max_tokens:maxTokens, temperature, system: finalSystem, messages })
       });
       const data = await r.json();
       if(!r.ok){ lastError=data?.error?.message||`HTTP ${r.status}`; if(r.status===401||r.status===400) break; continue; }
