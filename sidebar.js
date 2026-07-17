@@ -1,90 +1,101 @@
 /* ═══════════════════════════════════════════════════════════════
-   LolaDesk — shared sidebar / nav
-   Each page sets <body data-page="clients"> etc. This injects the
-   sidebar with the right active item and the mobile bottom bar.
+   LolaDesk — shared sidebar / nav (Neon Green Pro)
    ═══════════════════════════════════════════════════════════════ */
 (function(){
   const page = document.body.getAttribute('data-page') || 'overview';
 
   const icons = {
-    overview:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/>',
-    agents:'<circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 6L10 10M17 6L14 10M7 18L10 14M17 18L14 14"/>',
-    clients:'<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/>',
-    calls:'<path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/>',
-    inbox:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
-    numbers:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/>',
-    bookings:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/>',
-    revenue:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-    team:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/>',
+    overview:'<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+    clients:'<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>',
+    calls:'<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>',
+    inbox:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    bookings:'<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    revenue:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>',
+    team:'<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     marketing:'<path d="M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 11-5.8-1.6"/>',
-    marketer:'<path d="M12 2a4 4 0 014 4v1a5 5 0 013 4.6V14a5 5 0 01-3 4.6V20a4 4 0 11-8 0v-1.4A5 5 0 015 14v-2.4A5 5 0 018 7V6a4 4 0 014-4z"/><path d="M9 11h.01M15 11h.01"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };
 
-  // Seven items. Jobs rule: every item earns its place or leaves.
-  // Calls lives inside Inbox (one conversation surface, two views).
-  // Marketing lives inside Growth Studio. Numbers/Team/Billing live
-  // inside Settings. No hardcoded fake badges — a business tool that
-  // lies about numbers loses the room.
   const items = [
-    { id:'overview', label:'Home',          href:'dashboard.html' },
-    { id:'bookings', label:'Calendar',      href:'bookings.html' },
-    { id:'inbox',    label:'Inbox',         href:'inbox.html' },
-    { id:'clients',  label:'Clients',       href:'clients.html' },
-    { id:'revenue',  label:'Revenue',       href:'revenue.html' },
-    { id:'marketer', label:'Growth Studio', href:'marketer.html#control', badge:'AI', pink:true },
-    { id:'settings', label:'Settings',      href:'settings.html' }
+    { id:'overview', label:'Overview', href:'dashboard.html' },
+    { id:'clients',  label:'Clients', href:'clients.html' },
+    { id:'calls',    label:'Calls', href:'calls.html', badge:'12' },
+    { id:'inbox',    label:'Inbox', href:'inbox.html', badge:'8' },
+    { id:'bookings', label:'Bookings', href:'bookings.html' },
+    { id:'revenue',  label:'Revenue', href:'revenue.html' },
+    { id:'team',     label:'Team', href:'team.html' },
+    { id:'settings', label:'Settings', href:'settings.html' }
   ];
 
   const navHTML = items.map(it => `
     <a class="nav-item ${it.id===page?'active':''}" href="${it.href}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>
       ${it.label}
-      ${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}
+      ${it.badge?`<span class="nav-badge ${it.pink?'pink':''}">${it.badge}</span>`:''}
     </a>`).join('');
 
   const sidebar = document.createElement('aside');
   sidebar.className = 'sidebar';
   sidebar.innerHTML = `
     <div class="logo">
-      <div class="logo-mark">LOLA</div>
-      <div class="logo-sub">DESK</div>
+      <div class="logo-mark">LOLA<br>DESK</div>
+      <div class="logo-sub">Command</div>
     </div>
     <nav class="nav">${navHTML}</nav>
-    <div style="margin: 0 16px 20px; padding: 12px; background: linear-gradient(135deg, rgba(204,255,0,0.08), rgba(176,30,108,0.04)); border: 0.5px solid var(--pink-dim); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
-      <div style="font-size: 20px; filter: drop-shadow(0 0 6px var(--pink));">🔥</div>
-      <div>
-        <div style="font-size: 12px; font-weight: 600; color: var(--pink2);">12-Day Streak</div>
-        <div style="font-size: 10px; color: var(--text2);">Top 15% of salons</div>
-      </div>
-    </div>
-    <a class="nav-user" href="settings.html">
+    <div style="margin-top:auto"></div>
+    <div class="nav-user" onclick="location.href='settings.html'">
       <div class="nav-user-av">M</div>
       <div class="nav-user-info">
-        <div class="nav-user-name">Meddy</div>
-        <div class="nav-user-role">Owner · MMΛ Salon</div>
+        <div class="nav-user-name" id="sbOwnerName">Meddy</div>
+        <div class="nav-user-role">Owner</div>
       </div>
-    </a>`;
+    </div>`;
 
   // mobile bar
   const mobile = document.createElement('nav');
   mobile.className = 'mobile-bar';
-  // The center orb is Lola herself — the signature tap. Everything
-  // else mirrors the desktop truth exactly (one nav, two renders).
   const mb = [
     { id:'overview', href:'dashboard.html', label:'Home', icon:icons.overview },
     { id:'bookings', href:'bookings.html', label:'Calendar', icon:icons.bookings },
-    { id:'lola', href:'lola-live.html', label:'', orb:true },
+    { id:'lola', href:'javascript:toggleDashboardVoice&&toggleDashboardVoice()', label:'', orb:true },
     { id:'inbox', href:'inbox.html', label:'Inbox', icon:icons.inbox },
     { id:'settings', href:'settings.html', label:'More', icon:icons.settings }
   ];
   mobile.innerHTML = mb.map(m => m.orb
-    ? `<a class="mb-item" href="${m.href}"><div class="mb-orb">L</div></a>`
+    ? `<a class="mb-item" onclick="if(window.toggleChatVoice) window.toggleChatVoice();"><div class="mb-orb">L</div></a>`
     : `<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`
   ).join('');
 
-  // mount: sidebar first child of .app, mobile at end of body
   const app = document.querySelector('.app');
   if(app) app.insertBefore(sidebar, app.firstChild);
   document.body.appendChild(mobile);
+
+  // CHAT OVERLAY
+  if(!document.getElementById('chatOverlay')) {
+    const chatOverlay = document.createElement('div');
+    chatOverlay.className = 'chat-overlay';
+    chatOverlay.id = 'chatOverlay';
+    chatOverlay.innerHTML = `
+      <div class="chat-modal">
+        <div class="chat-modal-head">
+          <div class="chat-modal-title">
+            <div class="chat-modal-orb">L</div>
+            <div>
+              <div class="chat-modal-name">Lola</div>
+              <div class="chat-modal-status">Online · Your AI front desk</div>
+            </div>
+          </div>
+          <button class="chat-close" onclick="closeChat()" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="chat-msgs" id="chatMsgs" role="log" aria-live="polite"></div>
+        <div class="chat-input-row">
+          <button class="chat-mic" id="chatMic" onclick="toggleChatVoice()" aria-label="Voice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg></button>
+          <input class="chat-input" id="chatInput" placeholder="Ask Lola anything…" aria-label="Message Lola"/>
+          <button class="chat-send" onclick="sendChat()" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(chatOverlay);
+  }
+
 })();

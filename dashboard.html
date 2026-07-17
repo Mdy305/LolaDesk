@@ -5,238 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LolaDesk — Command Center</title>
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAZdEVYdFNvZnR3YXJlAHBhaW50Lm5ldCA0LjAuMTnU1rJkAAAADUlEQVQYV2P4//8/AwAI/AL+X6MwZgAAAABJRU5ErkJggg==">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --bg: #000000;
-  --bg2: #111111;
-  --surface: rgba(20, 20, 20, 0.7);
-  --surface-hover: rgba(30, 30, 30, 0.9);
-  --surface2: rgba(40, 40, 40, 0.6);
-  --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.15);
-  
-  --text: #F5F5F7;
-  --text2: #A1A1A6;
-  --text3: #6E6E73;
-  
-  /* NEON GREEN ACCENTS */
-  --pink: #ccff00;
-  --pink2: #aaff00;
-  --pink-dim: rgba(204, 255, 0, 0.15);
-  --pink-glow: rgba(204, 255, 0, 0.4);
-  
-  --mono-dim: rgba(255, 255, 255, 0.05);
-  
-  --ff-serif: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  --ff: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-  
-  --r: 24px;
-  --r-sm: 12px;
-  --r-lg: 32px;
-  
-  --glass: blur(24px) saturate(180%);
-}
-
-html, body { background: var(--bg); color: var(--text); font-family: var(--ff); -webkit-font-smoothing: antialiased; line-height: 1.5; overflow-x: hidden; }
-body { min-height: 100vh; }
-::-webkit-scrollbar { width: 0; height: 0; }
-* { scrollbar-width: none; }
-a { color: inherit; text-decoration: none; }
-button { font-family: var(--ff); cursor: pointer; border: none; background: none; color: inherit; }
-
-/* APP SHELL */
-.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
-@media(max-width:1100px) { .app { grid-template-columns: 1fr; } }
-
-/* SIDEBAR */
-.sidebar { background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 32px 0; position: sticky; top: 0; height: 100vh; }
-@media(max-width:1100px) { .sidebar { display: none; } }
-.logo { padding: 0 24px 32px; }
-.logo-mark { font-family: var(--ff-serif); font-size: 24px; font-weight: 600; letter-spacing: .08em; color: var(--text); }
-.logo-sub { font-size: 10px; font-weight: 500; letter-spacing: .2em; color: var(--pink); margin-top: 4px; text-transform: uppercase; }
-.nav { display: flex; flex-direction: column; gap: 4px; padding: 0 16px; flex: 1; }
-.nav-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-sm); color: var(--text2); font-size: 14px; font-weight: 500; transition: all .2s; cursor: pointer; position: relative; }
-.nav-item:hover { background: var(--surface); color: var(--text); }
-.nav-item.active { background: rgba(255,255,255,0.06); color: var(--text); }
-.nav-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 16px; width: 3px; border-radius: 3px; background: var(--pink); }
-.nav-icon { width: 20px; height: 20px; flex-shrink: 0; stroke-width: 1.5; }
-.nav-badge { background: var(--surface2); color: var(--text); font-size: 11px; padding: 2px 8px; border-radius: 100px; margin-left: auto; border: 1px solid var(--border); }
-.nav-user { margin: 0 16px; padding: 16px; border-radius: var(--r-sm); display: flex; align-items: center; gap: 12px; cursor: pointer; transition: background .2s; background: var(--bg); border: 1px solid var(--border); }
-.nav-user:hover { background: var(--surface); }
-.nav-user-av { width: 36px; height: 36px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--text); flex-shrink: 0; border: 1px solid var(--border); }
-.nav-user-info { flex: 1; min-width: 0; }
-.nav-user-name { font-size: 14px; font-weight: 600; color: var(--text); }
-.nav-user-role { font-size: 12px; color: var(--text3); }
-
-/* MOBILE NAV */
-.mobile-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.8); backdrop-filter: var(--glass); border-top: 1px solid var(--border); padding: 12px 24px 24px; z-index: 90; justify-content: space-between; }
-@media(max-width:1100px) { .mobile-bar { display: flex; } }
-.mb-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--text3); font-weight: 500; cursor: pointer; }
-.mb-item.active { color: var(--pink); }
-.mb-orb { width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1px solid var(--pink); display: flex; align-items: center; justify-content: center; font-family: var(--ff-serif); font-style: italic; font-size: 18px; color: var(--pink); box-shadow: 0 0 16px var(--pink-dim); margin-top: -12px; }
-
-/* MAIN */
-.main { padding: 40px; max-width: 1400px; width: 100%; margin: 0 auto; }
-@media(max-width:1100px) { .main { padding: 24px 20px 100px; } }
-
-/* TOPBAR */
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 40px; }
-.search { flex: 1; max-width: 400px; display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 10px 16px; color: var(--text3); transition: all .2s; backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); }
-.search:focus-within { border-color: var(--border2); background: var(--surface-hover); box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
-.search input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-family: var(--ff); font-size: 14px; }
-.search-kbd { font-size: 11px; color: var(--text3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; }
-.topbar-actions { display: flex; align-items: center; gap: 12px; }
-.icon-btn { width: 40px; height: 40px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text2); transition: all .2s; position: relative; backdrop-filter: var(--glass); }
-.icon-btn:hover { background: var(--surface-hover); color: var(--text); transform: scale(1.05); }
-.icon-btn .dot { position: absolute; top: 10px; right: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 8px var(--pink); }
-
-/* HERO HEAD */
-.hero-head { margin-bottom: 24px; }
-.hero-greeting { font-family: var(--ff-serif); font-size: 32px; font-weight: 500; letter-spacing: -0.02em; color: var(--text); margin-bottom: 6px; }
-.hero-sub { font-size: 15px; color: var(--text2); }
-
-/* KPI ROW */
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-@media(max-width:800px) { .kpi-row { grid-template-columns: 1fr 1fr; } }
-.kpi { background: var(--surface); backdrop-filter: var(--glass); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 20px; transition: all .3s; }
-.kpi:hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
-.kpi-val { font-family: var(--ff-serif); font-size: 32px; font-weight: 500; color: var(--text); line-height: 1; margin-bottom: 6px; }
-.kpi-label { font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 2px; }
-.kpi-sub { font-size: 12px; color: var(--text3); }
-.kpi.accent .kpi-val { color: var(--pink); }
-
-/* GRID MAIN */
-.grid-main { display: grid; grid-template-columns: 1fr 360px; gap: 24px; margin-bottom: 24px; }
-@media(max-width:1100px) { .grid-main { grid-template-columns: 1fr; } }
-
-/* LOLA PANEL */
-.lola-panel { background: var(--surface); backdrop-filter: var(--glass); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; min-height: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-.lola-orb-stage { width: 300px; height: 300px; position: relative; cursor: pointer; }
-.lola-orb-stage canvas { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; }
-/* The old rings are kept just in case lola-orb.js fails, but visually hidden if canvas works. They were neon green anyway. */
-.lola-rings { position: absolute; inset: 0; pointer-events: none; opacity: 0; } 
-.lola-prompt { margin-top: 40px; text-align: center; z-index: 2; }
-.lola-prompt-title { font-family: var(--ff-serif); font-size: 24px; font-weight: 500; color: var(--text); margin-bottom: 8px; letter-spacing: -0.01em; }
-.lola-prompt-sub { font-size: 14px; color: var(--text3); }
-.lola-mic { margin-top: 24px; width: 56px; height: 56px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text); transition: all .3s; backdrop-filter: var(--glass); }
-.lola-mic:hover, .lola-mic.on { background: var(--pink-dim); border-color: var(--pink); color: var(--pink); transform: scale(1.05); box-shadow: 0 0 20px var(--pink-dim); }
-
-/* RIGHT PANELS */
-.right-col { display: flex; flex-direction: column; gap: 24px; }
-.card { background: var(--surface); backdrop-filter: var(--glass); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-.card-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border); }
-.card-title { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
-.card-link { font-size: 12px; font-weight: 500; color: var(--text3); transition: color .2s; }
-.card-link:hover { color: var(--text); }
-.card-body { padding: 8px 0; }
-
-/* SCHEDULE */
-.sched-item { display: flex; align-items: center; gap: 16px; padding: 12px 24px; transition: background .2s; cursor: pointer; }
-.sched-item:hover { background: var(--surface-hover); }
-.sched-time { font-size: 12px; font-weight: 500; color: var(--text2); width: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.sched-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pink); flex-shrink: 0; box-shadow: 0 0 8px var(--pink-glow); }
-.sched-info { flex: 1; min-width: 0; }
-.sched-service { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
-.sched-client { font-size: 13px; color: var(--text3); }
-
-/* INSIGHTS */
-.insight { display: flex; align-items: flex-start; gap: 16px; padding: 16px 24px; transition: background .2s; cursor: pointer; }
-.insight:hover { background: var(--surface-hover); }
-.insight-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
-.insight-icon.rebook { background: var(--pink-dim); color: var(--pink); border-color: rgba(204,255,0,0.3); }
-.insight-info { flex: 1; }
-.insight-text { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.5; margin-bottom: 4px; }
-.insight-sub { font-size: 12px; color: var(--text3); }
-
-/* REVENUE PANEL */
-.rev-panel { display: grid; grid-template-columns: 1fr 360px; gap: 24px; }
-@media(max-width:1100px) { .rev-panel { grid-template-columns: 1fr; } }
-.chart-ph { height: 180px; width: 100%; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 20px 24px; }
-.chart-bar { flex: 1; background: var(--surface2); border-radius: 4px 4px 0 0; position: relative; }
-.chart-bar.active { background: var(--pink); box-shadow: 0 0 16px var(--pink-dim); }
-.rev-big { font-family: var(--ff-serif); font-size: 38px; font-weight: 500; color: var(--text); line-height: 1; margin-bottom: 8px; }
-
-/* CHAT OVERLAY & INTEL */
-.chat-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 100; display: none; align-items: flex-end; justify-content: center; padding: 0; }
-.chat-overlay.show { display: flex; }
-.chat-modal { background: rgba(20,20,20,0.9); backdrop-filter: blur(40px); border: 1px solid var(--border2); border-radius: 32px 32px 0 0; width: 100%; max-width: 720px; max-height: 85vh; display: flex; flex-direction: column; animation: slideup .4s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 0 -20px 60px rgba(0,0,0,0.5); }
-@keyframes slideup { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.chat-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 24px 32px; border-bottom: 1px solid var(--border); }
-.chat-modal-title { display: flex; align-items: center; gap: 14px; }
-.chat-modal-orb { width: 40px; height: 40px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--pink); display: flex; align-items: center; justify-content: center; font-family: var(--ff-serif); font-style: italic; font-size: 18px; color: var(--pink); box-shadow: 0 0 16px var(--pink-dim); }
-.chat-modal-name { font-size: 18px; font-weight: 600; color: var(--text); }
-.chat-modal-status { font-size: 13px; color: var(--text3); margin-top: 2px; }
-.chat-close { width: 40px; height: 40px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; color: var(--text2); transition: all .2s; border: 1px solid var(--border); }
-.chat-close:hover { background: var(--surface-hover); color: var(--text); transform: scale(1.05); }
-.chat-msgs { flex: 1; overflow-y: auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; }
-.chat-input-row { padding: 20px 32px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--bg); }
-.chat-mic { width: 44px; height: 44px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text2); transition: all .2s; }
-.chat-mic:hover, .chat-mic.on { background: var(--pink-dim); border-color: var(--pink); color: var(--pink); }
-.chat-input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 15px; font-family: var(--ff); }
-.chat-send { width: 44px; height: 44px; border-radius: 50%; background: var(--pink); color: #000; display: flex; align-items: center; justify-content: center; transition: all .2s; }
-.chat-send:hover { transform: scale(1.05); box-shadow: 0 0 16px var(--pink-glow); }
-.vip-badge { font-size: 10px; font-weight: 600; letter-spacing: .08em; background: var(--pink); color: #000; padding: 2px 6px; border-radius: 4px; }
-.btn { padding: 12px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600; letter-spacing: .02em; text-align: center; transition: all .2s; cursor: pointer; }
-.btn-primary { background: var(--pink); color: #000; }
-.btn-primary:hover { box-shadow: 0 0 16px var(--pink-glow); }
-.btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-.btn-ghost:hover { background: var(--surface-hover); }
-
-/* UTILS */
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
-</style>
+<link rel="stylesheet" href="app.css" />
 </head>
-<body>
+<body data-page="overview">
 
 <div class="app">
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <div class="logo">
-      <div class="logo-mark">LOLA<br>DESK</div>
-      <div class="logo-sub">Command</div>
-    </div>
-    <nav class="nav">
-      <a class="nav-item active" href="dashboard.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        Overview
-      </a>
-      <a class="nav-item" href="clients.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-        Clients
-      </a>
-      <a class="nav-item" href="calls.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
-        Calls <span class="nav-badge">12</span>
-      </a>
-      <a class="nav-item" href="inbox.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        Inbox <span class="nav-badge">8</span>
-      </a>
-      <a class="nav-item" href="bookings.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Bookings
-      </a>
-      <a class="nav-item" href="revenue.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-        Revenue
-      </a>
-      <a class="nav-item" href="team.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Team
-      </a>
-    </nav>
-    <div style="margin-top:auto"></div>
-    <div class="nav-user" onclick="location.href='settings.html'">
-      <div class="nav-user-av">M</div>
-      <div class="nav-user-info">
-        <div class="nav-user-name" id="sbOwnerName">Meddy</div>
-        <div class="nav-user-role">Owner</div>
-      </div>
-    </div>
-  </aside>
+  
 
   <!-- MAIN AREA -->
   <main class="main">
@@ -380,26 +154,9 @@ button { font-family: var(--ff); cursor: pointer; border: none; background: none
   </main>
 </div>
 
-<!-- MOBILE NAV -->
-<nav class="mobile-bar">
-  <div class="mb-item active"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/></svg>Home</div>
-  <div class="mb-item" onclick="location.href='clients.html'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg>Clients</div>
-  <div class="mb-item" onclick="openChat()"><div class="mb-orb">L</div></div>
-  <div class="mb-item" onclick="location.href='inbox.html'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Inbox</div>
-  <div class="mb-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="6" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="18" r="1"/></svg>More</div>
-</nav>
 
-<!-- CHAT OVERLAY -->
-<div class="chat-overlay" id="chatOverlay">
-  <div class="chat-modal">
-    <div class="chat-modal-head">
-      <div class="chat-modal-title">
-        <div class="chat-modal-orb">L</div>
-        <div>
-          <div class="chat-modal-name">Lola</div>
-          <div class="chat-modal-status">Online · Your AI front desk</div>
-        </div>
-      </div>
+
+
       <button class="chat-close" onclick="closeChat()" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="chat-msgs" id="chatMsgs" role="log" aria-live="polite"></div>
@@ -1068,6 +825,7 @@ button { font-family: var(--ff); cursor: pointer; border: none; background: none
   document.body.appendChild(s);
 })();
 </script>
+<script src="sidebar.js"></script>
 </body>
 </html>
 
