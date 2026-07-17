@@ -290,12 +290,12 @@ button { font-family: var(--ff); cursor: pointer; border: none; background: none
       
       <!-- LOLA PANEL -->
       <div class="lola-panel">
-        <div class="lola-orb-stage" onclick="toggleDashboardVoice()">
-          <canvas></canvas>
+        <div class="lola-orb-stage" id="orbStage" onclick="toggleDashboardVoice()">
+          <canvas id="orbCanvas"></canvas>
         </div>
         <div class="lola-prompt">
-          <div class="lola-prompt-title">Hey Lola...</div>
-          <div class="lola-prompt-sub">Tap to speak or type a command</div>
+          <div class="lola-prompt-title" id="orbTitle">Hey Lola...</div>
+          <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
           <button class="lola-mic" id="dashMic" onclick="toggleDashboardVoice()"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg></button>
         </div>
       </div>
