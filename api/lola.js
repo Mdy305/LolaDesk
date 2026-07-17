@@ -309,7 +309,25 @@ export default async function handler(req, res){
     }catch(e){ /* fall through to conversation */ }
 
     // Step 1: Initial LLM call with tools
-    let result = await chat({
+    let result = null;
+    /* ── TIER 0: THE OWNER BRAIN ─────────────────────────────────
+       The person talking to Lola in the dashboard IS the owner — so
+       she answers with the full Jarvis-tier intelligence: live
+       business numbers, proactive observations, strategic memory of
+       what they've been working on. Falls through to the general
+       tiers below if unavailable. */
+    try{
+      const { answerOwner } = await import('./lib/owner-brain.js');
+      const last = messages[messages.length - 1];
+      const q = (last && typeof last.content === 'string') ? last.content : '';
+      if(q){
+        const ob = await answerOwner(tenant, messages.slice(0, -1), q, { channel: 'dashboard' });
+        if(ob?.ok && ob.text) result = { ok: true, text: ob.text };
+      }
+    }catch{}
+
+    if(!result?.ok){
+    result = await chat({
       system: systemPrompt,
       messages: messages,
       maxTokens: Math.min(body.max_tokens || 500, 1000),
@@ -318,6 +336,7 @@ export default async function handler(req, res){
       // name that the Telnyx provider rejects. Let chat() pick a valid default.
       tools: TOOLS
     });
+    }
 
     if(!result.ok){
       // The LLM being down or unconfigured must NEVER kill the front desk.

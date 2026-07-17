@@ -20,8 +20,6 @@ create table if not exists tenants (
   booking_url     text,
   phone_number    text unique,                          -- their Lola number, E.164
   plan            text default 'starter',               -- starter | pro | medspa | enterprise
-  telnyx_org_id   text,                                 -- Telnyx Managed Account (Sub-Org ID)
-  telnyx_api_key  text,                                 -- Scoped API key for the tenant
   stripe_customer_id  text,
   trial_ends_at   timestamptz,
   services        jsonb default '[]'::jsonb,            -- [{name, price, duration}]
@@ -112,27 +110,6 @@ create table if not exists calls (
   created_at      timestamptz default now()
 );
 create index if not exists idx_calls_tenant on calls(tenant_id, created_at desc);
-
--- ── KNOWLEDGE BASE ──
-create table if not exists knowledge_base (
-  id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references tenants(id) on delete cascade,
-  filename        text not null,
-  content         text not null,
-  uploaded_at     timestamptz default now()
-);
-create index if not exists idx_knowledge_tenant on knowledge_base(tenant_id);
-
--- ── CAMPAIGNS ──
-create table if not exists campaigns (
-  id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references tenants(id) on delete cascade,
-  name            text,
-  audience        text,
-  status          text default 'draft',
-  created_at      timestamptz default now()
-);
-create index if not exists idx_campaigns_tenant on campaigns(tenant_id);
 
 -- ── BOOKINGS ──
 -- Appointments Lola actually booked (will sync with Square/Vagaro/etc later)

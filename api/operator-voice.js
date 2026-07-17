@@ -126,7 +126,7 @@ export function parsePinConfirm(text){
 const HINTS = 'schedule, revenue, this week, this month, rebook, overdue, cancel, move, reschedule, appointment, text my VIPs, confirm, today, tomorrow';
 
 function texml({ say, playUrl, state = null, hangup = false }){
-  const speak = playUrl ? `<Play>${escapeXml(playUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  const speak = playUrl ? `<Play>${escapeXml(playUrl)}</Play>` : `<Say voice="Telnyx.Natural.abbie">${escapeXml(say)}</Say>`;
   if(hangup) return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Hangup/>\n</Response>`;
   const action = '/api/operator-voice' + (state ? `?state=${packState(state)}` : '');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="speech" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;

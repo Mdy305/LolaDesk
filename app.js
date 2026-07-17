@@ -190,8 +190,8 @@ function setOrbState(s){
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
   const stage = document.getElementById('orbStage');
-  wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
-  mic.classList.toggle('on', s==='listening');
+  if(wave) wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
+  if(mic) mic.classList.toggle('on', s==='listening');
   if(stage) stage.classList.toggle('ambient', s==='ambient');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
@@ -200,8 +200,8 @@ function setOrbState(s){
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
   };
-  title.textContent = labels[s][0];
-  sub.textContent = labels[s][1];
+  if(title) title.textContent = labels[s][0];
+  if(sub) sub.textContent = labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -586,7 +586,7 @@ function startListening(){
   listening = true;
   stopSpeaking();
   if(voiceTarget==='orb') setOrbState('listening');
-  if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
+  if(voiceTarget==='chat') { const cm = document.getElementById('chatMic'); if(cm) cm.classList.add('on'); }
   try{ recognition.start(); }catch(e){}
   // Resonance IN: a parallel analyser on the mic so the neural orb
   // ripples with the owner's actual voice amplitude while listening.
@@ -603,8 +603,8 @@ function stopListening(){
   if(micMeter){ micMeter.stop(); micMeter = null; }
   if(recognition) try{ recognition.stop(); }catch(e){}
   if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle');
-  document.getElementById('chatMic').classList.remove('on');
-  setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
+  const cm = document.getElementById('chatMic'); if(cm) cm.classList.remove('on');
+  setTimeout(()=>{ const ot = document.getElementById('orbTranscript'); if(ot) ot.textContent=''; }, 2500);
   // Resume passive wake-word listening once the active command finishes,
   // if ambient mode is on and not muted.
   if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 400);

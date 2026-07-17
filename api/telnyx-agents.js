@@ -22,7 +22,7 @@ function authHeaders(){
 }
 
 const DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
-const DEFAULT_VOICE = process.env.TELNYX_VOICE_ID || 'Polly.Joanna-Neural';
+const DEFAULT_VOICE = process.env.TELNYX_VOICE_ID || 'Telnyx.Natural.abbie';
 
 function buildAgents(tenant){
   const t = tenant || {};

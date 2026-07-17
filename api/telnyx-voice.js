@@ -109,7 +109,7 @@ function buildHints(tenant){
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
   const speakBlock = playUrl
     ? `<Play>${escapeXml(playUrl)}</Play>`
-    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+    : `<Say voice="Telnyx.Natural.abbie">${escapeXml(say)}</Say>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -282,7 +282,7 @@ export default async function handler(req, res){
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
       const state = Buffer.from(speech).toString('base64url');
       const ackUrl = await speakCached(ack, 'warm');
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Telnyx.Natural.abbie">${escapeXml(ack)}</Say>`}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
     }

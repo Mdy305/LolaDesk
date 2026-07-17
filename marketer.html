@@ -483,36 +483,32 @@ function renderCampaign(d){
 // ── CONTROL PLANE ──
 let controlPlaneLoaded = false;
 
+async function dispatchAgent(agentId, task, statusId){
+  const statusEl = document.getElementById(statusId);
+  controlStatus(statusEl, 'Working\u2026');
+  try{
+    const token = localStorage.getItem('loladesk_token') || '';
+    const r = await fetch('/api/orchestrator', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ agent: agentId, task })
+    });
+    const d = await r.json();
+    if(r.status === 401){ controlStatus(statusEl, 'Sign in to put your team to work.', 'warn'); return; }
+    if(!r.ok || !d?.ok){ controlStatus(statusEl, d?.error || 'That didn\u2019t go through \u2014 try again.', 'warn'); return; }
+    statusEl.innerHTML = `<div style="margin-top:10px;padding:12px 14px;background:var(--surface,#171a0e);border:0.5px solid rgba(204,255,0,.25);border-radius:12px;font-size:12.5px;line-height:1.6;color:var(--text,#f5f6f0);white-space:pre-wrap">${String(d.summary||'').replace(/</g,'&lt;')}</div>`;
+  }catch(e){
+    controlStatus(statusEl, 'Connection hiccup \u2014 try again.', 'warn');
+  }
+}
+
 function controlStatus(el, text, tone){
   if(!el) return;
   el.textContent = text || '';
   el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5a4d' : 'var(--text3)';
 }
 
-async function dispatchAgent(agentId, task, statusId){
-  const statusEl = document.getElementById(statusId);
-  controlStatus(statusEl, 'Dispatching…');
-  try{
-    const r = await fetch('/api/orchestrator', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        route_to: agentId,
-        task,
-        tenant: { slug: 'demo' }
-      })
-    });
-    const d = await r.json();
-    if(!d.ok){
-      controlStatus(statusEl, d.error || 'Dispatch failed', 'bad');
-      return;
-    }
-    const routed = d.routed?.agent?.name || agentId;
-    controlStatus(statusEl, `Delegated to ${routed}.`, 'ok');
-  }catch(e){
-    controlStatus(statusEl, e.message || 'Dispatch error', 'bad');
-  }
-}
+
 
 function renderControlPlane(data){
   const orchestrator = data?.orchestrator || {};
@@ -563,30 +559,7 @@ function controlStatus(el, text, tone){
   el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5a4d' : 'var(--text3)';
 }
 
-async function dispatchAgent(agentId, task, statusId){
-  const statusEl = document.getElementById(statusId);
-  controlStatus(statusEl, 'Dispatching…');
-  try{
-    const r = await fetch('/api/orchestrator', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        route_to: agentId,
-        task,
-        tenant: { slug: 'demo' }
-      })
-    });
-    const d = await r.json();
-    if(!d.ok){
-      controlStatus(statusEl, d.error || 'Dispatch failed', 'bad');
-      return;
-    }
-    const routed = d.routed?.agent?.name || agentId;
-    controlStatus(statusEl, `Delegated to ${routed}.`, 'ok');
-  }catch(e){
-    controlStatus(statusEl, e.message || 'Dispatch error', 'bad');
-  }
-}
+
 
 (function initControlPlaneHash(){
   if(location.hash === '#control'){
