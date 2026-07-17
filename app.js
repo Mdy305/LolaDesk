@@ -108,7 +108,9 @@ function avatar(name, img, cls){
 }
 
 function renderSchedule(){
-  document.getElementById('scheduleList').innerHTML = DATA.schedule.map(s => `
+  const el = document.getElementById('scheduleList');
+  if(!el) return;
+  el.innerHTML = DATA.schedule.map(s => `
     <div class="sched-item" onclick="askLola('Tell me about my ${s.time} ${s.service} with ${s.client}')">
       <div class="sched-time"><span class="sched-dot"></span>${s.time}</div>
       ${avatar(s.client, s.img, 'sched-av')}
@@ -120,7 +122,9 @@ function renderSchedule(){
 }
 
 function renderInsights(){
-  document.getElementById('insightsList').innerHTML = DATA.insights.map(i => `
+  const el = document.getElementById('insightsList');
+  if(!el) return;
+  el.innerHTML = DATA.insights.map(i => `
     <div class="insight" onclick="askLola('${i.prompt.replace(/'/g,"\\'")}')">
       <div class="insight-icon ${i.cls}">${i.icon}</div>
       <div class="insight-info">

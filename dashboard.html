@@ -154,20 +154,6 @@
   </main>
 </div>
 
-
-
-
-      <button class="chat-close" onclick="closeChat()" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="chat-msgs" id="chatMsgs" role="log" aria-live="polite"></div>
-    <div class="chat-input-row">
-      <button class="chat-mic" id="chatMic" onclick="toggleChatVoice()" aria-label="Voice"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg></button>
-      <input class="chat-input" id="chatInput" placeholder="Ask Lola anything…" aria-label="Message Lola"/>
-      <button class="chat-send" onclick="sendChat()" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
-    </div>
-  </div>
-</div>
-
 <!-- CLIENT INTEL MODAL (Kept for schedule click) -->
 <div id="clientIntelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;padding:20px;">
   <div class="card" style="width:100%;max-width:380px;">
@@ -817,6 +803,18 @@
   };
   window.renderResonance();
 
+  // Helper for the dashboard specific mic button
+  window.toggleDashboardVoice = function() {
+    const mic = document.getElementById('dashMic');
+    if(mic) mic.classList.toggle('on');
+    if(typeof window.toggleChatVoice === 'function') {
+      window.toggleChatVoice();
+    }
+  };
+</script>
+<script src="sidebar.js"></script>
+<script>
+(() => {
   // Load the real app.js engine now that sessionStorage has real data
   // (or, if there's no DB/tenant, app.js's own demo defaults take over —
   // same graceful fallback every other page already uses).
@@ -825,21 +823,5 @@
   document.body.appendChild(s);
 })();
 </script>
-<script src="sidebar.js"></script>
 </body>
 </html>
-
-<script>
-// Mock functions to prevent dashboard JS errors since we stripped some panels
-window.renderResonance = function(){};
-window.fillGap = function(btn){ btn.textContent = 'Sent!'; btn.disabled=true; };
-
-// Helper for the dashboard specific mic button
-window.toggleDashboardVoice = function() {
-  const mic = document.getElementById('dashMic');
-  if(mic) mic.classList.toggle('on');
-  if(typeof window.toggleChatVoice === 'function') {
-    window.toggleChatVoice();
-  }
-};
-</script>
