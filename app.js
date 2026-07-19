@@ -770,13 +770,58 @@ window.toggleAmbientListening = function(){
    Falls back to the browser's built-in voice only if /api/speak fails,
    so the dashboard never goes silent — but normal operation should
    always sound like the real, consistent Lola brand voice. */
-let currentAudio = null;
+let currentAudio = new Audio();
+let currentAudioUrl = null;
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+
+  const unlockPromise = currentAudio.play();
+
+  if (unlockPromise && typeof unlockPromise.then === 'function') {
+    unlockPromise
+      .then(() => {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        audioUnlocked = true;
+      })
+      .catch(() => {});
+  }
+}
+
+['click', 'pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+  window.addEventListener(eventName, unlockAudio, {
+    once: true,
+    passive: true
+  });
+});
+
 let voiceMeter = null; // Lola's playback → orb resonance
 
 function stopSpeaking(){
-  if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; }
-  if(currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
-  if(window.speechSynthesis) speechSynthesis.cancel();
+  if(voiceMeter){
+    voiceMeter.stop();
+    voiceMeter = null;
+  }
+
+  if(currentAudio){
+    try{
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+    }catch(e){
+      console.warn('[speak] Unable to stop audio:', e);
+    }
+  }
+
+  if(currentAudioUrl){
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+
+  if(window.speechSynthesis){
+    speechSynthesis.cancel();
+  }
 }
 
 async function speak(text){
@@ -795,8 +840,14 @@ async function speak(text){
     });
     if(!res.ok) throw new Error('speak api failed: '+res.status);
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    currentAudio = new Audio(url);
+
+    if(currentAudioUrl){
+      URL.revokeObjectURL(currentAudioUrl);
+    }
+
+    currentAudioUrl = URL.createObjectURL(blob);
+    currentAudio.src = currentAudioUrl;
+    currentAudio.currentTime = 0;
     onStart();
     // Resonance OUT: her actual voice amplitude radiates through the
     // neural orb as she speaks — the orb IS her voice made visible.
@@ -811,6 +862,7 @@ async function speak(text){
     console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
     if(!window.speechSynthesis) return;
     const u = new SpeechSynthesisUtterance(clean);
+    window._ttsU = u;
     u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
     const voices = speechSynthesis.getVoices();
     const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
