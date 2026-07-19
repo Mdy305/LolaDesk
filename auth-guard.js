@@ -49,7 +49,9 @@
       redirectToOnboarding();
       throw new Error('session valid but tenant not provisioned yet');
     }
-    window.LolaAuth = { user: data.user, tenant: data.tenant, token };
+    // Keep `ready` available after resolution. Several independently loaded
+    // dashboard modules use it as their single session/tenant gate.
+    window.LolaAuth = { user: data.user, tenant: data.tenant, token, ready };
     return window.LolaAuth;
   }).catch(err => {
     if(String(err?.message || '').includes('tenant not provisioned')){
