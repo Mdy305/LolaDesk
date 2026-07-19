@@ -59,11 +59,9 @@ const TENANT = (function(){
   return DEFAULT_TENANT;
 })();
 
-/* Backend proxy endpoint — keeps the API key server-side.
-   For demo it falls back to direct call. In production point this
-   at your Cloudflare Worker / Vercel function. */
-const LOLA_API = window.__LOLADESK_API__ || 'https://api.anthropic.com/v1/messages';
-const USE_PROXY = !!window.__LOLADESK_API__;
+/* Always use LolaDesk's authenticated server-side brain. Provider keys must
+   never be exposed to the browser; /api/lola routes inference through Telnyx. */
+const LOLA_API = window.__LOLADESK_API__ || '/api/lola';
 
 /* ─────────────────────────────────────────────────────────────
    LIVE DATA (would come from Square / Mindbody / Vagaro APIs)
@@ -337,13 +335,10 @@ async function callLola(message){
       if(tok) headers['Authorization'] = 'Bearer ' + tok;
     }catch(e){}
     if(TENANT && TENANT.slug) headers['x-tenant-id'] = TENANT.slug;
-    if(!USE_PROXY) headers['anthropic-dangerous-direct-browser-access'] = 'true';
-    else { try{ const t = localStorage.getItem('loladesk_token'); if(t) headers['Authorization'] = 'Bearer '+t; }catch(e){} }
     const res = await fetch(LOLA_API, {
       method:'POST',
       headers,
       body: JSON.stringify({
-        model:'claude-sonnet-4-6',
         max_tokens: 500,
         system: buildSystemPrompt(),
         messages: chatHistory
