@@ -166,100 +166,42 @@ function renderTeam(){
 }
 
 /* ─────────────────────────────────────────────────────────────
-   ORB — canvas plasma particle field
+   ORB — Lola's neural particle resonance (shared engine, lola-orb.js)
+   ════════════════════════════════════════════════════════════════
+   The orb is a living neuron/synapse network: it breathes when idle,
+   pulses softly while ambient wake-word listening is armed, leans
+   inward and ripples with YOUR mic amplitude while listening, fires
+   synapse pulses while thinking, and radiates resonance rings synced
+   to the amplitude of HER real ElevenLabs voice while speaking.
+   Falls back to a minimal glow if lola-orb.js failed to load.
    ───────────────────────────────────────────────────────────── */
 const orbCanvas = document.getElementById('orbCanvas');
-const octx = orbCanvas.getContext('2d');
-let orbT = 0;
-let orbState = 'idle'; // idle | listening | thinking | speaking
-
-function drawOrb(){
-  octx.clearRect(0,0,240,240);
-  const cx=120, cy=120, t=orbT;
-  const active = orbState==='listening' || orbState==='speaking';
-  const think = orbState==='thinking';
-
-  // breathing pulse — the orb is always gently alive
-  const breath = 0.5 + Math.sin(t*1.3)*0.5;            // 0..1 slow breath
-  const energy = active ? 1 : (think ? 0.6 : 0.32);     // base liveliness
-
-  // additive blending = neon bloom
-  octx.globalCompositeOperation = 'lighter';
-
-  // ── deep outer halo (radiates outward like Siri) ──
-  const halo = octx.createRadialGradient(cx,cy,10,cx,cy,118);
-  const haloA = 0.10 + breath*0.10 + energy*0.14;
-  halo.addColorStop(0, `rgba(204,255,0,${haloA})`);
-  halo.addColorStop(0.45, `rgba(204,255,0,${haloA*0.4})`);
-  halo.addColorStop(1, 'rgba(204,255,0,0)');
-  octx.fillStyle = halo; octx.fillRect(0,0,240,240);
-
-  // ── bright core glow ──
-  const core = octx.createRadialGradient(cx,cy,0,cx,cy,60);
-  const coreA = 0.22 + breath*0.18 + energy*0.25;
-  core.addColorStop(0, `rgba(220,255,102,${coreA})`);
-  core.addColorStop(0.5, `rgba(204,255,0,${coreA*0.5})`);
-  core.addColorStop(1, 'rgba(204,255,0,0)');
-  octx.fillStyle = core; octx.fillRect(0,0,240,240);
-
-  // ── outer particle ring (bright, alive) ──
-  for(let i=0;i<64;i++){
-    const a=(i/64)*Math.PI*2;
-    const r=68 + Math.sin(t*.8+i*.4)*7 + Math.sin(t*1.4+i*.85)*4
-            + (active?Math.sin(t*3+i)*11:0) + (think?Math.sin(t*1.9+i*.5)*5:0)
-            + breath*3;
-    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-    const al=0.25 + Math.abs(Math.sin(t*.6+i*.3))*0.4 + energy*0.25;
-    const size = 1.5 + Math.abs(Math.sin(t*.9+i))*1.2;
-    octx.beginPath(); octx.arc(x,y,size,0,Math.PI*2);
-    octx.fillStyle=`rgba(${190+Math.sin(t+i*.2)*50},255,${30+Math.sin(t+i)*30},${al})`;
-    octx.fill();
-  }
-
-  // ── mid swirl ──
-  for(let i=0;i<40;i++){
-    const a=(i/40)*Math.PI*2 - t*.35;
-    const r=44 + Math.sin(t*1.1+i*.5)*9 + (active?Math.sin(t*3.2+i)*7:0) + breath*4;
-    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-    const al=0.18 + Math.abs(Math.sin(t*.75+i*.4))*0.32 + energy*0.2;
-    octx.beginPath(); octx.arc(x,y,1.2,0,Math.PI*2);
-    octx.fillStyle=`rgba(255,140,200,${al})`;
-    octx.fill();
-  }
-
-  // ── inner nebula core ──
-  for(let i=0;i<30;i++){
-    const a=(i/30)*Math.PI*2 + t*.25;
-    const r=20 + Math.sin(t*1.2+i*.55)*9 + (active?Math.sin(t*3.8+i)*7:0);
-    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
-    const al=0.2 + Math.abs(Math.sin(t*.9+i))*0.35 + energy*0.2;
-    octx.beginPath(); octx.arc(x,y,1.1,0,Math.PI*2);
-    octx.fillStyle=`rgba(255,180,215,${al})`;
-    octx.fill();
-  }
-
-  octx.globalCompositeOperation = 'source-over';
-  orbT += 0.016;
-  requestAnimationFrame(drawOrb);
-}
-drawOrb();
+const orb = (window.LolaOrb && orbCanvas)
+  ? LolaOrb.mount(orbCanvas, { size: 240 })
+  : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
+let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
 function setOrbState(s){
   orbState = s;
+  orb.setState(s);
+
   const wave = document.getElementById('orbWave');
   const title = document.getElementById('orbTitle');
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
-  wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
-  mic.classList.toggle('on', s==='listening');
+  const stage = document.getElementById('orbStage');
+  if(wave) wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
+  if(mic) mic.classList.toggle('on', s==='listening');
+  if(stage) stage.classList.toggle('ambient', s==='ambient');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
+    ambient: ['Hey Lola…','Listening for her name — just say it'],
     listening: ['Listening…','Speak now, I\'m all ears'],
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
   };
-  title.textContent = labels[s][0];
-  sub.textContent = labels[s][1];
+  if(title) title.textContent = labels[s][0];
+  if(sub) sub.textContent = labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -444,7 +386,7 @@ window.openChat = function(){
 
 window.closeChat = function(){
   document.getElementById('chatOverlay').classList.remove('show');
-  if(window.speechSynthesis) speechSynthesis.cancel();
+  stopSpeaking();
 };
 
 async function processMessage(text){
@@ -488,6 +430,15 @@ window.sendCmd = function(){
 let recognition = null;
 let listening = false;
 let voiceTarget = 'orb'; // orb | chat
+let currentAudio = null;
+let voiceMeter = null;
+let micMeter = null;
+
+function stopSpeaking(){
+  if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; }
+  if(currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
+  if(window.speechSynthesis) speechSynthesis.cancel();
+}
 
 function setupRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -517,18 +468,25 @@ function startListening(){
   if(!recognition) setupRecognition();
   if(!recognition){ alert('Voice input needs Chrome, Edge, or Safari.'); return; }
   listening = true;
-  if(window.speechSynthesis) speechSynthesis.cancel();
+  stopSpeaking();
   if(voiceTarget==='orb') setOrbState('listening');
-  if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
+  if(voiceTarget==='chat') { const cm = document.getElementById('chatMic'); if(cm) cm.classList.add('on'); }
   try{ recognition.start(); }catch(e){}
+  if(window.LolaOrb && voiceTarget==='orb'){
+    LolaOrb.attachMic(orb).then(m => {
+      micMeter = m;
+      if(!listening) { m.stop(); micMeter = null; }
+    });
+  }
 }
 
 function stopListening(){
   listening = false;
+  if(micMeter){ micMeter.stop(); micMeter = null; }
   if(recognition) try{ recognition.stop(); }catch(e){}
   if(voiceTarget==='orb') setOrbState('idle');
-  document.getElementById('chatMic').classList.remove('on');
-  setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
+  const cm = document.getElementById('chatMic'); if(cm) cm.classList.remove('on');
+  setTimeout(()=>{ const ot = document.getElementById('orbTranscript'); if(ot) ot.textContent=''; }, 2500);
 }
 
 window.toggleVoice = function(){
@@ -540,22 +498,47 @@ window.toggleChatVoice = function(){
   listening ? stopListening() : startListening();
 };
 
-function speak(text){
-  if(!window.speechSynthesis) return;
-  speechSynthesis.cancel();
-  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').substring(0,500);
+async function speak(text){
+  stopSpeaking();
+  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').trim().slice(0, 2500);
   if(!clean) return;
-  const u = new SpeechSynthesisUtterance(clean);
-  u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
-  const voices = speechSynthesis.getVoices();
-  const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
-  for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
-  if(voiceTarget==='orb'){
-    setOrbState('speaking');
-    u.onend = ()=> setOrbState('idle');
-    u.onerror = ()=> setOrbState('idle');
+
+  const onStart = ()=>{ if(voiceTarget==='orb') setOrbState('speaking'); };
+  const onEnd = ()=>{ if(voiceTarget==='orb') setOrbState('idle'); };
+
+  try{
+    const res = await fetch('/api/speak', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ text: clean })
+    });
+    if(!res.ok) throw new Error('speak api failed: '+res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+    onStart();
+    // Resonance OUT: her actual voice amplitude radiates through the
+    // neural orb as she speaks — the orb IS her voice made visible.
+    if(window.LolaOrb) voiceMeter = LolaOrb.attachAudioElement(orb, currentAudio);
+    const cleanup = ()=>{ URL.revokeObjectURL(url); if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
+    currentAudio.onended = cleanup;
+    currentAudio.onerror = cleanup;
+    await currentAudio.play();
+  }catch(e){
+    // Fallback: the browser's built-in voice, only if ElevenLabs is
+    // unreachable or unconfigured — keeps the dashboard from going silent.
+    console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
+    if(!window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
+    const voices = speechSynthesis.getVoices();
+    const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
+    for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
+    onStart();
+    u.onend = onEnd;
+    u.onerror = onEnd;
+    speechSynthesis.speak(u);
   }
-  speechSynthesis.speak(u);
 }
 
 /* ─────────────────────────────────────────────────────────────
