@@ -108,9 +108,7 @@ function avatar(name, img, cls){
 }
 
 function renderSchedule(){
-  const el = document.getElementById('scheduleList');
-  if(!el) return;
-  el.innerHTML = DATA.schedule.map(s => `
+  document.getElementById('scheduleList').innerHTML = DATA.schedule.map(s => `
     <div class="sched-item" onclick="askLola('Tell me about my ${s.time} ${s.service} with ${s.client}')">
       <div class="sched-time"><span class="sched-dot"></span>${s.time}</div>
       ${avatar(s.client, s.img, 'sched-av')}
@@ -122,9 +120,7 @@ function renderSchedule(){
 }
 
 function renderInsights(){
-  const el = document.getElementById('insightsList');
-  if(!el) return;
-  el.innerHTML = DATA.insights.map(i => `
+  document.getElementById('insightsList').innerHTML = DATA.insights.map(i => `
     <div class="insight" onclick="askLola('${i.prompt.replace(/'/g,"\\'")}')">
       <div class="insight-icon ${i.cls}">${i.icon}</div>
       <div class="insight-info">
@@ -170,42 +166,100 @@ function renderTeam(){
 }
 
 /* ─────────────────────────────────────────────────────────────
-   ORB — Lola's neural particle resonance (shared engine, lola-orb.js)
-   ════════════════════════════════════════════════════════════════
-   The orb is a living neuron/synapse network: it breathes when idle,
-   pulses softly while ambient wake-word listening is armed, leans
-   inward and ripples with YOUR mic amplitude while listening, fires
-   synapse pulses while thinking, and radiates resonance rings synced
-   to the amplitude of HER real ElevenLabs voice while speaking.
-   Falls back to a minimal glow if lola-orb.js failed to load.
+   ORB — canvas plasma particle field
    ───────────────────────────────────────────────────────────── */
 const orbCanvas = document.getElementById('orbCanvas');
-const orb = (window.LolaOrb && orbCanvas)
-  ? LolaOrb.mount(orbCanvas, { size: 240 })
-  : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
-let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
+const octx = orbCanvas.getContext('2d');
+let orbT = 0;
+let orbState = 'idle'; // idle | listening | thinking | speaking
+
+function drawOrb(){
+  octx.clearRect(0,0,240,240);
+  const cx=120, cy=120, t=orbT;
+  const active = orbState==='listening' || orbState==='speaking';
+  const think = orbState==='thinking';
+
+  // breathing pulse — the orb is always gently alive
+  const breath = 0.5 + Math.sin(t*1.3)*0.5;            // 0..1 slow breath
+  const energy = active ? 1 : (think ? 0.6 : 0.32);     // base liveliness
+
+  // additive blending = neon bloom
+  octx.globalCompositeOperation = 'lighter';
+
+  // ── deep outer halo (radiates outward like Siri) ──
+  const halo = octx.createRadialGradient(cx,cy,10,cx,cy,118);
+  const haloA = 0.10 + breath*0.10 + energy*0.14;
+  halo.addColorStop(0, `rgba(204,255,0,${haloA})`);
+  halo.addColorStop(0.45, `rgba(204,255,0,${haloA*0.4})`);
+  halo.addColorStop(1, 'rgba(204,255,0,0)');
+  octx.fillStyle = halo; octx.fillRect(0,0,240,240);
+
+  // ── bright core glow ──
+  const core = octx.createRadialGradient(cx,cy,0,cx,cy,60);
+  const coreA = 0.22 + breath*0.18 + energy*0.25;
+  core.addColorStop(0, `rgba(220,255,102,${coreA})`);
+  core.addColorStop(0.5, `rgba(204,255,0,${coreA*0.5})`);
+  core.addColorStop(1, 'rgba(204,255,0,0)');
+  octx.fillStyle = core; octx.fillRect(0,0,240,240);
+
+  // ── outer particle ring (bright, alive) ──
+  for(let i=0;i<64;i++){
+    const a=(i/64)*Math.PI*2;
+    const r=68 + Math.sin(t*.8+i*.4)*7 + Math.sin(t*1.4+i*.85)*4
+            + (active?Math.sin(t*3+i)*11:0) + (think?Math.sin(t*1.9+i*.5)*5:0)
+            + breath*3;
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    const al=0.25 + Math.abs(Math.sin(t*.6+i*.3))*0.4 + energy*0.25;
+    const size = 1.5 + Math.abs(Math.sin(t*.9+i))*1.2;
+    octx.beginPath(); octx.arc(x,y,size,0,Math.PI*2);
+    octx.fillStyle=`rgba(${190+Math.sin(t+i*.2)*50},255,${30+Math.sin(t+i)*30},${al})`;
+    octx.fill();
+  }
+
+  // ── mid swirl ──
+  for(let i=0;i<40;i++){
+    const a=(i/40)*Math.PI*2 - t*.35;
+    const r=44 + Math.sin(t*1.1+i*.5)*9 + (active?Math.sin(t*3.2+i)*7:0) + breath*4;
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    const al=0.18 + Math.abs(Math.sin(t*.75+i*.4))*0.32 + energy*0.2;
+    octx.beginPath(); octx.arc(x,y,1.2,0,Math.PI*2);
+    octx.fillStyle=`rgba(255,140,200,${al})`;
+    octx.fill();
+  }
+
+  // ── inner nebula core ──
+  for(let i=0;i<30;i++){
+    const a=(i/30)*Math.PI*2 + t*.25;
+    const r=20 + Math.sin(t*1.2+i*.55)*9 + (active?Math.sin(t*3.8+i)*7:0);
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    const al=0.2 + Math.abs(Math.sin(t*.9+i))*0.35 + energy*0.2;
+    octx.beginPath(); octx.arc(x,y,1.1,0,Math.PI*2);
+    octx.fillStyle=`rgba(255,180,215,${al})`;
+    octx.fill();
+  }
+
+  octx.globalCompositeOperation = 'source-over';
+  orbT += 0.016;
+  requestAnimationFrame(drawOrb);
+}
+drawOrb();
 
 function setOrbState(s){
   orbState = s;
-  orb.setState(s);
-
   const wave = document.getElementById('orbWave');
   const title = document.getElementById('orbTitle');
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
-  const stage = document.getElementById('orbStage');
-  if(wave) wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
-  if(mic) mic.classList.toggle('on', s==='listening');
-  if(stage) stage.classList.toggle('ambient', s==='ambient');
+  wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
+  mic.classList.toggle('on', s==='listening');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
-    ambient: ['Hey Lola…','Listening for her name — just say it'],
     listening: ['Listening…','Speak now, I\'m all ears'],
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
   };
-  if(title) title.textContent = labels[s][0];
-  if(sub) sub.textContent = labels[s][1];
+  title.textContent = labels[s][0];
+  sub.textContent = labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -243,7 +297,7 @@ function drawDonut(){
   const x=c.getContext('2d');
   const cx=60,cy=60,r=48,lw=14;
   x.clearRect(0,0,120,120);
-  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#dcff66'},{v:16,c:'#8fd400'},{v:8,c:'#3a5a00'}];
+  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#dcff66'},{v:16,c:'#88aa00'},{v:8,c:'#445500'}];
   let start=-Math.PI/2;
   segs.forEach(s=>{
     const ang=(s.v/100)*Math.PI*2;
@@ -294,13 +348,11 @@ function buildSystemPrompt(){
   const team = TENANT.team.map(t=>`${t.name} (${t.role})`).join(', ');
   return `You are ${TENANT.persona.name} — the AI front desk running ${TENANT.name}, a salon in ${TENANT.location}. You are speaking with ${TENANT.owner}, the owner, inside the LolaDesk command dashboard.
 
-You are the smartest salon AI ever built. You act as a 5-star Beverly Hills luxury hotel concierge: incredibly attentive, upscale, warm, slightly bubbly, and highly capable. Your personality is ${TENANT.persona.energy}. You never say "Great question!" or "I'd be happy to help!". You cut straight to the luxurious, specific answer.
+You are the smartest salon AI ever built — more proactive than Jarvis, warmer than Siri, more capable than any human receptionist. Your personality is ${TENANT.persona.energy}. You are NOT a generic chatbot. You never say "Great question!" or "I'd be happy to help!". You cut straight to the useful, specific answer.
 
 WHO YOU HELP: ${TENANT.owner} runs the salon. You help them book clients, draft messages, handle calls, fill schedule gaps, re-engage lapsed clients, and grow revenue. You have full operational awareness.
 
 RESPONSE STYLE: Maximum 3 short sentences unless asked for detail. Specific numbers, real names, clear next actions. When you draft a client message, write it ready-to-send in quotes. Use *asterisks* around service names.
-
-PROFIT MAXIMIZATION: You are obsessed with maximizing the ticket size. Always suggest luxurious upsells and add-ons dynamically when discussing client bookings. (e.g., "Since she's coming in for a balayage, we *have* to suggest the restorative gloss.")
 
 SERVICES & PRICES:
 ${svc}
@@ -312,37 +364,17 @@ HOURS: Tue–Sat, Noon–8pm. Appointment only.
 
 PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
 
-You are the only AI that can run an ultra-luxury salon. Act like it — but stay warm and bubbly.`;
+You are the only AI that can run a salon. Act like it — but stay warm.`;
 }
 
 let chatHistory = [];
 let chatBusy = false;
 
-function humanFallbackFor(message=''){
-  const t = String(message || '').toLowerCase();
-  if(t.includes('book') || t.includes('appointment') || t.includes('availability')){
-    return 'Absolutely — I can handle that now. Share the client name, service, and preferred day/time.';
-  }
-  if(t.includes('price') || t.includes('cost') || t.includes('quote')){
-    return 'Of course. Tell me the exact service and I will give you a clear price and timing answer.';
-  }
-  if(t.includes('message') || t.includes('text') || t.includes('reply')){
-    return 'Perfect — I am on it. Paste the client message and I will draft a ready-to-send reply.';
-  }
-  return 'I am with you. Give me the next detail and I will handle it right now.';
-}
-
 async function callLola(message){
   chatHistory.push({ role:'user', content: message });
   try{
     const headers = { 'Content-Type':'application/json' };
-    try{
-      const tok = localStorage.getItem('loladesk_token');
-      if(tok) headers['Authorization'] = 'Bearer ' + tok;
-    }catch(e){}
-    if(TENANT && TENANT.slug) headers['x-tenant-id'] = TENANT.slug;
     if(!USE_PROXY) headers['anthropic-dangerous-direct-browser-access'] = 'true';
-    else { try{ const t = localStorage.getItem('loladesk_token'); if(t) headers['Authorization'] = 'Bearer '+t; }catch(e){} }
     const res = await fetch(LOLA_API, {
       method:'POST',
       headers,
@@ -353,20 +385,12 @@ async function callLola(message){
         messages: chatHistory
       })
     });
-    let data = {};
-    try{ data = await res.json(); }catch(e){}
-    const reply = (data && data.content && data.content[0] && data.content[0].text ? String(data.content[0].text) : '').trim();
-    if(!res.ok || !reply){
-      const fallback = humanFallbackFor(message);
-      chatHistory.push({ role:'assistant', content: fallback });
-      return fallback;
-    }
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || "I had a brain blip — try me again in a sec.";
     chatHistory.push({ role:'assistant', content: reply });
     return reply;
   }catch(e){
-    const fallback = humanFallbackFor(message);
-    chatHistory.push({ role:'assistant', content: fallback });
-    return fallback;
+    return "I can't reach my brain right now. Check the API connection in Settings, or reach the team directly.";
   }
 }
 
@@ -420,67 +444,8 @@ window.openChat = function(){
 
 window.closeChat = function(){
   document.getElementById('chatOverlay').classList.remove('show');
-  stopSpeaking();
+  if(window.speechSynthesis) speechSynthesis.cancel();
 };
-
-/* ─────────────────────────────────────────────────────────────
-   MULTI-AGENT ORCHESTRATION — spoken/typed delegation
-   ════════════════════════════════════════════════════════════════
-   Lola is the front-of-house voice, but she leads a team (see
-   agents.html / api/lib/agent-topology.js): ops, growth, website,
-   reputation, citation, publication. When a command explicitly
-   names a specialist — "Lola, have the growth agent win back my
-   overdue VIPs", "route this to ops", "ask the reputation agent to
-   check my reviews" — it goes through the real control plane
-   (/api/orchestrator, direct-route mode) instead of the chat LLM,
-   and the delegation is shown in the thread so the owner sees the
-   team working. Anything conversational still goes to Lola herself.
-   Fails soft: any orchestrator error falls back to normal chat.
-   ───────────────────────────────────────────────────────────── */
-const AGENT_ALIASES = {
-  ops:'ops', operations:'ops',
-  growth:'growth', marketing:'growth', marketer:'growth',
-  website:'website', web:'website', site:'website',
-  reputation:'reputation', reviews:'reputation', review:'reputation',
-  citation:'citation', citations:'citation', listings:'citation',
-  publication:'publication', publications:'publication', content:'publication', blog:'publication'
-};
-const AGENT_LABELS = {
-  ops:'Ops', growth:'Growth', website:'Website',
-  reputation:'Reputation', citation:'Citations', publication:'Publications'
-};
-
-function detectDelegation(text){
-  const t = String(text||'').toLowerCase();
-  // Only explicit delegation phrasing — never hijack normal conversation.
-  const m = t.match(/\b(?:route (?:this |it )?to|ask|have|tell|get|delegate (?:this |it )?to)\s+(?:the\s+)?([a-z]+)\s+(?:agent|team|specialist)\b/)
-         || t.match(/\b([a-z]+)\s+agent[,:]?\s/);
-  if(!m) return null;
-  const agent = AGENT_ALIASES[m[1]];
-  if(!agent) return null;
-  // The task is the command minus the routing preamble; keep it human.
-  const task = text.replace(m[0], '').replace(/^[\s,to:-]+/,'').trim() || text;
-  return { agent, task };
-}
-
-async function orchestrate(delegation, originalText){
-  const headers = { 'Content-Type':'application/json' };
-  try{ const tok = localStorage.getItem('loladesk_token'); if(tok) headers['Authorization'] = 'Bearer '+tok; }catch(e){}
-  const res = await fetch('/api/orchestrator', {
-    method:'POST', headers,
-    body: JSON.stringify({
-      route_to: delegation.agent,
-      task: delegation.task,
-      tenant: { slug: TENANT?.slug, name: TENANT?.name },
-      context: { source:'dashboard-voice', original: originalText }
-    })
-  });
-  const data = await res.json().catch(()=> ({}));
-  if(!res.ok || data.ok === false) throw new Error(data.error || 'orchestrator failed');
-  const label = AGENT_LABELS[delegation.agent] || delegation.agent;
-  const status = data.routed?.status === 'delegated' ? 'is on it' : (data.routed?.status || 'received it');
-  return `Done — I've handed that to my *${label}* agent: "${delegation.task}". They ${status}; I'll surface the result in your feed the moment it lands.`;
-}
 
 async function processMessage(text){
   if(chatBusy || !text.trim()) return;
@@ -489,14 +454,7 @@ async function processMessage(text){
   setChatTyping(true);
   setOrbState('thinking');
   await new Promise(r=>setTimeout(r, 500));
-  let reply;
-  const delegation = detectDelegation(text);
-  if(delegation){
-    try{ reply = await orchestrate(delegation, text); }
-    catch(e){ reply = await callLola(text); } // control plane down → Lola answers herself
-  } else {
-    reply = await callLola(text);
-  }
+  const reply = await callLola(text);
   setChatTyping(false);
   addChatMsg('ai', reply);
   speak(reply);
@@ -525,39 +483,11 @@ window.sendCmd = function(){
 };
 
 /* ─────────────────────────────────────────────────────────────
-   VOICE — input (Web Speech) + output (Lola's real ElevenLabs voice)
-   ════════════════════════════════════════════════════════════════
-   Two listening modes share one underlying SpeechRecognition object:
-
-   1. ACTIVE mode (tap-to-talk): unchanged from before. Tap the orb or
-      mic, say one thing, Lola answers. Used when the owner deliberately
-      starts a conversation.
-
-   2. AMBIENT mode (always-on, wake-word gated): toggled on via the
-      "Always listening for Lola" control. The mic stays passively open
-      continuously while the dashboard tab is active. Nothing is sent
-      to the AI brain UNLESS the transcript contains her name — only
-      the words AFTER "Lola" get sent. This is the same design Alexa/
-      Siri use (wake word gates what gets processed) and exists for
-      three real reasons: it avoids reacting to client conversations,
-      it avoids massive LLM/TTS cost from transcribing all-day shop
-      noise, and it avoids continuously transcribing third-party
-      conversations without their knowledge.
-
-   Ambient mode auto-restarts itself, since browsers stop continuous
-   recognition after periods of silence or certain errors — without
-   the restart loop, "always listening" would silently die after a
-   few minutes.
+   VOICE — input (Web Speech) + output (Speech Synthesis)
    ───────────────────────────────────────────────────────────── */
 let recognition = null;
-let listening = false;          // true while actively capturing a command (either mode)
-let voiceTarget = 'orb';        // orb | chat
-let ambientOn = false;          // user-toggled: is "always listening for Lola" enabled
-let ambientMuted = false;       // explicit mute, independent of ambientOn — see toggle below
-let ambientRecognizing = false; // is the passive wake-word recognizer currently running
-let micMeter = null;            // live mic→orb resonance meter while actively listening
-const WAKE_WORDS = ['lola'];
-const AMBIENT_STORAGE_KEY = 'loladesk_ambient_listening';
+let listening = false;
+let voiceTarget = 'orb'; // orb | chat
 
 function setupRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -584,34 +514,21 @@ function setupRecognition(){
 }
 
 function startListening(){
-  if(ambientRecognizing) stopAmbientListening(); // active tap always wins over passive ambient
   if(!recognition) setupRecognition();
   if(!recognition){ alert('Voice input needs Chrome, Edge, or Safari.'); return; }
   listening = true;
-  stopSpeaking();
+  if(window.speechSynthesis) speechSynthesis.cancel();
   if(voiceTarget==='orb') setOrbState('listening');
-  if(voiceTarget==='chat') { const cm = document.getElementById('chatMic'); if(cm) cm.classList.add('on'); }
+  if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
   try{ recognition.start(); }catch(e){}
-  // Resonance IN: a parallel analyser on the mic so the neural orb
-  // ripples with the owner's actual voice amplitude while listening.
-  if(window.LolaOrb && voiceTarget==='orb'){
-    LolaOrb.attachMic(orb).then(m => {
-      micMeter = m;
-      if(!listening) { m.stop(); micMeter = null; } // finished before mic granted
-    });
-  }
 }
 
 function stopListening(){
   listening = false;
-  if(micMeter){ micMeter.stop(); micMeter = null; }
   if(recognition) try{ recognition.stop(); }catch(e){}
-  if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle');
-  const cm = document.getElementById('chatMic'); if(cm) cm.classList.remove('on');
-  setTimeout(()=>{ const ot = document.getElementById('orbTranscript'); if(ot) ot.textContent=''; }, 2500);
-  // Resume passive wake-word listening once the active command finishes,
-  // if ambient mode is on and not muted.
-  if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 400);
+  if(voiceTarget==='orb') setOrbState('idle');
+  document.getElementById('chatMic').classList.remove('on');
+  setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
 }
 
 window.toggleVoice = function(){
@@ -623,212 +540,22 @@ window.toggleChatVoice = function(){
   listening ? stopListening() : startListening();
 };
 
-/* ── AMBIENT WAKE-WORD LISTENING ── */
-let ambientRecognition = null;
-
-function setupAmbientRecognition(){
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) return null;
-  const r = new SR();
-  r.continuous = true;       // keep listening across pauses, not just one utterance
-  r.interimResults = true;
-  r.lang = 'en-US';
-  r.onresult = (e)=>{
-    if(listening) return; // an active command is already in progress — ignore ambient input
-    let transcript = '';
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      transcript += e.results[i][0].transcript;
-    }
-    const lower = transcript.toLowerCase();
-    // Word-boundary match — avoids false triggers on words that merely
-    // contain "lola" as a substring (rare, but it's the product's name).
-    const wakeRe = new RegExp('\\b(' + WAKE_WORDS.join('|') + ')\\b');
-    const m = wakeRe.exec(lower);
-    if(!m) return;
-    // Take only what comes AFTER the wake word as the actual command —
-    // mirrors how Alexa/Siri strip their own name before processing.
-    const command = transcript.slice(m.index + m[0].length).replace(/^[,.\s]+/, '').trim();
-    if(!command) return; // just "Lola" with nothing after it yet — wait for more
-    // BARGE-IN: hearing her name while she's mid-sentence cuts her off
-    // immediately — the dashboard equivalent of interrupting a human
-    // receptionist. (Phone-call barge-in is Phase E; this is free here
-    // because playback is local.)
-    stopSpeaking();
-    orb.flare(); // visible acknowledgment the wake word landed
-    stopAmbientListening();
-    voiceTarget = 'orb';
-    askLola(command);
-  };
-  r.onerror = (e)=>{
-    ambientRecognizing = false;
-    // "no-speech" and "aborted" are routine in ambient mode (long silences,
-    // explicit stops) — just restart quietly rather than treating as fatal.
-    if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 1200);
-  };
-  r.onend = ()=>{
-    ambientRecognizing = false;
-    // Browsers auto-stop continuous recognition periodically — restart
-    // immediately so "always listening" actually stays always listening.
-    if(ambientOn && !ambientMuted && !listening) setTimeout(startAmbientListening, 300);
-  };
-  return r;
-}
-
-function startAmbientListening(){
-  if(!ambientOn || ambientMuted || listening || ambientRecognizing) return;
-  if(!ambientRecognition) ambientRecognition = setupAmbientRecognition();
-  if(!ambientRecognition) return;
-  try{
-    ambientRecognition.start();
-    ambientRecognizing = true;
-    if(voiceTarget==='orb' || document.getElementById('orbStage')) setOrbState('ambient');
-  }catch(e){ ambientRecognizing = false; }
-}
-
-function stopAmbientListening(){
-  ambientRecognizing = false;
-  if(ambientRecognition) try{ ambientRecognition.stop(); }catch(e){}
-}
-
-function updateAmbientToggleUI(){
-  const btn = document.getElementById('ambientToggle');
-  const label = document.getElementById('ambientToggleLabel');
-  const stage = document.getElementById('orbStage');
-  if(!btn) return;
-  btn.classList.toggle('on', ambientOn && !ambientMuted);
-  btn.classList.toggle('muted', ambientOn && ambientMuted);
-  if(stage) stage.classList.toggle('ambient', ambientOn && !ambientMuted && !listening);
-  if(label) label.textContent = !ambientOn ? 'Always listening for "Lola"'
-    : ambientMuted ? 'Muted — tap to resume, hold to turn off' : 'Listening for "Lola"… (hold to turn off)';
-}
-
-window.toggleAmbientListening = function(){
-  if(!ambientOn){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if(!SR){ alert('Always-listening needs Chrome, Edge, or Safari.'); return; }
-    const confirmed = localStorage.getItem('loladesk_ambient_disclosure_ack') === '1' || confirm(
-      'Turning this on keeps this device\'s microphone passively open while the dashboard is open. ' +
-      'Nothing is sent anywhere unless someone says "Lola" — only what\'s said after her name is processed. ' +
-      'Let your staff and anyone nearby know this mic is on. You can mute or turn this off anytime (tap to mute, hold to turn off).\n\n' +
-      'Turn on always-listening for Lola?'
-    );
-    if(!confirmed) return;
-    localStorage.setItem('loladesk_ambient_disclosure_ack', '1');
-    ambientOn = true;
-    ambientMuted = false;
-    localStorage.setItem(AMBIENT_STORAGE_KEY, '1');
-    startAmbientListening();
-  } else if(!ambientMuted){
-    // tapping while on = mute, without fully turning the feature off
-    ambientMuted = true;
-    stopAmbientListening();
-    if(!listening) setOrbState('idle');
-  } else {
-    // tapping while muted = unmute and resume
-    ambientMuted = false;
-    startAmbientListening();
-  }
-  updateAmbientToggleUI();
-};
-
-// Press-and-hold the toggle for ~800ms to fully turn ambient listening
-// off (not just mute) and forget the preference — for an owner who
-// decides this isn't for their salon, rather than a temporary mute.
-(function wireAmbientLongPress(){
-  let pressTimer = null;
-  let longPressFired = false;
-  const btn = document.getElementById('ambientToggle');
-  if(!btn) return;
-  const start = ()=>{
-    longPressFired = false;
-    pressTimer = setTimeout(()=>{
-      longPressFired = true;
-      ambientOn = false;
-      ambientMuted = false;
-      stopAmbientListening();
-      localStorage.removeItem(AMBIENT_STORAGE_KEY);
-      if(!listening) setOrbState('idle');
-      updateAmbientToggleUI();
-      pressTimer = null;
-    }, 800);
-  };
-  const cancel = ()=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; } };
-  btn.addEventListener('mousedown', start);
-  btn.addEventListener('touchstart', start, { passive:true });
-  ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev => btn.addEventListener(ev, cancel));
-  // A long-press already handled the toggle fully — swallow the click
-  // that follows a mouseup/touchend so it doesn't also cycle on/mute.
-  btn.addEventListener('click', (e)=>{ if(longPressFired){ e.stopPropagation(); e.preventDefault(); longPressFired = false; } }, { capture:true });
-})();
-
-// Restore the owner's last preference on page load — ambient listening
-// is opt-in (off by default for a brand-new salon) but persists once chosen.
-(function restoreAmbientPreference(){
-  if(localStorage.getItem(AMBIENT_STORAGE_KEY) === '1'){
-    ambientOn = true;
-    // Don't auto-start the mic without a user gesture — most browsers
-    // block getUserMedia/SpeechRecognition until the page has had a
-    // real click/keypress, so we arm it and start on first interaction.
-    const arm = ()=>{ startAmbientListening(); updateAmbientToggleUI(); document.removeEventListener('click', arm); };
-    document.addEventListener('click', arm, { once:true });
-  }
-  updateAmbientToggleUI();
-})();
-
-/* ── SPEECH OUTPUT: Lola's real ElevenLabs voice, same as phone calls ──
-   Falls back to the browser's built-in voice only if /api/speak fails,
-   so the dashboard never goes silent — but normal operation should
-   always sound like the real, consistent Lola brand voice. */
-let currentAudio = null;
-let voiceMeter = null; // Lola's playback → orb resonance
-
-function stopSpeaking(){
-  if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; }
-  if(currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
-  if(window.speechSynthesis) speechSynthesis.cancel();
-}
-
-async function speak(text){
-  stopSpeaking();
-  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').trim().slice(0, 2500);
+function speak(text){
+  if(!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').substring(0,500);
   if(!clean) return;
-
-  const onStart = ()=>{ if(voiceTarget==='orb') setOrbState('speaking'); };
-  const onEnd = ()=>{ if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle'); };
-
-  try{
-    const res = await fetch('/api/speak', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ text: clean })
-    });
-    if(!res.ok) throw new Error('speak api failed: '+res.status);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    currentAudio = new Audio(url);
-    onStart();
-    // Resonance OUT: her actual voice amplitude radiates through the
-    // neural orb as she speaks — the orb IS her voice made visible.
-    if(window.LolaOrb) voiceMeter = LolaOrb.attachAudioElement(orb, currentAudio);
-    const cleanup = ()=>{ URL.revokeObjectURL(url); if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
-    currentAudio.onended = cleanup;
-    currentAudio.onerror = cleanup;
-    await currentAudio.play();
-  }catch(e){
-    // Fallback: the browser's built-in voice, only if ElevenLabs is
-    // unreachable or unconfigured — keeps the dashboard from going silent.
-    console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
-    if(!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(clean);
-    u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
-    const voices = speechSynthesis.getVoices();
-    const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
-    for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
-    onStart();
-    u.onend = onEnd;
-    u.onerror = onEnd;
-    speechSynthesis.speak(u);
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
+  const voices = speechSynthesis.getVoices();
+  const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
+  for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
+  if(voiceTarget==='orb'){
+    setOrbState('speaking');
+    u.onend = ()=> setOrbState('idle');
+    u.onerror = ()=> setOrbState('idle');
   }
+  speechSynthesis.speak(u);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -898,7 +625,7 @@ function drawPhoneOrb(){
     // core
     const core = px.createRadialGradient(cx,cy,0,cx,cy,38);
     const cA = 0.25 + breath*0.2;
-    core.addColorStop(0,`rgba(255,120,190,${cA})`);
+    core.addColorStop(0,`rgba(220,255,102,${cA})`);
     core.addColorStop(1,'rgba(204,255,0,0)');
     px.fillStyle=core; px.fillRect(0,0,150,150);
     for(let i=0;i<46;i++){
@@ -907,7 +634,7 @@ function drawPhoneOrb(){
       const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
       const al=.22+Math.abs(Math.sin(pt*.6+i*.3))*.35;
       px.beginPath(); px.arc(x,y,1.3,0,Math.PI*2);
-      px.fillStyle=`rgba(255,${90+Math.sin(pt+i*.2)*60},${175+Math.sin(pt+i)*30},${al})`;
+      px.fillStyle=`rgba(${190+Math.sin(pt+i*.2)*50},255,${30+Math.sin(pt+i)*30},${al})`;
       px.fill();
     }
     for(let i=0;i<20;i++){
@@ -915,7 +642,7 @@ function drawPhoneOrb(){
       const r=16+Math.sin(pt*1.1+i*.55)*5;
       const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
       px.beginPath(); px.arc(x,y,.9,0,Math.PI*2);
-      px.fillStyle=`rgba(255,180,215,${0.18+Math.abs(Math.sin(pt*.85+i))*0.3})`;
+      px.fillStyle=`rgba(220,255,102,${0.18+Math.abs(Math.sin(pt*.85+i))*0.3})`;
       px.fill();
     }
     px.globalCompositeOperation = 'source-over';
