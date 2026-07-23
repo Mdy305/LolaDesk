@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
-  "buildCommand": "echo 'No build step needed (static HTML + serverless)'",
+  "buildCommand": "echo 'Static site - no build needed'",
+
   "functions": {
     "api/**/*.js": {
       "maxDuration": 30
