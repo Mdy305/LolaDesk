@@ -6,8 +6,16 @@
     "ws": "^8.21.0"
   },
   "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step needed (static + serverless)'",
+    "start": "python3 -m http.server 8080",
     "test:e2e": "node e2e/run.mjs",
-    "e2e:emulator": "node e2e/supabase-emulator.mjs"
+    "e2e:emulator": "node e2e/supabase-emulator.mjs",
+    "setup": "bash setup.sh",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f app",
+    "lint": "echo 'No linter configured'"
   },
   "devDependencies": {
     "pg": "^8.22.0"

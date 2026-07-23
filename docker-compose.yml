@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # ─── LolaDesk App ─────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: loladesk-app
+    ports:
+      - "3000:3000"    # Vercel dev server
+      - "3001:3001"    # Alt port
+      - "8080:8080"    # Python HTTP server (static)
+    environment:
+      # ── LLM: Telnyx Inference ──────────────────────────────────
+      TELNYX_API_KEY: ${TELNYX_API_KEY}
+      LLM_PROVIDER: telnyx
+      LLM_POWER_MODEL: moonshotai/Kimi-K2.6
+      
+      # ── Voice: ElevenLabs ──────────────────────────────────────
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID}
+      
+      # ── SMS/Voice: Telnyx ──────────────────────────────────────
+      TELNYX_PUBLIC_KEY: ${TELNYX_PUBLIC_KEY}
+      
+      # ── Database: Supabase ─────────────────────────────────────
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY}
+      
+      # ── Billing: Stripe ────────────────────────────────────────
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      
+      # ── OAuth: Booking Platforms ───────────────────────────────
+      SQUARE_CLIENT_ID: ${SQUARE_CLIENT_ID}
+      SQUARE_CLIENT_SECRET: ${SQUARE_CLIENT_SECRET}
+      SQUARE_ENVIRONMENT: ${SQUARE_ENVIRONMENT:-sandbox}
+      
+      # ── App URLs ───────────────────────────────────────────────
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      
+      # ── Email ──────────────────────────────────────────────────
+      AWS_SES_ACCESS_KEY: ${AWS_SES_ACCESS_KEY}
+      AWS_SES_SECRET_KEY: ${AWS_SES_SECRET_KEY}
+      AWS_SES_REGION: ${AWS_SES_REGION:-us-east-1}
+      
+      # ── Node env ───────────────────────────────────────────────
+      NODE_ENV: development
+      
+    volumes:
+      # Live reload: changes to api/ and app/ restart the server
+      - ./api:/app/api
+      - ./app:/app/app
+      - ./lib:/app/lib
+      - ./functions:/app/functions
+      - ./public:/app/public
+      - node_modules:/app/node_modules
+    
+    networks:
+      - loladesk
+    
+    depends_on:
+      - supabase
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ─── Supabase: Postgres Database ──────────────────────────────────
+  supabase:
+    image: supabase/postgres:15-alpine
+    container_name: loladesk-postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_local_dev}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    
+    ports:
+      - "5432:5432"
+    
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./ALL-IN-ONE-database-setup.sql:/docker-entrypoint-initdb.d/02-setup.sql
+    
+    networks:
+      - loladesk
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Optional: Supabase Studio (Postgres admin UI) ────────────────
+  adminer:
+    image: adminer
+    container_name: loladesk-adminer
+    ports:
+      - "8081:8080"
+    
+    depends_on:
+      - supabase
+    
+    networks:
+      - loladesk
+
+networks:
+  loladesk:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  node_modules:
