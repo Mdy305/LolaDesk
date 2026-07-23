@@ -1,7 +1,5 @@
 {
   "cleanUrls": true,
-  "buildCommand": "echo 'Static site - no build needed'",
-
   "functions": {
     "api/**/*.js": {
       "maxDuration": 30
