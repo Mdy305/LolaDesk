@@ -1,5 +1,6 @@
 {
   "cleanUrls": true,
+  "buildCommand": "echo 'No build step needed (static HTML + serverless)'",
   "functions": {
     "api/**/*.js": {
       "maxDuration": 30
@@ -37,6 +38,5 @@
         }
       ]
     }
-  ],
-  "framework": null
+  ]
 }
