@@ -654,6 +654,65 @@ function drawPhoneOrb(){
 /* ─────────────────────────────────────────────────────────────
    INIT
    ───────────────────────────────────────────────────────────── */
+async function loadDashboardData() {
+  if (!window.LolaData) return;
+  try {
+    // Dynamic owner greeting name
+    const greetingName = document.getElementById('greetingName');
+    if (greetingName && TENANT && TENANT.owner) {
+      greetingName.textContent = TENANT.owner;
+    }
+    const sbOwnerName = document.getElementById('sbOwnerName');
+    if (sbOwnerName && TENANT && TENANT.owner) {
+      sbOwnerName.textContent = TENANT.owner;
+    }
+    const greetingTime = document.getElementById('greetingTime');
+    if (greetingTime) {
+      const hr = new Date().getHours();
+      greetingTime.textContent = hr < 12 ? 'Morning' : hr < 17 ? 'Afternoon' : 'Evening';
+    }
+
+    // Load Overview KPIs
+    const overview = await window.LolaData.load('overview');
+    if (overview && overview.kpis) {
+      const k = overview.kpis;
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      set('kpiClients', k.bookings30 || 0);
+      set('kpiCalls', k.calls30 || 0);
+      set('kpiRevenue', k.revenue30Money || '$0');
+    }
+
+    // Load bookings for schedule
+    const bkData = await window.LolaData.load('bookings');
+    if (bkData && bkData.bookings) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayBookings = bkData.bookings.filter(b => b.startsAt && b.startsAt.startsWith(todayStr));
+      if (todayBookings.length) {
+        DATA.schedule = todayBookings.map(b => {
+          const time = new Date(b.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          return { time, service: b.service, client: b.client };
+        });
+        renderSchedule();
+      }
+    }
+
+    // Load inbox messages
+    const inboxData = await window.LolaData.load('inbox');
+    if (inboxData && inboxData.threads) {
+      DATA.inbox = inboxData.threads.slice(0, 5).map(t => ({
+        name: t.who,
+        channel: t.channel,
+        chLabel: t.channel.toUpperCase(),
+        time: t.when,
+        msg: t.preview
+      }));
+      renderInbox();
+    }
+  } catch (e) {
+    console.warn('[loadDashboardData] Failed loading dynamic database data:', e);
+  }
+}
+
 function init(){
   renderSchedule();
   renderInsights();
@@ -667,6 +726,9 @@ function init(){
   setOrbState('idle');
   // warm up voices
   if(window.speechSynthesis){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = ()=>speechSynthesis.getVoices(); }
+  
+  // Trigger dynamic database loader
+  loadDashboardData();
 }
 init();
 
