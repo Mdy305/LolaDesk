@@ -2,35 +2,47 @@
 (function(){
   if(window.LolaTenantWorkspace) return;
   const APP_PAGES=['dashboard','clients','bookings','calls','inbox','marketing','revenue','team','settings','numbers','subscription','marketer','lola-live'];
+  const OWNER_ONLY=['settings','numbers','subscription'];
+  const MANAGER_ONLY=['marketing','revenue','team','marketer'];
   const path=location.pathname.split('/').pop().replace(/\.html$/,'')||'dashboard';
   const q=(s,r=document)=>r.querySelector(s), qa=(s,r=document)=>Array.from(r.querySelectorAll(s));
   const text=(el,v)=>{if(el&&v!=null)el.textContent=String(v)};
   function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function tenantName(t){return t?.name||t?.business_name||'Your business';}
-  function ownerName(t,u){return (t?.owner_name||u?.user_metadata?.full_name||u?.email||'Owner').trim();}
+  function memberName(t,u,role){
+    if(role==='owner'&&t?.owner_name) return t.owner_name.trim();
+    return (u?.user_metadata?.full_name||u?.email||t?.owner_name||'Team member').trim();
+  }
+  function roleLabel(role){return ({owner:'Owner',admin:'Administrator',manager:'Manager',front_desk:'Front Desk',frontdesk:'Front Desk',stylist:'Stylist',staff:'Team Member'})[role]||role.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+  function canManage(role){return ['owner','admin','manager'].includes(role);}
+  function canOwn(role){return ['owner','admin'].includes(role);}
   function setIdentity(auth){
-    const t=auth.tenant||{}, u=auth.user||{}, business=tenantName(t), owner=ownerName(t,u), first=owner.split(/\s+/)[0]||'Owner';
+    const t=auth.tenant||{},u=auth.user||{},role=String(auth.role||'staff').toLowerCase(),business=tenantName(t),member=memberName(t,u,role),first=member.split(/\s+/)[0]||'Team';
     document.documentElement.dataset.tenantId=t.id||'';
     document.documentElement.dataset.tenantSlug=t.slug||'';
+    document.documentElement.dataset.workspaceRole=role;
     document.title=(path==='dashboard'?'Dashboard':path.replace(/(^|-)(\w)/g,(_,a,b)=>' '+b.toUpperCase()).trim())+' · '+business+' · LolaDesk';
     qa('[data-tenant-name]').forEach(el=>text(el,business));
-    qa('[data-owner-name]').forEach(el=>text(el,first));
+    qa('[data-owner-name],[data-member-name]').forEach(el=>text(el,first));
     qa('.nav-user-name,#navUserName').forEach(el=>text(el,first));
-    qa('.nav-user-role,#navUserRole').forEach(el=>text(el,'Owner · '+business));
-    qa('.nav-user-av,#navUserInitial').forEach(el=>text(el,(first[0]||'O').toUpperCase()));
+    qa('.nav-user-role,#navUserRole').forEach(el=>text(el,roleLabel(role)+' · '+business));
+    qa('.nav-user-av,#navUserInitial').forEach(el=>text(el,(first[0]||'T').toUpperCase()));
     qa('input[placeholder*="Ask Lola"]').forEach(el=>el.placeholder='Ask Lola about '+business+'…');
     qa('.logo-sub').forEach(el=>{if(!el.textContent.trim()||/front desk|ai/i.test(el.textContent))text(el,business)});
   }
-  function markNavigation(){
+  function enforceNavigation(role){
     qa('a[href]').forEach(a=>{
       const href=(a.getAttribute('href')||'').split('?')[0].split('#')[0];
       const p=href.split('/').pop().replace(/\.html$/,'');
-      if(APP_PAGES.includes(p)){
-        const active=p===path || (path==='dashboard'&&p==='dashboard');
-        a.classList.toggle('active',active);
-        if(active)a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
-      }
+      if(!APP_PAGES.includes(p)) return;
+      const restricted=(OWNER_ONLY.includes(p)&&!canOwn(role))||(MANAGER_ONLY.includes(p)&&!canManage(role));
+      if(restricted){a.hidden=true;a.setAttribute('aria-hidden','true');a.setAttribute('tabindex','-1');return;}
+      const active=p===path||(path==='dashboard'&&p==='dashboard');
+      a.classList.toggle('active',active);
+      if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
     });
+    const blocked=(OWNER_ONLY.includes(path)&&!canOwn(role))||(MANAGER_ONLY.includes(path)&&!canManage(role));
+    if(blocked) location.replace('dashboard.html?access=limited');
   }
   function addMobileHeader(auth){
     if(q('#tenantMobileHeader')||innerWidth>820)return;
@@ -45,7 +57,7 @@
   function addGlobalStyles(){
     if(q('#tenantWorkspaceStyles'))return;
     const s=document.createElement('style');s.id='tenantWorkspaceStyles';s.textContent=`
-      .tenant-empty{padding:34px 22px;text-align:center;border:1px dashed rgba(255,255,255,.1);border-radius:14px;color:#85858d;background:rgba(255,255,255,.018)}
+      [hidden]{display:none!important}.tenant-empty{padding:34px 22px;text-align:center;border:1px dashed rgba(255,255,255,.1);border-radius:14px;color:#85858d;background:rgba(255,255,255,.018)}
       .tenant-empty strong{display:block;color:#f2f2f5;font-size:14px;margin-bottom:6px}.tenant-empty a{display:inline-flex;margin-top:14px;padding:9px 12px;border-radius:9px;background:#ccff00;color:#070708;font-weight:650;text-decoration:none}
       @media(max-width:820px){body{padding-top:0!important}.main,main{padding-left:16px!important;padding-right:16px!important}.sidebar.workspace-open,.side-nav.workspace-open,aside.workspace-open{position:fixed!important;inset:54px auto 0 0!important;z-index:8999!important;width:min(82vw,280px)!important;height:auto!important;background:#0c0c0e!important}.grid-main,.content-grid,.page-grid{grid-template-columns:1fr!important}.kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
       @media(max-width:480px){.kpi-row{grid-template-columns:1fr!important}}
@@ -56,7 +68,8 @@
   }
   async function boot(){
     let auth;try{auth=await window.LolaAuth.ready;}catch{return;}
-    addGlobalStyles();setIdentity(auth);markNavigation();addMobileHeader(auth);installLogout();
+    const role=String(auth.role||'staff').toLowerCase();
+    addGlobalStyles();setIdentity(auth);enforceNavigation(role);addMobileHeader(auth);installLogout();
     window.dispatchEvent(new CustomEvent('lola:tenant-ready',{detail:auth}));
   }
   window.LolaTenantWorkspace={boot};
