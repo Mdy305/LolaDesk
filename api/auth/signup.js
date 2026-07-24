@@ -21,10 +21,7 @@ export default async function handler(req, res){
     if(!email || !password) return res.status(400).json({ error:'email and password required' });
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
-    // 1. create auth user
     const user = await createUser({ email, password, name });
-
-    // 2. create tenant with 14-day trial
     const trialEnds = new Date(Date.now() + 14*24*3600*1000).toISOString();
     const slug = slugify(salonName || name || email.split('@')[0]) + '-' + Math.random().toString(36).slice(2,6);
     const tenant = await upsertTenant({
@@ -34,19 +31,32 @@ export default async function handler(req, res){
       trial_ends_at: trialEnds
     });
 
-    // 2b. link auth user -> tenant for multi-tenant safe resolution
-    try{
-      const c = db();
-      if(c && user?.id && tenant?.id){
-        await c.from('tenant_users').upsert({
-          tenant_id: tenant.id,
-          user_id: user.id,
-          role: 'owner'
-        }, { onConflict: 'tenant_id,user_id' });
-      }
-    }catch{}
+    const c = db();
+    if(c && user?.id && tenant?.id){
+      const linked = await c.from('tenant_users').upsert({
+        tenant_id: tenant.id, user_id: user.id, role: 'owner'
+      }, { onConflict: 'tenant_id,user_id' });
+      if(linked.error) throw linked.error;
 
-    // 3. sign them in -> session tokens
+      const onboarding = await c.from('tenant_onboarding').upsert({
+        tenant_id: tenant.id,
+        stage: 'business',
+        status: 'in_progress',
+        progress: 10,
+        business: {
+          name: tenant.name,
+          location: tenant.location || '',
+          website_url: tenant.website_url || '',
+          business_mode: tenant.business_mode || 'salon'
+        },
+        booking: {},
+        channels: {},
+        persona: { persona: tenant.persona || 'warm' },
+        provisioning: {}
+      }, { onConflict: 'tenant_id' });
+      if(onboarding.error && !/tenant_onboarding/i.test(onboarding.error.message || '')) throw onboarding.error;
+    }
+
     const sess = await signIn({ email, password });
     return res.status(200).json({ session: sess.session, user: sess.user, tenant });
   }catch(e){
