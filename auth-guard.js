@@ -15,6 +15,7 @@
   }
   function loadAppRuntime(){
     loadScript('/tenant-workspace.js','tenantWorkspace');
+    loadScript('/tenant-notifications.js','tenantNotifications');
     if(!isDashboard()) return;
     loadScript('/lola-presence.js','lolaPresence');
     loadScript('/lola-resonance.js','lolaResonance');
