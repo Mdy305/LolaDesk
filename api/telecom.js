@@ -16,6 +16,12 @@ async function authTenant(req) {
   return { user, tenant };
 }
 
+function required(body, key) {
+  const value = String(body[key] || '').trim();
+  if (!value) throw Object.assign(new Error(`${key} is required`), { status: 400 });
+  return value;
+}
+
 function capability(name, available, reason = null) {
   return { name, available: Boolean(available), ...(reason ? { reason } : {}) };
 }
@@ -26,10 +32,9 @@ async function capabilities() {
     ['numbers', '/available_phone_numbers', { 'filter[country_code]': 'US', 'filter[limit]': 1 }],
     ['porting', '/porting_orders', { 'page[size]': 1 }],
     ['sim_cards', '/sim_cards', { 'page[size]': 1 }],
-    ['wireless', '/wireless/detail_records_reports', { 'page[size]': 1 }],
+    ['mobile_voice', '/mobile_phone_numbers', { 'page[size]': 1 }],
     ['ai_assistants', '/ai/assistants', { 'page[size]': 1 }]
   ];
-
   for (const [name, path, query] of probes) {
     try {
       await telnyxRequest(path, { query });
@@ -43,10 +48,9 @@ async function capabilities() {
 }
 
 async function searchNumbers(body) {
-  const country = String(body.country_code || 'US').toUpperCase();
   const features = Array.isArray(body.features) && body.features.length ? body.features : ['voice', 'sms'];
   const query = {
-    'filter[country_code]': country,
+    'filter[country_code]': String(body.country_code || 'US').toUpperCase(),
     'filter[phone_number_type]': body.phone_number_type || 'local',
     'filter[limit]': Math.min(Math.max(Number(body.limit || 10), 1), 50),
     'filter[national_destination_code]': body.area_code || undefined,
@@ -60,28 +64,22 @@ async function searchNumbers(body) {
 async function provisionNumber(body, tenant) {
   const phoneNumber = normalizeE164(body.phone_number);
   if (!phoneNumber) throw Object.assign(new Error('A valid phone_number is required'), { status: 400 });
-
   const ordered = telnyxData(await telnyxRequest('/number_orders', {
     method: 'POST',
     body: { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` }
   }));
-
   const item = ordered?.phone_numbers?.[0] || {};
   const phoneNumberId = item.id;
   const voiceConnectionId = body.voice_connection_id || process.env.TELNYX_VOICE_APP_ID;
   const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
-
   if (phoneNumberId && voiceConnectionId) {
-    await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, {
-      method: 'PATCH', body: { connection_id: voiceConnectionId }
-    });
+    await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });
   }
-  if (phoneNumberId && messagingProfileId) {
-    await telnyxRequest(`/phone_numbers/${phoneNumberId}/messaging`, {
+  if (messagingProfileId) {
+    await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
       method: 'PATCH', body: { messaging_profile_id: messagingProfileId }
     });
   }
-
   return { order: ordered, phone_number: phoneNumber, voice_attached: Boolean(voiceConnectionId), messaging_attached: Boolean(messagingProfileId) };
 }
 
@@ -90,9 +88,7 @@ async function listNumbers() {
 }
 
 async function updateRouting(body) {
-  const phoneNumberId = String(body.phone_number_id || '').trim();
-  if (!phoneNumberId) throw Object.assign(new Error('phone_number_id is required'), { status: 400 });
-
+  const phoneNumberId = required(body, 'phone_number_id');
   const result = {};
   if (body.voice_connection_id) {
     result.voice = telnyxData(await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, {
@@ -100,7 +96,9 @@ async function updateRouting(body) {
     }));
   }
   if (body.messaging_profile_id) {
-    result.messaging = telnyxData(await telnyxRequest(`/phone_numbers/${phoneNumberId}/messaging`, {
+    const phoneNumber = normalizeE164(body.phone_number);
+    if (!phoneNumber) throw Object.assign(new Error('phone_number is required to configure messaging'), { status: 400 });
+    result.messaging = telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
       method: 'PATCH', body: { messaging_profile_id: body.messaging_profile_id }
     }));
   }
@@ -110,29 +108,60 @@ async function updateRouting(body) {
 async function createPort(body, tenant) {
   const phoneNumber = normalizeE164(body.phone_number);
   if (!phoneNumber) throw Object.assign(new Error('A valid phone_number is required'), { status: 400 });
-  const payload = {
-    phone_numbers: [phoneNumber],
-    customer_reference: `tenant:${tenant.id}`,
-    webhook_url: `${appUrl()}/api/telecom-webhook`,
-    ...(body.user_feedback ? { user_feedback: body.user_feedback } : {})
-  };
-  return telnyxData(await telnyxRequest('/porting_orders', { method: 'POST', body: payload }));
+  return telnyxData(await telnyxRequest('/porting_orders', {
+    method: 'POST',
+    body: {
+      phone_numbers: [phoneNumber],
+      customer_reference: `tenant:${tenant.id}`,
+      webhook_url: `${appUrl()}/api/telecom-webhook`
+    }
+  }));
 }
 
 async function listPorts() {
   return telnyxData(await telnyxRequest('/porting_orders', { query: { 'page[size]': 100 } }));
 }
 
+async function confirmPort(body) {
+  const portingOrderId = required(body, 'porting_order_id');
+  return telnyxData(await telnyxRequest(`/porting_orders/${portingOrderId}/actions/confirm`, { method: 'POST' }));
+}
+
 async function listSims() {
   const sims = telnyxData(await telnyxRequest('/sim_cards', { query: { 'page[size]': 100 } }));
-  return { sims, note: 'eSIM availability and activation depend on the Telnyx account, SIM profile, device, and region.' };
+  return { sims, note: 'Physical SIM and eSIM availability depends on the Telnyx account, inventory, device, and region.' };
 }
 
 async function activateSim(body) {
-  const simCardId = String(body.sim_card_id || '').trim();
-  if (!simCardId) throw Object.assign(new Error('sim_card_id is required'), { status: 400 });
-  return telnyxData(await telnyxRequest(`/sim_cards/${simCardId}/actions/set_standby`, {
-    method: 'POST', body: { enabled: false }
+  const simCardId = required(body, 'sim_card_id');
+  return telnyxData(await telnyxRequest(`/sim_cards/${simCardId}/actions/enable`, { method: 'POST' }));
+}
+
+async function enableSimVoice(body) {
+  const simCardId = required(body, 'sim_card_id');
+  return telnyxData(await telnyxRequest(`/sim_cards/${simCardId}/actions/enable_voice`, {
+    method: 'POST',
+    body: body.connection_id ? { connection_id: body.connection_id } : {}
+  }));
+}
+
+async function listMobileNumbers() {
+  return telnyxData(await telnyxRequest('/mobile_phone_numbers', { query: { 'page[size]': 100 } }));
+}
+
+async function assign10dlc(body) {
+  const messagingProfileId = required(body, 'messaging_profile_id');
+  const campaignId = body.campaign_id || null;
+  const tcrCampaignId = body.tcr_campaign_id || null;
+  if (Boolean(campaignId) === Boolean(tcrCampaignId)) {
+    throw Object.assign(new Error('Provide exactly one of campaign_id or tcr_campaign_id'), { status: 400 });
+  }
+  return telnyxData(await telnyxRequest('/10dlc/phoneNumberAssignmentByProfile', {
+    method: 'POST',
+    body: {
+      messagingProfileId,
+      ...(campaignId ? { campaignId } : { tcrCampaignId })
+    }
   }));
 }
 
@@ -144,8 +173,12 @@ const handlers = {
   'routing.update': async ({ body }) => updateRouting(body),
   'ports.create': async ({ body, tenant }) => createPort(body, tenant),
   'ports.list': async () => listPorts(),
+  'ports.confirm': async ({ body }) => confirmPort(body),
   'sims.list': async () => listSims(),
-  'sims.activate': async ({ body }) => activateSim(body)
+  'sims.activate': async ({ body }) => activateSim(body),
+  'sims.enable_voice': async ({ body }) => enableSimVoice(body),
+  'mobile_numbers.list': async () => listMobileNumbers(),
+  'compliance.assign_10dlc': async ({ body }) => assign10dlc(body)
 };
 
 export default async function handler(req, res) {
@@ -154,7 +187,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ error: 'Method Not Allowed' });
-
   try {
     const { tenant } = await authTenant(req);
     const body = jsonBody(req);
