@@ -1,5 +1,6 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { db } from './lib/db.js';
 import { appUrl, normalizeE164, telnyxData, telnyxRequest, TelnyxApiError } from './lib/telnyx-client.js';
 
 function jsonBody(req) {
@@ -61,15 +62,59 @@ async function searchNumbers(body) {
   return telnyxData(await telnyxRequest('/available_phone_numbers', { query }));
 }
 
+async function persistProvisionedNumber(tenant, phoneNumber, metadata) {
+  const client = db();
+  if (!client) throw Object.assign(new Error('Database not configured'), { status: 503 });
+
+  const { error: tenantError } = await client
+    .from('tenants')
+    .update({ phone_number: phoneNumber })
+    .eq('id', tenant.id);
+  if (tenantError) throw Object.assign(new Error(`Number ordered but tenant update failed: ${tenantError.message}`), { status: 500 });
+
+  const { data: onboarding } = await client
+    .from('tenant_onboarding')
+    .select('provisioning,channels,progress')
+    .eq('tenant_id', tenant.id)
+    .maybeSingle();
+
+  if (onboarding) {
+    const provisioning = {
+      ...(onboarding.provisioning || {}),
+      phone_number: phoneNumber,
+      number_order_id: metadata.order_id || null,
+      phone_number_id: metadata.phone_number_id || null,
+      voice_attached: metadata.voice_attached,
+      messaging_attached: metadata.messaging_attached,
+      number_status: metadata.status || 'ordered',
+      updated_at: new Date().toISOString()
+    };
+    const channels = { ...(onboarding.channels || {}), voice: true, sms: true };
+    await client
+      .from('tenant_onboarding')
+      .update({
+        provisioning,
+        channels,
+        progress: Math.max(Number(onboarding.progress || 0), 85),
+        updated_at: new Date().toISOString()
+      })
+      .eq('tenant_id', tenant.id);
+  }
+}
+
 async function provisionNumber(body, tenant) {
   const phoneNumber = normalizeE164(body.phone_number);
   if (!phoneNumber) throw Object.assign(new Error('A valid phone_number is required'), { status: 400 });
+  if (tenant.phone_number && normalizeE164(tenant.phone_number) !== phoneNumber && body.replace_existing !== true) {
+    throw Object.assign(new Error('Tenant already has a phone number. Pass replace_existing=true to replace it.'), { status: 409 });
+  }
+
   const ordered = telnyxData(await telnyxRequest('/number_orders', {
     method: 'POST',
     body: { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` }
   }));
   const item = ordered?.phone_numbers?.[0] || {};
-  const phoneNumberId = item.id;
+  const phoneNumberId = item.id || item.phone_number_id || null;
   const voiceConnectionId = body.voice_connection_id || process.env.TELNYX_VOICE_APP_ID;
   const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
   if (phoneNumberId && voiceConnectionId) {
@@ -80,7 +125,22 @@ async function provisionNumber(body, tenant) {
       method: 'PATCH', body: { messaging_profile_id: messagingProfileId }
     });
   }
-  return { order: ordered, phone_number: phoneNumber, voice_attached: Boolean(voiceConnectionId), messaging_attached: Boolean(messagingProfileId) };
+
+  const metadata = {
+    order_id: ordered?.id || ordered?.order_id || null,
+    phone_number_id: phoneNumberId,
+    status: ordered?.status || item?.status || 'ordered',
+    voice_attached: Boolean(phoneNumberId && voiceConnectionId),
+    messaging_attached: Boolean(messagingProfileId)
+  };
+  await persistProvisionedNumber(tenant, phoneNumber, metadata);
+
+  return {
+    order: ordered,
+    phone_number: phoneNumber,
+    tenant_persisted: true,
+    ...metadata
+  };
 }
 
 async function listNumbers() {
