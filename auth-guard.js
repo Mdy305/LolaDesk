@@ -1,23 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════
    LolaDesk — auth guard
    ════════════════════════════════════════════════════════════════
-   Include BEFORE lola-data.js on any page that shows a salon's real
-   data. Without this, /api/data silently falls back to the seeded
-   MMΛ Salon tenant for anyone with no token — i.e. every interior
-   page was showing real salon data to unauthenticated visitors.
-
-   What this does:
-   1. Reads loladesk_token from localStorage (set by login.html / onboarding.html)
-   2. If missing, redirects to login.html immediately — nothing renders
-   3. If present, validates it against /api/auth/session (catches
-      expired/revoked tokens, not just "is there a string present")
-   4. On success, stores the resolved user+tenant on window.LolaAuth
-      so pages/lola-data.js don't need a second round-trip
-   5. On failure, clears the stale token and redirects to login.html
-
-   This is synchronous-feeling but actually async — pages should wait
-   on window.LolaAuth.ready (a Promise) before rendering anything
-   sensitive, the same way they already await LolaData.load().
+   Validates the stored Supabase session before any tenant data renders.
+   On dashboard pages it also surfaces the authenticated tenant's live
+   launch-readiness score and next required setup action.
    ═══════════════════════════════════════════════════════════════ */
 (function(){
   function getToken(){ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } }
@@ -31,11 +17,48 @@
     location.replace('onboarding.html?next=' + here);
   }
 
+  function renderReadiness(token){
+    if(!/(^|\/)dashboard\.html$/.test(location.pathname) && location.pathname !== '/dashboard') return;
+    fetch('/api/launch-readiness', { headers:{ Authorization:'Bearer ' + token } })
+      .then(async r => {
+        const data = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.error || ('readiness ' + r.status));
+        return data;
+      })
+      .then(data => {
+        const main = document.querySelector('.main');
+        if(!main || document.getElementById('launchReadinessBanner')) return;
+        const score = Number(data.score || 0);
+        const next = Array.isArray(data.next_actions) ? data.next_actions[0] : '';
+        const ready = !!data.can_go_live;
+        const banner = document.createElement('div');
+        banner.id = 'launchReadinessBanner';
+        banner.style.cssText = [
+          'display:flex','align-items:center','gap:14px','padding:14px 18px',
+          'margin:0 0 18px','border:1px solid rgba(204,255,0,.25)',
+          'border-radius:14px','background:rgba(204,255,0,.07)'
+        ].join(';');
+        banner.innerHTML = `
+          <div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ccff00;color:#070708;font-weight:750;flex:0 0 auto">${score}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:650">${ready ? 'Lola is launch-ready' : 'Finish setting up Lola'}</div>
+            <div style="font-size:12px;color:#8a8a92;margin-top:2px">${ready ? 'Voice, booking and tenant configuration passed the readiness check.' : (next || 'Complete the remaining launch checklist.')}</div>
+          </div>
+          <button id="launchReadinessAction" style="border:0;border-radius:10px;padding:9px 12px;background:${ready ? 'rgba(204,255,0,.14)' : '#ccff00'};color:${ready ? '#dcff66' : '#070708'};font-weight:650;cursor:pointer">${ready ? 'View status' : 'Finish setup'}</button>`;
+        const topbar = main.querySelector('.topbar');
+        if(topbar && topbar.nextSibling) main.insertBefore(banner, topbar.nextSibling);
+        else main.prepend(banner);
+        banner.querySelector('#launchReadinessAction').onclick = () => {
+          if(ready) location.href = 'settings.html';
+          else location.href = 'onboarding.html?resume=1';
+        };
+      })
+      .catch(err => console.warn('[auth-guard] launch readiness unavailable:', err));
+  }
+
   const token = getToken();
   if(!token){
     redirectToLogin();
-    // Throwing stops any inline page script below this guard from
-    // running and racing the redirect with a fetch using no token.
     throw new Error('LolaDesk auth-guard: no token, redirecting to login');
   }
 
@@ -49,19 +72,14 @@
       redirectToOnboarding();
       throw new Error('session valid but tenant not provisioned yet');
     }
-    // Keep `ready` available after resolution. Several independently loaded
-    // dashboard modules use it as their single session/tenant gate.
     window.LolaAuth = { user: data.user, tenant: data.tenant, token, ready };
+    setTimeout(() => renderReadiness(token), 0);
     return window.LolaAuth;
   }).catch(err => {
-    if(String(err?.message || '').includes('tenant not provisioned')){
-      return Promise.reject(err);
-    }
+    if(String(err?.message || '').includes('tenant not provisioned')) return Promise.reject(err);
     console.warn('[auth-guard] session check failed, redirecting to login:', err);
     clearToken();
     redirectToLogin();
-    // Re-throw so anything chained on window.LolaAuth.ready also stops
-    // rather than rendering with no user/tenant.
     throw err;
   });
 
