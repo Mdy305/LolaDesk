@@ -13,10 +13,11 @@
     if(document.querySelector(`script[data-${key}]`)) return;
     const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
   }
-  function loadResonance(){
+  function loadDashboardRuntime(){
     if(!isDashboard()) return;
     loadScript('/lola-presence.js','lolaPresence');
     loadScript('/lola-resonance.js','lolaResonance');
+    loadScript('/tenant-dashboard.js','tenantDashboard');
   }
   function actionFor(next){
     const value=String(next||'').toLowerCase();
@@ -44,7 +45,7 @@
   const token=getToken(); if(!token){redirectToLogin();throw new Error('LolaDesk auth-guard: no token, redirecting to login');}
   const ready=fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}).then(r=>{if(!r.ok)throw new Error('session invalid: '+r.status);return r.json();}).then(data=>{
     if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
-    window.LolaAuth={user:data.user,tenant:data.tenant,token,ready}; loadResonance(); setTimeout(()=>renderReadiness(token),0); return window.LolaAuth;
+    window.LolaAuth={user:data.user,tenant:data.tenant,token,ready}; loadDashboardRuntime(); setTimeout(()=>renderReadiness(token),0); return window.LolaAuth;
   }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session check failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
   window.LolaAuth={ready};
 })();
