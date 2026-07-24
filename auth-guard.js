@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    LolaDesk — auth guard
    Validates the stored Supabase session before tenant data renders.
-   Dashboard pages also surface live launch readiness and direct actions.
+   Loads the shared tenant workspace on every authenticated app page.
    ═══════════════════════════════════════════════════════════════ */
 (function(){
   function getToken(){ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } }
@@ -13,7 +13,8 @@
     if(document.querySelector(`script[data-${key}]`)) return;
     const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
   }
-  function loadDashboardRuntime(){
+  function loadAppRuntime(){
+    loadScript('/tenant-workspace.js','tenantWorkspace');
     if(!isDashboard()) return;
     loadScript('/lola-presence.js','lolaPresence');
     loadScript('/lola-resonance.js','lolaResonance');
@@ -45,7 +46,7 @@
   const token=getToken(); if(!token){redirectToLogin();throw new Error('LolaDesk auth-guard: no token, redirecting to login');}
   const ready=fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}).then(r=>{if(!r.ok)throw new Error('session invalid: '+r.status);return r.json();}).then(data=>{
     if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
-    window.LolaAuth={user:data.user,tenant:data.tenant,token,ready}; loadDashboardRuntime(); setTimeout(()=>renderReadiness(token),0); return window.LolaAuth;
+    window.LolaAuth={user:data.user,tenant:data.tenant,token,ready}; loadAppRuntime(); setTimeout(()=>renderReadiness(token),0); return window.LolaAuth;
   }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session check failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
   window.LolaAuth={ready};
 })();
