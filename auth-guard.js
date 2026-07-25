@@ -23,6 +23,7 @@
     loadScript('/lola-resonance.js','lolaResonance');
     loadScript('/tenant-dashboard.js','tenantDashboard');
     loadScript('/tenant-opportunities.js','tenantOpportunities');
+    loadScript('/tenant-action-center.js','tenantActionCenter');
   }
   function actionFor(next){
     const value=String(next||'').toLowerCase();
