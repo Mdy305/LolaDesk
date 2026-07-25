@@ -1,37 +1,57 @@
-// api/onboarding/step3-configure.js - Configure LolaBrain voice
-import { createClient } from '@supabase/supabase-js';
+import { getUserFromToken, bearer } from '../lib/auth.js';
+import { db } from '../lib/db.js';
+import { resolveTenantForUser } from '../lib/tenant-access.js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function cleanServices(value){
+  if(!Array.isArray(value)) return [];
+  return value.slice(0,100).map(service=>({
+    name:String(service?.name || '').trim().slice(0,120),
+    price:Number(service?.price || 0),
+    duration:String(service?.duration || service?.dur || '').trim().slice(0,40)
+  })).filter(service=>service.name);
+}
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end();
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
+  if(req.method === 'OPTIONS') return res.status(204).end();
+  if(req.method !== 'POST') return res.status(405).json({ ok:false, error:'POST only' });
 
-  const { tenantId, voiceType, personality, selectedServices } = req.body;
+  try{
+    const user = await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({ ok:false, error:'Not authenticated' });
+    const tenant = await resolveTenantForUser(user);
+    if(!tenant?.id) return res.status(404).json({ ok:false, error:'No tenant mapped to this account' });
+    const client = db();
+    if(!client) return res.status(503).json({ ok:false, error:'Database not configured' });
 
-  try {
-    await supabase
-      .from('tenants')
-      .update({
-        lolabrain_voice: voiceType, // jarvis, whisper, alexa, siri, lola
-        lolabrain_personality: personality,
-        status: 'onboarding_step3',
-      })
-      .eq('id', tenantId);
+    const input = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const personality = String(input.personality || input.persona || 'warm').trim().slice(0,80);
+    const voice = String(input.voiceType || input.voice || 'lola').trim().slice(0,80);
+    const services = cleanServices(input.selectedServices || input.services);
 
-    // Store service selection
-    await supabase.from('tenant_memories').upsert({
-      tenant_id: tenantId,
-      memory_type: 'configuration',
-      memory_key: 'services',
-      value: selectedServices,
-      source: 'onboarding',
-    });
+    const tenantResult = await client.from('tenants').update({
+      persona:personality,
+      lolabrain_voice:voice,
+      lolabrain_personality:personality,
+      services,
+      status:'onboarding_configuration'
+    }).eq('id', tenant.id).select().single();
+    if(tenantResult.error) throw tenantResult.error;
 
-    res.json({ ok: true, configured: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    await client.from('tenant_onboarding').update({
+      stage:'configuration',
+      status:'in_progress',
+      progress:75,
+      persona:{ persona:personality, voice },
+      provisioning:{ services_count:services.length },
+      last_error:null,
+      updated_at:new Date().toISOString()
+    }).eq('tenant_id', tenant.id);
+
+    return res.status(200).json({ ok:true, configured:true, tenant_id:tenant.id, services_count:services.length });
+  }catch(error){
+    return res.status(500).json({ ok:false, error:String(error?.message || error) });
   }
 }
