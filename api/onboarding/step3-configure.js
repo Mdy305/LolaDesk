@@ -49,7 +49,6 @@ export default async function handler(req, res) {
       lolabrain_personality:personality,
       services,
       booking_url:bookingUrl,
-      booking_provider:platform,
       status:'onboarding_configuration'
     }).eq('id', tenant.id).select().single();
     if(tenantResult.error) throw tenantResult.error;
