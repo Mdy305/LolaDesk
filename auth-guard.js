@@ -9,6 +9,7 @@
   function redirectToLogin(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('login.html?next='+here); }
   function redirectToOnboarding(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('onboarding.html?next='+here); }
   function isDashboard(){ return /(^|\/)dashboard\.html$/.test(location.pathname)||location.pathname==='/dashboard'; }
+  function isMarketing(){ return /(^|\/)marketing(?:\.html)?$/.test(location.pathname); }
   function loadScript(src,key){
     if(document.querySelector(`script[data-${key}]`)) return;
     const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
@@ -16,6 +17,7 @@
   function loadAppRuntime(){
     loadScript('/tenant-workspace.js','tenantWorkspace');
     loadScript('/tenant-notifications.js','tenantNotifications');
+    if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(!isDashboard()) return;
     loadScript('/lola-presence.js','lolaPresence');
     loadScript('/lola-resonance.js','lolaResonance');
