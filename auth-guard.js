@@ -19,20 +19,12 @@
     loadScript('/tenant-notifications.js','tenantNotifications');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(!isDashboard()) return;
-    /* dashboard.html/app.js already owns microphone, wake-word, ElevenLabs
-       playback and orb state. Loading lola-resonance here created a second
-       SpeechRecognition instance competing for the same microphone. */
     loadScript('/voice-compat.js','voiceCompat');
     loadScript('/tenant-dashboard.js','tenantDashboard');
     loadScript('/tenant-opportunities.js','tenantOpportunities');
     loadScript('/tenant-action-center.js','tenantActionCenter');
   }
-  function actionFor(next){
-    const value=String(next||'').toLowerCase();
-    if(value.includes('phone')||value.includes('telnyx')||value.includes('voice')) return {label:'Connect voice',href:'settings.html#voice'};
-    if(value.includes('booking')||value.includes('calendar')) return {label:'Connect booking',href:'settings.html#booking'};
-    return {label:'Finish setup',href:'onboarding.html?resume=1'};
-  }
+  function actionFor(){ return {label:'Open Activation Studio',href:'activation-studio.html'}; }
   async function loadReadiness(token){
     const r=await fetch('/api/launch-readiness',{headers:{Authorization:'Bearer '+token}}); const data=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(data.error||('readiness '+r.status)); return data;
@@ -48,10 +40,10 @@
     loadReadiness(token).then(data=>{
       const main=document.querySelector('.main'); if(!main||document.getElementById('launchReadinessBanner')) return;
       const score=Number(data.score||0),next=Array.isArray(data.next_actions)?data.next_actions[0]:'',ready=!!data.can_go_live;
-      const action=ready?{label:'Talk to Lola',kind:'talk'}:actionFor(next);
+      const action=ready?{label:'Talk to Lola',kind:'talk'}:actionFor();
       const banner=document.createElement('div'); banner.id='launchReadinessBanner';
       banner.style.cssText=['display:flex','align-items:center','gap:14px','padding:14px 18px','margin:0 0 18px','border:1px solid rgba(204,255,0,.25)','border-radius:14px','background:rgba(204,255,0,.07)','flex-wrap:wrap'].join(';');
-      banner.innerHTML=`<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ccff00;color:#070708;font-weight:750;flex:0 0 auto">${score}</div><div style="flex:1;min-width:220px"><div style="font-size:13px;font-weight:650">${ready?'Lola is ready to work with you':'Finish connecting Lola'}</div><div style="font-size:12px;color:#8a8a92;margin-top:2px">${ready?'Say “Hey Lola” or tap the living presence to speak.':(next||'Complete the remaining launch checklist.')}</div></div><button id="launchReadinessAction" style="border:0;border-radius:10px;padding:9px 12px;background:#ccff00;color:#070708;font-weight:650;cursor:pointer">${action.label}</button>`;
+      banner.innerHTML=`<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ccff00;color:#070708;font-weight:750;flex:0 0 auto">${score}</div><div style="flex:1;min-width:220px"><div style="font-size:13px;font-weight:650">${ready?'Lola is ready to work with you':'Lola is not fully activated yet'}</div><div style="font-size:12px;color:#8a8a92;margin-top:2px">${ready?'Say “Hey Lola” or tap the living presence to speak.':(next||'Open Activation Studio to validate voice, phone, booking, knowledge and live data.')}</div></div><button id="launchReadinessAction" style="border:0;border-radius:10px;padding:9px 12px;background:#ccff00;color:#070708;font-weight:650;cursor:pointer">${action.label}</button>`;
       const topbar=main.querySelector('.topbar'); if(topbar&&topbar.nextSibling) main.insertBefore(banner,topbar.nextSibling); else main.prepend(banner);
       banner.querySelector('#launchReadinessAction').onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };
     }).catch(err=>console.warn('[auth-guard] launch readiness unavailable:',err));
