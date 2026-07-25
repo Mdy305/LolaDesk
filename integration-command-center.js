@@ -17,7 +17,7 @@
   }
   function route(item){
     if(item.action==='open_numbers') return location.href='numbers.html';
-    if(item.action==='open_activation') return location.href='activation.html';
+    if(item.action==='open_activation') return location.href='activation-studio.html';
     if(['connect','reconnect'].includes(item.action)&&!['voice','website','whatsapp'].includes(item.id)){
       return location.href=`/api/oauth/connect?provider=${encodeURIComponent(item.id)}`;
     }
@@ -61,9 +61,23 @@
       if(item) route(item);
     }));
   }
+  function secureTelecomActions(){
+    window.orderTelnyxSim=function(){
+      window.showToast?.('Complete shipping and carrier verification in Phone Numbers.','ok');
+      setTimeout(()=>{location.href='numbers.html#connectivity';},350);
+    };
+    window.portTelnyxNumber=function(){
+      const input=document.getElementById('fPortNumber');
+      const number=input?.value?.trim()||'';
+      try{if(number) sessionStorage.setItem('loladesk_port_number',number);}catch{}
+      window.showToast?.('Continue securely in Phone Numbers.','ok');
+      setTimeout(()=>{location.href='numbers.html#port';},350);
+    };
+  }
   async function init(){
     const list=document.getElementById('integrationsList');
     if(!list) return;
+    secureTelecomActions();
     list.innerHTML='<div style="padding:28px 4px;color:var(--text3);font-size:12px">Verifying every connection…</div>';
     try{
       if(window.LolaAuth?.ready) await window.LolaAuth.ready;
