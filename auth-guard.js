@@ -10,6 +10,7 @@
   function redirectToOnboarding(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('onboarding.html?next='+here); }
   function isDashboard(){ return /(^|\/)dashboard\.html$/.test(location.pathname)||location.pathname==='/dashboard'; }
   function isMarketing(){ return /(^|\/)marketing(?:\.html)?$/.test(location.pathname); }
+  function isSettings(){ return /(^|\/)settings(?:\.html)?$/.test(location.pathname); }
   function loadScript(src,key){
     if(document.querySelector(`script[data-${key}]`)) return;
     const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
@@ -18,6 +19,7 @@
     loadScript('/tenant-workspace.js','tenantWorkspace');
     loadScript('/tenant-notifications.js','tenantNotifications');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
+    if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');
     if(!isDashboard()) return;
     loadScript('/voice-compat.js','voiceCompat');
     loadScript('/tenant-dashboard.js','tenantDashboard');
