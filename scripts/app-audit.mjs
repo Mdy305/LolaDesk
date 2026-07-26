@@ -11,8 +11,6 @@ const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
 const files=walk(root);
 const rel=p=>path.relative(root,p).replaceAll('\\','/');
 const existing=new Set(files.map(rel));
-// Vercel serves the root HTML files as the product surfaces. Fixtures,
-// generated reports and documentation are intentionally excluded.
 const html=files.filter(f=>f.endsWith('.html')&&path.dirname(f)===root);
 const js=files.filter(f=>(f.endsWith('.js')||f.endsWith('.mjs'))&&!rel(f).startsWith('node_modules/'));
 const failures=[];
@@ -20,9 +18,9 @@ const warnings=[];
 
 function localTarget(raw,from){
   const value=String(raw||'').trim();
-  if(!value||value.startsWith('#')||/^(https?:|mailto:|tel:|data:|blob:|javascript:)/i.test(value)) return null;
+  if(!value||value.startsWith('#')||value.includes('${')||/^(https?:|mailto:|tel:|data:|blob:|javascript:)/i.test(value)) return null;
   const clean=value.split(/[?#]/)[0];
-  if(!clean) return null;
+  if(clean===''||clean==='/') return 'index.html';
   return clean.startsWith('/')
     ? path.posix.normalize(clean.slice(1))
     : path.posix.normalize(path.posix.join(path.posix.dirname(from),clean));
@@ -30,12 +28,15 @@ function localTarget(raw,from){
 
 for(const file of html){
   const name=rel(file),text=fs.readFileSync(file,'utf8');
+  // Inline JavaScript often contains HTML template strings. They are not part
+  // of the initial DOM, so inspect only the actual document markup here.
+  const dom=text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
   if(!/<html[\s>]/i.test(text)||!/<body[\s>]/i.test(text)) failures.push(`${name}: missing html/body shell`);
   if(!/<meta[^>]+name=["']viewport["']/i.test(text)) warnings.push(`${name}: missing viewport meta`);
-  const ids=[...text.matchAll(/\sid=["']([^"']+)["']/gi)].map(m=>m[1]);
+  const ids=[...dom.matchAll(/\sid=["']([^"']+)["']/gi)].map(m=>m[1]);
   const duplicates=[...new Set(ids.filter((id,i)=>ids.indexOf(id)!==i))];
   if(duplicates.length) failures.push(`${name}: duplicate ids ${duplicates.join(', ')}`);
-  for(const m of text.matchAll(/(?:href|src)=["']([^"']+)["']/gi)){
+  for(const m of dom.matchAll(/(?:href|src)=["']([^"']+)["']/gi)){
     const target=localTarget(m[1],name);if(!target)continue;
     const candidates=[target,target.endsWith('/')?target+'index.html':'',!path.posix.extname(target)?target+'.html':''].filter(Boolean);
     if(!candidates.some(c=>existing.has(c))) failures.push(`${name}: missing local asset ${m[1]}`);
@@ -43,8 +44,10 @@ for(const file of html){
 }
 
 for(const file of js){
-  const name=rel(file),text=fs.readFileSync(file,'utf8');
-  if(/<<<<<<<|=======|>>>>>>>/.test(text)) failures.push(`${name}: unresolved merge markers`);
+  const name=rel(file);if(name==='scripts/app-audit.mjs')continue;
+  const text=fs.readFileSync(file,'utf8');
+  const markers=['<'+'<<<<<<','='+'======','>'+'>>>>>>'];
+  if(markers.some(marker=>text.includes(marker))) failures.push(`${name}: unresolved merge markers`);
 }
 
 const vercelPath=path.join(root,'vercel.json');
