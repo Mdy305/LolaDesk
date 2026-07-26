@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lola Memory — LolaDesk</title>
+<link rel="stylesheet" href="app.css">
+<style>
+.memory-shell{padding:24px;max-width:1320px;margin:auto}.memory-hero{display:flex;gap:20px;align-items:flex-end;justify-content:space-between;margin-bottom:24px}.memory-hero h1{font-size:34px;margin:0}.memory-hero p{color:var(--text2);max-width:680px;margin:8px 0 0}.memory-grid{display:grid;grid-template-columns:280px 1fr;gap:18px}.memory-panel{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px}.memory-tabs{display:flex;flex-direction:column;gap:8px}.memory-tab{border:0;background:transparent;color:var(--text2);text-align:left;padding:12px 14px;border-radius:12px;cursor:pointer}.memory-tab.active{background:var(--pink-dim);color:var(--text)}.memory-list{display:grid;gap:12px}.memory-card{border:1px solid var(--border);border-radius:15px;padding:16px;background:var(--surface2)}.memory-meta{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--text3);margin-bottom:8px}.memory-key{font-weight:700;font-size:14px}.memory-value{white-space:pre-wrap;color:var(--text2);font-size:13px;line-height:1.55;margin:10px 0}.memory-actions{display:flex;gap:8px}.memory-actions button,.memory-add button{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:9px;padding:8px 11px;cursor:pointer}.danger{color:#ff8e85!important}.memory-add{display:grid;grid-template-columns:150px 190px 180px 1fr auto;gap:9px;margin-bottom:16px}.memory-add input,.memory-add select,.memory-add textarea{background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px;font:inherit}.memory-add textarea{min-height:44px;resize:vertical}.empty{padding:60px 20px;text-align:center;color:var(--text3)}.badge{display:inline-flex;padding:4px 8px;border-radius:99px;background:var(--pink-dim);font-size:10px;color:var(--pink2)}
+@media(max-width:900px){.memory-grid{grid-template-columns:1fr}.memory-tabs{flex-direction:row;overflow:auto}.memory-add{grid-template-columns:1fr}.memory-hero{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body data-page="memory">
+<div class="app"><main class="main"><div class="memory-shell">
+  <div class="memory-hero"><div><span class="badge">LIVING INTELLIGENCE</span><h1>What Lola remembers</h1><p>Review, correct or remove the knowledge Lola carries between calls, texts, website chats and owner conversations. Every record is isolated to this business.</p></div><a class="btn btn-ghost" href="dashboard.html">Back to Lola</a></div>
+  <div class="memory-grid">
+    <aside class="memory-panel"><div class="memory-tabs"><button class="memory-tab active" data-scope="all">All memory</button><button class="memory-tab" data-scope="owner">Business & strategy</button><button class="memory-tab" data-scope="client">Clients & visitors</button></div><div style="font-size:12px;color:var(--text3);margin-top:22px;line-height:1.6">Lola uses this memory to continue conversations, personalize service, remember preferences and support management decisions. Changes are audited as usage events.</div></aside>
+    <section class="memory-panel">
+      <form class="memory-add" id="memoryForm"><select id="scope"><option value="owner">Business</option><option value="client">Client</option></select><input id="identity" placeholder="Phone or web:visitor" disabled><input id="key" placeholder="Memory key" required><textarea id="value" placeholder='Value, text or JSON' required></textarea><button type="submit">Remember</button></form>
+      <div id="memoryList" class="memory-list"><div class="empty">Loading Lola's memory…</div></div>
+    </section>
+  </div>
+</div></main></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+<script>
+let currentScope='all', memories=[];
+const token=()=>localStorage.getItem('loladesk_token')||'';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function request(url,options={}){const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token(),...(options.headers||{})}});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||('Request failed '+r.status));return data;}
+function render(){const root=document.getElementById('memoryList');if(!memories.length){root.innerHTML='<div class="empty">No memories in this view yet.</div>';return;}root.innerHTML=memories.map((m,i)=>`<article class="memory-card"><div class="memory-meta"><span>${esc(m.scope)} · ${esc(m.identity)}</span><span>${m.updated_at?new Date(m.updated_at).toLocaleString():''}</span></div><div class="memory-key">${esc(m.key)}</div><div class="memory-value">${esc(typeof m.value==='string'?m.value:JSON.stringify(m.value,null,2))}</div><div class="memory-actions"><button onclick="editMemory(${i})">Correct</button><button class="danger" onclick="deleteMemory(${i})">Forget</button></div></article>`).join('');}
+async function load(){const data=await request('/api/memory?scope='+encodeURIComponent(currentScope));memories=data.memories||[];render();}
+async function editMemory(i){const m=memories[i];const next=prompt('Correct what Lola should remember:',typeof m.value==='string'?m.value:JSON.stringify(m.value));if(next===null)return;let value=next;try{value=JSON.parse(next)}catch{}await request('/api/memory',{method:'PATCH',body:JSON.stringify({scope:m.scope,identity:m.identity,key:m.key,value})});await load();}
+async function deleteMemory(i){const m=memories[i];if(!confirm(`Make Lola forget “${m.key}”?`))return;await request('/api/memory',{method:'DELETE',body:JSON.stringify({scope:m.scope,identity:m.identity,key:m.key})});await load();}
+document.querySelectorAll('.memory-tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.memory-tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');currentScope=btn.dataset.scope;load().catch(showError);});
+document.getElementById('scope').onchange=e=>{const id=document.getElementById('identity');id.disabled=e.target.value==='owner';id.required=!id.disabled;if(id.disabled)id.value='';};
+document.getElementById('memoryForm').onsubmit=async e=>{e.preventDefault();const scope=document.getElementById('scope').value,identity=document.getElementById('identity').value,key=document.getElementById('key').value;let value=document.getElementById('value').value;try{value=JSON.parse(value)}catch{}await request('/api/memory',{method:'PATCH',body:JSON.stringify({scope,identity,key,value})});e.target.reset();document.getElementById('identity').disabled=true;await load();};
+function showError(e){document.getElementById('memoryList').innerHTML='<div class="empty">'+esc(e.message)+'</div>';}window.LolaAuth.ready.then(load).catch(showError);
+</script>
+</body></html>
