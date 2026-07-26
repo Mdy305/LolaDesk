@@ -11,17 +11,21 @@ const walk=dir=>fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
 const files=walk(root);
 const rel=p=>path.relative(root,p).replaceAll('\\','/');
 const existing=new Set(files.map(rel));
-const html=files.filter(f=>f.endsWith('.html'));
-const js=files.filter(f=>f.endsWith('.js')||f.endsWith('.mjs'));
+// Vercel serves the root HTML files as the product surfaces. Fixtures,
+// generated reports and documentation are intentionally excluded.
+const html=files.filter(f=>f.endsWith('.html')&&path.dirname(f)===root);
+const js=files.filter(f=>(f.endsWith('.js')||f.endsWith('.mjs'))&&!rel(f).startsWith('node_modules/'));
 const failures=[];
 const warnings=[];
 
 function localTarget(raw,from){
   const value=String(raw||'').trim();
   if(!value||value.startsWith('#')||/^(https?:|mailto:|tel:|data:|blob:|javascript:)/i.test(value)) return null;
-  const clean=value.split(/[?#]/)[0].replace(/^\//,'');
+  const clean=value.split(/[?#]/)[0];
   if(!clean) return null;
-  return path.posix.normalize(path.posix.join(path.posix.dirname(from),clean));
+  return clean.startsWith('/')
+    ? path.posix.normalize(clean.slice(1))
+    : path.posix.normalize(path.posix.join(path.posix.dirname(from),clean));
 }
 
 for(const file of html){
@@ -52,7 +56,7 @@ if(fs.existsSync(vercelPath)){
   }
 }
 
-console.log(`Audited ${html.length} HTML pages and ${js.length} JavaScript modules.`);
+console.log(`Audited ${html.length} deployable HTML pages and ${js.length} JavaScript modules.`);
 for(const w of warnings) console.warn('WARN',w);
 for(const f of failures) console.error('FAIL',f);
 if(failures.length){console.error(`Audit failed with ${failures.length} blocking issue(s).`);process.exit(1)}
