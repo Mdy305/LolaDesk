@@ -1,6 +1,7 @@
 /* LolaDesk — shared sidebar / mobile navigation */
 (function(){
   if(!document.querySelector('link[href="ux-runtime.css"]')){const css=document.createElement('link');css.rel='stylesheet';css.href='ux-runtime.css';document.head.appendChild(css)}
+  if(!document.querySelector('link[href="product-reset.css"]')){const css=document.createElement('link');css.rel='stylesheet';css.href='product-reset.css';document.head.appendChild(css)}
   if(!document.querySelector('script[src="ux-runtime.js"]')){const js=document.createElement('script');js.src='ux-runtime.js';js.defer=true;document.head.appendChild(js)}
   const page=document.body.getAttribute('data-page')||'overview';
   const icons={
@@ -15,19 +16,19 @@
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };
   const items=[
-    {id:'brain',label:'Lola Brain',href:'brain-os.html',badge:'NEW',pink:true},
+    {id:'brain',label:'Lola',href:'brain-os.html'},
     {id:'overview',label:'Home',href:'dashboard.html'},
-    {id:'operations',label:'Operations',href:'operations-os.html',badge:'LIVE',green:true},
+    {id:'operations',label:'Operate',href:'operations-os.html'},
     {id:'bookings',label:'Calendar',href:'bookings.html'},
     {id:'inbox',label:'Inbox',href:'inbox.html'},
     {id:'clients',label:'Clients',href:'clients.html'},
-    {id:'growth',label:'Growth OS',href:'growth-os.html',badge:'AI',pink:true},
+    {id:'growth',label:'Grow',href:'growth-os.html'},
     {id:'revenue',label:'Revenue',href:'revenue.html'},
     {id:'settings',label:'Settings',href:'settings.html'}
   ];
-  const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}</a>`).join('');
+  const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}</a>`).join('');
   const sidebar=document.createElement('aside');sidebar.className='sidebar';
-  sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="location.href='brain-os.html'" style="margin:0 16px 10px;padding:12px;border:1px solid rgba(204,255,0,.25);border-radius:12px;display:flex;justify-content:space-between;color:#ccff00;background:rgba(204,255,0,.06)"><span>Ask Lola</span><kbd style="font:11px var(--ff)">⌘ K</kbd></button><a class="nav-user" href="settings.html"><div class="nav-user-av">M</div><div class="nav-user-info"><div class="nav-user-name">Meddy</div><div class="nav-user-role">Owner · MMΛ Salon</div></div></a>`;
+  sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="location.href='brain-os.html'" style="margin:0 16px 10px;padding:12px;border:1px solid rgba(204,255,0,.25);border-radius:12px;display:flex;justify-content:space-between;color:#ccff00;background:rgba(204,255,0,.06)"><span>Talk to Lola</span><kbd style="font:11px var(--ff)">⌘ K</kbd></button><a class="nav-user" href="settings.html"><div class="nav-user-av">M</div><div class="nav-user-info"><div class="nav-user-name">Meddy</div><div class="nav-user-role">Owner · MMΛ Salon</div></div></a>`;
   const mobile=document.createElement('nav');mobile.className='mobile-bar';
   const mb=[{id:'overview',href:'dashboard.html',label:'Home',icon:icons.overview},{id:'operations',href:'operations-os.html',label:'Operate',icon:icons.operations},{id:'brain',href:'brain-os.html',label:'',orb:true},{id:'growth',href:'growth-os.html',label:'Grow',icon:icons.growth},{id:'settings',href:'settings.html',label:'More',icon:icons.settings}];
   mobile.innerHTML=mb.map(m=>m.orb?`<a class="mb-item ${page==='brain'?'active':''}" href="${m.href}"><div class="mb-orb">L</div></a>`:`<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`).join('');
