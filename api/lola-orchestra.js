@@ -3,11 +3,30 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './lib/db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { runAgentOrchestra } from './lib/agent-orchestra.js';
+import { executeSkill } from './lib/orchestrator.js';
 import { SKILLS } from './lola-tools.js';
+
+const AFFIRMATIVE=/^(?:yes|yeah|yep|correct|confirm|confirmed|do it|go ahead|proceed|make it happen|book it|cancel it|move it|please do)(?:[.!\s]|$)/i;
+const NEGATIVE=/^(?:no|nope|cancel that|never mind|nevermind|stop|don't|do not)(?:[.!\s]|$)/i;
+const CONSEQUENTIAL=new Set(['book_appointment','reschedule_appointment','cancel_appointment']);
 
 function lastUser(messages){
   const m=[...(messages||[])].reverse().find(x=>x?.role==='user');
   return typeof m?.content==='string' ? m.content.trim() : '';
+}
+
+function validPending(value){
+  if(!value||typeof value!=='object'||!CONSEQUENTIAL.has(value.skill)||!SKILLS[value.skill]) return null;
+  const args=value.args&&typeof value.args==='object'?value.args:{};
+  return {skill:value.skill,args};
+}
+
+function successFrom(skill,output){
+  if(!output||output.error) return false;
+  if(skill==='book_appointment') return output.booked===true;
+  if(skill==='reschedule_appointment') return output.rescheduled===true;
+  if(skill==='cancel_appointment') return output.cancelled===true;
+  return true;
 }
 
 export default async function handler(req,res){
@@ -48,14 +67,33 @@ export default async function handler(req,res){
       }
     }catch{}
 
-    const out=await runAgentOrchestra({
-      tenant,
-      messages,
-      skillsRegistry:SKILLS,
-      memoryBlock,
-      channel:body.channel||'dashboard_voice',
-      confirmed:body.confirmed===true
-    });
+    const pending=validPending(body.pending);
+    let out;
+    if(pending&&NEGATIVE.test(userText)){
+      out={ok:true,executed:false,needs_confirmation:false,pending:null,content:'Understood. I did not execute that action.',orchestration:{agents:[{id:'execution',label:'Execution'}],skill:pending.skill}};
+    }else if(pending&&AFFIRMATIVE.test(userText)){
+      const result=await executeSkill(tenant,pending.args?.client_phone||null,pending.skill,pending.args,SKILLS);
+      const success=successFrom(pending.skill,result);
+      out={
+        ok:true,
+        executed:true,
+        execution_ok:success,
+        needs_confirmation:false,
+        pending:null,
+        content:result?.speak||(success?'Done.':'I could not complete that action.'),
+        result,
+        orchestration:{agents:[{id:'execution',label:'Execution'}],skill:pending.skill}
+      };
+    }else{
+      out=await runAgentOrchestra({
+        tenant,
+        messages,
+        skillsRegistry:SKILLS,
+        memoryBlock,
+        channel:body.channel||'dashboard_voice',
+        confirmed:body.confirmed===true
+      });
+    }
 
     try{
       if(conversation?.id){
@@ -64,12 +102,14 @@ export default async function handler(req,res){
       }
     }catch{}
 
-    return res.status(out.ok===false?502:200).json({
+    return res.status(200).json({
       id:`orch_${Date.now()}`,
       type:'message',
       role:'assistant',
       content:[{type:'text',text:out.content||'I am ready.'}],
       executed:!!out.executed,
+      execution_ok:out.execution_ok!==undefined?!!out.execution_ok:(out.executed?out.ok!==false:null),
+      degraded:out.ok===false,
       needs_confirmation:!!out.needs_confirmation,
       pending:out.pending||null,
       result:out.result||null,
