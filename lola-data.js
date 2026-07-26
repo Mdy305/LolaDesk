@@ -30,3 +30,15 @@ window.LolaData = (function(){
 
   return { load, el, initials, money, emptyState };
 })();
+
+/* Dashboard-only product layer. Loaded here so the existing dashboard gains
+   the Revenue OS without duplicating provider or tenant-data logic. */
+(function loadRevenueCommandCenter(){
+  if(!(/\/?dashboard\.html$|\/$/.test(location.pathname))) return;
+  if(document.querySelector('script[data-lola-revenue-os]')) return;
+  const script=document.createElement('script');
+  script.src='/public/js/revenue-command-center.js';
+  script.defer=true;
+  script.dataset.lolaRevenueOs='true';
+  document.head.appendChild(script);
+})();
