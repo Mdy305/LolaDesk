@@ -15,6 +15,7 @@
     { "source": "/bookings", "destination": "/bookings.html" },
     { "source": "/booking-integrity", "destination": "/booking-integrity.html" },
     { "source": "/operations", "destination": "/operations-os.html" },
+    { "source": "/growth", "destination": "/growth-os.html" },
     { "source": "/revenue", "destination": "/revenue.html" },
     { "source": "/settings", "destination": "/settings.html" },
     { "source": "/memory", "destination": "/memory.html" },
