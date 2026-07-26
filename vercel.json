@@ -17,6 +17,7 @@
     { "source": "/bookings",  "destination": "/bookings.html" },
     { "source": "/revenue",   "destination": "/revenue.html" },
     { "source": "/settings",  "destination": "/settings.html" },
+    { "source": "/memory",    "destination": "/memory.html" },
     { "source": "/numbers",   "destination": "/numbers.html" },
     { "source": "/marketer",  "destination": "/marketer.html" },
     { "source": "/pricing",   "destination": "/pricing.html" }
