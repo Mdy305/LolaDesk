@@ -7,6 +7,7 @@
   "rewrites": [
     { "source": "/start", "destination": "/onboarding.html" },
     { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/brain", "destination": "/brain-os.html" },
     { "source": "/login", "destination": "/login.html" },
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/clients", "destination": "/clients.html" },
