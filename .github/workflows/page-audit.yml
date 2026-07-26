@@ -22,11 +22,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          {
-            find api e2e -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
-            npm run build
-          } > audit-output.txt 2>&1
-          code=$?
+          find api e2e -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check > audit-output.txt 2>&1
+          syntax_code=$?
+          npm run build >> audit-output.txt 2>&1
+          build_code=$?
+          code=$(( syntax_code != 0 || build_code != 0 ))
           cat audit-output.txt
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit 0
