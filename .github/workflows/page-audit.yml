@@ -3,6 +3,9 @@ on:
   pull_request:
   push:
     branches: [main]
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -11,4 +14,26 @@ jobs:
         with:
           show-progress: false
       - run: npm ci --silent
-      - run: npm run build
+      - id: audit
+        shell: bash
+        run: |
+          set +e
+          npm run build > audit-output.txt 2>&1
+          code=$?
+          cat audit-output.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - if: steps.audit.outputs.code != '0' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('audit-output.txt','utf8').slice(-50000);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Page audit failed\n\n\`\`\`text\n${output}\n\`\`\``
+            });
+      - if: steps.audit.outputs.code != '0'
+        run: exit 1
