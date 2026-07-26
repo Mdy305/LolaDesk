@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: public-launch-${{ github.ref }}
@@ -64,5 +65,27 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Run complete launch-readiness journey
-        run: npm run test:e2e
+      - id: journey
+        name: Run complete launch-readiness journey
+        shell: bash
+        run: |
+          set +e
+          npm run test:e2e > e2e-output.txt 2>&1
+          code=$?
+          cat e2e-output.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - if: steps.journey.outputs.code != '0' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('e2e-output.txt','utf8').slice(-50000);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Tenant journey failed\n\n\`\`\`text\n${output}\n\`\`\``
+            });
+      - if: steps.journey.outputs.code != '0'
+        run: exit 1
