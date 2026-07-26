@@ -18,7 +18,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          npm run build > audit-output.txt 2>&1
+          {
+            find api e2e -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+            npm run build
+          } > audit-output.txt 2>&1
           code=$?
           cat audit-output.txt
           echo "code=$code" >> "$GITHUB_OUTPUT"
