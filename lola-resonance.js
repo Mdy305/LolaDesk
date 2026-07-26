@@ -7,7 +7,9 @@
     enabled:false, awake:false, listening:false, speaking:false, busy:false,
     recognition:null, restartTimer:null, messages:[], lastWakeAt:0,
     ownerName:'there', mode:'idle', turnId:0, controller:null,
-    startedAt:0, transcript:'', interim:'', lastError:null
+    startedAt:0, transcript:'', interim:'', lastError:null,
+    audio:null, audioUrl:null, audioContext:null, analyser:null,
+    amplitudeFrame:null, sourceNode:null
   };
 
   function token(){ try{return localStorage.getItem('loladesk_token')||'';}catch{return '';} }
@@ -25,7 +27,7 @@
     const orb=document.querySelector('.lola-orb,.orb,#lolaOrb,[data-lola-orb]');
     if(orb){ orb.dataset.state=mode; orb.setAttribute('aria-label','Lola is '+mode); }
     const sub=document.getElementById('orbSub');
-    if(sub && detail.label) sub.textContent=detail.label;
+    if(sub&&detail.label) sub.textContent=detail.label;
   }
   function setTranscript(finalText='',interim=''){
     state.transcript=finalText; state.interim=interim;
@@ -47,34 +49,115 @@
     if(Array.isArray(value)) return value.map(x=>x&&(x.text||x.content||'')).join(' ').trim();
     return value&&(value.text||value.content)?String(value.text||value.content):'';
   }
+  function cleanSpeechText(text){
+    return String(text||'').replace(/https?:\/\/\S+/g,'').replace(/[*_#`>|]/g,' ').replace(/\s+/g,' ').trim().slice(0,2400);
+  }
+  function stopAmplitude(){
+    if(state.amplitudeFrame) cancelAnimationFrame(state.amplitudeFrame);
+    state.amplitudeFrame=null;
+    emit('lola:amplitude',{value:0,turnId:state.turnId});
+  }
+  function releaseAudio(){
+    stopAmplitude();
+    if(state.audio){
+      try{ state.audio.pause(); state.audio.removeAttribute('src'); state.audio.load(); }catch{}
+      state.audio=null;
+    }
+    if(state.audioUrl){ try{URL.revokeObjectURL(state.audioUrl);}catch{} state.audioUrl=null; }
+    state.sourceNode=null; state.analyser=null;
+  }
   function cancelActive(reason='interrupted'){
     state.turnId++;
-    try{ state.controller?.abort(reason); }catch{}
+    try{state.controller?.abort(reason);}catch{}
     state.controller=null;
-    try{ speechSynthesis.cancel(); }catch{}
+    releaseAudio();
+    try{speechSynthesis.cancel();}catch{}
     state.speaking=false; state.busy=false;
     emit('lola:cancel',{reason,turnId:state.turnId});
   }
   function stopSpeaking(reason='stopped'){ cancelActive(reason); }
-  function speak(text,turnId){
-    text=String(text||'').replace(/[*_#`]/g,' ').replace(/\s+/g,' ').trim();
-    if(!text || !('speechSynthesis' in window)) return Promise.resolve();
-    try{ speechSynthesis.cancel(); }catch{}
-    state.speaking=true; setOrb('speaking',{label:'Lola is speaking'});
-    const audioStarted=now(); metric('time_to_first_audio',audioStarted-state.startedAt);
-    return new Promise(resolve=>{
-      const u=new SpeechSynthesisUtterance(text);
-      u.rate=.98; u.pitch=1.02; u.volume=1;
-      const voices=speechSynthesis.getVoices();
-      u.voice=voices.find(v=>/samantha|ava|zoe|female/i.test(v.name))||voices.find(v=>/^en/i.test(v.lang))||null;
-      const done=()=>{
-        if(turnId!==state.turnId) return resolve();
-        state.speaking=false; state.awake=true;
-        setOrb(state.enabled?'ambient':'idle',{label:state.enabled?'Say “Hey Lola”':'Tap Lola to start'});
-        scheduleRestart(200); resolve();
+  async function startAmplitude(audio,turnId){
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC) return;
+      state.audioContext=state.audioContext||new AC();
+      if(state.audioContext.state==='suspended') await state.audioContext.resume();
+      const source=state.audioContext.createMediaElementSource(audio);
+      const analyser=state.audioContext.createAnalyser();
+      analyser.fftSize=256; analyser.smoothingTimeConstant=.72;
+      source.connect(analyser); analyser.connect(state.audioContext.destination);
+      state.sourceNode=source; state.analyser=analyser;
+      const data=new Uint8Array(analyser.frequencyBinCount);
+      const draw=()=>{
+        if(turnId!==state.turnId||!state.speaking||state.audio!==audio) return stopAmplitude();
+        analyser.getByteFrequencyData(data);
+        let sum=0; for(const value of data) sum+=value;
+        const amplitude=Math.min(1,(sum/data.length)/110);
+        document.documentElement.style.setProperty('--lola-amplitude',amplitude.toFixed(3));
+        emit('lola:amplitude',{value:amplitude,turnId});
+        state.amplitudeFrame=requestAnimationFrame(draw);
       };
-      u.onend=done; u.onerror=done; speechSynthesis.speak(u);
+      draw();
+    }catch(error){
+      metric('audio_analyser_error',0,{error:String(error?.message||error)});
+    }
+  }
+  function browserVoiceFallback(text,turnId){
+    if(!('speechSynthesis' in window)) return Promise.reject(new Error('No audio playback available'));
+    return new Promise((resolve,reject)=>{
+      if(turnId!==state.turnId) return resolve();
+      const utterance=new SpeechSynthesisUtterance(text);
+      utterance.rate=.98; utterance.pitch=1.02; utterance.volume=1;
+      const voices=speechSynthesis.getVoices();
+      utterance.voice=voices.find(v=>/samantha|ava|zoe|female/i.test(v.name))||voices.find(v=>/^en/i.test(v.lang))||null;
+      utterance.onend=resolve;
+      utterance.onerror=event=>reject(new Error(event.error||'Browser speech failed'));
+      speechSynthesis.speak(utterance);
     });
+  }
+  async function speak(text,turnId){
+    text=cleanSpeechText(text);
+    if(!text||turnId!==state.turnId) return;
+    state.speaking=true; setOrb('speaking',{label:'Lola is speaking'});
+    let usedFallback=false;
+    try{
+      const response=await fetch('/api/speak-lola',{
+        method:'POST', signal:state.controller?.signal,
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},
+        body:JSON.stringify({text,voiceType:'lola'})
+      });
+      if(turnId!==state.turnId) return;
+      if(!response.ok){
+        const detail=await response.json().catch(()=>({}));
+        throw new Error(detail.error||('Voice '+response.status));
+      }
+      const blob=await response.blob();
+      if(turnId!==state.turnId) return;
+      if(!blob.size) throw new Error('Voice returned empty audio');
+      state.audioUrl=URL.createObjectURL(blob);
+      const audio=new Audio(state.audioUrl);
+      state.audio=audio; audio.preload='auto'; audio.playsInline=true;
+      await startAmplitude(audio,turnId);
+      await new Promise((resolve,reject)=>{
+        audio.onplaying=()=>metric('time_to_first_audio',now()-state.startedAt,{provider:'elevenlabs'});
+        audio.onended=resolve;
+        audio.onerror=()=>reject(new Error('Audio playback failed'));
+        const play=audio.play(); if(play?.catch) play.catch(reject);
+      });
+    }catch(error){
+      if(error?.name==='AbortError'||turnId!==state.turnId) return;
+      usedFallback=true;
+      metric('voice_provider_error',0,{provider:'elevenlabs',error:String(error?.message||error)});
+      setOrb('degraded',{label:'Using backup voice'});
+      await browserVoiceFallback(text,turnId);
+      metric('time_to_first_audio',now()-state.startedAt,{provider:'browser-fallback'});
+    }finally{
+      if(turnId!==state.turnId) return;
+      releaseAudio();
+      state.speaking=false; state.awake=true;
+      setOrb(state.enabled?'ambient':'idle',{label:state.enabled?'Say “Hey Lola”':'Tap Lola to start',degraded:usedFallback});
+      scheduleRestart(180);
+    }
   }
   function systemPrompt(){
     return `You are Lola, a permanent senior team member inside LolaDesk, powered by LolaBrain. Speak naturally, warmly and decisively. Address the owner as ${state.ownerName}. Be concise in voice, take real actions only when tools confirm success, preserve context, and never claim completion when a downstream action failed. Never call yourself a chatbot.`;
@@ -88,72 +171,76 @@
     metric('time_to_visible_feedback',now()-state.startedAt);
     state.messages.push({role:'user',content:text}); state.messages=state.messages.slice(-24);
     try{
-      const r=await fetch('/api/lola',{method:'POST',signal:state.controller.signal,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},body:JSON.stringify({system:systemPrompt(),messages:state.messages,channel:'dashboard_voice',assistant:'LolaBrain',turnId})});
-      metric('time_to_response_headers',now()-state.startedAt,{status:r.status});
-      const data=await r.json().catch(()=>({}));
+      const response=await fetch('/api/lola',{method:'POST',signal:state.controller.signal,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token()},body:JSON.stringify({system:systemPrompt(),messages:state.messages,channel:'dashboard_voice',assistant:'LolaBrain',turnId})});
+      metric('time_to_response_headers',now()-state.startedAt,{status:response.status});
+      const data=await response.json().catch(()=>({}));
       if(turnId!==state.turnId) return;
-      if(!r.ok) throw new Error(data.error||('Lola '+r.status));
+      if(!response.ok) throw new Error(data.error||('Lola '+response.status));
       const reply=cleanText(data.content||data.reply||data.message);
       if(!reply) throw new Error('Lola returned an empty response');
       state.messages.push({role:'assistant',content:reply}); state.messages=state.messages.slice(-24);
-      toast(reply); await speak(reply,turnId);
-      metric('turn_complete',now()-state.startedAt,{ok:true});
-    }catch(e){
-      if(e?.name==='AbortError'||turnId!==state.turnId) return;
-      state.lastError=String(e.message||e); setOrb('error',{label:'Voice needs attention — tap Lola to retry'});
+      toast(reply); state.busy=false;
+      await speak(reply,turnId);
+      if(turnId===state.turnId) metric('turn_complete',now()-state.startedAt,{ok:true});
+    }catch(error){
+      if(error?.name==='AbortError'||turnId!==state.turnId) return;
+      state.lastError=String(error.message||error); setOrb('error',{label:'Voice needs attention — tap Lola to retry'});
       toast('I hit a connection issue. Tap Lola and try again.');
       metric('turn_complete',now()-state.startedAt,{ok:false,error:state.lastError});
     }finally{
-      if(turnId===state.turnId){ state.busy=false; state.controller=null; }
+      if(turnId===state.turnId){state.busy=false; state.controller=null;}
     }
   }
   function commandFrom(transcript){
-    const m=transcript.match(/(?:hey|hi|okay|ok)?\s*lola[\s,.:;-]*(.*)$/i);
-    return m?m[1].trim():'';
+    const match=transcript.match(/(?:hey|hi|okay|ok)?\s*lola[\s,.:;-]*(.*)$/i);
+    return match?match[1].trim():'';
   }
   function scheduleRestart(delay=250){
     clearTimeout(state.restartTimer);
     if(!state.enabled||!state.recognition||state.busy||state.speaking) return;
-    state.restartTimer=setTimeout(()=>{ try{state.recognition.start();}catch{} },delay);
+    state.restartTimer=setTimeout(()=>{try{state.recognition.start();}catch{}},delay);
   }
   function initRecognition(){
     if(!SpeechRecognition) return false;
-    const r=new SpeechRecognition(); r.continuous=true; r.interimResults=true; r.lang='en-US';
-    r.onstart=()=>{ state.listening=true; setOrb(state.awake?'listening':'ambient',{label:state.awake?'I’m listening':'Say “Hey Lola”'}); };
-    r.onend=()=>{ state.listening=false; scheduleRestart(200); };
-    r.onerror=e=>{
-      state.lastError=e.error;
-      if(!['no-speech','aborted'].includes(e.error)){
-        setOrb('degraded',{label:'Microphone needs attention'}); toast('Microphone: '+e.error+' — tap Lola to retry'); metric('recognition_error',0,{error:e.error});
+    const recognition=new SpeechRecognition(); recognition.continuous=true; recognition.interimResults=true; recognition.lang='en-US';
+    recognition.onstart=()=>{state.listening=true; setOrb(state.awake?'listening':'ambient',{label:state.awake?'I’m listening':'Say “Hey Lola”'});};
+    recognition.onend=()=>{state.listening=false; scheduleRestart(200);};
+    recognition.onerror=event=>{
+      state.lastError=event.error;
+      if(!['no-speech','aborted'].includes(event.error)){
+        setOrb('degraded',{label:'Microphone needs attention'}); toast('Microphone: '+event.error+' — tap Lola to retry'); metric('recognition_error',0,{error:event.error});
       }
     };
-    r.onresult=e=>{
+    recognition.onresult=event=>{
       let finalText='',interim='';
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        const t=e.results[i][0].transcript.trim();
-        if(e.results[i].isFinal) finalText+=' '+t; else interim+=' '+t;
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        const value=event.results[i][0].transcript.trim();
+        if(event.results[i].isFinal) finalText+=' '+value; else interim+=' '+value;
       }
       setTranscript(finalText.trim(),interim.trim());
       const heard=(finalText||interim).trim(); if(!heard) return;
-      if(state.speaking||state.busy){ cancelActive('barge-in'); state.awake=true; setOrb('listening',{label:'I’m listening'}); }
+      if(state.speaking||state.busy){cancelActive('barge-in'); state.awake=true; setOrb('listening',{label:'I’m listening'});}
       const hasWake=/\b(?:hey|hi|okay|ok)?\s*lola\b/i.test(heard);
       if(hasWake){
         state.awake=true; state.lastWakeAt=Date.now(); setOrb('listening',{label:'I’m listening'});
-        const cmd=commandFrom(heard);
-        if(cmd&&finalText){ try{r.stop();}catch{} askLola(cmd); }
+        const command=commandFrom(heard);
+        if(command&&finalText){try{recognition.stop();}catch{} askLola(command);}
         else if(finalText) toast('I’m listening.');
         return;
       }
-      if(state.awake&&finalText&&Date.now()-state.lastWakeAt<20000){ try{r.stop();}catch{} askLola(finalText.trim()); }
+      if(state.awake&&finalText&&Date.now()-state.lastWakeAt<20000){try{recognition.stop();}catch{} askLola(finalText.trim());}
     };
-    state.recognition=r; return true;
+    state.recognition=recognition; return true;
   }
   async function enable(){
     if(state.enabled) return;
     state.enabled=true; setOrb('waking',{label:'Starting Lola…'});
-    try{ await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
-    catch(e){ state.enabled=false; setOrb('error',{label:'Microphone permission required'}); toast('Allow microphone access, then tap Lola again.'); return; }
-    if(!state.recognition&&!initRecognition()){ state.enabled=false; setOrb('degraded',{label:'Voice wake is unavailable in this browser'}); toast('Tap Lola to use chat instead.'); return; }
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+      stream.getTracks().forEach(track=>track.stop());
+      if(state.audioContext?.state==='suspended') await state.audioContext.resume();
+    }catch(error){state.enabled=false; setOrb('error',{label:'Microphone permission required'}); toast('Allow microphone access, then tap Lola again.'); return;}
+    if(!state.recognition&&!initRecognition()){state.enabled=false; setOrb('degraded',{label:'Voice wake is unavailable in this browser'}); toast('Tap Lola to use chat instead.'); return;}
     setOrb('ambient',{label:'Say “Hey Lola”'}); scheduleRestart(0); toast('Lola is with you. Say “Hey Lola”.');
     try{localStorage.setItem('loladesk_resonance','on');}catch{}
   }
@@ -163,18 +250,19 @@
     setTranscript('',''); setOrb('idle',{label:'Tap Lola to start'}); try{localStorage.removeItem('loladesk_resonance');}catch{}
   }
   function bind(){
-    document.addEventListener('click',e=>{
-      const target=e.target.closest('.lola-orb,.orb,#lolaOrb,[data-lola-orb],[data-lola-voice]'); if(!target) return;
-      if(!state.enabled) enable(); else { cancelActive('manual-wake'); state.awake=true; state.lastWakeAt=Date.now(); setOrb('listening',{label:'I’m listening'}); toast('I’m listening.'); scheduleRestart(0); }
+    document.addEventListener('click',event=>{
+      const target=event.target.closest('.lola-orb,.orb,#lolaOrb,[data-lola-orb],[data-lola-voice]'); if(!target) return;
+      if(!state.enabled) enable(); else{cancelActive('manual-wake'); state.awake=true; state.lastWakeAt=Date.now(); setOrb('listening',{label:'I’m listening'}); toast('I’m listening.'); scheduleRestart(0);}
     });
-    window.addEventListener('keydown',e=>{
-      if((e.metaKey||e.ctrlKey)&&e.code==='Space'){ e.preventDefault(); state.enabled?disable():enable(); }
-      if(e.key==='Escape'&&(state.speaking||state.busy)){ cancelActive('escape'); scheduleRestart(100); }
+    window.addEventListener('keydown',event=>{
+      if((event.metaKey||event.ctrlKey)&&event.code==='Space'){event.preventDefault(); state.enabled?disable():enable();}
+      if(event.key==='Escape'&&(state.speaking||state.busy)){cancelActive('escape'); scheduleRestart(100);}
     });
-    document.addEventListener('visibilitychange',()=>{ if(document.hidden) cancelActive('backgrounded'); else if(state.enabled) scheduleRestart(150); });
+    document.addEventListener('visibilitychange',()=>{if(document.hidden) cancelActive('backgrounded'); else if(state.enabled) scheduleRestart(150);});
+    window.addEventListener('pagehide',()=>cancelActive('pagehide'));
   }
   async function boot(){
-    try{ const auth=await window.LolaAuth.ready; state.ownerName=(auth?.tenant?.owner_name||auth?.user?.user_metadata?.full_name||'there').split(' ')[0]; }catch{}
+    try{const auth=await window.LolaAuth.ready; state.ownerName=(auth?.tenant?.owner_name||auth?.user?.user_metadata?.full_name||'there').split(' ')[0];}catch{}
     bind(); let auto=false; try{auto=localStorage.getItem('loladesk_resonance')==='on';}catch{}
     if(auto) enable(); else setOrb('idle',{label:'Tap Lola to start'});
   }
