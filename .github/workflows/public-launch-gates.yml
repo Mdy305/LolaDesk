@@ -87,7 +87,9 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync('e2e-output.txt','utf8').slice(-50000);
-            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`## Tenant journey failed\n\n\`\`\`text\n${output}\n\`\`\``});
+            const output = fs.readFileSync('e2e-output.txt','utf8').slice(-30000);
+            const pr = await github.rest.pulls.get({owner:context.repo.owner,repo:context.repo.repo,pull_number:context.issue.number});
+            const base = String(pr.data.body || '').replace(/\n## Latest CI diagnostic[\s\S]*$/,'');
+            await github.rest.pulls.update({owner:context.repo.owner,repo:context.repo.repo,pull_number:context.issue.number,body:`${base}\n\n## Latest CI diagnostic\n\n\`\`\`text\n${output}\n\`\`\``});
       - if: steps.journey.outputs.code != '0'
         run: exit 1
