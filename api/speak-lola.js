@@ -1,38 +1,50 @@
-// api/speak-lola.js - ULTRA RESONANT VOICE (JARVIS/WHISPER/ALEXA/SIRI)
-import { synthesize } from './lib/elevenlabs.js';
-
-const VOICE_MODES = {
-  jarvis: 'TxGQqXvQvUMEUxtXKvou', // Deep, resonant
-  whisper: 'EXAVITQu4EER4nXzZamZ', // Soft, intimate
-  alexa: 'MF3mGyEYCl7XYWbV7PZT', // Friendly
-  siri: 'ThT5KcBeYPDsuQU2M7tG', // Natural
-  lola: process.env.ELEVENLABS_VOICE_ID || 'TxGQqXvQvUMEUxtXKvou',
-};
+// api/speak-lola.js — Lola's canonical dashboard voice
+import { synthesize, isConfigured, registerForText } from './lib/elevenlabs.js';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ error: 'POST only' });
+  }
+
+  if (!isConfigured()) {
+    return res.status(503).json({ error: 'Lola voice is not configured' });
+  }
+
+  const text = String(req.body?.text || '')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[*_#`>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!text) return res.status(400).json({ error: 'Text is required' });
+  if (text.length > 2500) return res.status(413).json({ error: 'Text is too long' });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  req.on?.('close', () => controller.abort());
 
   try {
-    const { text, voiceType = 'jarvis' } = req.body;
-    const voiceId = VOICE_MODES[voiceType] || VOICE_MODES.jarvis;
-
-    // Synthesize with ElevenLabs
     const audio = await synthesize(text, {
-      voice_id: voiceId,
-      model_id: 'eleven_turbo_v2_5', // Ultra-resonant model
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-        use_speaker_boost: true, // MAXIMUM RESONANCE
-      },
+      modelId: process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5',
+      outputFormat: 'mp3_44100_128',
+      register: registerForText(text),
+      signal: controller.signal
     });
 
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Content-Length', audio.length);
-    return res.send(audio);
+    res.setHeader('Content-Length', String(audio.length));
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('X-Lola-Voice', 'elevenlabs');
+    return res.status(200).send(audio);
   } catch (error) {
-    console.error('[SPEAK-LOLA]', error);
-    res.status(500).json({ error: error.message });
+    const aborted = error?.name === 'AbortError';
+    console.error('[SPEAK-LOLA]', aborted ? 'timeout-or-client-abort' : error);
+    if (res.headersSent) return;
+    return res.status(aborted ? 504 : 502).json({
+      error: aborted ? 'Lola voice timed out' : 'Lola voice provider failed'
+    });
+  } finally {
+    clearTimeout(timeout);
   }
 }
