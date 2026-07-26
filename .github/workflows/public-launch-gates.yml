@@ -65,8 +65,30 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Initialize tenant schema
-        run: psql -v ON_ERROR_STOP=1 -f ALL-IN-ONE-database-setup.sql
+      - id: schema
+        name: Initialize tenant schema
+        shell: bash
+        run: |
+          set +e
+          {
+            psql -v ON_ERROR_STOP=1 -f schema.sql
+            psql -v ON_ERROR_STOP=1 -f migrations/20260623_tenant_users.sql
+            psql -v ON_ERROR_STOP=1 -f migrations/20260701_complete_supabase_wiring.sql
+            psql -v ON_ERROR_STOP=1 -f migrations/20260724_onboarding_state.sql
+          } > schema-output.txt 2>&1
+          code=$?
+          cat schema-output.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - if: steps.schema.outputs.code != '0' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('schema-output.txt','utf8').slice(-50000);
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`## Schema initialization failed\n\n\`\`\`text\n${output}\n\`\`\``});
+      - if: steps.schema.outputs.code != '0'
+        run: exit 1
       - id: journey
         name: Run complete launch-readiness journey
         shell: bash
@@ -83,11 +105,6 @@ jobs:
           script: |
             const fs = require('fs');
             const output = fs.readFileSync('e2e-output.txt','utf8').slice(-50000);
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `## Tenant journey failed\n\n\`\`\`text\n${output}\n\`\`\``
-            });
+            await github.rest.issues.createComment({owner:context.repo.owner,repo:context.repo.repo,issue_number:context.issue.number,body:`## Tenant journey failed\n\n\`\`\`text\n${output}\n\`\`\``});
       - if: steps.journey.outputs.code != '0'
         run: exit 1
