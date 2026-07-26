@@ -65,6 +65,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Initialize tenant schema
+        run: psql -v ON_ERROR_STOP=1 -f ALL-IN-ONE-database-setup.sql
       - id: journey
         name: Run complete launch-readiness journey
         shell: bash
