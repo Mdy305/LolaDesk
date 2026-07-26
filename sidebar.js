@@ -2,8 +2,9 @@
 (function(){
   if(!document.querySelector('link[href="ux-runtime.css"]')){const css=document.createElement('link');css.rel='stylesheet';css.href='ux-runtime.css';document.head.appendChild(css)}
   if(!document.querySelector('script[src="ux-runtime.js"]')){const js=document.createElement('script');js.src='ux-runtime.js';js.defer=true;document.head.appendChild(js)}
-  const page = document.body.getAttribute('data-page') || 'overview';
-  const icons = {
+  const page=document.body.getAttribute('data-page')||'overview';
+  const icons={
+    brain:'<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8M5.5 7.5l13 9M18.5 7.5l-13 9"/>',
     overview:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/>',
     operations:'<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/><path d="M7 10v4M17 10v4M10 7h4M10 17h4"/>',
     bookings:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/>',
@@ -13,21 +14,22 @@
     revenue:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };
-  const items = [
-    { id:'overview', label:'Home', href:'dashboard.html' },
-    { id:'operations', label:'Operations', href:'operations-os.html', badge:'LIVE', green:true },
-    { id:'bookings', label:'Calendar', href:'bookings.html' },
-    { id:'inbox', label:'Inbox', href:'inbox.html' },
-    { id:'clients', label:'Clients', href:'clients.html' },
-    { id:'growth', label:'Growth OS', href:'growth-os.html', badge:'AI', pink:true },
-    { id:'revenue', label:'Revenue', href:'revenue.html' },
-    { id:'settings', label:'Settings', href:'settings.html' }
+  const items=[
+    {id:'brain',label:'Lola Brain',href:'brain-os.html',badge:'NEW',pink:true},
+    {id:'overview',label:'Home',href:'dashboard.html'},
+    {id:'operations',label:'Operations',href:'operations-os.html',badge:'LIVE',green:true},
+    {id:'bookings',label:'Calendar',href:'bookings.html'},
+    {id:'inbox',label:'Inbox',href:'inbox.html'},
+    {id:'clients',label:'Clients',href:'clients.html'},
+    {id:'growth',label:'Growth OS',href:'growth-os.html',badge:'AI',pink:true},
+    {id:'revenue',label:'Revenue',href:'revenue.html'},
+    {id:'settings',label:'Settings',href:'settings.html'}
   ];
-  const navHTML = items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}</a>`).join('');
-  const sidebar=document.createElement('aside'); sidebar.className='sidebar';
-  sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',metaKey:true,bubbles:true}))" style="margin:0 16px 10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;display:flex;justify-content:space-between;color:var(--text2);background:var(--surface)"><span>Quick navigation</span><kbd style="font:11px var(--ff);color:var(--text3)">⌘ K</kbd></button><a href="operations-os.html" style="margin:0 16px 20px;padding:12px;background:linear-gradient(135deg,rgba(204,255,0,.08),rgba(176,30,108,.04));border:.5px solid var(--pink-dim);border-radius:8px;display:flex;align-items:center;gap:10px;text-decoration:none"><div style="font-size:20px">◉</div><div><div style="font-size:12px;font-weight:600;color:var(--pink2)">Open Operations OS</div><div style="font-size:10px;color:var(--text2)">Live recovery and owner brief</div></div></a><a class="nav-user" href="settings.html"><div class="nav-user-av">M</div><div class="nav-user-info"><div class="nav-user-name">Meddy</div><div class="nav-user-role">Owner · MMΛ Salon</div></div></a>`;
-  const mobile=document.createElement('nav'); mobile.className='mobile-bar';
-  const mb=[{id:'overview',href:'dashboard.html',label:'Home',icon:icons.overview},{id:'operations',href:'operations-os.html',label:'Operate',icon:icons.operations},{id:'lola',href:'lola-live.html',label:'',orb:true},{id:'growth',href:'growth-os.html',label:'Grow',icon:icons.growth},{id:'settings',href:'settings.html',label:'More',icon:icons.settings}];
-  mobile.innerHTML=mb.map(m=>m.orb?`<a class="mb-item" href="${m.href}"><div class="mb-orb">L</div></a>`:`<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`).join('');
-  const app=document.querySelector('.app'); if(app) app.insertBefore(sidebar,app.firstChild); document.body.appendChild(mobile);
+  const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}</a>`).join('');
+  const sidebar=document.createElement('aside');sidebar.className='sidebar';
+  sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="location.href='brain-os.html'" style="margin:0 16px 10px;padding:12px;border:1px solid rgba(204,255,0,.25);border-radius:12px;display:flex;justify-content:space-between;color:#ccff00;background:rgba(204,255,0,.06)"><span>Ask Lola</span><kbd style="font:11px var(--ff)">⌘ K</kbd></button><a class="nav-user" href="settings.html"><div class="nav-user-av">M</div><div class="nav-user-info"><div class="nav-user-name">Meddy</div><div class="nav-user-role">Owner · MMΛ Salon</div></div></a>`;
+  const mobile=document.createElement('nav');mobile.className='mobile-bar';
+  const mb=[{id:'overview',href:'dashboard.html',label:'Home',icon:icons.overview},{id:'operations',href:'operations-os.html',label:'Operate',icon:icons.operations},{id:'brain',href:'brain-os.html',label:'',orb:true},{id:'growth',href:'growth-os.html',label:'Grow',icon:icons.growth},{id:'settings',href:'settings.html',label:'More',icon:icons.settings}];
+  mobile.innerHTML=mb.map(m=>m.orb?`<a class="mb-item ${page==='brain'?'active':''}" href="${m.href}"><div class="mb-orb">L</div></a>`:`<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`).join('');
+  const app=document.querySelector('.app');if(app)app.insertBefore(sidebar,app.firstChild);document.body.appendChild(mobile);
 })();
