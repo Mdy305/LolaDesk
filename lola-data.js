@@ -7,7 +7,9 @@ window.LolaData = (function(){
   function token(){ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } }
 
   async function load(resource){
-    const t=token();
+    let auth=null;
+    if(window.LolaAuth?.ready) auth=await window.LolaAuth.ready;
+    const t=auth?.token||window.LolaAuth?.token||token();
     if(!t) throw new Error('Not authenticated');
     const r=await fetch('/api/data-safe?resource='+encodeURIComponent(resource),{
       headers:{Authorization:'Bearer '+t},
