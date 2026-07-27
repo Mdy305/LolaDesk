@@ -89,13 +89,13 @@ const msgs = (await sql.query(`select role, content from messages where tenant_i
 check('sms conversation persisted (user+assistant)', msgs.some(m=>m.role==='user') && msgs.some(m=>m.role==='assistant'), `${msgs.length} msgs`);
 const mem = (await sql.query(`select key, value from client_memories where tenant_id=$1 and client_phone='+13055550777'`, [t.id])).rows;
 check('Lola REMEMBERS the caller (client_memories row)', mem.length>0, mem.map(m=>m.key).join(','));
-const optRow = (await sql.query(`select opted_out from clients where tenant_id=$1 and phone_number='+13055550777'`, [t.id])).rows[0];
+const optRow = (await sql.query(`select opted_out from clients where tenant_id=$1 and phone='+13055550777'`, [t.id])).rows[0];
 check('client row upserted', !!optRow);
 
 /* 5b — STOP compliance */
 r = makeRes();
 await sms(post({ data:{ event_type:'message.received', payload:{ type:'SMS', direction:'inbound', from:{ phone_number:'+13055550777' }, to:[{ phone_number: TEST_PHONE }], text:'STOP' } } }), r);
-const opt2 = (await sql.query(`select opted_out from clients where tenant_id=$1 and phone_number='+13055550777'`, [t.id])).rows[0];
+const opt2 = (await sql.query(`select opted_out from clients where tenant_id=$1 and phone='+13055550777'`, [t.id])).rows[0];
 check('STOP sets opted_out', opt2?.opted_out === true);
 
 /* 6 — DASHBOARD BRAIN: answers + persists + recalls */
