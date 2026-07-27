@@ -1,6 +1,11 @@
 -- Harden public helper functions flagged by the Supabase security advisor.
 -- Service-role-only tables intentionally keep RLS enabled with no browser policies.
 
+-- Keep extension objects out of the API-exposed public schema before referencing
+-- the vector type in function signatures below.
+create schema if not exists extensions;
+alter extension vector set schema extensions;
+
 alter function public.set_updated_at() set search_path = '';
 alter function public.update_updated_at_column() set search_path = '';
 alter function public.auth_tenant() set search_path = '';
@@ -20,7 +25,3 @@ revoke execute on function public.match_client_memories(extensions.vector, uuid,
 
 -- Public buckets serve object URLs without a broad object-listing policy.
 drop policy if exists voice_audio_public_read on storage.objects;
-
--- Keep extension objects out of the API-exposed public schema.
-create schema if not exists extensions;
-alter extension vector set schema extensions;
