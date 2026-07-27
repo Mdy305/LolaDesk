@@ -769,6 +769,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
           <div class="lola-prompt">
             <div class="lola-prompt-title" id="orbTitle">Hey Lola…</div>
             <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
+            <div id="orbTranscript" aria-live="polite" style="min-height:18px;margin-top:8px;text-align:center;font-size:12px;color:var(--accent2)"></div>
+            <div id="orbWave" aria-hidden="true" style="display:none;align-items:center;justify-content:center;gap:4px;height:18px;margin-top:6px">
+              <i></i><i></i><i></i><i></i><i></i>
+            </div>
           </div>
           <button class="lola-mic" id="orbMic" onclick="toggleVoice()" aria-label="Talk to Lola">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
