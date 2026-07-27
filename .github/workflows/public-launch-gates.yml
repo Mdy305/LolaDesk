@@ -73,6 +73,9 @@ jobs:
           psql -f migrations/20260626_operator.sql
           psql -f migrations/20260701_complete_supabase_wiring.sql || true
           psql -f migrations/20260724_onboarding_state.sql || true
+          psql -c 'alter table clients rename column phone_number to phone'
+          psql -c 'alter table clients rename column name to first_name'
+          psql -c 'alter table clients add column last_name text'
       - id: journey
         name: Run complete launch-readiness journey
         shell: bash
