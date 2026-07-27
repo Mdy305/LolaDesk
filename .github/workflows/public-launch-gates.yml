@@ -70,6 +70,7 @@ jobs:
         run: |
           psql -f schema.sql
           psql -f migrations/20260623_tenant_users.sql || true
+          psql -f migrations/20260626_operator.sql
           psql -f migrations/20260701_complete_supabase_wiring.sql || true
           psql -f migrations/20260724_onboarding_state.sql || true
       - id: journey
