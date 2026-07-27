@@ -5,7 +5,25 @@
    ═══════════════════════════════════════════════════════════════ */
 (function(){
   function getToken(){ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } }
+  function getRefreshToken(){ try{ return localStorage.getItem('loladesk_refresh')||''; }catch(e){ return ''; } }
+  function saveSession(session){ try{ if(session?.access_token) localStorage.setItem('loladesk_token',session.access_token); if(session?.refresh_token) localStorage.setItem('loladesk_refresh',session.refresh_token); }catch(e){} }
   function clearToken(){ try{ localStorage.removeItem('loladesk_token'); localStorage.removeItem('loladesk_refresh'); }catch(e){} }
+  async function renewSession(){
+    const refreshToken=getRefreshToken();
+    if(!refreshToken) throw new Error('no refresh token');
+    const r=await fetch('/api/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refreshToken})});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok||!data.session?.access_token) throw new Error(data.error||('refresh '+r.status));
+    saveSession(data.session);
+    return data.session.access_token;
+  }
+  async function loadSession(){
+    let token=getToken();
+    let r=token?await fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}):null;
+    if(!r||r.status===401){ token=await renewSession(); r=await fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}); }
+    if(!r.ok) throw new Error('session invalid: '+r.status);
+    return {data:await r.json(),token};
+  }
   function redirectToLogin(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('login.html?next='+here); }
   function redirectToOnboarding(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('onboarding.html?next='+here); }
   function isDashboard(){ return /(^|\/)dashboard\.html$/.test(location.pathname)||location.pathname==='/dashboard'; }
@@ -50,11 +68,11 @@
       banner.querySelector('#launchReadinessAction').onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };
     }).catch(err=>console.warn('[auth-guard] launch readiness unavailable:',err));
   }
-  const token=getToken(); if(!token){redirectToLogin();throw new Error('LolaDesk auth-guard: no token, redirecting to login');}
-  const ready=fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}).then(r=>{if(!r.ok)throw new Error('session invalid: '+r.status);return r.json();}).then(data=>{
+  if(!getToken()&&!getRefreshToken()){redirectToLogin();throw new Error('LolaDesk auth-guard: no session, redirecting to login');}
+  const ready=loadSession().then(({data,token})=>{
     if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
     const role=String(data.role||'staff').toLowerCase();
     window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready}; loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
-  }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session check failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
+  }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session renewal failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
   window.LolaAuth={ready};
 })();
