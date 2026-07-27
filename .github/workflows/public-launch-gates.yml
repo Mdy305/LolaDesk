@@ -76,6 +76,7 @@ jobs:
           psql -c 'alter table clients add column phone text'
           psql -c 'alter table clients add column first_name text'
           psql -c 'alter table clients add column last_name text'
+          psql -c 'create unique index clients_tenant_phone_key on clients(tenant_id, phone)'
       - id: journey
         name: Run complete launch-readiness journey
         shell: bash
