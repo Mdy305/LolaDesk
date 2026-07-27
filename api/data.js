@@ -64,9 +64,9 @@ export default async function handler(req,res){
       case 'clients': {
         const { data=[] } = await c.from('clients').select('*').eq('tenant_id',tid).order('updated_at',{ascending:false}).limit(200);
         return res.status(200).json({ tenant:tenant.name, clients:(data||[]).map(x=>({
-          id:x.id, name:x.name||'Unknown', phone:x.phone_number||'', email:x.email||'',
-          vip:!!x.is_vip, lastService:x.last_service||'', lastVisit:x.last_visit||'',
-          stylist:x.preferred_stylist||'', ltv:Number(x.lifetime_value||0), notes:x.notes||'', tags:x.tags||[]
+          id:x.id, name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Unknown', phone:x.phone||'', email:x.email||'',
+          photo:x.profile_picture_url||null, vip:String(x.status||'').toLowerCase()==='vip', lastService:x.preferred_service||'', lastVisit:x.last_visit||'',
+          stylist:'', ltv:Number(x.lifetime_value||0), notes:x.notes||'', tags:[]
         })) });
       }
       case 'calls': {

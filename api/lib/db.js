@@ -117,12 +117,16 @@ function demoTenant(){
 // ── CLIENTS ──
 export async function upsertClient(tenantId, { phone, name, email }){
   const c = db();
-  if(!c) return null;
+  if(!c || !tenantId) return null;
   const phoneE = e164(phone);
-  const { data } = await c.from('clients').upsert(
-    { tenant_id: tenantId, phone_number: phoneE, name, email },
-    { onConflict: 'tenant_id,phone_number' }
-  ).select().maybeSingle();
+  const parts=String(name||'Client').trim().split(/\s+/).filter(Boolean);
+  const row={tenant_id:tenantId,first_name:parts.shift()||'Client',last_name:parts.join(' ')||null,phone:phoneE,email:email||null,updated_at:new Date().toISOString()};
+  let existing=null;
+  if(phoneE){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('phone',phoneE).maybeSingle(); existing=data; }
+  if(!existing&&email){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('email',String(email).toLowerCase()).maybeSingle(); existing=data; }
+  const query=existing?.id?c.from('clients').update(row).eq('id',existing.id).eq('tenant_id',tenantId):c.from('clients').insert(row);
+  const {data,error}=await query.select().maybeSingle();
+  if(error) throw error;
   return data;
 }
 
@@ -147,7 +151,7 @@ export async function getClientByPhone(tenantId, phone){
   if(!c) return null;
   const { data } = await c.from('clients').select('*')
     .eq('tenant_id', tenantId)
-    .eq('phone_number', e164(phone))
+    .eq('phone', e164(phone))
     .maybeSingle();
   return data;
 }
