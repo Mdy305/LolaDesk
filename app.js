@@ -869,7 +869,7 @@ async function speak(text){
     // Resonance OUT: her actual voice amplitude radiates through the
     // neural orb as she speaks — the orb IS her voice made visible.
     if(window.LolaOrb) voiceMeter = LolaOrb.attachAudioElement(orb, currentAudio);
-    const cleanup = ()=>{ URL.revokeObjectURL(url); if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
+    const cleanup = ()=>{ if(currentAudioUrl){ URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; } if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
     currentAudio.onended = cleanup;
     currentAudio.onerror = cleanup;
     await currentAudio.play();
