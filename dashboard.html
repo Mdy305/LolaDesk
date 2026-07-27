@@ -1496,11 +1496,12 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     }
   });
 
-  await Promise.all([
+  const dashboardResults = await Promise.allSettled([
     renderSchedule(),
     renderAway(),
     renderDeskCenter()
   ]);
+  dashboardResults.filter(x=>x.status==='rejected').forEach(x=>console.warn('[dashboard] section unavailable',x.reason));
   renderInsights();
   renderResonance();
   drawCharts();
