@@ -137,12 +137,22 @@ export async function upsertClient(tenantId, { phone, name, email }){
 // a real phone, the SMS/voice memory unifies on that number.
 export async function upsertWebVisitor(tenantId, visitorId, { name, email } = {}){
   const c = db();
-  if(!c || !visitorId) return null;
+  if(!c || !tenantId || !visitorId) return null;
   const key = 'web:' + String(visitorId).slice(0, 64);
-  const { data } = await c.from('clients').upsert(
-    { tenant_id: tenantId, phone_number: key, name, email },
-    { onConflict: 'tenant_id,phone_number' }
-  ).select().maybeSingle();
+  const { data: existing } = await c.from('clients').select('id')
+    .eq('tenant_id', tenantId).eq('phone', key).maybeSingle();
+  const row = {
+    tenant_id: tenantId,
+    phone: key,
+    first_name: String(name || 'Website visitor').trim() || 'Website visitor',
+    email: email || null,
+    updated_at: new Date().toISOString()
+  };
+  const query = existing?.id
+    ? c.from('clients').update(row).eq('id', existing.id).eq('tenant_id', tenantId)
+    : c.from('clients').insert(row);
+  const { data, error } = await query.select().maybeSingle();
+  if(error) throw error;
   return data;
 }
 
@@ -159,19 +169,29 @@ export async function getClientByPhone(tenantId, phone){
 // ── SMS COMPLIANCE (10DLC: STOP must be honored and persisted) ──
 export async function setOptOut(tenantId, phone, optedOut){
   const c = db();
-  if(!c) return null;
-  const { data } = await c.from('clients').upsert(
-    { tenant_id: tenantId, phone_number: e164(phone), opted_out: optedOut, opted_out_at: optedOut ? new Date().toISOString() : null },
-    { onConflict: 'tenant_id,phone_number' }
-  ).select().maybeSingle();
+  if(!c || !tenantId) return null;
+  const phoneE = e164(phone);
+  if(!phoneE) return null;
+  const { data: existing } = await c.from('clients').select('id')
+    .eq('tenant_id', tenantId).eq('phone', phoneE).maybeSingle();
+  const patch = {
+    opted_out: optedOut,
+    opted_out_at: optedOut ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString()
+  };
+  const query = existing?.id
+    ? c.from('clients').update(patch).eq('id', existing.id).eq('tenant_id', tenantId)
+    : c.from('clients').insert({ tenant_id: tenantId, phone: phoneE, first_name: 'Client', ...patch });
+  const { data, error } = await query.select().maybeSingle();
+  if(error) throw error;
   return data;
 }
 
 export async function isOptedOut(tenantId, phone){
   const c = db();
-  if(!c) return false; // demo mode: never block sends
+  if(!c || !tenantId) return false; // demo mode: never block sends
   const { data } = await c.from('clients').select('opted_out')
-    .eq('tenant_id', tenantId).eq('phone_number', e164(phone)).maybeSingle();
+    .eq('tenant_id', tenantId).eq('phone', e164(phone)).maybeSingle();
   return !!data?.opted_out;
 }
 
