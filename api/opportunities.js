@@ -22,12 +22,18 @@ export default async function handler(req,res){
 
     const now=Date.now(), next7=new Date(now+7*DAY).toISOString(), since90=new Date(now-90*DAY).toISOString();
     const [clientsQ,bookingsQ,eventsQ]=await Promise.all([
-      c.from('clients').select('id,name,phone_number,last_visit,last_service,lifetime_value,is_vip,preferred_stylist').eq('tenant_id',tenant.id).limit(1000),
-      c.from('bookings').select('id,client_id,client_name,service,price,starts_at,created_at,status').eq('tenant_id',tenant.id).gte('starts_at',since90).limit(2000),
+      c.from('clients').select('id,first_name,last_name,phone,last_visit,preferred_service,lifetime_value,status').eq('tenant_id',tenant.id).limit(1000),
+      c.from('bookings').select('id,client_id,service,price,starts_at,created_at,status').eq('tenant_id',tenant.id).gte('starts_at',since90).limit(2000),
       c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id',tenant.id).in('kind',['opportunity_opened','opportunity_executed','opportunity_dismissed']).gte('created_at',since90).order('created_at',{ascending:false}).limit(500)
     ]);
     if(clientsQ.error||bookingsQ.error||eventsQ.error) throw clientsQ.error||bookingsQ.error||eventsQ.error;
-    const clients=clientsQ.data||[], bookings=bookingsQ.data||[], events=eventsQ.data||[];
+    const clients=(clientsQ.data||[]).map(client=>({
+      ...client,
+      name:[client.first_name,client.last_name].filter(Boolean).join(' ').trim()||'Client',
+      phone_number:client.phone||null,
+      last_service:client.preferred_service||null,
+      is_vip:String(client.status||'').toLowerCase()==='vip'||Number(client.lifetime_value||0)>=1000
+    })), bookings=bookingsQ.data||[], events=eventsQ.data||[];
     const futureClientIds=new Set(bookings.filter(b=>new Date(b.starts_at).getTime()>=now&&b.status!=='cancelled').map(b=>b.client_id).filter(Boolean));
     const historical=bookings.filter(b=>new Date(b.starts_at).getTime()<now&&b.status!=='cancelled');
     const avgTicket=historical.length?historical.reduce((s,b)=>s+Number(b.price||0),0)/historical.length:100;
