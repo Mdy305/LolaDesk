@@ -25,7 +25,7 @@ export function normalizeContact(input={}){
     preferred_service:text(input.preferred_service||input.service,160)||null,
     notes:text(input.notes,2000)||null,
     lifetime_value:Math.max(0,Number(input.lifetime_value||input.ltv||0)||0),
-    last_visit:input.last_visit?new Date(input.last_visit).toISOString():null,
+    last_visit:(()=>{ if(!input.last_visit) return null; const d=new Date(input.last_visit); return Number.isNaN(d.getTime())?null:d.toISOString(); })(),
     status:text(input.status,30).toLowerCase()||'active'
   };
 }
@@ -48,14 +48,16 @@ export async function saveContacts(tenantId,inputs=[]){
   const byPhone=new Map(existing.filter(x=>x.phone).map(x=>[normalizePhone(x.phone),x.id]));
   const byEmail=new Map(existing.filter(x=>x.email).map(x=>[String(x.email).toLowerCase(),x.id]));
   let created=0,updated=0;
-  const rows=normalized.map(contact=>{
+  const existingIds=new Set(existing.map(x=>x.id)), rowsById=new Map();
+  for(const contact of normalized){
     const id=(contact.phone&&byPhone.get(contact.phone))||(contact.email&&byEmail.get(contact.email))||randomUUID();
-    const wasExisting=existing.some(x=>x.id===id);
-    if(wasExisting) updated++; else created++;
+    const wasKnown=existingIds.has(id)||rowsById.has(id);
+    if(existingIds.has(id)) updated++; else if(!rowsById.has(id)) created++;
     if(contact.phone) byPhone.set(contact.phone,id);
     if(contact.email) byEmail.set(contact.email,id);
-    return {id,tenant_id:tenantId,...contact,updated_at:new Date().toISOString()};
-  });
+    rowsById.set(id,{...(rowsById.get(id)||{}),id,tenant_id:tenantId,...contact,updated_at:new Date().toISOString()});
+  }
+  const rows=[...rowsById.values()];
   const {data,error}=await c.from('clients').upsert(rows,{onConflict:'id'}).select('*');
   if(error) throw error;
   return {saved:(data||[]).length,created,updated,skipped:Math.max(0,inputs.length-normalized.length),clients:data||[]};
