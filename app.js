@@ -188,8 +188,8 @@ function setOrbState(s){
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
   const stage = document.getElementById('orbStage');
-  wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
-  mic.classList.toggle('on', s==='listening');
+  if(wave) wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
+  if(mic) mic.classList.toggle('on', s==='listening');
   if(stage) stage.classList.toggle('ambient', s==='ambient');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
@@ -198,8 +198,8 @@ function setOrbState(s){
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
   };
-  title.textContent = labels[s][0];
-  sub.textContent = labels[s][1];
+  if(title) title.textContent = labels[s][0];
+  if(sub) sub.textContent = labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -564,13 +564,23 @@ function setupRecognition(){
       else interim += e.results[i][0].transcript;
     }
     const t = final || interim;
-    if(voiceTarget==='orb') document.getElementById('orbTranscript').textContent = t;
+    if(voiceTarget==='orb'){
+      const transcript=document.getElementById('orbTranscript');
+      if(transcript) transcript.textContent=t;
+    }
     if(final){
       stopListening();
       askLola(final);
     }
   };
-  recognition.onerror = ()=> stopListening();
+  recognition.onerror = (event)=>{
+    console.error('[Lola voice] recognition error',event?.error||event);
+    const sub=document.getElementById('orbSub');
+    if(sub) sub.textContent=event?.error==='not-allowed'
+      ? 'Microphone access is blocked — allow it in your browser, then tap again'
+      : 'Voice stopped — tap Lola to retry';
+    stopListening();
+  };
   recognition.onend = ()=>{ if(listening) stopListening(); };
 }
 
@@ -582,7 +592,14 @@ function startListening(){
   stopSpeaking();
   if(voiceTarget==='orb') setOrbState('listening');
   if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
-  try{ recognition.start(); }catch(e){}
+  try{ recognition.start(); }
+  catch(error){
+    console.error('[Lola voice] could not start recognition',error);
+    listening=false;
+    setOrbState('idle');
+    const sub=document.getElementById('orbSub');
+    if(sub) sub.textContent='Voice could not start — tap Lola to retry';
+  }
   // Resonance IN: a parallel analyser on the mic so the neural orb
   // ripples with the owner's actual voice amplitude while listening.
   if(window.LolaOrb && voiceTarget==='orb'){
@@ -599,7 +616,7 @@ function stopListening(){
   if(recognition) try{ recognition.stop(); }catch(e){}
   if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle');
   document.getElementById('chatMic').classList.remove('on');
-  setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
+  setTimeout(()=>{ const transcript=document.getElementById('orbTranscript'); if(transcript) transcript.textContent=''; }, 2500);
   // Resume passive wake-word listening once the active command finishes,
   // if ambient mode is on and not muted.
   if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 400);
