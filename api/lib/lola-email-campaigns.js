@@ -105,7 +105,6 @@ async function generateEmailContent(client, campaignType, context, tenant) {
   const prompt = getCampaignPrompt(campaignType, client, context, tenant);
 
   const result = await InvokeLLM({
-    model: process.env.REPLY_MODEL || 'claude-3-5-sonnet-20241022',
     prompt,
     max_tokens: 800,
     temperature: 0.8

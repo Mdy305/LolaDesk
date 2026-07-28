@@ -1,7 +1,7 @@
 /**
  * api/lib/lola-photo-analysis.js — LOLA™ Photo Analysis with Vision AI
  * ════════════════════════════════════════════════════════════════════
- * Analyzes hair photos using Claude Vision to:
+ * Analyzes hair photos through the shared Telnyx Kimi client to:
  * - Assess hair condition (healthy/damaged/severely_damaged)
  * - Identify service needs and complexity
  * - Determine risk level (low/medium/high)
@@ -13,8 +13,8 @@ import { InvokeLLM, validateImageUrl, processBatch, retryWithBackoff } from './l
 import { createHash } from 'crypto';
 
 // Configuration
-const VISION_MODEL = process.env.VISION_MODEL || 'claude-3-5-sonnet-20241022';
-const REPLY_MODEL = process.env.REPLY_MODEL || 'claude-3-5-haiku-20241022';
+const VISION_MODEL = 'moonshotai/Kimi-K2.6';
+const REPLY_MODEL = 'moonshotai/Kimi-K2.6';
 const ANALYSIS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 // In-memory cache for analysis results

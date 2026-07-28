@@ -2,7 +2,7 @@
  * api/lib/telnyx-live-mms-vision.js — In-Call MMS Vision Processing
  * ════════════════════════════════════════════════════════════════
  * During active voice call, client sends MMS (photo) to salon number.
- * Lola's vision LLM (GPT-4o) processes it in real-time and responds.
+ * Lola's shared Telnyx Kimi client processes it in real-time and responds.
  *
  * EXAMPLE FLOW:
  * 1. Lola: "To verify your insurance covers this, please take a photo of your insurance card and text it now"
@@ -20,6 +20,7 @@
  */
 
 import { randomUUID as uuidv4 } from 'crypto'; // built-in — the 'uuid' package was never in package.json and crashed cold deploys
+import { chat } from './llm.js';
 // global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
 
 const inCallMmsCache = new Map(); // callControlId -> { mmsData, processed, response }
@@ -52,7 +53,7 @@ export async function handleInCallMMS(req, res) {
     // Download image from Telnyx
     const imageBuffer = await downloadMedia(mediaUrl);
 
-    // Send to vision LLM (GPT-4o)
+    // Send to the shared Telnyx Kimi client
     const visionResult = await processWithVision({
       image: imageBuffer,
       mediaType,
@@ -82,7 +83,7 @@ export async function handleInCallMMS(req, res) {
 }
 
 /**
- * Send image to GPT-4o Vision for analysis
+ * Send image through the shared Telnyx Kimi client for analysis
  * Returns structured data extracted from image
  */
 export async function processWithVision({ image, mediaType, context, callControlId }) {
@@ -92,48 +93,25 @@ export async function processWithVision({ image, mediaType, context, callControl
     // Determine vision analysis task based on context
     const analysisPrompt = determineAnalysisTask(context);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o', // Latest multimodal model
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mediaType};base64,${base64Image}`
-                }
-              },
-              {
-                type: 'text',
-                text: analysisPrompt
-              }
-            ]
-          }
-        ],
-        max_tokens: 500,
-        temperature: 0.3 // Low temp for factual extraction
-      })
+    const result = await chat({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64Image}` } },
+          { type: 'text', text: analysisPrompt }
+        ]
+      }],
+      maxTokens: 500,
+      temperature: 0.3
     });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const analysisText = data.choices?.[0]?.message?.content || '';
+    if (!result.ok) throw new Error(result.error || 'Telnyx inference failed');
+    const analysisText = result.text;
 
     // Parse structured result
-    const result = parseVisionResult(analysisText, context);
+    const parsedResult = parseVisionResult(analysisText, context);
 
-    console.log(`[MMS-VISION] Analysis complete for ${callControlId}:`, result);
-    return result;
+    console.log(`[MMS-VISION] Analysis complete for ${callControlId}:`, parsedResult);
+    return parsedResult;
   } catch (e) {
     console.error(`[MMS-VISION] Vision processing error:`, e);
     return { error: true, message: e.message };

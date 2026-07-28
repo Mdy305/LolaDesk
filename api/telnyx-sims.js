@@ -13,6 +13,7 @@
  * ENV VARS:
  *   TELNYX_API_KEY
  */
+import { getUserFromToken, bearer } from './lib/auth.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 
@@ -79,7 +80,7 @@ export async function handlePost(req, res){
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if(req.method === 'OPTIONS') return res.status(200).end();
 
   if(!process.env.TELNYX_API_KEY){
@@ -87,6 +88,8 @@ export default async function handler(req, res){
   }
 
   try{
+    const user = await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({ error: 'Unauthorized' });
     if(req.method === 'GET') return await handleGet(req, res);
     if(req.method === 'POST') return await handlePost(req, res);
     return res.status(405).json({ error: 'Method Not Allowed' });

@@ -10,7 +10,7 @@ const DEFAULT_TELNYX_MODEL = 'moonshotai/Kimi-K2.6';
 const REQUEST_TIMEOUT_MS = 30000;
 
 export const AI_PROVIDER = 'telnyx';
-export const POWER_MODEL = process.env.LLM_POWER_MODEL || DEFAULT_TELNYX_MODEL;
+export const POWER_MODEL = DEFAULT_TELNYX_MODEL;
 export const TELNYX_CAPABILITIES = Object.freeze({
   inference: true,
   voice: true,
@@ -71,8 +71,6 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
       });
       const data=await r.json().catch(()=>({}));
 
-      // Log operational metadata only. Never log full prompts, client messages,
-      // reasoning, or generated content in production.
       console.info('[telnyx-ai]',{
         ok:r.ok,
         status:r.status,

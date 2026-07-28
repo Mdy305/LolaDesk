@@ -23,7 +23,7 @@ process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 process.env.SUPABASE_SERVICE_KEY = 'e2e-service-key';
 process.env.APP_URL = 'https://www.loladesk.com';
 delete process.env.TELNYX_API_KEY; delete process.env.TELNYX_PUBLIC_KEY;
-delete process.env.ELEVENLABS_API_KEY; delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ELEVENLABS_API_KEY;
 
 import { start } from './supabase-emulator.mjs';
 import pg from 'pg';

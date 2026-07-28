@@ -6,6 +6,7 @@
  */
 
 // global fetch (Node 18+) — the 'node-fetch' package was never in package.json and crashed cold deploys
+import { chat, POWER_MODEL } from './llm.js';
 
 const RATE_LIMIT_DELAY = 500; // ms between requests
 const MAX_RETRIES = 3;
@@ -14,71 +15,34 @@ const MAX_RETRIES = 3;
  * Invoke LLM with multi-modal support (images, documents)
  */
 export async function InvokeLLM({ model, prompt, messages, images, max_tokens, temperature }) {
-  const selectedModel = model || process.env.VISION_MODEL || 'claude-3-5-sonnet-20241022';
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not configured');
-  }
-
   try {
-    const payload = {
-      model: selectedModel,
-      max_tokens: max_tokens || 1000,
-      temperature: temperature || 0.7,
-      system: prompt,
-      messages: messages || [{ role: 'user', content: prompt }]
-    };
-
-    // Add images if provided
+    let requestMessages = messages || [{ role: 'user', content: prompt }];
     if (images && images.length > 0) {
       const contentBlocks = [];
-
-      // Add image blocks
       for (const imageUrl of images) {
-        // Download image and convert to base64
         const imageData = await downloadImageAsBase64(imageUrl);
         contentBlocks.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/jpeg',
-            data: imageData
-          }
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${imageData}` }
         });
       }
-
-      // Add text block
-      contentBlocks.push({
-        type: 'text',
-        text: prompt
-      });
-
-      payload.messages = [{ role: 'user', content: contentBlocks }];
+      contentBlocks.push({ type: 'text', text: prompt });
+      requestMessages = [{ role: 'user', content: contentBlocks }];
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(payload)
+    const result = await chat({
+      system: prompt,
+      messages: requestMessages,
+      maxTokens: max_tokens || 1000,
+      temperature: temperature ?? 0.7,
+      model: model || POWER_MODEL
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${error}`);
-    }
-
-    const data = await response.json();
-    const content = data.content?.[0]?.text || '';
+    if (!result.ok) throw new Error(result.error || 'Telnyx inference failed');
 
     return {
-      response: content,
-      model: selectedModel,
-      usage: data.usage,
+      response: result.text,
+      model: result.model,
+      provider: 'telnyx',
       ok: true
     };
   } catch (error) {

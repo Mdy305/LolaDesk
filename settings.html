@@ -140,6 +140,7 @@
               Order Private APN SIM
             </div>
             <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Lola Link — a dedicated cellular connection for your salon. Your front-desk iPad stays connected to Lola even when the Wi-Fi drops.</p>
+            <input class="set-input" id="fSimAddressId" placeholder="Telnyx shipping address ID" style="margin:0 0 10px;max-width:320px">
             <button class="btn btn-primary" id="btnOrderSim" onclick="orderTelnyxSim()" style="font-size:12px;">Ship to Salon ($15/mo)</button>
           </div>
 
@@ -148,6 +149,7 @@
             <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Move your legacy salon phone number (Verizon, AT&amp;T, etc.) to LolaDesk so Lola can answer the main line.</p>
             <div style="display:flex; gap:10px;">
               <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width:200px;">
+              <input class="set-input" id="fPortContact" placeholder="Authorized contact name" style="margin:0; flex:1; max-width:240px;">
               <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Bring my number</button>
             </div>
           </div>
@@ -301,15 +303,20 @@ window.manageBilling = async function(){
 
 // ── Telecom Wiring ──
 window.orderTelnyxSim = async function(){
+  const addressId = document.getElementById('fSimAddressId').value.trim();
+  if(!addressId){ showToast('Enter the Telnyx shipping address ID.', 'err'); return; }
   const btn = document.getElementById('btnOrderSim');
   const og = btn.textContent;
   btn.textContent = 'Ordering...';
   btn.disabled = true;
   try {
-    const r = await fetch('/api/carrier-sims', {
+    const r = await fetch('/api/telnyx-sims', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address_id: 'mock_addr_123', quantity: 1 })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (window.LolaAuth?.token || '')
+      },
+      body: JSON.stringify({ address_id: addressId, quantity: 1 })
     });
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || 'Failed to order SIM');
@@ -324,17 +331,26 @@ window.orderTelnyxSim = async function(){
 
 window.portTelnyxNumber = async function(){
   const num = document.getElementById('fPortNumber').value.trim();
+  const contactName = document.getElementById('fPortContact').value.trim();
   if(!num){ showToast('Enter a number to port.', 'err'); return; }
+  if(!contactName){ showToast('Enter the authorized contact name.', 'err'); return; }
   
   const btn = document.getElementById('btnPortNum');
   const og = btn.textContent;
   btn.textContent = 'Initiating...';
   btn.disabled = true;
   try {
-    const r = await fetch('/api/carrier-porting', {
+    const r = await fetch('/api/telnyx-porting', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone_numbers: [num], tenantId: window.LolaData?.currentTenant?.slug })
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (window.LolaAuth?.token || '')
+      },
+      body: JSON.stringify({
+        requested_phone_number: num,
+        authorized_contact_name: contactName,
+        authorized_contact_email: window.LolaAuth?.user?.email || ''
+      })
     });
     const d = await r.json();
     if(!r.ok) throw new Error(d.error || 'Failed to port number');

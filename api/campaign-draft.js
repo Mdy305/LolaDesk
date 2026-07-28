@@ -1,5 +1,6 @@
 import { db } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { chat } from './lib/llm.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,31 +30,16 @@ export default async function handler(req, res) {
       }
     }
 
-    const openAiKey = process.env.OPENAI_API_KEY;
-    if (!openAiKey) {
-      // Stub if missing key
-      return res.status(200).json({ ok: true, draft: `(Simulated) Hey! We are running a special this weekend at ${tenantRow.name}. Book now to get 20% off!` });
-    }
-
     const systemPrompt = `You are a premium AI marketing manager for a high-end salon named ${tenantRow.name}. Write a short, highly-converting SMS/Email draft based on the user's prompt. Use the following Knowledge Base context to ensure prices and services are perfectly accurate:\n${contextStr}`;
 
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${openAiKey}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt }
-        ]
-      })
+    const result = await chat({
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 600,
+      temperature: 0.7
     });
-
-    const aiData = await aiRes.json();
-    const draft = aiData.choices?.[0]?.message?.content || "Failed to generate.";
+    if (!result.ok) return res.status(502).json({ error: result.error || 'Telnyx inference failed' });
+    const draft = result.text;
 
     return res.status(200).json({ ok: true, draft });
   } catch (e) {

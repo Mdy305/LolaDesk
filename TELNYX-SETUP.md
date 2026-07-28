@@ -27,7 +27,7 @@ Lola's call replies default to one short sentence (`buildSystemPrompt` in `telny
 See `.env.example` for the complete, current list — that file is the source of truth. The ones specific to Telnyx + voice:
 
 ```
-ANTHROPIC_API_KEY          Lola's brain (or set LLM_PROVIDER=telnyx to use Telnyx Inference instead)
+TELNYX_API_KEY             Lola's voice, messaging, and Kimi inference
 TELNYX_API_KEY             Voice, SMS, and number provisioning
 TELNYX_VOICE_APP_ID        Your TeXML app id (auto-attach voice to new numbers)
 TELNYX_MESSAGING_PROFILE   Your messaging profile id (auto-attach SMS)

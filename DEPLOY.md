@@ -33,7 +33,7 @@ git push -u origin main
 Or from the terminal: `npx vercel --prod`
 
 ### 3. Set environment variables
-In Vercel → your project → **Settings → Environment Variables**, add every variable listed in `.env.example` — that file is the single source of truth for what this codebase actually reads from `process.env`. At minimum, for the app to do anything real beyond static pages: `ANTHROPIC_API_KEY` (or `LLM_PROVIDER=telnyx` + `TELNYX_API_KEY`), `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
+In Vercel → your project → **Settings → Environment Variables**, add every variable listed in `.env.example` — that file is the single source of truth for what this codebase actually reads from `process.env`. At minimum, for the app to do anything real beyond static pages: `TELNYX_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 
 For Lola to sound like Lola on calls (not a generic fallback voice): `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`.
 

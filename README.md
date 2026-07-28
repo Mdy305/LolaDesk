@@ -47,7 +47,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `billing/checkout.js`, `billing/portal.js`, `billing/webhook.js`, `lib/stripe.js` | Stripe subscriptions — Checkout, customer portal, and a signature-verified webhook that activates/suspends tenants. |
 | `oauth/connect.js`, `oauth/callback.js`, `lib/connectors/*.js` | OAuth to Square, Boulevard, Vagaro, Mindbody, Fresha, Shopify, Google Calendar. Tokens are **encrypted at rest** (`lib/crypto.js`) — never stored in plaintext. Vagaro/Mindbody/Fresha show as "Coming soon" until their partner credentials are set (see `.env.example`). |
 | `lib/db.js` | The shared Supabase client + every multi-tenant helper (tenant resolution, client/conversation/booking writes, usage logging, encrypted integration storage). Everything else imports from here. |
-| `lib/llm.js` | Shared LLM client — Telnyx Inference (Kimi-K2.6) by default, or Anthropic Claude directly if `LLM_PROVIDER=anthropic`. Resilient retry on empty responses. |
+| `lib/llm.js` | The only LLM client — Telnyx Inference with Moonshot Kimi-K2.6. Resilient retry on empty responses. |
 | `lib/auth.js` | Supabase Auth helpers (create user, sign in, verify bearer tokens). |
 | `marketer.js`, `agent-variables.js`, `notifications.js` | Supporting agents/utilities — site analysis, templated prompt variables, in-app notifications. |
 

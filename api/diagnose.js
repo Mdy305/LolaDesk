@@ -25,7 +25,6 @@ export default async function handler(req, res){
   const checks = [
     shape('SUPABASE_URL', url, 'https://'),
     shape('SUPABASE_SERVICE_KEY', key, 'eyJ'),
-    shape('ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY, 'sk-ant-'),
     shape('TELNYX_API_KEY', process.env.TELNYX_API_KEY, 'KEY'),
     shape('TELNYX_VOICE_APP_ID', process.env.TELNYX_VOICE_APP_ID),
     shape('ELEVENLABS_API_KEY', process.env.ELEVENLABS_API_KEY),
