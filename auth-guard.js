@@ -61,11 +61,14 @@
       const main=document.querySelector('.main'); if(!main||document.getElementById('launchReadinessBanner')) return;
       const score=Number(data.score||0),next=Array.isArray(data.next_actions)?data.next_actions[0]:'',ready=!!data.can_go_live;
       const action=ready?{label:'Talk to Lola',kind:'talk'}:actionFor();
-      const banner=document.createElement('div'); banner.id='launchReadinessBanner';
-      banner.style.cssText=['display:flex','align-items:center','gap:14px','padding:14px 18px','margin:0 0 18px','border:1px solid rgba(204,255,0,.25)','border-radius:14px','background:rgba(204,255,0,.07)','flex-wrap:wrap'].join(';');
-      banner.innerHTML=`<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#ccff00;color:#070708;font-weight:750;flex:0 0 auto">${score}</div><div style="flex:1;min-width:220px"><div style="font-size:13px;font-weight:650">${ready?'Lola is ready to work with you':'Lola is not fully activated yet'}</div><div style="font-size:12px;color:#8a8a92;margin-top:2px">${ready?'Say “Hey Lola” or tap the living presence to speak.':(next||'Open Activation Studio to validate voice, phone, booking, knowledge and live data.')}</div></div><button id="launchReadinessAction" style="border:0;border-radius:10px;padding:9px 12px;background:#ccff00;color:#070708;font-weight:650;cursor:pointer">${action.label}</button>`;
-      const topbar=main.querySelector('.topbar'); if(topbar&&topbar.nextSibling) main.insertBefore(banner,topbar.nextSibling); else main.prepend(banner);
-      banner.querySelector('#launchReadinessAction').onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };
+      const banner=document.createElement('button'); banner.id='launchReadinessBanner';
+      banner.type='button';
+      banner.title=ready?'Lola is live':(next||'Finish connecting Lola');
+      banner.setAttribute('aria-label',ready?'Lola is live. Talk to Lola.':`Setup ${score}% complete. ${next||'Open Activation Studio.'}`);
+      banner.style.cssText=['display:flex','align-items:center','gap:8px','height:40px','padding:0 12px','border:1px solid '+(ready?'rgba(204,255,0,.22)':'rgba(255,179,64,.3)'),'border-radius:12px','background:'+(ready?'rgba(204,255,0,.07)':'rgba(255,179,64,.08)'),'color:#f2f2f5','font:inherit','cursor:pointer','white-space:nowrap'].join(';');
+      banner.innerHTML=`<span style="width:8px;height:8px;border-radius:50%;background:${ready?'#ccff00':'#ffb340'};box-shadow:0 0 10px ${ready?'rgba(204,255,0,.55)':'rgba(255,179,64,.5)'}"></span><span style="font-size:12px;font-weight:650">${ready?'Lola live':`Setup ${score}%`}</span>`;
+      const actions=main.querySelector('.topbar-actions'); if(actions) actions.prepend(banner); else main.prepend(banner);
+      banner.onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };
     }).catch(err=>console.warn('[auth-guard] launch readiness unavailable:',err));
   }
   if(!getToken()&&!getRefreshToken()){redirectToLogin();throw new Error('LolaDesk auth-guard: no session, redirecting to login');}
