@@ -334,7 +334,7 @@ function defaultFallback(channel) {
   if (channel === 'sms') {
     return 'Got it. Reply with what you need — booking, prices, hours, etc.';
   }
-  return 'I'm here to help. Tell me what you need.';
+  return "I\'m here to help. Tell me what you need.";
 }
 
 /* ─────────────────────────────────────────────────────────────
