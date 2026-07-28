@@ -790,28 +790,42 @@ window.toggleAmbientListening = function(){
 let currentAudio = new Audio();
 let currentAudioUrl = null;
 let audioUnlocked = false;
+let audioUnlocking = false;
+const audioUnlockEvents = ['click', 'pointerdown', 'touchstart', 'keydown'];
+// A real, silent WAV lets the browser authorize this persistent Audio element
+// during a user gesture. Calling play() with an empty src always rejects.
+const silentAudioSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
 
-function unlockAudio() {
-  if (audioUnlocked) return;
+function removeAudioUnlockListeners() {
+  audioUnlockEvents.forEach((eventName) => {
+    window.removeEventListener(eventName, unlockAudio);
+  });
+}
 
-  const unlockPromise = currentAudio.play();
+async function unlockAudio() {
+  if (audioUnlocked || audioUnlocking) return;
+  audioUnlocking = true;
 
-  if (unlockPromise && typeof unlockPromise.then === 'function') {
-    unlockPromise
-      .then(() => {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        audioUnlocked = true;
-      })
-      .catch(() => {});
+  try {
+    currentAudio.src = silentAudioSrc;
+    currentAudio.currentTime = 0;
+    await currentAudio.play();
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
+    audioUnlocked = true;
+    removeAudioUnlockListeners();
+  } catch (error) {
+    // Keep the listeners installed so the next genuine gesture can retry.
+    console.warn('[speak] Audio unlock was blocked; waiting for another gesture.', error);
+  } finally {
+    audioUnlocking = false;
   }
 }
 
-['click', 'pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
-  window.addEventListener(eventName, unlockAudio, {
-    once: true,
-    passive: true
-  });
+audioUnlockEvents.forEach((eventName) => {
+  window.addEventListener(eventName, unlockAudio, { passive: true });
 });
 
 let voiceMeter = null; // Lola's playback → orb resonance
@@ -872,7 +886,19 @@ async function speak(text){
     const cleanup = ()=>{ if(currentAudioUrl){ URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; } if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
     currentAudio.onended = cleanup;
     currentAudio.onerror = cleanup;
-    await currentAudio.play();
+    try{
+      await currentAudio.play();
+      audioUnlocked = true;
+      removeAudioUnlockListeners();
+    }catch(playbackError){
+      if(playbackError && playbackError.name === 'NotAllowedError'){
+        audioUnlocked = false;
+        audioUnlockEvents.forEach((eventName) => {
+          window.addEventListener(eventName, unlockAudio, { passive: true });
+        });
+      }
+      throw playbackError;
+    }
   }catch(e){
     // Fallback: the browser's built-in voice, only if ElevenLabs is
     // unreachable or unconfigured — keeps the dashboard from going silent.
