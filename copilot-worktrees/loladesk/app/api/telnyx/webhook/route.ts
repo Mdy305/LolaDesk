@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const TELNYX_API_KEY = process.env.TELNYX_API_KEY;
-const STREAMING_SOCKET_URL =
-  process.env.LOLABRAIN_STREAMING_SOCKET_URL || 'wss://loladesk.com/api/telnyx/stream';
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,6 +28,7 @@ export async function POST(req: NextRequest) {
 
     const tenantId = tenantConfig?.tenant_id || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
 
+    // 1. Answer the call
     await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/answer`, {
       method: 'POST',
       headers: {
@@ -38,7 +37,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const streamUrl = `${STREAMING_SOCKET_URL}?tenant_id=${tenantId}`;
+    // 2. Start WebSocket stream pointing to speak-lola endpoint
+    const streamUrl = `wss://loladesk.com/api/speak-lola?tenant_id=${tenantId}`;
 
     await fetch(`https://api.telnyx.com/v2/calls/${callControlId}/actions/streaming_start`, {
       method: 'POST',
