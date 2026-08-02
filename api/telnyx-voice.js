@@ -14,7 +14,7 @@ import {
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured, registerForText } from './lib/elevenlabs.js';
-import { putAudioKeyed, getKeyedAudioUrl } from './lib/tts-cache.js';
+// tts-cache.js is now a stub — Supabase Storage logic is inline below
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -160,20 +160,49 @@ export default async function handler(req, res){
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;
   // everyone after gets instant answer at zero tts_chars cost.
+  // ── Supabase Storage-backed ElevenLabs TTS cache ──
+  // Audio is uploaded to the 'voice-audio' Supabase bucket and served
+  // via its public CDN URL. This works across all Vercel instances —
+  // no in-memory state, no cross-instance 404s.
+  const VOICE_BUCKET = 'voice-audio';
+  const supabase = db(); // reuse the shared Supabase client
+
   async function speakCached(text, register){
-    if(!elevenLabsConfigured()) return '';
+    if(!elevenLabsConfigured() || !supabase) return '';
     const reg = register || registerForText(text);
     const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
-    // Check if already cached in Supabase Storage
-    let url = await getKeyedAudioUrl(key);
-    if(url) return url;
-    // Synthesize and upload to Supabase Storage
+    const storagePath = `cached/${key}.mp3`;
+
+    // Check if already cached in Supabase Storage (HEAD request)
+    try{
+      const { data: pubData } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      if(pubData?.publicUrl){
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try{
+          const r = await fetch(pubData.publicUrl, { method: 'HEAD', signal: controller.signal });
+          clearTimeout(timer);
+          if(r.ok) return pubData.publicUrl; // cache hit!
+        }catch{ clearTimeout(timer); }
+      }
+    }catch{}
+
+    // Cache miss — synthesize via ElevenLabs and upload to Supabase
     try{
       const audio = await synthesize(text, { register: reg });
-      url = await putAudioKeyed(key, audio);
+      const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
+        .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
+      if(upErr){
+        console.error('[VOICE] Supabase upload error:', upErr?.message || upErr);
+        return '';
+      }
+      const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
       await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
-      return url || '';
-    }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
+      return pubData2?.publicUrl || '';
+    }catch(e){
+      console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100));
+      return '';
+    }
   }
 
   // ── Silence path: Gather timed out and <Redirect> brought us back ──
@@ -283,7 +312,6 @@ export default async function handler(req, res){
       ];
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
       const state = Buffer.from(speech).toString('base64url');
-      const ackUrl = await speakCached(ack, 'warm');
       const ackUrl = await speakCached(ack, 'warm');
       const ackBlock = ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`;
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackBlock}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
