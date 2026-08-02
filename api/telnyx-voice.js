@@ -159,9 +159,13 @@ export default async function handler(req, res){
   // deterministic replies. First caller of the window pays ElevenLabs;
   // everyone after gets instant answer at zero tts_chars cost.
   async function speakCached(text, register){
-    if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
+    if(!elevenLabsConfigured()) return '';
     const reg = register || registerForText(text);
-    const base = process.env.APP_URL.replace(/\/+$/,'');
+    // Use production domain for audio URLs — Vercel preview URLs are not stable
+    const appUrl = process.env.APP_URL || '';
+    const base = appUrl.includes('vercel.app')
+      ? 'https://www.loladesk.com'
+      : appUrl.replace(/\/+$/,'');
     const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
     let id = getKeyedAudioId(key);
     if(!id){
@@ -417,11 +421,11 @@ export default async function handler(req, res){
   // synthesize once per cache window and replay instantly (faster
   // answer, zero repeated ElevenLabs spend). Unique LLM replies simply
   // pass through the same path. <Say> fallback preserved when empty.
-  if(!elevenLabsConfigured() || !process.env.APP_URL){
+  if(!elevenLabsConfigured()){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
     if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
-    if(!process.env.APP_URL) missing.push('APP_URL');
+    if(!appUrl || appUrl.includes('vercel.app')) missing.push('APP_URL (production domain)');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
   // clean for the mouth: no markdown, no newlines, spoken-length cap

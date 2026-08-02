@@ -87,9 +87,11 @@ async function provisionNumber({ phone_number_id }){
   const results = {};
   // attach voice connection (TeXML app)
   if(process.env.TELNYX_VOICE_APP_ID){
+    // Use the TeXML app with our webhook (loladesk.com/api/telnyx-voice), not the broken 'LolaDesk' connection
+    const voiceAppId = process.env.TELNYX_VOICE_APP_ID === '2982432232334951429' ? '2991758319724529273' : process.env.TELNYX_VOICE_APP_ID;
     const r = await fetch(`${TELNYX}/phone_numbers/${phone_number_id}/voice`, {
       method:'PATCH', headers: authHeaders(),
-      body: JSON.stringify({ connection_id: process.env.TELNYX_VOICE_APP_ID })
+      body: JSON.stringify({ connection_id: voiceAppId })
     });
     results.voice = await r.json();
   }
