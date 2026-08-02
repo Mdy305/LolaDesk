@@ -1,98 +1,114 @@
 /**
- * api/lib/tts-cache.js — In-memory audio cache for /api/voice-audio
+ * api/lib/tts-cache.js — Supabase Storage-backed audio cache for Telnyx <Play>
  * ════════════════════════════════════════════════════════════════
- * Telnyx TeXML's <Play> verb fetches audio by URL — it can't receive
- * raw bytes inline like <Say> text. So the flow is:
  *
- *   1. telnyx-voice.js generates Lola's reply text
- *   2. it synthesizes the audio via ElevenLabs RIGHT THEN (server-side)
- *   3. it stores the MP3 bytes here under a short random id
- *   4. it returns TeXML <Play>https://.../api/voice-audio?id=XYZ</Play>
- *   5. Telnyx immediately fetches that URL — we serve the cached bytes
+ * Telnyx TeXML's <Play> verb fetches audio by URL. We synthesize Lola's
+ * replies via ElevenLabs (brand voice), upload the MP3 to Supabase Storage
+ * (bucket: voice-audio), and return the PUBLIC URL for <Play>.
  *
- * This is a single Vercel serverless instance's memory, which is fine
- * because Telnyx fetches the URL within ~1-2s of receiving the TeXML
- * (same warm invocation in practice, and we set a generous TTL as a
- * safety net for cold starts / retries). Entries are deleted after
- * being served once, or after TTL_MS, whichever comes first.
+ * Telnyx fetches directly from Supabase's CDN — no Vercel instance
+ * dependency, no cross-instance 404s, always available.
  *
- * NOTE: Vercel serverless functions can run as multiple instances.
- * If you see occasional 404s on /api/voice-audio under load, that's
- * a request landing on a different instance than the one that cached
- * the audio — the fallback in telnyx-voice.js (falling back to <Say>)
- * covers that case gracefully. For guaranteed cross-instance delivery
- * at scale, swap this for a tiny Supabase Storage upload instead of
- * in-memory — see the comment at the bottom of this file.
+ * GREETING CACHE: Repeated lines (greetings, re-prompts, goodbyes) are
+ * cached under a stable hash key with a longer TTL. First call of the
+ * window pays ElevenLabs; every call after gets instant audio at zero
+ * tts_chars cost. We check if the file already exists before synthesizing.
+ *
+ * FALLBACK: If Supabase isn't configured or upload fails, return null
+ * and the caller falls back to <Say> with Polly.Joanna-Neural.
  */
 
-const TTL_MS = 60_000; // 1 minute is generous; Telnyx fetches within seconds
-const store = new Map(); // id -> { buf, expires }
+import { db } from './db.js';
 
-/* ── Keyed reply cache ──────────────────────────────────────────
-   Lola says certain lines constantly: the per-tenant greeting on
-   EVERY inbound call, the "are you still there?" re-prompt, the
-   goodbye, and the deterministic skill replies. Re-synthesizing
-   those through ElevenLabs on every call is pure waste twice over:
-   it adds ~1-2s of first-ring latency (the caller hears silence)
-   and it burns tts_chars — which is margin — on identical text.
+const BUCKET = 'voice-audio';
+const KEYED_PREFIX = 'cached/';
+const ONEOFF_PREFIX = 'oneoff/';
 
-   So repeated lines are cached under a stable key (voice + text)
-   with a longer TTL and are NOT consumed on read. First call of the
-   day pays the synthesis; every call after answers instantly and
-   costs zero ElevenLabs characters. Same single-instance caveat as
-   the id store above; the <Say> fallback covers instance misses. */
-const KEYED_TTL_MS = 15 * 60_000;
-const keyed = new Map(); // key -> { id, expires }
-
-export function getKeyedAudioId(key){
-  const entry = keyed.get(key);
-  if(!entry) return null;
-  if(entry.expires < Date.now() || !store.has(entry.id)){ keyed.delete(key); return null; }
-  return entry.id;
-}
-
-export function putAudioKeyed(key, buf){
-  cleanup();
-  const id = 'k' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-  store.set(id, { buf, expires: Date.now() + KEYED_TTL_MS });
-  keyed.set(key, { id, expires: Date.now() + KEYED_TTL_MS });
-  return id;
-}
-
-function cleanup(){
-  const now = Date.now();
-  for(const [id, entry] of store){
-    if(entry.expires < now) store.delete(id);
+/**
+ * Upload audio to Supabase Storage and return the public URL.
+ */
+async function uploadAudio(path, buf){
+  const c = db();
+  if(!c) return null;
+  try{
+    const { error } = await c.storage.from(BUCKET).upload(path, buf, {
+      contentType: 'audio/mpeg',
+      upsert: true
+    });
+    if(error){
+      console.error('[TTS-CACHE] upload error:', error?.message || error);
+      return null;
+    }
+    const { data } = c.storage.from(BUCKET).getPublicUrl(path);
+    return data?.publicUrl || null;
+  }catch(e){
+    console.error('[TTS-CACHE] upload exception:', String(e?.message || e).slice(0,200));
+    return null;
   }
-  for(const [key, entry] of keyed){
-    if(entry.expires < now || !store.has(entry.id)) keyed.delete(key);
-  }
-}
-
-export function putAudio(buf){
-  cleanup();
-  const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  store.set(id, { buf, expires: Date.now() + TTL_MS });
-  return id;
-}
-
-export function takeAudio(id){
-  const entry = store.get(id);
-  if(!entry) return null;
-  // Don't delete on first read — Telnyx (and some debugging tools) can
-  // issue a HEAD or retry. Let TTL expiry do the cleanup instead.
-  if(entry.expires < Date.now()){ store.delete(id); return null; }
-  return entry.buf;
 }
 
 /**
- * SCALING NOTE: if you outgrow single-instance memory (high concurrent
- * call volume across many Vercel instances), replace putAudio/takeAudio
- * with a Supabase Storage bucket:
- *
- *   await supabase.storage.from('voice-audio').upload(`${id}.mp3`, buf, { contentType: 'audio/mpeg' });
- *   const { data } = supabase.storage.from('voice-audio').getPublicUrl(`${id}.mp3`);
- *   // use data.publicUrl directly in <Play>, and cron-delete old files hourly
- *
- * That removes the single-instance assumption entirely. Not needed yet.
+ * Check if a keyed audio file already exists by trying to get its public URL.
+ * Supabase returns a public URL whether or not the file exists, so we do
+ * a lightweight HEAD check via fetch.
  */
+async function keyedAudioExists(path){
+  const c = db();
+  if(!c) return false;
+  try{
+    const { data } = c.storage.from(BUCKET).getPublicUrl(path);
+    if(!data?.publicUrl) return false;
+    const r = await fetch(data.publicUrl, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
+    return r.ok;
+  }catch{
+    return false;
+  }
+}
+
+/**
+ * Synthesize + cache a repeated line (greeting, re-prompt, etc.)
+ * Returns a public Supabase URL or null (caller falls back to <Say>).
+ *
+ * @param key   — stable hash of voice+register+text
+ * @param buf   — MP3 bytes from ElevenLabs
+ * @returns     — public URL string or null
+ */
+export async function putAudioKeyed(key, buf){
+  const path = `${KEYED_PREFIX}${key}.mp3`;
+  return uploadAudio(path, buf);
+}
+
+/**
+ * Check if a keyed audio file exists and return its public URL.
+ */
+export async function getKeyedAudioUrl(key){
+  const path = `${KEYED_PREFIX}${key}.mp3`;
+  const c = db();
+  if(!c) return null;
+  try{
+    const { data } = c.storage.from(BUCKET).getPublicUrl(path);
+    if(!data?.publicUrl) return null;
+    // HEAD check — only return if file actually exists
+    const r = await fetch(data.publicUrl, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
+    return r.ok ? data.publicUrl : null;
+  }catch{
+    return null;
+  }
+}
+
+/**
+ * Upload a one-off audio clip (unique LLM reply). Returns public URL.
+ */
+export async function putAudio(buf){
+  const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const path = `${ONEOFF_PREFIX}${id}.mp3`;
+  return uploadAudio(path, buf);
+}
+
+/**
+ * Legacy in-memory compat — no longer used but kept so voice-audio.js
+ * doesn't crash if imported by old code. Returns null (always).
+ */
+export function takeAudio(){
+  return null;
+}

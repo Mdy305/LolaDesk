@@ -14,7 +14,7 @@ import {
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured, registerForText } from './lib/elevenlabs.js';
-import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
+import { putAudioKeyed, getKeyedAudioUrl } from './lib/tts-cache.js';
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -107,10 +107,11 @@ function buildHints(tenant){
 }
 
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
-  // Always use <Say> for reliability — <Play> requires audio fetch which
-  // can 404 across Vercel instances. Polly.Joanna-Neural is built into Telnyx.
-  // TODO: upgrade to ElevenLabs via Supabase Storage for audio caching.
-  const speakBlock = `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  // <Play> ElevenLabs brand voice when available; <Say> Polly fallback if not.
+  // Audio URLs point to Supabase Storage CDN — no Vercel instance dependency.
+  const speakBlock = playUrl
+    ? `<Play>${escapeXml(playUrl)}</Play>`
+    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -162,21 +163,17 @@ export default async function handler(req, res){
   async function speakCached(text, register){
     if(!elevenLabsConfigured()) return '';
     const reg = register || registerForText(text);
-    // Derive base URL from the request host — guarantees the audio URL
-    // resolves to the SAME Vercel instance that cached the audio bytes
-    const proto = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || req.headers.Host || 'www.loladesk.com';
-    const base = `${proto}://${host}`.replace(/\/+$/, '');
     const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
-    let id = getKeyedAudioId(key);
-    if(!id){
-      try{
-        const audio = await synthesize(text, { register: reg });
-        id = putAudioKeyed(key, audio);
-        await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
-      }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
-    }
-    return `${base}/api/voice-audio?id=${encodeURIComponent(id)}`;
+    // Check if already cached in Supabase Storage
+    let url = await getKeyedAudioUrl(key);
+    if(url) return url;
+    // Synthesize and upload to Supabase Storage
+    try{
+      const audio = await synthesize(text, { register: reg });
+      url = await putAudioKeyed(key, audio);
+      await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
+      return url || '';
+    }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
   }
 
   // ── Silence path: Gather timed out and <Redirect> brought us back ──
@@ -287,7 +284,9 @@ export default async function handler(req, res){
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
       const state = Buffer.from(speech).toString('base64url');
       const ackUrl = await speakCached(ack, 'warm');
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
+      const ackUrl = await speakCached(ack, 'warm');
+      const ackBlock = ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackBlock}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
     }
@@ -426,7 +425,6 @@ export default async function handler(req, res){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
     if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
-    if(!appUrl || appUrl.includes('vercel.app')) missing.push('APP_URL (production domain)');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
   // clean for the mouth: no markdown, no newlines, spoken-length cap
