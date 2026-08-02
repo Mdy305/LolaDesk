@@ -107,9 +107,10 @@ function buildHints(tenant){
 }
 
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
-  const speakBlock = playUrl
-    ? `<Play>${escapeXml(playUrl)}</Play><Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`
-    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  // Always use <Say> for reliability — <Play> requires audio fetch which
+  // can 404 across Vercel instances. Polly.Joanna-Neural is built into Telnyx.
+  // TODO: upgrade to ElevenLabs via Supabase Storage for audio caching.
+  const speakBlock = `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
