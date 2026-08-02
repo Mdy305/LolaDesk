@@ -25,18 +25,54 @@ export default async function handler(req, res) {
     if (!process.env.TELNYX_API_KEY) missing.push('Telnyx server configuration');
     if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID) missing.push('ElevenLabs voice configuration');
 
-    if (missing.length) {
+    // ── AUTO-PROVISION PHONE NUMBER ──
+    // If the tenant doesn't have a phone number yet, provision one
+    // automatically via Telnyx before going live.
+    if (!tenant.phone_number && process.env.TELNYX_API_KEY) {
+      try {
+        const provisionRes = await fetch(`${req.headers.origin || 'https://www.loladesk.com'}/api/provision-number`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': req.headers.authorization || ''
+          },
+          body: JSON.stringify({})
+        });
+        const provisionData = await provisionRes.json();
+        if (provisionData?.ok && provisionData?.phoneNumber) {
+          // Refresh tenant with the new phone number
+          const { data: freshTenant } = await client.from('tenants').select('*').eq('id', tenant.id).single();
+          if (freshTenant) tenant = freshTenant;
+          console.log('[ONBOARDING DEPLOY] Phone provisioned:', provisionData.phoneNumber);
+        } else {
+          console.warn('[ONBOARDING DEPLOY] Phone provisioning failed:', provisionData?.error);
+        }
+      } catch (provisionErr) {
+        console.warn('[ONBOARDING DEPLOY] Phone provisioning error (non-fatal):', provisionErr.message);
+      }
+    }
+
+    // Re-check missing after provisioning attempt
+    const stillMissing = [];
+    if (!tenant.name) stillMissing.push('business name');
+    if (!tenant.website_url && !tenant.knowledge) stillMissing.push('business knowledge');
+    if (!tenant.booking_url) stillMissing.push('booking connection');
+    if (!tenant.phone_number) stillMissing.push('phone number (auto-provisioning failed — try again from dashboard)');
+    if (!process.env.TELNYX_API_KEY) stillMissing.push('Telnyx server configuration');
+    if (!process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID) stillMissing.push('ElevenLabs voice configuration');
+
+    if (stillMissing.length) {
       await client.from('tenant_onboarding').update({
         status:'blocked',
         stage:'activation',
-        progress:Math.max(20, 100 - missing.length * 14),
-        last_error:`Go-live blocked: ${missing.join(', ')}`,
+        progress:Math.max(20, 100 - stillMissing.length * 14),
+        last_error:`Go-live blocked: ${stillMissing.join(', ')}`,
         updated_at:new Date().toISOString()
       }).eq('tenant_id', tenant.id);
       return res.status(409).json({
         ok:false,
         can_go_live:false,
-        missing,
+        missing: stillMissing,
         error:'Lola is not ready to go live yet.'
       });
     }

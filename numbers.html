@@ -96,8 +96,10 @@ a{color:inherit;text-decoration:none}
       <option value="local">Local</option>
       <option value="toll_free">Toll-free</option>
     </select>
-    <button class="search-btn" onclick="search()">Search</button>
+    <button class="search-btn" onclick="search()">Search numbers</button>
+    <button class="search-btn" style="background:var(--surface2);color:var(--pink2);border:0.5px solid var(--pink)" onclick="autoProvision()">Auto-provision</button>
   </div>
+  <p style="text-align:center;font-size:13px;color:var(--text3);margin:-16px 0 28px">Auto-provision picks the best available number in your area code and activates Lola instantly.</p>
 
   <div class="results" id="results">
     <div class="empty">Enter an area code and search to see available numbers.</div>
@@ -192,6 +194,39 @@ async function loadTelecomAssets() {
 
 // Load assets on page load
 window.addEventListener('DOMContentLoaded', loadTelecomAssets);
+
+async function autoProvision(){
+  const area = document.getElementById('area').value.replace(/\D/g,'');
+  const results = document.getElementById('results');
+  results.innerHTML = '<div class="loading"><div class="spinner"></div>Provisioning your Lola number…</div>';
+
+  try{
+    const headers = {'Content-Type':'application/json'};
+    const token = localStorage.getItem('loladesk_token');
+    if(token) headers['Authorization'] = 'Bearer ' + token;
+
+    const r = await fetch('/api/provision-number', {
+      method:'POST',
+      headers,
+      body: JSON.stringify({ areaCode: area || undefined })
+    });
+    const data = await r.json();
+    if(data.ok){
+      results.innerHTML = `<div class="num-card" style="border-color:var(--pink);background:var(--pink-dim)">
+        <div class="num-info">
+          <div class="num-number">${fmtNumber(data.phoneNumber)}</div>
+          <div class="num-meta"><span class="num-feat" style="background:var(--pink);color:#000">LIVE</span> <span class="num-feat">Voice</span> <span class="num-feat">SMS</span></div>
+        </div>
+        <button class="buy-btn" style="background:var(--pink2)" onclick="window.location.href='dashboard.html'">Go to dashboard →</button>
+      </div>`;
+      showToast(`<b>${fmtNumber(data.phoneNumber)}</b> is live! Lola is answering.`);
+    }else{
+      results.innerHTML = `<div class="empty">${data.error || 'Provisioning failed.'}<br><br>${data.hint || 'Try searching for a number manually instead.'}</div>`;
+    }
+  }catch(e){
+    results.innerHTML = '<div class="empty">Connection issue — try again or search manually.</div>';
+  }
+}
 
 async function search(){
   const area = document.getElementById('area').value.replace(/\D/g,'');
