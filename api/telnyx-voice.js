@@ -108,7 +108,7 @@ function buildHints(tenant){
 
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
   const speakBlock = playUrl
-    ? `<Play>${escapeXml(playUrl)}</Play>`
+    ? `<Play>${escapeXml(playUrl)}</Play><Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`
     : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -161,11 +161,11 @@ export default async function handler(req, res){
   async function speakCached(text, register){
     if(!elevenLabsConfigured()) return '';
     const reg = register || registerForText(text);
-    // Use production domain for audio URLs — Vercel preview URLs are not stable
-    const appUrl = process.env.APP_URL || '';
-    const base = appUrl.includes('vercel.app')
-      ? 'https://www.loladesk.com'
-      : appUrl.replace(/\/+$/,'');
+    // Derive base URL from the request host — guarantees the audio URL
+    // resolves to the SAME Vercel instance that cached the audio bytes
+    const proto = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host || req.headers.Host || 'www.loladesk.com';
+    const base = `${proto}://${host}`.replace(/\/+$/, '');
     const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
     let id = getKeyedAudioId(key);
     if(!id){
