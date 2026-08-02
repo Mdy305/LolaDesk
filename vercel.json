@@ -23,7 +23,12 @@
     { "source": "/operator", "destination": "/operator.html" },
     { "source": "/numbers", "destination": "/numbers.html" },
     { "source": "/marketer", "destination": "/marketer.html" },
-    { "source": "/pricing", "destination": "/pricing.html" }
+    { "source": "/pricing", "destination": "/pricing.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/sign-in", "destination": "/login.html" },
+    { "source": "/demo", "destination": "/dashboard.html" },
+    { "source": "/get-started", "destination": "/onboarding.html" }
   ],
   "redirects": [{ "source": "/landing", "destination": "/", "permanent": false }],
   "headers": [{
