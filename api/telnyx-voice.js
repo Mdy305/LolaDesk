@@ -135,6 +135,9 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
+  // Top-level try-catch: any crash returns valid TeXML with Polly fallback
+  // so callers never hear dead air, and we get the error in Vercel logs.
+  try{
   const incoming = await readBody(req);
   if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
     const sig = getTelnyxSignatureHeaders(req);
@@ -462,4 +465,10 @@ export default async function handler(req, res){
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');
   return res.status(200).send(xml);
+  }catch(handlerErr){
+    console.error('[VOICE] HANDLER CRASH:', String(handlerErr?.message||handlerErr).slice(0,500), handlerErr?.stack?.slice(0,500));
+    const fallbackXml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna-Neural">Hi, this is Lola. How can I help you today?</Say>\n  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto" action="/api/telnyx-voice" method="POST"/>\n  <Redirect method="POST">/api/telnyx-voice?silence=1</Redirect>\n</Response>`;
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(fallbackXml);
+  }
 }
