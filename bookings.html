@@ -50,6 +50,8 @@
 .appt .c{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px}
 .appt.pink{border-color:var(--pink);background:var(--pink-dim)}
 .appt.mono{border-color:var(--border2);background:var(--surface2)}
+.appt.ext{border-color:var(--text3);background:repeating-linear-gradient(135deg,rgba(255,255,255,.03),rgba(255,255,255,.03) 6px,rgba(255,255,255,.07) 6px,rgba(255,255,255,.07) 12px);cursor:default;opacity:.85}
+.appt.ext .s{color:var(--text3)}
 
 .now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--pink);box-shadow:0 0 8px var(--pink-glow);z-index:8;pointer-events:none}
 
@@ -104,28 +106,7 @@
 <div class="mw" id="bookModal">
   <div class="modal">
     <h3 id="modalTitle">New booking</h3>
-    <div id="modalBody">
-      <div class="fld"><label>Client</label><input id="bkClient" placeholder="Name or phone"/></div>
-      <div class="fld"><label>Service</label>
-        <select id="bkService">
-          <option data-dur="150" data-price="395" data-color="pink">Balayage — $395 · 2h30</option>
-          <option data-dur="30" data-price="0" data-color="mono">Extensions Consult — free · 30m</option>
-          <option data-dur="120" data-price="325" data-color="mono">Hair Botox — $325 · 2h</option>
-          <option data-dur="150" data-price="450" data-color="mono">Keratin — $450 · 2h30</option>
-          <option data-dur="75" data-price="225" data-color="rose">Cut &amp; Gloss — $225 · 1h15</option>
-          <option data-dur="60" data-price="95" data-color="pink">Blowout — $95 · 1h</option>
-          <option data-dur="120" data-price="350" data-color="mono">Color Correction — $350 · 2h</option>
-        </select>
-      </div>
-      <div class="row2">
-        <div class="fld"><label>Stylist</label><select id="bkStylist"></select></div>
-        <div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div>
-      </div>
-      <div class="macts">
-        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveBook()">Book it</button>
-      </div>
-    </div>
+    <div id="modalBody"></div>
   </div>
 </div>
 
@@ -153,6 +134,32 @@ const START_HOUR = 9, END_HOUR = 20, SLOT_H = 64; // px per hour
 
 let cursor = new Date(); cursor.setHours(0,0,0,0);
 let APPTS = {}; // key: dateKey -> [{stylistId, startMin(from START_HOUR*60), dur, service, client, price, color, id}]
+let EXTERNAL = {}; // key: dateKey -> [{startMin, dur, title}] read-only external calendar events
+
+function authToken(){
+  try{
+    if(window.LolaAuth?.token) return window.LolaAuth.token;
+    return localStorage.getItem('loladesk_token')||'';
+  }catch(e){ return ''; }
+}
+
+async function loadExternalForDay(day){
+  const key = dKey(day);
+  try{
+    const t = authToken();
+    if(!t) return;
+    const r = await fetch('/api/calendar-manager?action=external&date='+encodeURIComponent(day.toISOString()), {
+      headers:{ Authorization:'Bearer '+t }
+    });
+    const data = await r.json();
+    if(!data.ok) { EXTERNAL[key] = []; return; }
+    EXTERNAL[key] = (data.appointments||[]).map(e=>{
+      const s = new Date(e.starts_at);
+      const startMin = (s.getHours()-START_HOUR)*60 + s.getMinutes();
+      return { startMin, dur:Number(e.duration_min||60), title:e.service||'Busy', stylist:e.stylist||null };
+    }).filter(e=>e.startMin>-1440 && e.startMin < (END_HOUR-START_HOUR)*60);
+  }catch(e){ EXTERNAL[key] = EXTERNAL[key]||[]; }
+}
 
 function dKey(d){ return d.toISOString().slice(0,10); }
 function seed(){
@@ -188,8 +195,8 @@ seed();
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOWS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-function nav(dir){ cursor.setDate(cursor.getDate()+dir); render(); }
-function goToday(){ cursor = new Date(); cursor.setHours(0,0,0,0); render(); }
+function nav(dir){ cursor.setDate(cursor.getDate()+dir); render(); loadExternalForDay(cursor).then(render); }
+function goToday(){ cursor = new Date(); cursor.setHours(0,0,0,0); render(); loadExternalForDay(cursor).then(render); }
 
 function render(){
   const key = dKey(cursor);
@@ -257,6 +264,26 @@ function render(){
     firstCell.appendChild(el);
   });
 
+  // external (Google Calendar etc) busy blocks — read-only, merged from connected calendars
+  const ext = EXTERNAL[key] || [];
+  ext.forEach((e, idx)=>{
+    if(e.startMin + e.dur <= 0 || e.startMin >= hours*60) return;
+    const top = Math.max(0,(e.startMin/60)*SLOT_H);
+    const height = Math.max(24,(e.dur/60)*SLOT_H - 4);
+    STYLISTS.forEach((st, si)=>{
+      if(e.stylist && st.id !== e.stylist) return;
+      const firstCell = grid.querySelector(`.res-cell[data-stylist="${st.id}"][data-hour="${START_HOUR}"]`);
+      if(!firstCell) return;
+      const el = document.createElement('div');
+      el.className = 'appt ext';
+      el.style.top = top+'px';
+      el.style.height = height+'px';
+      el.innerHTML = `<div class="t">External</div><div class="s">${e.title}</div>`;
+      el.onclick = (ev)=>{ ev.stopPropagation(); };
+      firstCell.appendChild(el);
+    });
+  });
+
   // now-line if today
   const now = new Date();
   if(now.toDateString()===cursor.toDateString()){
@@ -321,22 +348,80 @@ function bookFormHTML(){
     <div class="macts"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveBook()">Book it</button></div>`;
 }
 function closeModal(){ document.getElementById('bookModal').classList.remove('open'); }
-function saveBook(){
-  const client = document.getElementById('bkClient').value || 'New Client';
+function bookError(msg){
+  let e = document.getElementById('bkErr');
+  if(!e){
+    e = document.createElement('div');
+    e.id = 'bkErr';
+    e.style.cssText = 'color:var(--pink2);font-size:12.5px;margin:-4px 0 12px';
+    document.getElementById('modalBody').prepend(e);
+  }
+  e.textContent = msg;
+}
+async function saveBook(){
+  const clientRaw = (document.getElementById('bkClient').value || '').trim();
   const sel = document.getElementById('bkService');
   const opt = sel.options[sel.selectedIndex];
   const stylistId = document.getElementById('bkStylist').value;
+  const stylist = STYLISTS.find(s=>s.id===stylistId);
   const time = document.getElementById('bkTime').value || '10:00';
   const [h,m] = time.split(':').map(Number);
-  const startMin = (h-START_HOUR)*60 + m;
   const key = dKey(cursor);
-  if(!APPTS[key]) APPTS[key]=[];
-  APPTS[key].push({
-    id:'new-'+Date.now(), stylistId, startMin,
-    dur:Number(opt.dataset.dur), service:opt.textContent.split(' — ')[0],
-    color:opt.dataset.color, price:Number(opt.dataset.price), client
-  });
-  closeModal(); render();
+  const startsAt = new Date(cursor); startsAt.setHours(h, m, 0, 0);
+
+  const btn = document.querySelector('#modalBody .btn-primary');
+  if(btn){ btn.disabled = true; btn.textContent = 'Booking…'; }
+
+  const isPhone = /^[\d\s()+-]{7,}$/.test(clientRaw);
+  try{
+    const t = authToken();
+    if(!t) throw new Error('Not authenticated');
+    const r = await fetch('/api/calendar-manager', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({
+        action:'book',
+        starts_at: startsAt.toISOString(),
+        duration_min: Number(opt.dataset.dur),
+        service: opt.textContent.split(' — ')[0],
+        stylist: stylist ? stylist.name : null,
+        price: Number(opt.dataset.price),
+        client_name: isPhone ? null : (clientRaw || 'New Client'),
+        client_phone: isPhone ? clientRaw : null
+      })
+    });
+    const out = await r.json();
+    if(!r.ok || !out.ok){
+      if(out.conflict) bookError('That time is already booked — pick another slot.');
+      else bookError(out.error || 'Could not create booking.');
+      if(btn){ btn.disabled = false; btn.textContent = 'Book it'; }
+      return;
+    }
+    closeModal();
+    await refreshBookings();
+    render();
+  }catch(e){
+    bookError(e.message || 'Something went wrong.');
+    if(btn){ btn.disabled = false; btn.textContent = 'Book it'; }
+  }
+}
+
+async function refreshBookings(){
+  try{
+    const bkData = await LolaData.load('bookings');
+    APPTS = {};
+    (bkData?.bookings||[]).forEach(b=>{
+      if(String(b.status||'').toLowerCase()==='cancelled') return;
+      const date = new Date(b.startsAt);
+      const k = dKey(date);
+      const stylistId = b.stylist ? b.stylist.toLowerCase().replace(/[^a-z]/g,'') : STYLISTS[0]?.id;
+      const startMin = (date.getHours() - START_HOUR)*60 + date.getMinutes();
+      const dur = b.durationMin || 60;
+      const svc = SERVICES.find(s => s.name.toLowerCase() === (b.service||'').toLowerCase());
+      if(!APPTS[k]) APPTS[k] = [];
+      APPTS[k].push({ id:b.id, stylistId, startMin, dur, service:b.service, color: svc?svc.color:'pink', price:b.price||0, client:b.client });
+    });
+  }catch(e){ /* keep existing APPTS on failure */ }
 }
 
 (async ()=>{
@@ -355,39 +440,16 @@ function saveBook(){
     }));
   }
 
-  // Load database bookings
-  const bkData = await LolaData.load('bookings');
-  if(bkData && bkData.bookings && bkData.bookings.length > 0) {
-    APPTS = {};
-    bkData.bookings.forEach(b => {
-      const date = new Date(b.startsAt);
-      const key = dKey(date);
-      const stylistId = b.stylist ? b.stylist.toLowerCase().replace(/[^a-z]/g,'') : STYLISTS[0]?.id;
-      const startMin = (date.getHours() - START_HOUR)*60 + date.getMinutes();
-      const dur = b.durationMin || 60;
-      
-      const svc = SERVICES.find(s => s.name.toLowerCase() === b.service.toLowerCase());
-      
-      if(!APPTS[key]) APPTS[key] = [];
-      APPTS[key].push({
-        id: b.id,
-        stylistId,
-        startMin,
-        dur,
-        service: b.service,
-        color: svc ? svc.color : 'pink',
-        price: b.price || 0,
-        client: b.client
-      });
-    });
-  } else {
-    // Fallback to seed if database bookings are empty
+  // Load database bookings (real writes now flow through /api/calendar-manager)
+  await refreshBookings();
+  if(!Object.keys(APPTS).some(k => (APPTS[k]||[]).length)) {
+    // Fallback to seed only if there is truly no real data yet (fresh tenant)
     seed();
   }
 
   render();
+  loadExternalForDay(cursor).then(render);
 })();
 </script>
-<script src="app.js"></script>
 </body>
 </html>

@@ -1,7 +1,8 @@
 import { bearer, getUserFromToken } from './lib/auth.js';
-import { db, getClientByPhone, upsertClient } from './lib/db.js';
+import { db, getClientByPhone, getTenantIntegrations, upsertClient } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, rescheduleBookingSafe } from './lib/calendar-engine.js';
+import { listAllAppointments } from './lib/aggregator.js';
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -27,6 +28,18 @@ export default async function handler(req, res){
           stylist: q.stylist || null
         });
         return res.status(200).json({ ok:true, ...out });
+      }
+      if(q.action === 'external'){
+        const dayIso = q.date ? new Date(q.date) : new Date();
+        dayIso.setUTCHours(0,0,0,0);
+        const from = dayIso.toISOString();
+        const to = new Date(dayIso.getTime() + 24*3600*1000).toISOString();
+        let appointments = [];
+        try{
+          const integrations = await getTenantIntegrations(tenant.id);
+          if(integrations.length) appointments = await listAllAppointments(integrations, { from, to });
+        }catch(e){ appointments = []; }
+        return res.status(200).json({ ok:true, appointments });
       }
       return res.status(400).json({ error:'unknown action' });
     }
