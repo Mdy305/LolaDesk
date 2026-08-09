@@ -2,130 +2,188 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-export default function SteveJobsOnboarding() {
+export default function LolaJarvisOnboarding() {
   const [step, setStep] = useState(1);
   const [salonName, setSalonName] = useState('');
-  const [bookingSystem, setBookingSystem] = useState('square');
-  const [isListening, setIsListening] = useState(false);
+  const [selectedIntegration, setSelectedIntegration] = useState('square');
+  const [isSpeaking, setIsSpeaking] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Resonant Lola particle circle animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animationFrameId: number;
-    let angle = 0;
+    let animationId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    const particleCount = 280;
+    const particles = Array.from({ length: particleCount }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: (Math.random() - 0.5) * 0.8,
+      size: Math.random() * 2 + 0.8,
+      alpha: Math.random() * 0.7 + 0.3,
+      targetRadius: 75 + Math.random() * 15,
+      angle: Math.random() * Math.PI * 2,
+    }));
+
+    let t = 0;
 
     const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const radius = 70;
-      const particleCount = 40;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.fillRect(0, 0, width, height);
 
-      angle += 0.02;
+      const cx = width / 2;
+      const cy = height / 2 - 60;
+      t += 0.03;
 
-      for (let i = 0; i < particleCount; i++) {
-        const particleAngle = (i / particleCount) * Math.PI * 2 + angle;
-        // Resonant wave perturbation on audio interaction
-        const wave = Math.sin(particleAngle * 5 + angle * 2) * (isListening ? 12 : 4);
-        const currentRadius = radius + wave;
+      particles.forEach((p, index) => {
+        if (isSpeaking) {
+          // Converge from anywhere on screen into the central resonant circle
+          p.angle += 0.02;
+          const wave = Math.sin(p.angle * 6 + t * 4) * 16;
+          const r = p.targetRadius + wave;
 
-        const x = centerX + Math.cos(particleAngle) * currentRadius;
-        const y = centerY + Math.sin(particleAngle) * currentRadius;
+          const targetX = cx + Math.cos(p.angle) * r;
+          const targetY = cy + Math.sin(p.angle) * r;
+
+          p.x += (targetX - p.x) * 0.08;
+          p.y += (targetY - p.y) * 0.08;
+        } else {
+          // Ambient ambient drift across full screen
+          p.x += p.vx;
+          p.y += p.vy;
+
+          if (p.x < 0) p.x = width;
+          if (p.x > width) p.x = 0;
+          if (p.y < 0) p.y = height;
+          if (p.y > height) p.y = 0;
+        }
 
         ctx.beginPath();
-        ctx.arc(x, y, isListening ? 3 : 2, 0, Math.PI * 2);
-        ctx.fillStyle = isListening ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.4)';
-        ctx.shadowBlur = isListening ? 15 : 5;
+        ctx.arc(p.x, p.y, isSpeaking ? p.size * 1.3 : p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+        ctx.shadowBlur = isSpeaking ? 12 : 3;
         ctx.shadowColor = '#ffffff';
         ctx.fill();
-      }
+      });
 
-      animationFrameId = requestAnimationFrame(render);
+      animationId = requestAnimationFrame(render);
     };
 
     render();
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isListening]);
+
+    return () => {
+      cancelAnimationFrame(animationId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isSpeaking]);
 
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-sans antialiased">
-      {/* Dynamic Particle Sphere */}
+    <main className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 selection:bg-white selection:text-black antialiased font-sans overflow-hidden">
+      {/* Full-Screen Resonant Particle Canvas */}
+      <canvas
+        ref={canvasRef}
+        onClick={() => setIsSpeaking(!isSpeaking)}
+        className="fixed inset-0 z-0 cursor-pointer"
+      />
+
+      {/* Header Overlay */}
+      <div className="absolute top-8 left-8 text-xs tracking-[0.3em] text-neutral-500 font-mono z-10 pointer-events-none">
+        LOLADESK / JARVIS CORE ACTIVE
+      </div>
+
+      {/* Center Voice Orb Indicator */}
       <div 
-        className="relative mb-8 cursor-pointer transition-transform duration-300 hover:scale-105"
-        onClick={() => setIsListening(!isListening)}
+        onClick={() => setIsSpeaking(!isSpeaking)}
+        className="relative z-10 mb-12 cursor-pointer flex flex-col items-center justify-center group"
       >
-        <canvas ref={canvasRef} width={220} height={220} className="block" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-xs tracking-widest text-neutral-400 font-medium">LOLA</span>
-          <span className="text-[10px] text-neutral-600 mt-1">{isListening ? 'LISTENING' : 'TAP TO VOICE'}</span>
+        <div className="w-24 h-24 rounded-full flex flex-col items-center justify-center border border-white/20 backdrop-blur-md bg-white/5 transition-transform duration-500 group-hover:scale-110">
+          <span className="text-xs font-mono tracking-[0.3em] text-white">LOLA</span>
+          <span className="text-[9px] font-mono text-neutral-400 mt-1 uppercase tracking-widest">
+            {isSpeaking ? 'RESONATING' : 'DRIFTING'}
+          </span>
         </div>
       </div>
 
-      {/* Steve Jobs Style Wizard */}
-      <div className="w-full max-w-md space-y-8 transition-all duration-500 ease-out">
+      {/* Steve Jobs Onboarding Wizard */}
+      <div className="relative z-10 w-full max-w-sm space-y-8 backdrop-blur-xl bg-black/40 border border-white/10 p-8 rounded-3xl shadow-2xl">
         {step === 1 && (
           <div className="space-y-6 text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">One simple step for your salon.</h1>
-            <p className="text-neutral-400 text-sm">What is the name of your studio or business?</p>
+            <h1 className="text-xl font-light tracking-tight text-white/90">
+              What is the name of your salon?
+            </h1>
             <input
               type="text"
+              autoFocus
               placeholder="e.g. Maison Mi Amore"
               value={salonName}
               onChange={(e) => setSalonName(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl px-5 py-4 text-center text-lg focus:outline-none focus:border-white transition-colors"
+              className="w-full bg-neutral-900/90 border border-neutral-800 rounded-2xl px-5 py-4 text-center text-lg text-white placeholder-neutral-600 focus:outline-none focus:border-white transition-all duration-300"
             />
             <button
               onClick={() => setStep(2)}
               disabled={!salonName.trim()}
-              className="w-full bg-white text-black font-medium py-4 rounded-2xl disabled:opacity-30 hover:bg-neutral-200 transition-all"
+              className="w-full bg-white text-black font-medium py-4 rounded-2xl disabled:opacity-20 hover:bg-neutral-200 transition-all duration-300"
             >
-              Continue →
+              Continue
             </button>
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-6 text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">Connect your calendar.</h1>
-            <p className="text-neutral-400 text-sm">Select your current booking platform for automatic sync.</p>
+            <h1 className="text-xl font-light tracking-tight text-white/90">
+              Select your booking platform.
+            </h1>
             <div className="grid grid-cols-2 gap-3">
-              {['square', 'vagaro', 'shopify', 'custom'].map((platform) => (
+              {['square', 'vagaro', 'shopify', 'custom'].map((item) => (
                 <button
-                  key={platform}
-                  onClick={() => setBookingSystem(platform)}
-                  className={`p-4 rounded-2xl border text-sm font-medium capitalize transition-all ${
-                    bookingSystem === platform
-                      ? 'border-white bg-neutral-900 text-white'
-                      : 'border-neutral-800 text-neutral-500 hover:border-neutral-700'
+                  key={item}
+                  onClick={() => setSelectedIntegration(item)}
+                  className={`p-4 rounded-2xl border text-xs font-mono uppercase tracking-wider transition-all duration-300 ${
+                    selectedIntegration === item
+                      ? 'border-white bg-white text-black font-semibold'
+                      : 'border-neutral-800 text-neutral-400 bg-neutral-900/50 hover:border-neutral-700'
                   }`}
                 >
-                  {platform}
+                  {item}
                 </button>
               ))}
             </div>
             <button
               onClick={() => setStep(3)}
-              className="w-full bg-white text-black font-medium py-4 rounded-2xl hover:bg-neutral-200 transition-all"
+              className="w-full bg-white text-black font-medium py-4 rounded-2xl hover:bg-neutral-200 transition-all duration-300"
             >
-              Initialize LolaDesk →
+              Provision Lola
             </button>
           </div>
         )}
 
         {step === 3 && (
           <div className="space-y-6 text-center">
-            <h1 className="text-3xl font-semibold tracking-tight">Lola is ready.</h1>
-            <p className="text-neutral-400 text-sm">Your multi-tenant workspace for {salonName || 'your salon'} has been provisioned.</p>
+            <h1 className="text-xl font-light tracking-tight text-white/90">
+              {salonName} is active.
+            </h1>
+            <p className="text-neutral-400 text-xs font-mono">
+              JARVIS-LEVEL VOICE ENGINE ONLINE
+            </p>
             <a
               href="/login"
-              className="block w-full bg-white text-black font-medium py-4 rounded-2xl hover:bg-neutral-200 transition-all"
+              className="block w-full bg-white text-black font-medium py-4 rounded-2xl hover:bg-neutral-200 transition-all duration-300 text-center"
             >
-              Enter Workspace
+              Enter Front Desk
             </a>
           </div>
         )}
