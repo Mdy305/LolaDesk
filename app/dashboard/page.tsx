@@ -7,7 +7,7 @@ export default function LolaCentralCoreDashboard() {
   const [command, setCommand] = useState('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Central Resonant Lola Particle System
+  // Central Resonant Lola Particle Core
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -21,8 +21,8 @@ export default function LolaCentralCoreDashboard() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
-      const baseRadius = 80;
-      const particleCount = 75;
+      const baseRadius = 85;
+      const particleCount = 80;
 
       t += 0.03;
 
@@ -61,21 +61,21 @@ export default function LolaCentralCoreDashboard() {
         </div>
       </header>
 
-      {/* Main Center Stage: Lola Ultra Voice Assistant */}
+      {/* Main Center Stage: Resonant Particle Lola */}
       <main className="flex flex-col items-center justify-center my-auto cursor-pointer group" onClick={() => setIsResonating(!isResonating)}>
         <div className="relative mb-8">
           <div className="absolute -inset-8 rounded-full bg-white/5 blur-2xl opacity-40 group-hover:opacity-80 transition duration-700"></div>
-          <canvas ref={canvasRef} width={280} height={280} className="relative z-10 block" />
+          <canvas ref={canvasRef} width={300} height={300} className="relative z-10 block" />
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20">
-            <span className="text-sm font-mono tracking-[0.4em] text-white font-semibold">LOLA</span>
+            <span className="text-base font-mono tracking-[0.4em] text-white font-semibold">LOLA</span>
             <span className="text-[10px] font-mono text-neutral-400 mt-1 uppercase tracking-widest">
-              {isResonating ? 'LISTENING & RESONATING' : 'STANDBY'}
+              {isResonating ? 'RESONATING & ACTIVE' : 'STANDBY'}
             </span>
           </div>
         </div>
 
         <p className="text-xl font-light text-neutral-300 tracking-tight text-center max-w-md">
-          "Tap to speak or execute actions for MMA Salon."
+          "Tap to resonate or direct Lola for MMA Salon."
         </p>
       </main>
 
@@ -86,7 +86,7 @@ export default function LolaCentralCoreDashboard() {
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder="Ask Lola to fill gaps, check calls, or rebook clients..."
+            placeholder="Tell Lola to fill gap openings, rebook clients, or check calls..."
             className="w-full bg-neutral-900/90 border border-neutral-800 rounded-2xl px-6 py-4 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-white transition-all shadow-2xl"
           />
           <button type="submit" className="absolute right-3 top-2.5 bg-white text-black text-xs font-semibold px-5 py-2 rounded-xl hover:bg-neutral-200 transition-all">
