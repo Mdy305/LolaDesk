@@ -409,15 +409,47 @@ window.openChat = function(){
     chatOpened = true;
     setTimeout(async ()=>{
       setChatTyping(true);
-      await new Promise(r=>setTimeout(r,1000));
+      const greeting = await buildRealGreeting();
+      await new Promise(r=>setTimeout(r,300));
       setChatTyping(false);
-      const greeting = `Hey ${TENANT.owner}. I've got your salon loaded — 7 appointments today, $2,840 on the board, and 3 clients due for rebooking. What do you need?`;
       addChatMsg('ai', greeting);
       speak(greeting);
     }, 300);
   }
   setTimeout(()=>document.getElementById('chatInput').focus(), 350);
 };
+
+// Real numbers, not the placeholder greeting this used to hardcode
+// ("7 appointments today, $2,840 on the board, 3 clients due for
+// rebooking" — shown to every tenant regardless of their actual data).
+async function buildRealGreeting(){
+  const name = TENANT.owner || 'there';
+  try{
+    if(!window.LolaData) throw new Error('LolaData unavailable');
+    const [bkData, revData] = await Promise.all([
+      LolaData.load('bookings').catch(()=>null),
+      LolaData.load('revenue').catch(()=>null)
+    ]);
+    const bookings = (bkData && bkData.bookings) || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const todayCount = bookings.filter(b => {
+      const d = new Date(b.startsAt);
+      return d >= today && d < tomorrow && String(b.status||'').toLowerCase() !== 'cancelled';
+    }).length;
+    const total = (revData && revData.total) || 0;
+
+    if(!bookings.length && !total){
+      return `Hey ${name}. I'm ready when you are — nothing on the books yet, so let's fill your first appointment.`;
+    }
+    const parts = [];
+    parts.push(todayCount === 1 ? '1 appointment today' : `${todayCount} appointments today`);
+    if(total > 0) parts.push(`$${Math.round(total).toLocaleString()} on the board`);
+    return `Hey ${name}. I've got your salon loaded — ${parts.join(', ')}. What do you need?`;
+  }catch(e){
+    return `Hey ${name}. I've got your salon loaded. What do you need?`;
+  }
+}
 
 window.closeChat = function(){
   document.getElementById('chatOverlay').classList.remove('show');
