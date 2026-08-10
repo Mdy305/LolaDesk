@@ -81,7 +81,7 @@ export default async function handler(req,res){
         const { data=[] } = await c.from('conversations').select('*').eq('tenant_id',tid).order('started_at',{ascending:false}).limit(60);
         return res.status(200).json({ tenant:tenant.name, threads:(data||[]).map(x=>({
           id:x.id, channel:x.channel||'sms', who:x.client_name||x.from_number||'Client',
-          when:ago(x.started_at||x.created_at), preview:x.last_message||x.summary||'', unread:!!x.unread
+          phone:x.from_number||'', when:ago(x.started_at||x.created_at), preview:x.last_message||x.summary||'', unread:!!x.unread
         })) });
       }
       case 'bookings': {
