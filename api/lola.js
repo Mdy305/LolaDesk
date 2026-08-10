@@ -17,6 +17,32 @@ import { resolveDate } from './lib/operator-db.js';
 import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './lib/db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lib/lola-skills.js';
 
+// Real, fresh business facts pulled from the SERVER's own tenant record —
+// not whatever the client happened to have cached. The dashboard chat's
+// buildSystemPrompt() (app.js) builds a client-side version from a
+// TENANT object that can be stale (set once at login) or literal demo
+// defaults, and its hours are hardcoded regardless of the tenant's real
+// configured hours. Phone calls already get real data this way via
+// tenantKnowledgePrompt()/agent-variables.js; this brings the dashboard
+// chat path up to the same standard so both "brains" agree.
+function realBusinessFacts(tenant){
+  if(!tenant) return '';
+  const services = (tenant.services||[])
+    .map(s => `${s.name}${s.price!=null?` — $${s.price}`:''}${s.duration?` (${s.duration})`:''}`)
+    .join('\n');
+  const team = (tenant.team||[]).map(t => `${t.name}${t.role?` (${t.role})`:''}`).join(', ');
+  const lines = [
+    'AUTHORITATIVE BUSINESS FACTS (from the live tenant record — these override anything else said above about services, hours, team, or booking):',
+    tenant.name ? `Salon: ${tenant.name}${tenant.location?` in ${tenant.location}`:''}` : '',
+    tenant.hours ? `Hours: ${tenant.hours}` : '',
+    services ? `Services & prices:\n${services}` : '',
+    team ? `Team: ${team}` : '',
+    tenant.booking_url ? `Booking link: ${tenant.booking_url}` : '',
+    tenant.phone_number ? `Salon phone: ${tenant.phone_number}` : ''
+  ].filter(Boolean);
+  return lines.length > 1 ? lines.join('\n') : '';
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -246,7 +272,7 @@ export default async function handler(req, res){
       }
     }catch{ /* memory must never block the answer */ }
 
-    const systemPrompt = [body.system, memoryBlock].filter(Boolean).join('\n') || undefined;
+    const systemPrompt = [body.system, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
 
     // Persist the turn regardless of which branch produced the reply.
     async function remember(replyText){
@@ -309,25 +335,7 @@ export default async function handler(req, res){
     }catch(e){ /* fall through to conversation */ }
 
     // Step 1: Initial LLM call with tools
-    let result = null;
-    /* ── TIER 0: THE OWNER BRAIN ─────────────────────────────────
-       The person talking to Lola in the dashboard IS the owner — so
-       she answers with the full Jarvis-tier intelligence: live
-       business numbers, proactive observations, strategic memory of
-       what they've been working on. Falls through to the general
-       tiers below if unavailable. */
-    try{
-      const { answerOwner } = await import('./lib/owner-brain.js');
-      const last = messages[messages.length - 1];
-      const q = (last && typeof last.content === 'string') ? last.content : '';
-      if(q){
-        const ob = await answerOwner(tenant, messages.slice(0, -1), q, { channel: 'dashboard' });
-        if(ob?.ok && ob.text) result = { ok: true, text: ob.text };
-      }
-    }catch{}
-
-    if(!result?.ok){
-    result = await chat({
+    let result = await chat({
       system: systemPrompt,
       messages: messages,
       maxTokens: Math.min(body.max_tokens || 500, 1000),
@@ -336,7 +344,6 @@ export default async function handler(req, res){
       // name that the Telnyx provider rejects. Let chat() pick a valid default.
       tools: TOOLS
     });
-    }
 
     if(!result.ok){
       // The LLM being down or unconfigured must NEVER kill the front desk.

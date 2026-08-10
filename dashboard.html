@@ -721,7 +721,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       </a>
     </nav>
 
-    <div class="nav-user" onclick="location.href='settings.html'">
+    <div class="nav-user" onclick="openChat()">
       <div class="nav-user-av" id="navUserInitial">M</div>
       <div class="nav-user-info">
         <div class="nav-user-name" id="navUserName">Meddy</div>
@@ -769,7 +769,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         <button class="icon-btn" aria-label="Calendar" onclick="location.href='bookings.html'">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>
         </button>
-        <button class="icon-btn" aria-label="Notifications" onclick="location.href='inbox.html'">
+        <button class="icon-btn" aria-label="Notifications" onclick="openChat()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9zM13.7 21a2 2 0 01-3.4 0"/></svg>
           <span class="dot"></span>
         </button>
@@ -1025,7 +1025,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1"/></svg>
     Clients
   </a>
-  <button class="mb-item" onclick="toggleVoice()"><div class="mb-orb">L</div></button>
+  <button class="mb-item" onclick="openChat()"><div class="mb-orb">L</div></button>
   <a class="mb-item" href="inbox.html">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
     Inbox
@@ -1136,6 +1136,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         name:tenant.name || tenant.business_name || "",
         owner:tenant.owner_name || "",
         location:tenant.location || "",
+        hours:tenant.hours || "",
         phone:tenant.phone_number || "",
         bookingUrl:tenant.booking_url || "",
         websiteUrl:tenant.website_url || "",

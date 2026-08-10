@@ -15,6 +15,7 @@ const DEFAULT_TENANT = {
   name: 'MMΛ Salon',
   owner: 'Meddy',
   location: '1500 Alton Road, Miami Beach',
+  hours: 'Tue–Sat, Noon–8pm. Appointment only.',
   phone: '+17864497058',
   bookingUrl: 'https://www.mmasalon.com/book',
   whatsapp: 'https://wa.me/17864497058',
@@ -312,7 +313,7 @@ ${svc}
 TEAM: ${team}
 
 BOOKING: ${TENANT.bookingUrl} · WhatsApp ${TENANT.whatsapp} · Phone ${TENANT.phone}
-HOURS: Tue–Sat, Noon–8pm. Appointment only.
+HOURS: ${TENANT.hours || 'Contact the salon for hours.'}
 
 PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
 
