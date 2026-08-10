@@ -54,6 +54,7 @@
   function mount(canvas, opts={}){
     if(!canvas || !canvas.getContext) return nullOrb();
     const ctx = canvas.getContext('2d');
+    if(!ctx) return nullOrb(); // some environments (headless test runners, canvas-disabled browsers) return null here
     const cssSize = opts.size || canvas.clientWidth || canvas.width || 240;
     const dpr = Math.min(global.devicePixelRatio || 1, 2);
     canvas.width = cssSize * dpr;
