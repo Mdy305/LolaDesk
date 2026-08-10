@@ -112,6 +112,11 @@ a{color:inherit;text-decoration:none}
     <div id="portingList"></div>
   </div>
 
+  <div style="margin-top: 48px;">
+    <h2 style="font-size: 18px; margin-bottom: 16px; border-bottom: 0.5px solid var(--border); padding-bottom: 8px;">eSIM — backup connectivity</h2>
+    <div id="esimSection"></div>
+  </div>
+
   <div class="included">
     <div class="included-title">Every Lola number includes</div>
     <div class="included-list">
@@ -192,8 +197,90 @@ async function loadTelecomAssets() {
   }
 }
 
+function authHeaders(){
+  const token = localStorage.getItem('loladesk_token') || '';
+  return token ? { Authorization: 'Bearer ' + token } : {};
+}
+
+async function loadEsim(){
+  const host = document.getElementById('esimSection');
+  try{
+    const r = await fetch('/api/telnyx-esim', { headers: authHeaders() });
+    const data = await r.json();
+    if(!data.ok) throw new Error(data.error || 'Could not load eSIM status');
+    renderEsim(data.esim, data.pricing);
+  }catch(e){
+    host.innerHTML = `<div class="empty">Could not load eSIM status — try refreshing.</div>`;
+  }
+}
+
+function renderEsim(esim, pricing){
+  const host = document.getElementById('esimSection');
+  if(!esim){
+    host.innerHTML = `
+      <div class="num-card" style="padding:16px 18px;">
+        <div class="num-info">
+          <div class="num-number" style="font-size:15px;">No eSIM yet</div>
+          <div class="num-meta">Backup data if your salon's WiFi drops — Lola keeps answering. ${pricing?.included_mb ? Math.round(pricing.included_mb/1000)+'GB included' : ''}${pricing?.retail_monthly ? ', $'+pricing.retail_monthly+'/mo' : ''}.</div>
+        </div>
+        <button class="buy-btn" onclick="orderEsim(this)">Order eSIM</button>
+      </div>`;
+    return;
+  }
+  if(esim.pending){
+    host.innerHTML = `<div class="num-card" style="padding:16px 18px;"><div class="num-info"><div class="num-number" style="font-size:15px;">Provisioning…</div><div class="num-meta">${esim.note || 'Check back in a minute.'}</div></div></div>`;
+    setTimeout(loadEsim, 4000);
+    return;
+  }
+  const usedPct = esim.data_limit_mb ? Math.min(100, Math.round((esim.used_mb||0)/esim.data_limit_mb*100)) : 0;
+  const isActive = esim.status === 'connected' || esim.status === 'enabled';
+  host.innerHTML = `
+    <div class="num-card" style="flex-direction:column;align-items:stretch;gap:10px;padding:16px 18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="num-info">
+          <div class="num-number" style="font-size:15px;">eSIM · ${esim.iccid || esim.sim_card_id}</div>
+          <div class="num-meta">Status: <span style="color:${isActive?'var(--text)':'var(--pink2)'}">${esim.status}</span></div>
+        </div>
+        <button class="buy-btn" style="background:var(--surface2)" onclick="toggleEsim(this,'${isActive?'disable':'enable'}')">${isActive?'Pause':'Resume'}</button>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;height:6px;overflow:hidden">
+        <div style="background:${usedPct>90?'var(--pink2)':'#ccff00'};height:100%;width:${usedPct}%"></div>
+      </div>
+      <div class="num-meta">${esim.used_mb||0}MB / ${esim.data_limit_mb||0}MB used this period${esim.over_mb>0?` · $${esim.overage_charge} overage`:''}</div>
+      ${esim.activation?.activation_code ? `<div class="num-meta" style="word-break:break-all">Activation: ${esim.activation.activation_code}</div>` : ''}
+    </div>`;
+}
+
+async function orderEsim(btn){
+  btn.disabled = true; btn.textContent = 'Ordering…';
+  try{
+    const r = await fetch('/api/telnyx-esim', { method:'POST', headers:{ 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ action:'order' }) });
+    const data = await r.json();
+    if(!data.ok && !data.pending) throw new Error(data.error || 'Order failed');
+    renderEsim(data.esim || { pending:true, note:data.note }, data.pricing);
+    showToast(data.pending ? 'eSIM provisioning — check back shortly' : 'eSIM ordered');
+  }catch(e){
+    btn.disabled = false; btn.textContent = 'Order eSIM';
+    showToast(e.message || 'Could not order eSIM');
+  }
+}
+
+async function toggleEsim(btn, action){
+  btn.disabled = true;
+  try{
+    const r = await fetch('/api/telnyx-esim', { method:'POST', headers:{ 'Content-Type':'application/json', ...authHeaders() }, body: JSON.stringify({ action }) });
+    const data = await r.json();
+    if(!data.ok) throw new Error(data.error || 'Could not update eSIM');
+    showToast(data.note || 'Updated');
+    loadEsim();
+  }catch(e){
+    btn.disabled = false;
+    showToast(e.message || 'Could not update eSIM');
+  }
+}
+
 // Load assets on page load
-window.addEventListener('DOMContentLoaded', loadTelecomAssets);
+window.addEventListener('DOMContentLoaded', ()=>{ loadTelecomAssets(); loadEsim(); });
 
 async function autoProvision(){
   const area = document.getElementById('area').value.replace(/\D/g,'');
