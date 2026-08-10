@@ -51,9 +51,9 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">47</div><div class="kpi-label">Calls today</div><div class="kpi-sub">Lola answered all</div></div>
-      <div class="kpi"><div class="kpi-val mono">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
-      <div class="kpi"><div class="kpi-val">2m 14s</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick & warm</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiCallsToday">0</div><div class="kpi-label">Calls today</div><div class="kpi-sub" id="kpiCallsSub">No calls yet</div></div>
+      <div class="kpi"><div class="kpi-val mono" id="kpiBooked">0</div><div class="kpi-label">Booked</div><div class="kpi-sub" id="kpiBookedSub">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvgCall">—</div><div class="kpi-label">Avg call</div><div class="kpi-sub" id="kpiAvgSub">—</div></div>
       <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lost to voicemail</div><div class="kpi-sub">Lola never sleeps</div></div>
     </div>
 
@@ -127,9 +127,25 @@ function showDetail(i){
     name: c.from || 'Caller', num: c.from || '', dir: c.booked?'in':'in',
     outcome: c.booked?'Booked':(c.outcome||'Handled'),
     service: c.summary ? '' : '', summary: c.summary||'',
-    time: c.when||'', dur: fmtDur(c.durationSec)
+    time: c.when||'', dur: fmtDur(c.durationSec), durationSec: c.durationSec||0,
+    createdAt: c.createdAt||null, booked: !!c.booked
   }));
   render();
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayCalls = CALLS.filter(c => c.createdAt && new Date(c.createdAt) >= today);
+  const bookedCount = CALLS.filter(c => c.booked).length;
+  const withDuration = CALLS.filter(c => c.durationSec > 0);
+  const avgSec = withDuration.length ? Math.round(withDuration.reduce((s,c)=>s+c.durationSec,0)/withDuration.length) : 0;
+
+  document.getElementById('kpiCallsToday').textContent = todayCalls.length;
+  document.getElementById('kpiCallsSub').textContent = CALLS.length ? 'Lola answered all' : 'No calls yet';
+  document.getElementById('kpiBooked').textContent = bookedCount;
+  document.getElementById('kpiBookedSub').textContent = CALLS.length ? Math.round(bookedCount/CALLS.length*100)+'% conversion' : '—';
+  if(avgSec > 0){
+    document.getElementById('kpiAvgCall').textContent = fmtDur(avgSec);
+    document.getElementById('kpiAvgSub').textContent = 'Quick & warm';
+  }
 })();
 </script>
 </body>

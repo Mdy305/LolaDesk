@@ -72,7 +72,7 @@ export default async function handler(req,res){
       case 'calls': {
         const { data=[] } = await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
         return res.status(200).json({ tenant:tenant.name, calls:(data||[]).map(x=>({
-          id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at),
+          id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at), createdAt:x.created_at,
           outcome:x.outcome||'handled', durationSec:x.duration_sec||x.duration_seconds||x.duration||0, // schema column is duration_sec — the old keys never matched, so every call showed 0:00
           summary:x.summary||x.transcript?.slice(0,120)||'', booked:(x.outcome==='booked')||!!x.booked // no `booked` column exists — derive from outcome
         })) });
@@ -98,10 +98,11 @@ export default async function handler(req,res){
         // by month
         const byMonth={}; for(const r of rows){ const m=(r.starts_at||'').slice(0,7); if(!m)continue; byMonth[m]=(byMonth[m]||0)+Number(r.price||0); }
         // by service
-        const byService={}; for(const r of rows){ const k=r.service||'Other'; byService[k]=(byService[k]||0)+Number(r.price||0); }
+        const byService={}; const byServiceCount={};
+        for(const r of rows){ const k=r.service||'Other'; byService[k]=(byService[k]||0)+Number(r.price||0); byServiceCount[k]=(byServiceCount[k]||0)+1; }
         return res.status(200).json({ tenant:tenant.name, total, money:money(total),
           months:Object.entries(byMonth).sort().map(([m,v])=>({month:m,value:v})),
-          services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value})),
+          services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value,count:byServiceCount[name]||0})),
           bookingCount:rows.length });
       }
       case 'team': {

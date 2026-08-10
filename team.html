@@ -36,10 +36,10 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">$53,200</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ 15% this month</div></div>
-      <div class="kpi"><div class="kpi-val">4</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
-      <div class="kpi"><div class="kpi-val">87%</div><div class="kpi-label">Chair utilization</div><div class="kpi-sub">↑ 9%</div></div>
-      <div class="kpi"><div class="kpi-val pink">312</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Lola booked 81%</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiRevenue">$0</div><div class="kpi-label">Team revenue</div><div class="kpi-sub" id="kpiRevenueSub" style="color:var(--text3)">No data yet</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiCount">0</div><div class="kpi-label">Stylists</div><div class="kpi-sub" id="kpiCountSub">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiUtil">—</div><div class="kpi-label">Chair utilization</div><div class="kpi-sub" id="kpiUtilSub">—</div></div>
+      <div class="kpi"><div class="kpi-val pink" id="kpiAppts">0</div><div class="kpi-label">Appointments</div><div class="kpi-sub" id="kpiApptsSub">—</div></div>
     </div>
 
     <div class="team-grid" id="teamGrid"></div>
@@ -57,18 +57,40 @@ function renderTeam(){ document.getElementById('teamGrid').innerHTML = TEAM.map(
   <div class="member">
     <div class="member-top">${av(m)}<div><div class="member-name">${m.name}</div><div class="member-role">${m.role}</div></div></div>
     <div class="member-rev">$${m.rev.toLocaleString()}</div>
-    <div class="member-change up">↑ ${m.change}% this month</div>
-    <div class="member-bar"><div class="member-bar-fill" style="width:${m.pct}%"></div></div>
+    <div class="member-change${m.change>0?' up':''}">${m.change>0?'↑ '+m.change+'% this month':(m.hasStats?'No change this month':'Not tracked yet')}</div>
+    <div class="member-bar"><div class="member-bar-fill" style="width:${m.pct!=null?m.pct:0}%;${m.pct==null?'opacity:.25':''}"></div></div>
     <div class="member-stats">
       <div><div class="member-stat-val">${m.clients}</div><div class="member-stat-label">Clients</div></div>
-      <div><div class="member-stat-val">★ ${m.rating}</div><div class="member-stat-label">Rating</div></div>
+      <div><div class="member-stat-val">${m.rating!=null?'★ '+m.rating:'—'}</div><div class="member-stat-label">Rating</div></div>
     </div>
   </div>`).join(''); }
 (async ()=>{
   const data = await LolaData.load('team');
   const list = (data && data.team) || [];
-  TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct||(100-i*20), clients:m.clients||0, rating:m.rating||4.8 }));
+  TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct!=null?m.pct:null, clients:m.clients||0, rating:m.rating!=null?m.rating:null, appointments:m.appointments||0, hasStats: m.rev!=null || m.pct!=null || m.appointments!=null }));
   renderTeam();
+
+  const hasRealStats = TEAM.some(m => m.hasStats);
+  const totalRevenue = TEAM.reduce((sum,m)=>sum+(m.rev||0),0);
+  const totalAppointments = TEAM.reduce((sum,m)=>sum+(m.appointments||0),0);
+  const avgUtil = TEAM.length && TEAM.some(m=>m.pct!=null) ? Math.round(TEAM.reduce((s,m)=>s+(m.pct||0),0)/TEAM.length) : null;
+
+  document.getElementById('kpiCount').textContent = TEAM.length;
+  document.getElementById('kpiCountSub').textContent = TEAM.length ? 'All active' : 'No stylists added yet';
+
+  if(hasRealStats){
+    document.getElementById('kpiRevenue').textContent = '$'+totalRevenue.toLocaleString();
+    document.getElementById('kpiRevenueSub').textContent = 'This month';
+    document.getElementById('kpiAppts').textContent = totalAppointments.toLocaleString();
+    document.getElementById('kpiApptsSub').textContent = 'This month';
+    if(avgUtil!=null){
+      document.getElementById('kpiUtil').textContent = avgUtil+'%';
+      document.getElementById('kpiUtilSub').textContent = 'Average across team';
+    }
+  } else {
+    document.getElementById('kpiRevenueSub').textContent = TEAM.length ? 'Not tracked yet' : 'No data yet';
+    document.getElementById('kpiApptsSub').textContent = TEAM.length ? 'Not tracked yet' : 'No data yet';
+  }
 })();
 </script>
 </body>

@@ -43,18 +43,18 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">$38,200</div><div class="kpi-label">This month</div><div class="kpi-sub green" style="color:var(--text)">↑ 24% vs last</div></div>
-      <div class="kpi"><div class="kpi-val">$320</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub">↑ 8%</div></div>
-      <div class="kpi"><div class="kpi-val">119</div><div class="kpi-label">Appointments</div><div class="kpi-sub">↑ 8%</div></div>
-      <div class="kpi"><div class="kpi-val pink">$4,200</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Rebookings + win-backs</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiMonth">$0</div><div class="kpi-label">This month</div><div class="kpi-sub" id="kpiMonthSub">No data yet</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvgTicket">$0</div><div class="kpi-label">Avg ticket</div><div class="kpi-sub" id="kpiAvgTicketSub">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAppts">0</div><div class="kpi-label">Appointments</div><div class="kpi-sub" id="kpiApptsSub">—</div></div>
+      <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lola recovered</div><div class="kpi-sub">Not tracked yet</div></div>
     </div>
 
     <div class="rev-grid">
       <div class="card">
         <div class="card-head"><div class="card-title">Revenue trend</div></div>
         <div class="chart-box">
-          <div class="chart-big">$38,200</div>
-          <div class="chart-change">↑ 24% vs last month</div>
+          <div class="chart-big" id="chartBig">$0</div>
+          <div class="chart-change" id="chartChange">No data yet</div>
           <canvas id="bars" width="640" height="160"></canvas>
         </div>
       </div>
@@ -63,13 +63,10 @@
         <div class="donut-wrap">
           <div class="donut">
             <canvas id="donut" width="130" height="130"></canvas>
-            <div class="donut-center"><div class="donut-total">$38.2K</div><div class="donut-label">Total</div></div>
+            <div class="donut-center"><div class="donut-total" id="donutTotal">$0</div><div class="donut-label">Total</div></div>
           </div>
-          <div class="legend">
-            <div class="legend-item"><span class="legend-dot" style="background:#ccff00"></span><span class="legend-name">Blonde Services</span><span class="legend-val">48%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#a8e000"></span><span class="legend-name">Extensions</span><span class="legend-val">28%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#8fd400"></span><span class="legend-name">Color</span><span class="legend-val">16%</span></div>
-            <div class="legend-item"><span class="legend-dot" style="background:#3a5a00"></span><span class="legend-name">Cut & Style</span><span class="legend-val">8%</span></div>
+          <div class="legend" id="serviceLegend">
+            <div class="legend-item"><span class="legend-dot" style="background:var(--border2)"></span><span class="legend-name">No services yet</span></div>
           </div>
         </div>
       </div>
@@ -77,13 +74,8 @@
 
     <div class="card">
       <div class="card-head"><div class="card-title">Service breakdown</div></div>
-      <div>
-        <div class="svc-row"><span class="svc-name">Balayage</span><span class="svc-count">46 booked</span><span class="svc-rev">$18,170</span></div>
-        <div class="svc-row"><span class="svc-name">Extensions</span><span class="svc-count">13 booked</span><span class="svc-rev">$10,400</span></div>
-        <div class="svc-row"><span class="svc-name">Keratin</span><span class="svc-count">11 booked</span><span class="svc-rev">$4,950</span></div>
-        <div class="svc-row"><span class="svc-name">Hair Botox</span><span class="svc-count">9 booked</span><span class="svc-rev">$2,925</span></div>
-        <div class="svc-row"><span class="svc-name">Cut & Style</span><span class="svc-count">18 booked</span><span class="svc-rev">$4,050</span></div>
-        <div class="svc-row"><span class="svc-name">Blowout</span><span class="svc-count">22 booked</span><span class="svc-rev">$2,090</span></div>
+      <div id="serviceBreakdown">
+        <div class="svc-row"><span class="svc-name" style="color:var(--text3)">No bookings yet</span></div>
       </div>
     </div>
   </main>
@@ -121,7 +113,8 @@ let REV=null;
 function drawBarsData(months){
   const c=document.getElementById('bars'); if(!c)return;
   const x=c.getContext('2d'), W=c.width, H=c.height; x.clearRect(0,0,W,H);
-  let vals = months && months.length ? months.map(m=>m.value) : [0.4,0.55,0.7,0.6,0.85,0.95].map(v=>v*10000);
+  if(!months || !months.length) return; // no fake placeholder bars when there's no real data
+  const vals = months.map(m=>m.value);
   const max=Math.max(...vals,1); const bw=W/vals.length;
   vals.forEach((v,i)=>{ const bh=(v/max)*H*0.88, bx=i*bw+4, by=H-bh;
     const g=x.createLinearGradient(0,by,0,H); g.addColorStop(0,'#ccff00'); g.addColorStop(1,'rgba(204,255,0,.25)');
@@ -130,18 +123,60 @@ function drawBarsData(months){
 function drawDonutData(services){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15; x.clearRect(0,0,130,130);
+  if(!services || !services.length) return; // no fake donut segments without real data
   const palette=['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
-  let segs;
-  if(services && services.length){ const tot=services.reduce((a,b)=>a+b.value,0)||1;
-    segs=services.slice(0,5).map((sv,i)=>({v:(sv.value/tot)*100,c:palette[i%palette.length]})); }
-  else segs=[{v:48,c:'#ccff00'},{v:28,c:'#a8e000'},{v:16,c:'#84c400'},{v:8,c:'#3a5a00'}];
+  const tot=services.reduce((a,b)=>a+b.value,0)||1;
+  const segs=services.slice(0,5).map((sv,i)=>({v:(sv.value/tot)*100,c:palette[i%palette.length]}));
   let a0=-Math.PI/2; segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,a0,a0+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();a0+=a;});
 }
+function money(n){ return '$'+Math.round(n||0).toLocaleString(); }
 (async ()=>{
   const data = await LolaData.load('revenue'); REV=data;
-  drawBarsData(data&&data.months); drawDonutData(data&&data.services);
-  // update any KPI showing total revenue
-  if(data&&data.money){ const k=document.querySelector('[data-rev-total]'); if(k)k.textContent=data.money; }
+  const months = (data && data.months) || [];
+  const services = (data && data.services) || [];
+  const total = (data && data.total) || 0;
+  const bookingCount = (data && data.bookingCount) || 0;
+
+  drawBarsData(months);
+  drawDonutData(services);
+
+  const thisMonthKey = new Date().toISOString().slice(0,7);
+  const thisMonthEntry = months.find(m => m.month === thisMonthKey);
+  const thisMonthVal = thisMonthEntry ? thisMonthEntry.value : 0;
+  const lastMonthEntry = months.length > 1 ? months[months.length-2] : null;
+
+  document.getElementById('kpiMonth').textContent = money(thisMonthVal);
+  document.getElementById('chartBig').textContent = money(thisMonthVal || total);
+  if(lastMonthEntry && lastMonthEntry.value > 0){
+    const pct = Math.round(((thisMonthVal - lastMonthEntry.value) / lastMonthEntry.value) * 100);
+    const arrow = pct >= 0 ? '↑' : '↓';
+    document.getElementById('kpiMonthSub').textContent = `${arrow} ${Math.abs(pct)}% vs last`;
+    document.getElementById('chartChange').textContent = `${arrow} ${Math.abs(pct)}% vs last month`;
+  } else if(thisMonthVal > 0 || total > 0){
+    document.getElementById('kpiMonthSub').textContent = 'This month';
+    document.getElementById('chartChange').textContent = 'This month';
+  }
+
+  document.getElementById('kpiAppts').textContent = bookingCount;
+  document.getElementById('kpiApptsSub').textContent = bookingCount ? 'Total booked' : '—';
+
+  if(bookingCount > 0){
+    document.getElementById('kpiAvgTicket').textContent = money(total / bookingCount);
+    document.getElementById('kpiAvgTicketSub').textContent = 'Per appointment';
+  }
+
+  document.getElementById('donutTotal').textContent = money(total);
+
+  if(services.length){
+    const palette=['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
+    const tot = services.reduce((a,b)=>a+b.value,0) || 1;
+    document.getElementById('serviceLegend').innerHTML = services.slice(0,5).map((sv,i)=>`
+      <div class="legend-item"><span class="legend-dot" style="background:${palette[i%palette.length]}"></span><span class="legend-name">${sv.name}</span><span class="legend-val">${Math.round(sv.value/tot*100)}%</span></div>
+    `).join('');
+    document.getElementById('serviceBreakdown').innerHTML = services.map(sv => `
+      <div class="svc-row"><span class="svc-name">${sv.name}</span><span class="svc-count">${sv.count} booked</span><span class="svc-rev">${money(sv.value)}</span></div>
+    `).join('');
+  }
 })();
 </script>
 </body>
