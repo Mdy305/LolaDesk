@@ -562,66 +562,9 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 .btn-primary{background:var(--accent);color:#070708}
 .btn-ghost{background:var(--surface);border:.5px solid var(--border);color:var(--text2)}
 
-/* Operational home: one hierarchy, one metric source, one living Lola surface. */
-.briefing-banner,.roi-panel,.away-panel{display:none!important}
-.dash-header{align-items:center;margin-bottom:16px}
-.dash-greeting h1{font-size:24px}
-.dash-greeting p{font-size:12px}
-.dash-header .kpi-row{min-width:min(620px,58vw);gap:8px}
-.kpi{padding:12px 14px;border-radius:12px;box-shadow:none}
-.kpi-val{font-size:22px;margin-bottom:4px}
-.kpi-label{font-size:11px}
-.kpi-sub{display:none}
-.grid-main{
-  grid-template-columns:minmax(0,1.25fr) minmax(330px,.75fr);
-  grid-template-areas:
-    "desk schedule"
-    "lola lola";
-  align-items:start;
-}
-.grid-main>.desk-center{grid-area:desk;margin:0;min-height:286px}
-.grid-main>.col-stack:first-of-type{grid-area:schedule}
-.grid-main>.col-stack:first-of-type .card:nth-child(2){display:none}
-.grid-main>.col-stack:last-of-type{display:none}
-.lola-panel{
-  grid-area:lola;
-  min-height:0;
-  padding:14px 16px;
-  background:
-    radial-gradient(circle at 8% 50%,rgba(204,255,0,.14),transparent 22%),
-    linear-gradient(115deg,rgba(255,255,255,.045),rgba(204,255,0,.035));
-  backdrop-filter:blur(22px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 14px 40px rgba(0,0,0,.22);
-}
-.lola-orb-zone{padding:0;min-height:82px;flex-direction:row;justify-content:flex-start;gap:16px}
-.lola-orb-stage{width:72px;height:72px;flex:0 0 72px}
-.lola-core{
-  width:30px;height:30px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#f1ffc0 0,#ccff00 20%,rgba(204,255,0,.16) 58%,transparent 70%);
-  box-shadow:0 0 20px rgba(204,255,0,.55),0 0 48px rgba(204,255,0,.18);
-}
-.lola-name{display:none}
-.lola-prompt{margin:0;text-align:left;min-width:150px}
-.lola-prompt-title{font-size:16px;font-style:normal;font-weight:600}
-.lola-prompt-sub{font-size:11px}
-.lola-mic{margin:0 0 0 auto;flex:0 0 42px}
-.lola-suggestions{display:flex;gap:8px;overflow-x:auto;max-width:58%}
-.lola-suggestion{
-  flex:0 0 auto;padding:8px 11px;border:.5px solid var(--border2);border-radius:999px;
-  background:rgba(255,255,255,.035);color:var(--text2);font-size:11px;
-}
-.lola-suggestion:hover{border-color:rgba(204,255,0,.45);color:var(--text)}
-.res-panel{display:none}
-.quick-grid{margin-top:4px}
-.cmd-dock{
-  background:rgba(18,18,21,.82);
-  border-color:rgba(204,255,0,.16);
-  box-shadow:0 14px 50px rgba(0,0,0,.55),0 0 30px rgba(204,255,0,.04);
-}
-
 @media(max-width:1400px){
   .grid-main{grid-template-columns:minmax(0,1fr) 340px}
-  .grid-main>.col-stack:last-child{display:none}
+  .grid-main>.col-stack:last-child{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}
   .dash-header{align-items:flex-start;flex-direction:column}
   .dash-header .kpi-row{width:100%;min-width:0}
 }
@@ -629,10 +572,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   .app{grid-template-columns:1fr}
   .sidebar{display:none}
   .main{padding:16px 16px 110px}
-  .grid-main{
-    grid-template-columns:1fr;
-    grid-template-areas:"schedule" "desk" "lola";
-  }
+  .grid-main{grid-template-columns:1fr}
   .grid-main>.col-stack:last-child{grid-template-columns:1fr}
   .cmd-dock{
     left:50%;
@@ -658,9 +598,6 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   .roi-stats,.kpi-row{grid-template-columns:repeat(2,1fr)}
   .res-grid{grid-template-columns:1fr}
   .cmd-chips{display:none}
-  .dash-header{align-items:flex-start;flex-direction:column}
-  .dash-header .kpi-row{width:100%;min-width:0}
-  .lola-suggestions{display:none}
 }
 @media(max-width:620px){
   .topbar{gap:10px}
@@ -832,19 +769,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
           <div class="lola-prompt">
             <div class="lola-prompt-title" id="orbTitle">Hey Lola…</div>
             <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
-            <div id="orbTranscript" aria-live="polite" style="min-height:18px;margin-top:8px;text-align:center;font-size:12px;color:var(--accent2)"></div>
-            <div id="orbWave" aria-hidden="true" style="display:none;align-items:center;justify-content:center;gap:4px;height:18px;margin-top:6px">
-              <i></i><i></i><i></i><i></i><i></i>
-            </div>
           </div>
           <button class="lola-mic" id="orbMic" onclick="toggleVoice()" aria-label="Talk to Lola">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
           </button>
-          <div class="lola-suggestions" aria-label="Suggested actions">
-            <button class="lola-suggestion" onclick="askLola('Find the best client to fill the next open appointment gap.')">Fill next gap</button>
-            <button class="lola-suggestion" onclick="askLola('Show me the clients who need a callback today.')">Callbacks due</button>
-            <button class="lola-suggestion" onclick="askLola('Give me today’s three most important front desk actions.')">Today’s priorities</button>
-          </div>
         </div>
       </section>
 
@@ -1065,15 +993,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
 <script src="auth-guard.js"></script>
 <script src="lola-orb.js"></script>
-<script src="lola-wake-burst.js"></script>
 <script src="lola-data.js"></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
 (async function(){
-  const operationsGrid = document.querySelector(".grid-main");
-  const commandCenter = document.getElementById("deskCenter");
-  if(operationsGrid && commandCenter) operationsGrid.prepend(commandCenter);
-
   const money = (value) => "$" + Math.max(0, Number(value || 0)).toLocaleString();
   const text = (id, value) => {
     const el = document.getElementById(id);
@@ -1569,28 +1492,14 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     }
   });
 
-  const dashboardResults = await Promise.allSettled([
+  await Promise.all([
     renderSchedule(),
     renderAway(),
     renderDeskCenter()
   ]);
-  dashboardResults.filter(x=>x.status==='rejected').forEach(x=>console.warn('[dashboard] section unavailable',x.reason));
   renderInsights();
   renderResonance();
   drawCharts();
-
-  // app.js has its own demo-data fallback renderers for scheduleList/insightsList
-  // (used on pages with no real data wired yet) — this flag tells it real data
-  // is already on screen here, so it doesn't overwrite it.
-  window.__LOLA_REAL_DATA__ = true;
-
-  // Exposed so lola-live-poll.js can refresh visible panels when new
-  // bookings/calls/messages come in, without a full page reload.
-  window.lolaRefreshPanels = function(){
-    renderSchedule();
-    renderAway();
-    renderInsights();
-  };
 
   const appScript = document.createElement("script");
   appScript.src = "app.js";
@@ -1601,10 +1510,6 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         if(event.key==="Enter" && typeof window.sendCmd==="function") window.sendCmd();
       });
     }
-    // Live activity polling needs window.lolaPulse (app.js) to exist first.
-    const pollScript = document.createElement("script");
-    pollScript.src = "lola-live-poll.js";
-    document.body.appendChild(pollScript);
   };
   document.body.appendChild(appScript);
 })();
