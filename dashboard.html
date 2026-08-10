@@ -1065,6 +1065,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
 <script src="auth-guard.js"></script>
 <script src="lola-orb.js"></script>
+<script src="lola-wake-burst.js"></script>
 <script src="lola-data.js"></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
@@ -1578,6 +1579,19 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   renderResonance();
   drawCharts();
 
+  // app.js has its own demo-data fallback renderers for scheduleList/insightsList
+  // (used on pages with no real data wired yet) — this flag tells it real data
+  // is already on screen here, so it doesn't overwrite it.
+  window.__LOLA_REAL_DATA__ = true;
+
+  // Exposed so lola-live-poll.js can refresh visible panels when new
+  // bookings/calls/messages come in, without a full page reload.
+  window.lolaRefreshPanels = function(){
+    renderSchedule();
+    renderAway();
+    renderInsights();
+  };
+
   const appScript = document.createElement("script");
   appScript.src = "app.js";
   appScript.onload = ()=>{
@@ -1587,6 +1601,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         if(event.key==="Enter" && typeof window.sendCmd==="function") window.sendCmd();
       });
     }
+    // Live activity polling needs window.lolaPulse (app.js) to exist first.
+    const pollScript = document.createElement("script");
+    pollScript.src = "lola-live-poll.js";
+    document.body.appendChild(pollScript);
   };
   document.body.appendChild(appScript);
 })();

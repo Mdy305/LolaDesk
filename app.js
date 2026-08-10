@@ -106,6 +106,7 @@ function avatar(name, img, cls){
 }
 
 function renderSchedule(){
+  if(window.__LOLA_REAL_DATA__) return; // dashboard.html already rendered real bookings — don't clobber with demo data
   document.getElementById('scheduleList').innerHTML = DATA.schedule.map(s => `
     <div class="sched-item" onclick="askLola('Tell me about my ${s.time} ${s.service} with ${s.client}')">
       <div class="sched-time"><span class="sched-dot"></span>${s.time}</div>
@@ -118,6 +119,7 @@ function renderSchedule(){
 }
 
 function renderInsights(){
+  if(window.__LOLA_REAL_DATA__) return; // dashboard.html already rendered real insights — don't clobber with demo data
   document.getElementById('insightsList').innerHTML = DATA.insights.map(i => `
     <div class="insight" onclick="askLola('${i.prompt.replace(/'/g,"\\'")}')">
       <div class="insight-icon ${i.cls}">${i.icon}</div>
@@ -180,8 +182,16 @@ const orb = (window.LolaOrb && orbCanvas)
 let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
 function setOrbState(s){
+  const prevState = orbState;
   orbState = s;
   orb.setState(s);
+
+  // The wake moment: any transition INTO listening (voice wake-word
+  // "Hey Lola" or a manual tap) is when Lola visibly comes alive.
+  if(s === 'listening' && prevState !== 'listening'){
+    orb.flare();
+    if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
+  }
 
   const wave = document.getElementById('orbWave');
   const title = document.getElementById('orbTitle');
@@ -631,6 +641,25 @@ window.toggleChatVoice = function(){
   listening ? stopListening() : startListening();
 };
 
+// Called by the live-activity poller when a new booking/call/message
+// comes in — a lighter reaction than a full wake (no burst, no mic),
+// just a resonance pulse and a brief label so it doesn't fight with
+// whatever the user is actually doing with the orb.
+window.lolaPulse = function(label){
+  orb.flare();
+  if(listening || orbState === 'speaking' || orbState === 'thinking') return; // don't interrupt an active exchange
+  const sub = document.getElementById('orbSub');
+  const title = document.getElementById('orbTitle');
+  if(!sub || !title) return;
+  const prevTitle = title.textContent, prevSub = sub.textContent;
+  title.textContent = 'New activity';
+  sub.textContent = label || 'Something just came in';
+  setTimeout(()=>{
+    if(listening || orbState === 'speaking' || orbState === 'thinking') return;
+    title.textContent = prevTitle; sub.textContent = prevSub;
+  }, 3200);
+};
+
 /* ── AMBIENT WAKE-WORD LISTENING ── */
 let ambientRecognition = null;
 
@@ -663,6 +692,7 @@ function setupAmbientRecognition(){
     // because playback is local.)
     stopSpeaking();
     orb.flare(); // visible acknowledgment the wake word landed
+    if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
     stopAmbientListening();
     voiceTarget = 'orb';
     askLola(command);
