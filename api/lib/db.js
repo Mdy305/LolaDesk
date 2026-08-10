@@ -268,6 +268,16 @@ export async function createBooking(tenantId, { clientId, conversationId, servic
   return data;
 }
 
+// Records which connected external platform a booking was also pushed to,
+// and that platform's own appointment ID — so a later reschedule/cancel
+// can be synced out to the same place. See migrations/20260810_booking_external_sync.sql
+export async function updateBookingExternalRef(bookingId, { external_id, source }){
+  const c = db();
+  if(!c) return null;
+  const { data } = await c.from('bookings').update({ external_id, source }).eq('id', bookingId).select().maybeSingle();
+  return data;
+}
+
 // ── USAGE METER (for billing later) ──
 export async function logUsage(tenantId, kind, units=1, metadata={}){
   const c = db();

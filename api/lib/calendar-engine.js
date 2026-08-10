@@ -1,5 +1,5 @@
-import { db, createBooking, getTenantIntegrations } from './db.js';
-import { listAllAppointments } from './aggregator.js';
+import { db, createBooking, getTenantIntegrations, updateBookingExternalRef } from './db.js';
+import { listAllAppointments, writeAppointment } from './aggregator.js';
 
 function toIso(value){
   const d = new Date(value);
@@ -166,6 +166,36 @@ export async function createBookingSafe({ tenant, clientId, conversationId=null,
     durationMin: normalizedDuration,
     price
   });
+
+  // Push the booking OUT to any connected external booking platform
+  // (Square/Boulevard/Vagaro/Mindbody/Fresha) so it actually shows up on
+  // the salon's real calendar there, not just inside LolaDesk. Best-effort
+  // and non-blocking: connectors need appt.service_variation_id /
+  // appt.team_member_id / appt.customer_id to create a fully-matched
+  // appointment on the platform's own side, and LolaDesk doesn't yet map
+  // its plain-text service/stylist names to each platform's catalog IDs —
+  // that mapping is the natural next step. Until then this either creates
+  // a best-effort appointment (providers tolerant of missing IDs) or fails
+  // gracefully and the booking still exists correctly inside LolaDesk.
+  if(booking?.id){
+    try{
+      const integrations = await getTenantIntegrations(tenant.id);
+      const bookingProviders = integrations.filter(i => ['square','boulevard','vagaro','mindbody','fresha'].includes(i.provider));
+      if(bookingProviders.length){
+        const external = await writeAppointment(integrations, {
+          starts_at: startIso,
+          duration_min: normalizedDuration,
+          service,
+          stylist,
+          price
+        });
+        if(external?.id) await updateBookingExternalRef(booking.id, { external_id: external.id, source: bookingProviders[0].provider });
+      }
+    }catch(e){
+      console.warn('[calendar-engine] External sync failed (booking still saved in LolaDesk):', e.message);
+    }
+  }
+
   return { ok: !!booking?.id, booking };
 }
 
