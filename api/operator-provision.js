@@ -23,9 +23,16 @@
  */
 
 import { tenantToolSecret } from './lib/operator-db.js';
+import { bearer, getUserFromToken } from './lib/auth.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 const DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B';
+
+function isAdmin(email){
+  const list = String(process.env.ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return !!email && list.includes(String(email).toLowerCase());
+}
 
 function authHeaders(){
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}` };
@@ -158,6 +165,14 @@ export default async function handler(req, res){
 
   if(!process.env.TELNYX_API_KEY) return res.status(500).json({ error: 'Missing TELNYX_API_KEY' });
   if(!process.env.OPERATOR_TOOLS_SECRET) return res.status(500).json({ error: 'Missing OPERATOR_TOOLS_SECRET' });
+
+  // This provisions a PRIVILEGED assistant wired with tools that can act
+  // on tenant data via /api/operator-tools — no auth existed at all
+  // before this. Anyone who found the URL could create one with
+  // arbitrary tenant data in the request body, no login required.
+  const user = await getUserFromToken(bearer(req));
+  if(!user) return res.status(401).json({ error: 'Not signed in' });
+  if(!isAdmin(user.email)) return res.status(403).json({ error: 'Not authorized' });
 
   try{
     if(req.method === 'GET'){

@@ -12,7 +12,15 @@
  *   TELNYX_VOICE_ID (e.g., ElevenLabs ID hosted on Telnyx)
  */
 
+import { bearer, getUserFromToken } from './lib/auth.js';
+
 const TELNYX = 'https://api.telnyx.com/v2';
+
+function isAdmin(email){
+  const list = String(process.env.ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return !!email && list.includes(String(email).toLowerCase());
+}
 
 function authHeaders(){
   return {
@@ -87,6 +95,16 @@ export default async function handler(req, res){
   if(!process.env.TELNYX_API_KEY){
     return res.status(500).json({ error: 'Missing TELNYX_API_KEY env var' });
   }
+
+  // Provisions/lists the single shared Telnyx AI Assistant that every
+  // tenant's calls route through — an operator-only setup tool, never
+  // a per-tenant resource. Previously had no auth check at all: anyone
+  // who found this URL could create real Telnyx assistants (with
+  // whatever `tenant` object they put in the request body) or list
+  // the account's existing ones, no login required.
+  const user = await getUserFromToken(bearer(req));
+  if(!user) return res.status(401).json({ error: 'Not signed in' });
+  if(!isAdmin(user.email)) return res.status(403).json({ error: 'Not authorized' });
 
   try{
     if(req.method === 'GET'){
