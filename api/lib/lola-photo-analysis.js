@@ -39,7 +39,10 @@ export async function analyzeHairPhoto(imageUrl, clientMessage = '', tenantId = 
     }
 
     // Step 2: Check cache
-    const cacheKey = createHash('sha256').update(imageUrl).digest('hex');
+    // Includes tenantId — a hash of the image URL alone isn't guaranteed
+    // unique across tenants (shared/generic image URLs, template assets),
+    // and this cache must never serve one tenant's analysis to another.
+    const cacheKey = createHash('sha256').update(`${tenantId||'anon'}:${imageUrl}`).digest('hex');
     const cached = getCachedAnalysis(cacheKey);
     if (cached) {
       console.log('[Photo] Using cached analysis for', cacheKey);
