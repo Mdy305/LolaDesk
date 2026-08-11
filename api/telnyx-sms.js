@@ -7,6 +7,7 @@ import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
+import { moderateImage, analyzeHairPhoto } from './lib/lola-photo-analysis.js';
 
 
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
@@ -33,10 +34,11 @@ async function readBody(req){
 function extract(raw){
   if(raw.data?.event_type==='message.received'){
     const p=raw.data.payload||{};
-    return { inbound:true, from:p.from?.phone_number||'', to:(Array.isArray(p.to)?p.to[0]?.phone_number:p.to?.phone_number)||'', text:p.text||'', type:p.type||'SMS' };
+    const mediaUrls = Array.isArray(p.media) ? p.media.map(m=>m?.url).filter(Boolean) : [];
+    return { inbound:true, from:p.from?.phone_number||'', to:(Array.isArray(p.to)?p.to[0]?.phone_number:p.to?.phone_number)||'', text:p.text||'', type:p.type||'SMS', mediaUrls };
   }
   if(raw.to&&raw.text&&raw.from&&!raw.data) return { outbound:true, ...raw };
-  return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS' };
+  return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS', mediaUrls: [] };
 }
 
 export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,type='SMS',channel='sms'}){
@@ -172,6 +174,25 @@ export default async function handler(req,res){
 
   const intent = detectLolaIntent(text);
   const mood = detectConversationMood(text);
+
+  // Real vision-AI photo consultation — a client texting a hair photo is
+  // exactly the kind of thing that should make Lola meaningfully smarter
+  // than a generic booking bot, not just something she silently ignores.
+  // Best-effort: any failure here falls through to the normal text-only
+  // reply path untouched.
+  let photoContext = '';
+  if(body.mediaUrls?.length){
+    try{
+      const imageUrl = body.mediaUrls[0];
+      const moderation = await moderateImage(imageUrl);
+      if(moderation?.appropriate){
+        const analysis = await analyzeHairPhoto(imageUrl, text, row.id);
+        if(analysis && !analysis.error){
+          photoContext = `\nCLIENT JUST SENT A PHOTO — real vision-AI analysis (use this, do not ignore the photo):\nCondition: ${analysis.condition||'unknown'}\nRisk level: ${analysis.riskLevel||'unknown'}\n${analysis.requiresConsultation ? 'This needs an in-person consultation before booking — say so warmly, do not just quote a price.' : ''}\n${analysis.notes ? 'Notes: '+analysis.notes : ''}`;
+        }
+      }
+    }catch(e){ console.warn('[sms] Photo analysis failed, continuing text-only:', e.message); }
+  }
   let reply = deterministicSkillReply({
     tenant: row,
     intent,
@@ -179,14 +200,14 @@ export default async function handler(req,res){
     clientName: client?.name ? String(client.name).split(' ')[0] : ''
   }) || 'Thanks for texting! How can I help you book?';
   try{
-    if(!reply || intent === 'general' || intent === 'recommendation'){
+    if(!reply || intent === 'general' || intent === 'recommendation' || photoContext){
       const r=await chat({
         system:buildLolaSystemPrompt({
           tenant: row,
           channel,
           intent,
           mood,
-          memoryBlock: buildClientMemoryBlock(clientProfile)
+          memoryBlock: buildClientMemoryBlock(clientProfile) + photoContext
         }),
         messages:hist,
         maxTokens:240,
