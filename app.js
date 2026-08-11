@@ -15,6 +15,7 @@ const DEFAULT_TENANT = {
   name: 'MMΛ Salon',
   owner: 'Meddy',
   location: '1500 Alton Road, Miami Beach',
+  hours: 'Tue–Sat, Noon–8pm. Appointment only.',
   phone: '+17864497058',
   bookingUrl: 'https://www.mmasalon.com/book',
   whatsapp: 'https://wa.me/17864497058',
@@ -312,7 +313,7 @@ ${svc}
 TEAM: ${team}
 
 BOOKING: ${TENANT.bookingUrl} · WhatsApp ${TENANT.whatsapp} · Phone ${TENANT.phone}
-HOURS: Tue–Sat, Noon–8pm. Appointment only.
+HOURS: ${TENANT.hours || 'Contact the salon for hours.'}
 
 PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
 
@@ -892,6 +893,17 @@ audioUnlockEvents.forEach((eventName) => {
 
 let voiceMeter = null; // Lola's playback → orb resonance
 
+// Revoking a blob URL while the browser still has an in-flight fetch for
+// it (common: speak() called again before the previous utterance finished
+// loading/playing) produces net::ERR_FILE_NOT_FOUND and silently kills
+// audio — text still shows fine since that's a separate synchronous
+// update, so it LOOKS like "she only replies by text." A short delay
+// gives any in-flight load a chance to actually resolve first.
+function revokeUrlSafely(url){
+  if(!url) return;
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 400);
+}
+
 function stopSpeaking(){
   if(voiceMeter){
     voiceMeter.stop();
@@ -908,7 +920,7 @@ function stopSpeaking(){
   }
 
   if(currentAudioUrl){
-    URL.revokeObjectURL(currentAudioUrl);
+    revokeUrlSafely(currentAudioUrl);
     currentAudioUrl = null;
   }
 
@@ -935,19 +947,19 @@ async function speak(text){
     const blob = await res.blob();
 
     if(currentAudioUrl){
-      URL.revokeObjectURL(currentAudioUrl);
+      revokeUrlSafely(currentAudioUrl);
     }
 
     currentAudioUrl = URL.createObjectURL(blob);
+    const cleanup = ()=>{ if(currentAudioUrl){ revokeUrlSafely(currentAudioUrl); currentAudioUrl = null; } if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
+    currentAudio.onended = cleanup;
+    currentAudio.onerror = cleanup;
     currentAudio.src = currentAudioUrl;
     currentAudio.currentTime = 0;
     onStart();
     // Resonance OUT: her actual voice amplitude radiates through the
     // neural orb as she speaks — the orb IS her voice made visible.
     if(window.LolaOrb) voiceMeter = LolaOrb.attachAudioElement(orb, currentAudio);
-    const cleanup = ()=>{ if(currentAudioUrl){ URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; } if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
-    currentAudio.onended = cleanup;
-    currentAudio.onerror = cleanup;
     try{
       await currentAudio.play();
       audioUnlocked = true;
@@ -973,8 +985,33 @@ async function speak(text){
     const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
     for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
     onStart();
-    u.onend = onEnd;
-    u.onerror = onEnd;
+
+    // Real resonance without real audio analysis: browser TTS has no
+    // accessible waveform (unlike a real <audio> element), but it does
+    // fire onboundary at each spoken word — genuine speech timing, not
+    // a fake loop. Spike the orb's level on each word, decay smoothly
+    // between via rAF, so the orb still pulses in time with what's
+    // actually being said rather than sitting in a static "speaking" pose.
+    let fallbackLevel = 0, fallbackRaf = 0, fallbackActive = true;
+    function decayLoop(){
+      if(!fallbackActive) return;
+      fallbackLevel *= 0.88;
+      if(orb?.setLevel) orb.setLevel(fallbackLevel);
+      fallbackRaf = requestAnimationFrame(decayLoop);
+    }
+    decayLoop();
+    u.onboundary = (ev)=>{
+      if(ev.name === 'word' || ev.charIndex != null){
+        fallbackLevel = 0.55 + Math.random()*0.35;
+      }
+    };
+    const stopFallbackResonance = ()=>{
+      fallbackActive = false;
+      cancelAnimationFrame(fallbackRaf);
+      if(orb?.setLevel) orb.setLevel(0);
+    };
+    u.onend = ()=>{ stopFallbackResonance(); onEnd(); };
+    u.onerror = ()=>{ stopFallbackResonance(); onEnd(); };
     speechSynthesis.speak(u);
   }
 }
