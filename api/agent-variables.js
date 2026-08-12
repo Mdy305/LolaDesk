@@ -108,6 +108,7 @@ export default async function handler(req, res){
       .join('; ');
 
     const dynamic_variables = {
+      tenant_id: tenant.id || '',
       company_name: tenant.name || 'our salon',
       business_type: tenant.business_mode || 'salon',
       location: tenant.location || '',
