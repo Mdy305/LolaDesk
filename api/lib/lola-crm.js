@@ -19,7 +19,7 @@ export async function findClientByContact(tenantId, phone=null, email=null){
 export async function upsertClient(tenantId, data={}){
   const c=db(); if(!c||!tenantId)return null;
   let existing=null;
-  if(data.id){ const r=await c.from('clients').select('*').eq('tenant_id',tenantId).eq('id',data.id).maybeSingle(); existing=r.data; }
+  if(data.id){ const r=await c.from('clients').select('*').eq('tenant_id',tenantId).eq('id',data.id).maybeSingle(); if(r.error)throw r.error; existing=r.data; }
   if(!existing && data.phone) existing=await findClientByContact(tenantId,data.phone,null);
   if(!existing && data.email) existing=await findClientByContact(tenantId,null,data.email);
   const parts=String(data.name||'').trim().split(/\s+/).filter(Boolean);
@@ -47,8 +47,9 @@ export async function getClientMemory(clientId, tenantId, key=null){
 export async function setClientMemory(clientId, tenantId, key, value, clientPhone=null){
   const c=db(); if(!c)return null;
   const row={tenant_id:tenantId,client_id:clientId,client_phone:clientPhone?e164(clientPhone):null,key:String(key),value,updated_at:new Date().toISOString()};
-  const {data:existing}=await c.from('client_memories').select('id').eq('tenant_id',tenantId).eq('client_id',clientId).eq('key',String(key)).limit(1).maybeSingle();
-  const q=existing?.id?c.from('client_memories').update(row).eq('id',existing.id):c.from('client_memories').insert({...row,created_at:new Date().toISOString()});
+  const lookup=await c.from('client_memories').select('id').eq('tenant_id',tenantId).eq('client_id',clientId).eq('key',String(key)).limit(1).maybeSingle();
+  if(lookup.error)throw lookup.error;
+  const q=lookup.data?.id?c.from('client_memories').update(row).eq('id',lookup.data.id):c.from('client_memories').insert({...row,created_at:new Date().toISOString()});
   const {data,error}=await q.select().single(); if(error) throw error; return data;
 }
 
@@ -58,13 +59,13 @@ export async function rememberClientDetail(clientId, tenantId, {key,value,phone=
 }
 
 export async function updateClientFromConversation(clientId, tenantId, info={}){
-  const c=db(); if(!c||!clientId)return {success:false};
+  const c=db(); if(!c||!clientId)return {success:false,error:'database_not_configured'};
   const now=new Date().toISOString();
   const summary={intent:info.intent||null,mood:info.mood||null,summary:info.summary||null,channel:info.channel||null,at:now};
   await setClientMemory(clientId,tenantId,'last_conversation',summary,info.phone||null);
-  if(info.mood){ await c.from('client_mood_history').insert({client_id:clientId,tenant_id:tenantId,mood:info.mood,context:{intent:info.intent||null,channel:info.channel||null}}); }
-  if(info.photoAnalysis){ await c.from('photo_analyses').insert({client_id:clientId,tenant_id:tenantId,analysis_data:info.photoAnalysis,photo_url:info.photoUrl||null,risk_level:info.photoAnalysis.riskLevel||info.photoAnalysis.risk_level||null,requires_consultation:!!(info.photoAnalysis.requiresConsultation||info.photoAnalysis.requires_consultation)}); }
-  await c.from('usage_events').insert({tenant_id:tenantId,kind:'crm_touch',units:1,metadata:{client_id:clientId,intent:info.intent||null,mood:info.mood||null,channel:info.channel||null}});
+  if(info.mood){ const r=await c.from('client_mood_history').insert({client_id:clientId,tenant_id:tenantId,mood:info.mood,context:{intent:info.intent||null,channel:info.channel||null}}); if(r.error)throw r.error; }
+  if(info.photoAnalysis){ const r=await c.from('photo_analyses').insert({client_id:clientId,tenant_id:tenantId,analysis_data:info.photoAnalysis,photo_url:info.photoUrl||null,risk_level:info.photoAnalysis.riskLevel||info.photoAnalysis.risk_level||null,requires_consultation:!!(info.photoAnalysis.requiresConsultation||info.photoAnalysis.requires_consultation)}); if(r.error)throw r.error; }
+  const touch=await c.from('usage_events').insert({tenant_id:tenantId,kind:'crm_touch',units:1,metadata:{client_id:clientId,intent:info.intent||null,mood:info.mood||null,channel:info.channel||null}}); if(touch.error)throw touch.error;
   return {success:true};
 }
 
@@ -81,20 +82,7 @@ export async function getClientInsights(clientId, tenantId){
   const completed=valid.filter(b=>['completed','confirmed'].includes(String(b.status||'').toLowerCase()));
   const spent=completed.reduce((s,b)=>s+Number(b.total_amount||0),0);
   const lastVisit=valid.find(b=>new Date(b.start_time).getTime()<=Date.now())?.start_time || client.last_visit || null;
-  return {
-    ...client,
-    name:fullName(client),
-    total_bookings:valid.length,
-    total_spent:spent,
-    total_conversations:(conversations||[]).length,
-    last_booking_date:valid[0]?.start_time||null,
-    last_visit:lastVisit,
-    is_vip:Number(client.lifetime_value||spent)>=1000 || valid.length>=5,
-    engagement_score:score({bookings:valid.length,spent,lastVisit,conversations:(conversations||[]).length}),
-    memories:memories||[],
-    recent_bookings:valid.slice(0,10),
-    recent_conversations:conversations||[]
-  };
+  return {...client,name:fullName(client),total_bookings:valid.length,total_spent:spent,total_conversations:(conversations||[]).length,last_booking_date:valid[0]?.start_time||null,last_visit:lastVisit,is_vip:Number(client.lifetime_value||spent)>=1000||valid.length>=5,engagement_score:score({bookings:valid.length,spent,lastVisit,conversations:(conversations||[]).length}),memories:memories||[],recent_bookings:valid.slice(0,10),recent_conversations:conversations||[]};
 }
 
 export async function getVIPClients(tenantId){
