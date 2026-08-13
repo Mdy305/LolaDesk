@@ -1,414 +1,128 @@
-/**
- * api/lib/lola-crm.js — LOLA™ CRM Integration
- * ═══════════════════════════════════════════════════════════════
- * Client relationship management with:
- * - Client profiles and preferences
- * - Booking history and patterns
- * - Conversation tracking
- * - VIP segmentation
- * - Memory/personalization
- */
+import { db, e164 } from './db.js';
 
-import { db } from './db.js';
-
-/**
- * Get comprehensive client insights
- */
-export async function getClientInsights(clientId, tenantId) {
-  try {
-    const result = await db.query(
-      `SELECT 
-        c.*,
-        COUNT(DISTINCT b.id) as total_bookings,
-        MAX(b.booking_date) as last_booking_date,
-        COUNT(DISTINCT conv.id) as total_conversations,
-        AVG(EXTRACT(EPOCH FROM (b.actual_end - b.actual_start))) / 60 as avg_service_duration,
-        SUM(b.amount) as total_spent,
-        cm.profile_data as client_memory
-      FROM clients c
-      LEFT JOIN bookings b ON c.id = b.client_id AND b.tenant_id = $1
-      LEFT JOIN conversations conv ON c.id = conv.client_id AND conv.tenant_id = $1
-      LEFT JOIN client_memories cm ON c.id = cm.client_id AND cm.tenant_id = $1 AND cm.key = 'profile'
-      WHERE c.id = $1 AND c.tenant_id = $2
-      GROUP BY c.id, cm.profile_data`,
-      [tenantId, clientId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const client = result.rows[0];
-
-    // Parse JSON fields
-    if (typeof client.client_memory === 'string') {
-      try {
-        client.client_memory = JSON.parse(client.client_memory);
-      } catch {
-        client.client_memory = {};
-      }
-    }
-
-    // Determine VIP status
-    client.is_vip = client.total_bookings >= 5 && client.total_spent >= 500;
-
-    // Calculate engagement score (0-100)
-    client.engagement_score = calculateEngagementScore(client);
-
-    // Last contact days ago
-    const lastContact = client.last_contact || client.created_at;
-    client.days_since_contact = Math.floor((Date.now() - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24));
-
-    return client;
-  } catch (error) {
-    console.error('[CRM] Get client insights error:', error);
-    return null;
-  }
+function fullName(c={}){ return [c.first_name,c.last_name].filter(Boolean).join(' ').trim() || 'Client'; }
+function score({bookings=0,spent=0,lastVisit=null,conversations=0}={}){
+  let s=0; if(bookings>=10)s+=35; else if(bookings>=5)s+=25; else if(bookings>=1)s+=10;
+  if(Number(spent)>=2000)s+=30; else if(Number(spent)>=750)s+=20; else if(Number(spent)>0)s+=10;
+  if(conversations>=10)s+=20; else if(conversations>=3)s+=12; else if(conversations>=1)s+=5;
+  if(lastVisit){ const d=(Date.now()-new Date(lastVisit).getTime())/86400000; if(d<=30)s+=15; else if(d<=90)s+=8; }
+  return Math.min(100,s);
 }
 
-/**
- * Update client from conversation
- */
-export async function updateClientFromConversation(clientId, tenantId, conversationData) {
-  try {
-    const { intent, mood, response, photoAnalysis, bookingLink } = conversationData;
-
-    // Update last contact
-    await db.query(
-      `UPDATE clients 
-       SET last_contact = NOW(), updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2`,
-      [clientId, tenantId]
-    );
-
-    // Store mood/sentiment if available
-    if (mood) {
-      await db.query(
-        `INSERT INTO client_mood_history (client_id, tenant_id, mood, created_at)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT DO NOTHING`,
-        [clientId, tenantId, mood]
-      );
-    }
-
-    // Store photo analysis if exists
-    if (photoAnalysis) {
-      await db.query(
-        `INSERT INTO photo_analyses (client_id, tenant_id, analysis_data, created_at)
-         VALUES ($1, $2, $3, NOW())`,
-        [clientId, tenantId, JSON.stringify(photoAnalysis)]
-      );
-    }
-
-    return { success: true };
-  } catch (error) {
-    console.error('[CRM] Update client error:', error);
-    return { success: false, error: error.message };
-  }
+export async function findClientByContact(tenantId, phone=null, email=null){
+  const c=db(); if(!c||!tenantId)return null;
+  let q=c.from('clients').select('*').eq('tenant_id',tenantId);
+  if(phone) q=q.eq('phone',e164(phone)); else if(email) q=q.ilike('email',String(email).trim()); else return null;
+  const {data,error}=await q.limit(1).maybeSingle(); if(error) throw error; return data||null;
 }
 
-/**
- * Get clients needing follow-up
- */
-export async function getClientsForFollowUp(tenantId, limit = 50) {
-  try {
-    const result = await db.query(
-      `SELECT 
-        c.*,
-        COUNT(DISTINCT b.id) as total_bookings,
-        MAX(b.booking_date) as last_booking_date,
-        EXTRACT(EPOCH FROM (NOW() - c.last_contact)) / 86400 as days_since_contact
-      FROM clients c
-      LEFT JOIN bookings b ON c.id = b.client_id AND b.tenant_id = $1
-      WHERE c.tenant_id = $1
-        AND c.last_contact < NOW() - INTERVAL '3 days'
-        AND NOT EXISTS (
-          SELECT 1 FROM follow_up_queue fq 
-          WHERE fq.client_id = c.id AND fq.tenant_id = $1
-            AND fq.processed_at IS NULL
-        )
-      GROUP BY c.id
-      ORDER BY c.last_contact ASC
-      LIMIT $2`,
-      [tenantId, limit]
-    );
-
-    return result.rows;
-  } catch (error) {
-    console.error('[CRM] Get follow-up clients error:', error);
-    return [];
-  }
+export async function upsertClient(tenantId, data={}){
+  const c=db(); if(!c||!tenantId)return null;
+  let existing=null;
+  if(data.id){ const r=await c.from('clients').select('*').eq('tenant_id',tenantId).eq('id',data.id).maybeSingle(); existing=r.data; }
+  if(!existing && data.phone) existing=await findClientByContact(tenantId,data.phone,null);
+  if(!existing && data.email) existing=await findClientByContact(tenantId,null,data.email);
+  const parts=String(data.name||'').trim().split(/\s+/).filter(Boolean);
+  const row={tenant_id:tenantId,updated_at:new Date().toISOString()};
+  if(data.first_name||parts.length) row.first_name=data.first_name||parts.shift()||existing?.first_name||'Client';
+  if(data.last_name!==undefined||parts.length) row.last_name=data.last_name!==undefined?data.last_name:(parts.join(' ')||existing?.last_name||null);
+  if(data.phone) row.phone=e164(data.phone);
+  if(data.email) row.email=String(data.email).trim().toLowerCase();
+  if(data.notes!==undefined) row.notes=data.notes;
+  if(data.preferred_service!==undefined) row.preferred_service=data.preferred_service;
+  if(data.status!==undefined) row.status=data.status;
+  const query=existing?.id?c.from('clients').update(row).eq('tenant_id',tenantId).eq('id',existing.id):c.from('clients').insert({...row,created_at:new Date().toISOString()});
+  const {data:out,error}=await query.select().single(); if(error) throw error; return out;
 }
 
-/**
- * Get VIP clients
- */
-export async function getVIPClients(tenantId) {
-  try {
-    const result = await db.query(
-      `SELECT 
-        c.*,
-        COUNT(DISTINCT b.id) as total_bookings,
-        SUM(b.amount) as total_spent,
-        MAX(b.booking_date) as last_booking_date
-      FROM clients c
-      LEFT JOIN bookings b ON c.id = b.client_id AND b.tenant_id = $1
-      WHERE c.tenant_id = $1 AND c.vip_status = true
-      GROUP BY c.id
-      ORDER BY total_spent DESC`,
-      [tenantId]
-    );
-
-    return result.rows;
-  } catch (error) {
-    console.error('[CRM] Get VIP clients error:', error);
-    return [];
-  }
+export async function getClientMemory(clientId, tenantId, key=null){
+  const c=db(); if(!c)return key?null:[];
+  let q=c.from('client_memories').select('id,key,value,created_at,updated_at').eq('tenant_id',tenantId).eq('client_id',clientId).order('updated_at',{ascending:false});
+  if(key) q=q.eq('key',key).limit(1);
+  const {data,error}=await q; if(error) throw error;
+  if(key) return data?.[0]?.value ?? null;
+  return data||[];
 }
 
-/**
- * Get clients by segment
- */
-export async function getClientsBySegment(tenantId, segment) {
-  try {
-    let query = `
-      SELECT c.*, COUNT(DISTINCT b.id) as total_bookings
-      FROM clients c
-      LEFT JOIN bookings b ON c.id = b.client_id AND b.tenant_id = $1
-      WHERE c.tenant_id = $1
-    `;
-
-    const params = [tenantId];
-
-    // Apply segment filter
-    switch (segment) {
-      case 'high_value':
-        query += ` AND (SELECT SUM(amount) FROM bookings WHERE client_id = c.id AND tenant_id = $1) > 1000`;
-        break;
-
-      case 'frequent':
-        query += ` AND (SELECT COUNT(*) FROM bookings WHERE client_id = c.id AND tenant_id = $1) >= 5`;
-        break;
-
-      case 'inactive':
-        query += ` AND c.last_contact < NOW() - INTERVAL '30 days'`;
-        break;
-
-      case 'new':
-        query += ` AND c.created_at > NOW() - INTERVAL '30 days'`;
-        break;
-
-      case 'at_risk':
-        query += ` AND c.last_contact < NOW() - INTERVAL '60 days'
-                    AND (SELECT COUNT(*) FROM bookings WHERE client_id = c.id AND tenant_id = $1) > 0`;
-        break;
-    }
-
-    query += ` GROUP BY c.id ORDER BY c.last_contact DESC LIMIT 100`;
-
-    const result = await db.query(query, params);
-    return result.rows;
-  } catch (error) {
-    console.error('[CRM] Get segment error:', error);
-    return [];
-  }
+export async function setClientMemory(clientId, tenantId, key, value, clientPhone=null){
+  const c=db(); if(!c)return null;
+  const row={tenant_id:tenantId,client_id:clientId,client_phone:clientPhone?e164(clientPhone):null,key:String(key),value,updated_at:new Date().toISOString()};
+  const {data:existing}=await c.from('client_memories').select('id').eq('tenant_id',tenantId).eq('client_id',clientId).eq('key',String(key)).limit(1).maybeSingle();
+  const q=existing?.id?c.from('client_memories').update(row).eq('id',existing.id):c.from('client_memories').insert({...row,created_at:new Date().toISOString()});
+  const {data,error}=await q.select().single(); if(error) throw error; return data;
 }
 
-/**
- * Calculate engagement score (0-100)
- */
-function calculateEngagementScore(client) {
-  let score = 0;
-
-  // Recent contact (max 30 points)
-  const daysSinceContact = client.days_since_contact || 999;
-  if (daysSinceContact < 7) score += 30;
-  else if (daysSinceContact < 14) score += 20;
-  else if (daysSinceContact < 30) score += 10;
-
-  // Booking frequency (max 40 points)
-  const totalBookings = client.total_bookings || 0;
-  if (totalBookings >= 10) score += 40;
-  else if (totalBookings >= 5) score += 30;
-  else if (totalBookings >= 3) score += 20;
-  else if (totalBookings >= 1) score += 10;
-
-  // Conversation activity (max 30 points)
-  const totalConversations = client.total_conversations || 0;
-  if (totalConversations >= 10) score += 30;
-  else if (totalConversations >= 5) score += 20;
-  else if (totalConversations >= 1) score += 10;
-
-  return Math.min(score, 100);
+export async function rememberClientDetail(clientId, tenantId, {key,value,phone=null}){
+  if(!key) throw new Error('memory key required');
+  return setClientMemory(clientId,tenantId,key,value,phone);
 }
 
-/**
- * Update client preferences
- */
-export async function updateClientPreferences(clientId, tenantId, preferences) {
-  try {
-    await db.query(
-      `UPDATE clients 
-       SET preferences = preferences || $1::jsonb, updated_at = NOW()
-       WHERE id = $2 AND tenant_id = $3`,
-      [JSON.stringify(preferences), clientId, tenantId]
-    );
-
-    return { success: true };
-  } catch (error) {
-    console.error('[CRM] Update preferences error:', error);
-    return { success: false, error: error.message };
-  }
+export async function updateClientFromConversation(clientId, tenantId, info={}){
+  const c=db(); if(!c||!clientId)return {success:false};
+  const now=new Date().toISOString();
+  const summary={intent:info.intent||null,mood:info.mood||null,summary:info.summary||null,channel:info.channel||null,at:now};
+  await setClientMemory(clientId,tenantId,'last_conversation',summary,info.phone||null);
+  if(info.mood){ await c.from('client_mood_history').insert({client_id:clientId,tenant_id:tenantId,mood:info.mood,context:{intent:info.intent||null,channel:info.channel||null}}); }
+  if(info.photoAnalysis){ await c.from('photo_analyses').insert({client_id:clientId,tenant_id:tenantId,analysis_data:info.photoAnalysis,photo_url:info.photoUrl||null,risk_level:info.photoAnalysis.riskLevel||info.photoAnalysis.risk_level||null,requires_consultation:!!(info.photoAnalysis.requiresConsultation||info.photoAnalysis.requires_consultation)}); }
+  await c.from('usage_events').insert({tenant_id:tenantId,kind:'crm_touch',units:1,metadata:{client_id:clientId,intent:info.intent||null,mood:info.mood||null,channel:info.channel||null}});
+  return {success:true};
 }
 
-/**
- * Store client memory/notes
- */
-export async function setClientMemory(clientId, tenantId, key, value) {
-  try {
-    await db.query(
-      `INSERT INTO client_memories (client_id, tenant_id, key, value, created_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (client_id, tenant_id, key) DO UPDATE
-       SET value = $4, updated_at = NOW()`,
-      [clientId, tenantId, key, JSON.stringify(value)]
-    );
-
-    return { success: true };
-  } catch (error) {
-    console.error('[CRM] Set memory error:', error);
-    return { success: false, error: error.message };
-  }
+export async function getClientInsights(clientId, tenantId){
+  const c=db(); if(!c||!clientId)return null;
+  const [{data:client,error:ce},{data:bookings,error:be},{data:conversations,error:coe},memories]=await Promise.all([
+    c.from('clients').select('*').eq('tenant_id',tenantId).eq('id',clientId).maybeSingle(),
+    c.from('bookings').select('id,start_time,end_time,status,total_amount,service_id,staff_id').eq('tenant_id',tenantId).eq('client_id',clientId).order('start_time',{ascending:false}),
+    c.from('conversations').select('id,channel,status,ai_summary,created_at').eq('tenant_id',tenantId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(25),
+    getClientMemory(clientId,tenantId)
+  ]);
+  if(ce) throw ce; if(be) throw be; if(coe) throw coe; if(!client)return null;
+  const valid=(bookings||[]).filter(b=>!['cancelled','canceled'].includes(String(b.status||'').toLowerCase()));
+  const completed=valid.filter(b=>['completed','confirmed'].includes(String(b.status||'').toLowerCase()));
+  const spent=completed.reduce((s,b)=>s+Number(b.total_amount||0),0);
+  const lastVisit=valid.find(b=>new Date(b.start_time).getTime()<=Date.now())?.start_time || client.last_visit || null;
+  return {
+    ...client,
+    name:fullName(client),
+    total_bookings:valid.length,
+    total_spent:spent,
+    total_conversations:(conversations||[]).length,
+    last_booking_date:valid[0]?.start_time||null,
+    last_visit:lastVisit,
+    is_vip:Number(client.lifetime_value||spent)>=1000 || valid.length>=5,
+    engagement_score:score({bookings:valid.length,spent,lastVisit,conversations:(conversations||[]).length}),
+    memories:memories||[],
+    recent_bookings:valid.slice(0,10),
+    recent_conversations:conversations||[]
+  };
 }
 
-/**
- * Get client memory/notes
- */
-export async function getClientMemory(clientId, tenantId, key = null) {
-  try {
-    let query = `SELECT * FROM client_memories WHERE client_id = $1 AND tenant_id = $2`;
-    const params = [clientId, tenantId];
-
-    if (key) {
-      query += ` AND key = $3`;
-      params.push(key);
-    }
-
-    const result = await db.query(query, params);
-
-    if (key && result.rows.length > 0) {
-      try {
-        return JSON.parse(result.rows[0].value);
-      } catch {
-        return result.rows[0].value;
-      }
-    }
-
-    return result.rows.map(r => ({
-      key: r.key,
-      value: tryParseJSON(r.value)
-    }));
-  } catch (error) {
-    console.error('[CRM] Get memory error:', error);
-    return null;
-  }
+export async function getVIPClients(tenantId){
+  const c=db(); if(!c)return [];
+  const {data,error}=await c.from('clients').select('*').eq('tenant_id',tenantId).order('lifetime_value',{ascending:false}).limit(100); if(error) throw error;
+  return (data||[]).filter(x=>Number(x.lifetime_value||0)>=1000 || String(x.status||'').toLowerCase()==='vip');
 }
 
-/**
- * Try to parse JSON safely
- */
-function tryParseJSON(str) {
-  try {
-    return JSON.parse(str);
-  } catch {
-    return str;
-  }
+export async function getClientsForFollowUp(tenantId, limit=50){
+  const c=db(); if(!c)return [];
+  const cutoff=new Date(Date.now()-30*86400000).toISOString();
+  const {data,error}=await c.from('clients').select('*').eq('tenant_id',tenantId).or(`last_visit.lt.${cutoff},last_visit.is.null`).order('last_visit',{ascending:true,nullsFirst:true}).limit(limit); if(error) throw error;
+  return data||[];
 }
 
-/**
- * Get client by phone or email
- */
-export async function findClientByContact(tenantId, phone = null, email = null) {
-  try {
-    let query = `SELECT * FROM clients WHERE tenant_id = $1`;
-    const params = [tenantId];
-
-    if (phone) {
-      query += ` AND phone = $${params.length + 1}`;
-      params.push(phone);
-    } else if (email) {
-      query += ` AND email = $${params.length + 1}`;
-      params.push(email);
-    }
-
-    const result = await db.query(query, params);
-    return result.rows[0] || null;
-  } catch (error) {
-    console.error('[CRM] Find client error:', error);
-    return null;
-  }
+export async function getClientsBySegment(tenantId, segment='all'){
+  const c=db(); if(!c)return [];
+  let q=c.from('clients').select('*').eq('tenant_id',tenantId);
+  if(segment==='high_value') q=q.gte('lifetime_value',1000);
+  else if(segment==='inactive') q=q.lt('last_visit',new Date(Date.now()-60*86400000).toISOString());
+  else if(segment==='new') q=q.gte('created_at',new Date(Date.now()-30*86400000).toISOString());
+  else if(segment==='vip') q=q.or('status.eq.vip,lifetime_value.gte.1000');
+  const {data,error}=await q.order('updated_at',{ascending:false}).limit(100); if(error) throw error; return data||[];
 }
 
-/**
- * Create or update client
- */
-export async function upsertClient(tenantId, clientData) {
-  try {
-    const {
-      id,
-      phone,
-      email,
-      name,
-      vip_status,
-      preferences
-    } = clientData;
-
-    if (id) {
-      // Update
-      const result = await db.query(
-        `UPDATE clients 
-         SET phone = COALESCE($1, phone),
-             email = COALESCE($2, email),
-             name = COALESCE($3, name),
-             vip_status = COALESCE($4, vip_status),
-             preferences = COALESCE($5, preferences),
-             updated_at = NOW()
-         WHERE id = $6 AND tenant_id = $7
-         RETURNING *`,
-        [phone, email, name, vip_status, preferences ? JSON.stringify(preferences) : null, id, tenantId]
-      );
-
-      return result.rows[0] || null;
-    } else {
-      // Insert
-      const result = await db.query(
-        `INSERT INTO clients (tenant_id, phone, email, name, vip_status, preferences, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-         ON CONFLICT (tenant_id, COALESCE(phone, '')) DO UPDATE
-         SET email = COALESCE($3, email),
-             name = COALESCE($4, name),
-             updated_at = NOW()
-         RETURNING *`,
-        [tenantId, phone, email, name, vip_status || false, preferences ? JSON.stringify(preferences) : null]
-      );
-
-      return result.rows[0] || null;
-    }
-  } catch (error) {
-    console.error('[CRM] Upsert client error:', error);
-    return null;
-  }
+export async function updateClientPreferences(clientId,tenantId,preferences={}){
+  const current=(await getClientMemory(clientId,tenantId,'preferences'))||{};
+  return setClientMemory(clientId,tenantId,'preferences',{...current,...preferences});
 }
 
-export default {
-  getClientInsights,
-  updateClientFromConversation,
-  getClientsForFollowUp,
-  getVIPClients,
-  getClientsBySegment,
-  updateClientPreferences,
-  setClientMemory,
-  getClientMemory,
-  findClientByContact,
-  upsertClient
-};
+export default {findClientByContact,upsertClient,getClientMemory,setClientMemory,rememberClientDetail,updateClientFromConversation,getClientInsights,getVIPClients,getClientsForFollowUp,getClientsBySegment,updateClientPreferences};
