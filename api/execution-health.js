@@ -7,7 +7,7 @@ export default async function handler(req,res){
   const c=db(); if(!c)return res.status(503).json({ok:false,error:'database_not_configured'});
   const results={};
   for(const table of checks){
-    try{ const {error}=await c.from(table).select('*',{head:true,count:'exact'}).limit(1); results[table]=error?{ok:false,error:error.message}:{ok:true}; }
+    try{ const {error}=await c.from(table).select('id').limit(1); results[table]=error?{ok:false,error:error.message}:{ok:true}; }
     catch(e){ results[table]={ok:false,error:String(e?.message||e)}; }
   }
   const failed=Object.entries(results).filter(([,v])=>!v.ok).map(([k])=>k);
