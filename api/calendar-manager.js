@@ -1,104 +1,83 @@
 import { bearer, getUserFromToken } from './lib/auth.js';
-import { db, getClientByPhone, getTenantIntegrations, upsertClient } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { cancelBookingSafe, createBookingSafe, listAvailability, rescheduleBookingSafe } from './lib/calendar-engine.js';
-import { listAllAppointments } from './lib/aggregator.js';
+import { cancelCanonicalBooking, createCanonicalBooking, listBookings, listServices, listStaff, updateBookingTime } from './lib/booking-store.js';
 
-export default async function handler(req, res){
+function dayBounds(value){
+  const d=new Date(value||Date.now());
+  if(Number.isNaN(d.getTime())) return null;
+  d.setHours(0,0,0,0);
+  return {from:d.toISOString(),to:new Date(d.getTime()+86400000).toISOString()};
+}
+function overlaps(aStart,aEnd,bStart,bEnd){ return new Date(aStart)<new Date(bEnd)&&new Date(bStart)<new Date(aEnd); }
+
+export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
-  if(req.method === 'OPTIONS') return res.status(200).end();
-
+  if(req.method==='OPTIONS') return res.status(200).end();
   try{
-    const user = await getUserFromToken(bearer(req));
-    if(!user) return res.status(401).json({ error:'not authenticated' });
-    const tenant = await resolveTenantForUser(user);
-    if(!tenant?.id) return res.status(404).json({ error:'no tenant found for this account' });
-    const c = db();
-    if(!c) return res.status(503).json({ error:'database not configured' });
+    const user=await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({error:'not authenticated'});
+    const tenant=await resolveTenantForUser(user);
+    if(!tenant?.id) return res.status(403).json({error:'no tenant mapped to this account'});
+    const tid=tenant.id;
 
-    if(req.method === 'GET'){
-      const q = Object.fromEntries(new URL(req.url, 'http://x').searchParams);
-      if((q.action || 'availability') === 'availability'){
-        const out = await listAvailability({
-          tenant,
-          date: q.date,
-          durationMin: Number(q.duration_min || 60),
-          stylist: q.stylist || null
-        });
-        return res.status(200).json({ ok:true, ...out });
+    if(req.method==='GET'){
+      const q=Object.fromEntries(new URL(req.url,'http://x').searchParams);
+      const action=q.action||'day';
+      if(action==='day'){
+        const range=dayBounds(q.date);
+        if(!range) return res.status(400).json({error:'invalid date'});
+        const [bookings,staff,services]=await Promise.all([listBookings(tid,range),listStaff(tid),listServices(tid)]);
+        return res.status(200).json({ok:true,tenant:{id:tid,name:tenant.name,hours:tenant.hours},bookings,staff,services});
       }
-      if(q.action === 'external'){
-        const dayIso = q.date ? new Date(q.date) : new Date();
-        dayIso.setUTCHours(0,0,0,0);
-        const from = dayIso.toISOString();
-        const to = new Date(dayIso.getTime() + 24*3600*1000).toISOString();
-        let appointments = [];
-        try{
-          const integrations = await getTenantIntegrations(tenant.id);
-          if(integrations.length) appointments = await listAllAppointments(integrations, { from, to });
-        }catch(e){ appointments = []; }
-        return res.status(200).json({ ok:true, appointments });
+      if(action==='availability'){
+        const range=dayBounds(q.date);
+        if(!range) return res.status(400).json({error:'invalid date'});
+        const bookings=await listBookings(tid,range);
+        const staff=await listStaff(tid);
+        const duration=Math.max(15,Number(q.duration_min||60));
+        const staffId=q.staff_id||null;
+        const slots=[];
+        const base=new Date(range.from);
+        const startHour=12,endHour=20;
+        for(let h=startHour*60;h+duration<=endHour*60;h+=30){
+          const start=new Date(base.getTime()+h*60000),end=new Date(start.getTime()+duration*60000);
+          const conflict=bookings.some(b=>b.status!=='cancelled'&&(!staffId||b.staffId===staffId)&&overlaps(start,end,b.startsAt,b.endsAt));
+          if(!conflict) slots.push(start.toISOString());
+          if(slots.length>=12) break;
+        }
+        return res.status(200).json({ok:true,slots,staff});
       }
-      return res.status(400).json({ error:'unknown action' });
+      return res.status(400).json({error:'unknown action'});
     }
 
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const action = body.action || 'book';
-    if(action === 'book'){
-      if(!body.starts_at) return res.status(400).json({ ok:false, error:'starts_at required' });
-      let client = null;
-      if(body.client_phone){
-        client = await upsertClient(tenant.id, { phone: body.client_phone, name: body.client_name });
-      }
-      const out = await createBookingSafe({
-        tenant,
-        clientId: client?.id || null,
-        service: body.service || 'Appointment',
-        stylist: body.stylist || null,
-        startsAt: body.starts_at,
-        durationMin: Number(body.duration_min || 60),
-        price: body.price != null ? Number(body.price) : null
-      });
-      if(out.ok) return res.status(200).json(out);
-      const status = out.conflict ? 409 : 400;
-      return res.status(status).json(out);
+    const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
+    const action=body.action||'book';
+    if(action==='book'){
+      if(!body.starts_at) return res.status(400).json({ok:false,error:'starts_at required'});
+      const duration=Math.max(15,Number(body.duration_min||60));
+      const start=new Date(body.starts_at),end=new Date(start.getTime()+duration*60000);
+      const range=dayBounds(start);
+      const existing=await listBookings(tid,range);
+      const conflict=existing.find(b=>b.status!=='cancelled'&&(!body.staff_id||b.staffId===body.staff_id)&&overlaps(start,end,b.startsAt,b.endsAt));
+      if(conflict) return res.status(409).json({ok:false,conflict:true,error:'time conflict',conflictBookingId:conflict.id});
+      const booking=await createCanonicalBooking(tid,{clientId:body.client_id,clientName:body.client_name,clientPhone:body.client_phone,clientEmail:body.client_email,serviceId:body.service_id,service:body.service,staffId:body.staff_id,stylist:body.stylist,startsAt:body.starts_at,durationMin:duration,price:body.price,notes:body.notes,source:body.source||'dashboard',conversationId:body.conversation_id});
+      return res.status(200).json({ok:true,booking});
     }
-    if(action === 'reschedule'){
-      if(!body.booking_id || !body.starts_at){
-        return res.status(400).json({ ok:false, error:'booking_id and starts_at required' });
-      }
-      const out = await rescheduleBookingSafe({
-        tenantId: tenant.id,
-        bookingId: body.booking_id,
-        newStartsAt: body.starts_at
-      });
-      if(out.ok) return res.status(200).json(out);
-      const status = out.conflict ? 409 : 400;
-      return res.status(status).json(out);
+    if(action==='reschedule'){
+      if(!body.booking_id||!body.starts_at) return res.status(400).json({ok:false,error:'booking_id and starts_at required'});
+      const booking=await updateBookingTime(tid,body.booking_id,body.starts_at);
+      return res.status(200).json({ok:true,booking});
     }
-    if(action === 'cancel'){
-      if(!body.booking_id) return res.status(400).json({ ok:false, error:'booking_id required' });
-      const out = await cancelBookingSafe({ tenantId: tenant.id, bookingId: body.booking_id });
-      return res.status(out.ok ? 200 : 400).json(out);
+    if(action==='cancel'){
+      if(!body.booking_id) return res.status(400).json({ok:false,error:'booking_id required'});
+      const booking=await cancelCanonicalBooking(tid,body.booking_id);
+      return res.status(200).json({ok:true,booking});
     }
-    if(action === 'confirm'){
-      if(!body.client_phone) return res.status(400).json({ error:'client_phone required' });
-      const client = await getClientByPhone(tenant.id, body.client_phone);
-      if(!client) return res.status(404).json({ error:'client not found' });
-      const { data } = await c.from('bookings')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .eq('client_id', client.id)
-        .gte('starts_at', new Date().toISOString())
-        .neq('status','cancelled')
-        .order('starts_at', { ascending: true })
-        .limit(1);
-      return res.status(200).json({ ok:true, booking:data?.[0] || null });
-    }
-    return res.status(400).json({ error:'unknown action' });
+    return res.status(400).json({error:'unknown action'});
   }catch(e){
-    return res.status(500).json({ error:String(e && e.message || e) });
+    console.error('/api/calendar-manager',e);
+    return res.status(500).json({ok:false,error:String(e?.message||e)});
   }
 }
