@@ -1,11 +1,6 @@
-import { db, getTenantByPhone, getTenantBySlug } from './lib/db.js';
+import { db } from './lib/db.js';
+import { authenticatedTenant } from './lib/tenant-context.js';
 import { getBookingSettings } from './lib/booking-repository.js';
-
-async function tenantFrom(req,body){
-  if(body.tenant_id){ const c=db(); const {data}=await c.from('tenants').select('*').eq('id',body.tenant_id).maybeSingle(); return data; }
-  if(body.tenant) return getTenantBySlug(body.tenant);
-  return getTenantByPhone(body.to || req.query?.to || '');
-}
 
 const WRITABLE=new Set([
   'timezone','slot_interval_minutes','minimum_notice_minutes','booking_horizon_days','cancellation_window_hours',
@@ -15,10 +10,14 @@ const WRITABLE=new Set([
 ]);
 
 export default async function handler(req,res){
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
+  if(req.method==='OPTIONS') return res.status(204).end();
   try{
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const tenant=await tenantFrom(req,body);
-    if(!tenant?.id) return res.status(404).json({ok:false,error:'tenant_not_found'});
+    const tenant=await authenticatedTenant(req);
+    if(!tenant?.id) return res.status(401).json({ok:false,error:'not_authenticated'});
     if(req.method==='GET') return res.json({ok:true,settings:await getBookingSettings(tenant.id)});
     if(req.method==='POST' || req.method==='PATCH'){
       const patch={tenant_id:tenant.id};
