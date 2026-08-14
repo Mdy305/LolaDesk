@@ -1,125 +1,35 @@
 {
   "cleanUrls": true,
   "outputDirectory": ".",
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 60
-    }
-  },
+  "functions": {"api/**/*.js":{"maxDuration":60}},
   "rewrites": [
-    {
-      "source": "/start",
-      "destination": "/onboarding.html"
-    },
-    {
-      "source": "/dashboard",
-      "destination": "/dashboard.html"
-    },
-    {
-      "source": "/brain",
-      "destination": "/brain-os.html"
-    },
-    {
-      "source": "/login",
-      "destination": "/login.html"
-    },
-    {
-      "source": "/admin",
-      "destination": "/admin.html"
-    },
-    {
-      "source": "/clients",
-      "destination": "/clients.html"
-    },
-    {
-      "source": "/calls",
-      "destination": "/calls.html"
-    },
-    {
-      "source": "/inbox",
-      "destination": "/inbox.html"
-    },
-    {
-      "source": "/bookings",
-      "destination": "/bookings.html"
-    },
-    {
-      "source": "/booking-integrity",
-      "destination": "/booking-integrity.html"
-    },
-    {
-      "source": "/operations",
-      "destination": "/operations-os.html"
-    },
-    {
-      "source": "/growth",
-      "destination": "/growth-os.html"
-    },
-    {
-      "source": "/revenue",
-      "destination": "/revenue.html"
-    },
-    {
-      "source": "/settings",
-      "destination": "/settings.html"
-    },
-    {
-      "source": "/memory",
-      "destination": "/memory.html"
-    },
-    {
-      "source": "/operator",
-      "destination": "/operator.html"
-    },
-    {
-      "source": "/numbers",
-      "destination": "/numbers.html"
-    },
-    {
-      "source": "/marketer",
-      "destination": "/marketer.html"
-    },
-    {
-      "source": "/pricing",
-      "destination": "/pricing.html"
-    },
-    {
-      "source": "/privacy",
-      "destination": "/privacy.html"
-    },
-    {
-      "source": "/terms",
-      "destination": "/terms.html"
-    },
-    {
-      "source": "/sign-in",
-      "destination": "/login.html"
-    },
-    {
-      "source": "/demo",
-      "destination": "/dashboard.html"
-    },
-    {
-      "source": "/get-started",
-      "destination": "/onboarding.html"
-    }
+    {"source":"/start","destination":"/onboarding.html"},
+    {"source":"/dashboard","destination":"/dashboard.html"},
+    {"source":"/brain","destination":"/brain-os.html"},
+    {"source":"/login","destination":"/login.html"},
+    {"source":"/admin","destination":"/admin.html"},
+    {"source":"/clients","destination":"/clients.html"},
+    {"source":"/calls","destination":"/calls.html"},
+    {"source":"/inbox","destination":"/inbox.html"},
+    {"source":"/bookings","destination":"/bookings.html"},
+    {"source":"/team","destination":"/team.html"},
+    {"source":"/booking-settings","destination":"/booking-settings.html"},
+    {"source":"/booking-integrity","destination":"/booking-integrity.html"},
+    {"source":"/operations","destination":"/operations-os.html"},
+    {"source":"/growth","destination":"/growth-os.html"},
+    {"source":"/revenue","destination":"/revenue.html"},
+    {"source":"/settings","destination":"/settings.html"},
+    {"source":"/memory","destination":"/memory.html"},
+    {"source":"/operator","destination":"/operator.html"},
+    {"source":"/numbers","destination":"/numbers.html"},
+    {"source":"/marketer","destination":"/marketer.html"},
+    {"source":"/pricing","destination":"/pricing.html"},
+    {"source":"/privacy","destination":"/privacy.html"},
+    {"source":"/terms","destination":"/terms.html"},
+    {"source":"/sign-in","destination":"/login.html"},
+    {"source":"/demo","destination":"/dashboard.html"},
+    {"source":"/get-started","destination":"/onboarding.html"}
   ],
-  "redirects": [
-    {
-      "source": "/landing",
-      "destination": "/",
-      "permanent": false
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"
-        }
-      ]
-    }
-  ]
+  "redirects":[{"source":"/landing","destination":"/","permanent":false}],
+  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}]
 }
