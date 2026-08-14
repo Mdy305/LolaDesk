@@ -1,236 +1,90 @@
-/**
- * /api/data — unified read API for every dashboard page
- * ════════════════════════════════════════════════════════════════
- * One endpoint, many resources, always tenant-scoped. The frontend
- * lola-data.js calls this so clients/calls/inbox/revenue/team/etc.
- * all show the salon's REAL data instead of hardcoded mockups.
- *
- * GET /api/data?resource=clients&tenant=<slug>
- *   resources: overview | clients | calls | inbox | bookings |
- *              revenue | team | agents | marketing
- *
- * Auth: pass Authorization: Bearer <token> (preferred) OR ?tenant=slug.
- * Degrades to a small demo set if Supabase is empty, so the UI is never blank.
- */
-import { db, getTenantBySlug, getTenantIntegrations } from './lib/db.js';
-import { getUserFromToken, bearer } from './lib/auth.js';
-import { listProviders } from './lib/aggregator.js';
-import { getUsageStatus } from './lib/usage.js';
-import { summarizeTopology, listControlPlaneAgents } from './lib/agent-topology.js';
+import { db } from './lib/db.js';
+import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { listBookings, listServices, listStaff } from './lib/booking-store.js';
 
 function ago(ts){
   if(!ts) return '';
-  const s=Math.floor((Date.now()-new Date(ts).getTime())/1000);
-  if(s<60)return 'just now'; if(s<3600)return Math.floor(s/60)+'m ago';
-  if(s<86400)return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago';
+  const s=Math.max(0,Math.floor((Date.now()-new Date(ts).getTime())/1000));
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago';
 }
 function money(n){ return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
-
-// Server-side tenant isolation: resolve strictly from the authenticated user
-// (owner OR mapped team member). No ?tenant= override, and no fallback to a
-// real salon — that fallback was the data leak.
-async function resolveTenant(req){
-  try{
-    const u = await getUserFromToken(bearer(req));
-    if(!u) return null;
-    return (await resolveTenantForUser(u)) || null;
-  }catch(e){ return null; }
-}
 
 export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
   if(req.method==='OPTIONS') return res.status(200).end();
-
-  let q={}; try{ q=Object.fromEntries(new URL(req.url,'http://x').searchParams); }catch{}
-  const resource=q.resource||'overview';
-
   try{
     const c=db();
-    // No DB configured → dev mode renders clearly-fake sample data only.
-    if(!c) return res.status(200).json(demo(resource, null));
-    const tenant = await resolveTenant(req);
-    if(!tenant?.id){
-      // Authenticated but unmapped vs. not authenticated — never real data.
-      const hasBearer = !!bearer(req);
-      if(hasBearer) return res.status(403).json({ error:'no tenant mapped to this account' });
-      return res.status(401).json({ error:'Not authenticated' });
-    }
+    if(!c) return res.status(503).json({error:'database not configured'});
+    const user=await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({error:'not authenticated'});
+    const tenant=await resolveTenantForUser(user);
+    if(!tenant?.id) return res.status(403).json({error:'no tenant mapped to this account'});
+    const resource=new URL(req.url,'http://x').searchParams.get('resource')||'overview';
     const tid=tenant.id;
 
-    switch(resource){
-      case 'clients': {
-        const { data=[] } = await c.from('clients').select('*').eq('tenant_id',tid).order('updated_at',{ascending:false}).limit(200);
-        return res.status(200).json({ tenant:tenant.name, clients:(data||[]).map(x=>({
-          id:x.id, name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Unknown', phone:x.phone||'', email:x.email||'',
-          photo:x.profile_picture_url||null, vip:String(x.status||'').toLowerCase()==='vip', lastService:x.preferred_service||'', lastVisit:x.last_visit||'',
-          stylist:'', ltv:Number(x.lifetime_value||0), notes:x.notes||'', tags:[]
-        })) });
-      }
-      case 'calls': {
-        const { data=[] } = await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
-        return res.status(200).json({ tenant:tenant.name, calls:(data||[]).map(x=>({
-          id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at),
-          outcome:x.outcome||'handled', durationSec:x.duration_sec||x.duration_seconds||x.duration||0, // schema column is duration_sec — the old keys never matched, so every call showed 0:00
-          summary:x.summary||x.transcript?.slice(0,120)||'', booked:(x.outcome==='booked')||!!x.booked // no `booked` column exists — derive from outcome
-        })) });
-      }
-      case 'inbox': {
-        const { data=[] } = await c.from('conversations').select('*').eq('tenant_id',tid).order('started_at',{ascending:false}).limit(60);
-        return res.status(200).json({ tenant:tenant.name, threads:(data||[]).map(x=>({
-          id:x.id, channel:x.channel||'sms', who:x.client_name||x.from_number||'Client',
-          when:ago(x.started_at||x.created_at), preview:x.last_message||x.summary||'', unread:!!x.unread
-        })) });
-      }
-      case 'bookings': {
-        const { data=[] } = await c.from('bookings').select('*').eq('tenant_id',tid).order('starts_at',{ascending:true}).limit(200);
-        return res.status(200).json({ tenant:tenant.name, bookings:(data||[]).map(x=>({
-          id:x.id, service:x.service||'Appointment', client:x.client_name||'Client',
-          stylist:x.stylist||'', startsAt:x.starts_at, durationMin:Number(x.duration_min||60),
-          price:Number(x.price||0), status:x.status||'confirmed'
-        })) });
-      }
-      case 'revenue': {
-        const { data=[] } = await c.from('bookings').select('price,starts_at,service,stylist').eq('tenant_id',tid).limit(1000);
-        const rows=data||[];
-        const total=rows.reduce((s,r)=>s+Number(r.price||0),0);
-        // by month
-        const byMonth={}; for(const r of rows){ const m=(r.starts_at||'').slice(0,7); if(!m)continue; byMonth[m]=(byMonth[m]||0)+Number(r.price||0); }
-        // by service
-        const byService={}; for(const r of rows){ const k=r.service||'Other'; byService[k]=(byService[k]||0)+Number(r.price||0); }
-        return res.status(200).json({ tenant:tenant.name, total, money:money(total),
-          months:Object.entries(byMonth).sort().map(([m,v])=>({month:m,value:v})),
-          services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value})),
-          bookingCount:rows.length });
-      }
-      case 'team': {
-        const team=Array.isArray(tenant.team)?tenant.team:[];
-        return res.status(200).json({ tenant:tenant.name, team:team.length?team:[{name:tenant.owner_name||'Owner',role:'Owner'}] });
-      }
-      case 'agents': {
-        const topology = summarizeTopology();
-        return res.status(200).json({
-          tenant: tenant.name,
-          orchestrator: topology.orchestrator,
-          agents: topology.agents.map(a => ({
-            ...a,
-            on: true
-          }))
-        });
-      }
-      case 'integrations': {
-        // Real connection status per provider, decrypted in-memory only
-        // long enough to know IF a token exists — never returned to the client.
-        const connected = await getTenantIntegrations(tid); // status:'connected' by default
-        const connectedByProvider = Object.fromEntries(connected.map(i => [i.provider, i]));
-        const providers = listProviders().map(p => {
-          const row = connectedByProvider[p.id];
-          return {
-            id: p.id, name: p.name, description: p.description,
-            status: row ? 'connected' : p.status,                 // 'connected' | 'available' | 'pending_partner_approval' | 'needs_credentials'
-            connectedAt: row?.created_at || null,
-            metadata: row?.metadata ? { shop: row.metadata.shop || null } : null // never leak tokens, only safe display fields
-          };
-        });
-        return res.status(200).json({ tenant: tenant.name, tenantSlug: tenant.slug, providers });
-      }
-      case 'marketing': {
-        const { data=[] } = await c.from('clients').select('last_visit,is_vip,lifetime_value').eq('tenant_id',tid).limit(1000);
-        const rows=data||[];
-        const now=Date.now();
-        const lapsed=rows.filter(r=>r.last_visit && (now-new Date(r.last_visit))/86400000>60).length;
-        const vips=rows.filter(r=>r.is_vip).length;
-        const recent=rows.filter(r=>r.last_visit && (now-new Date(r.last_visit))/86400000<=21).length;
-        const since=new Date(Date.now()-30*86400000).toISOString();
-        const { data: usage=[] } = await c.from('usage_events').select('kind,units,metadata').eq('tenant_id',tid).gte('created_at',since);
-        const campaignRuns=(usage||[]).filter(u=>u.kind==='campaign_run');
-        const campaignRevenue=campaignRuns.reduce((s,u)=>s+Number(u.metadata?.estimated_revenue||0),0);
-        return res.status(200).json({ tenant:tenant.name,
-          segments:[
-            {id:'winback',name:'Win-back',count:lapsed,desc:"Haven't visited in 60+ days"},
-            {id:'vip',name:'VIP',count:vips,desc:'Your best clients'},
-            {id:'postvisit',name:'Post-visit',count:recent,desc:'Visited in the last 21 days'},
-            {id:'all',name:'All clients',count:rows.length,desc:'Everyone'}
-          ],
-          roi:{
-            campaignRuns30:campaignRuns.length,
-            campaignRevenue30:campaignRevenue
-          }
-        });
-      }
-      case 'overview':
-      default: {
-        const since=new Date(Date.now()-30*86400000).toISOString();
-        const [cl,ca,bk,usage, upsellEvents]=await Promise.all([
-          c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
-          c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
-          c.from('bookings').select('price').eq('tenant_id',tid).gte('starts_at',since).then(r=>r.data||[]).catch(()=>[]),
-          getUsageStatus(tid, tenant.plan).catch(()=>null),
-          c.from('usage_events').select('units').eq('tenant_id',tid).eq('kind','upsell').gte('created_at',since).then(r=>r.data||[]).catch(()=>[])
-        ]);
-        const rev=bk.reduce((s,r)=>s+Number(r.price||0),0);
-        const upsellRev=upsellEvents.reduce((s,r)=>s+Number(r.units||0),0);
-        const upsellRate = rev > 0 ? Math.max(0, Math.min(100, Math.round((upsellRev / rev) * 100))) : 0;
-        return res.status(200).json({ tenant:tenant.name,
-          kpis:{ 
-            clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev),
-            upsellRevenue: upsellRev,
-            upsellRate: `${upsellRate}%`
-          },
-          usage });
-      }
+    if(resource==='clients'){
+      const {data=[],error}=await c.from('clients').select('*').eq('tenant_id',tid).order('updated_at',{ascending:false}).limit(300);
+      if(error) throw error;
+      return res.status(200).json({tenant:tenant.name,clients:data.map(x=>({id:x.id,name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Client',phone:x.phone||'',email:x.email||'',photo:x.profile_picture_url||null,vip:String(x.status||'').toLowerCase()==='vip',lastService:x.preferred_service||'',lastVisit:x.last_visit||'',ltv:Number(x.lifetime_value||0),notes:x.notes||'',tags:[]}))});
     }
-  }catch(e){
-    return res.status(200).json({ ...demo(resource), _error:String(e&&e.message||e) });
-  }
-}
 
-// ── demo fallback so the UI is never empty during setup ──
-function demo(resource, tenant){
-  const name=tenant?.name||'Your Salon';
-  const D={
-    clients:{tenant:name,clients:[
-      {name:'Sarah Chen',phone:'+13055551234',vip:true,lastService:'Balayage',lastVisit:'2026-05-02',stylist:'Michelle',ltv:2840,notes:'Wedding in July',tags:['vip','color']},
-      {name:'Maria Lopez',phone:'+13055555678',vip:false,lastService:'Keratin',lastVisit:'2026-04-18',stylist:'Alice',ltv:1350,notes:'',tags:['treatment']},
-      {name:'Jen Park',phone:'+13055559012',vip:false,lastService:'Cut & Gloss',lastVisit:'2026-03-30',stylist:'Samantha',ltv:680,notes:'Prefers mornings',tags:[]}
-    ]},
-    calls:{tenant:name,calls:[
-      {from:'+13055551234',when:'12m ago',outcome:'booked',durationSec:142,summary:'Booked balayage for Friday',booked:true},
-      {from:'+13055555678',when:'1h ago',outcome:'handled',durationSec:88,summary:'Asked about keratin pricing',booked:false},
-      {from:'+13055559012',when:'3h ago',outcome:'booked',durationSec:201,summary:'Rescheduled to next week',booked:true}
-    ]},
-    inbox:{tenant:name,threads:[
-      {channel:'sms',who:'Sarah Chen',when:'20m ago',preview:'Perfect, see you Friday!',unread:true},
-      {channel:'sms',who:'Maria Lopez',when:'2h ago',preview:'What times do you have?',unread:false}
-    ]},
-    bookings:{tenant:name,bookings:[
-      {service:'Balayage',client:'Sarah Chen',stylist:'Michelle',startsAt:'2026-06-20T14:00:00',price:395,status:'confirmed'},
-      {service:'Blowout',client:'Jen Park',stylist:'Samantha',startsAt:'2026-06-18T10:00:00',price:95,status:'confirmed'}
-    ]},
-    revenue:{tenant:name,total:18450,money:'$18,450',
-      months:[{month:'2026-03',value:5200},{month:'2026-04',value:6100},{month:'2026-05',value:7150}],
-      services:[{name:'Balayage',value:7900},{name:'Keratin',value:4500},{name:'Extensions',value:3200},{name:'Cut & Gloss',value:2850}],
-      bookingCount:62},
-    team:{tenant:name,team:[{name:'Meddy',role:'Owner · Colorist'},{name:'Michelle',role:'Stylist'},{name:'Alice',role:'Stylist'},{name:'Samantha',role:'Stylist'}]},
-    agents:{
-      tenant:name,
-      orchestrator: summarizeTopology().orchestrator,
-      agents:listControlPlaneAgents().map(a=>({ ...a, on:true }))
-    },
-    marketing:{tenant:name,segments:[
-      {id:'winback',name:'Win-back',count:14,desc:"Haven't visited in 60+ days"},
-      {id:'vip',name:'VIP',count:8,desc:'Your best clients'},
-      {id:'all',name:'All clients',count:165,desc:'Everyone'}
-    ]},
-    integrations:{tenant:name, tenantSlug:'demo', providers: listProviders().map(p=>({ ...p, connectedAt:null, metadata:null }))},
-    overview:{tenant:name,kpis:{clients:165,calls30:48,bookings30:62,revenue30:18450,revenue30Money:'$18,450'},
-      usage:{plan:'pro',planName:'Pro',quotas:{voice_call:600,sms_sent:2500,ai_token:8000},
-        usage:{voice_call:210,sms_sent:980,ai_token:3100},
-        percentages:{voice_call:35,sms_sent:39,ai_token:39},
-        mostUsedKind:'sms_sent',mostUsedPercent:39,mostUsedLabel:'texts sent',
-        nearLimit:false,overLimit:false}}
-  };
-  return D[resource]||D.overview;
+    if(resource==='bookings'){
+      const bookings=await listBookings(tid);
+      return res.status(200).json({tenant:tenant.name,bookings});
+    }
+
+    if(resource==='team'){
+      const staff=await listStaff(tid);
+      const fallback=Array.isArray(tenant.team)?tenant.team:[];
+      const team=staff.length?staff.map(s=>({id:s.id,name:s.name,role:s.role||'Stylist',active:s.is_active!==false})):fallback.map(x=>({name:x.name,role:x.role||'Stylist',active:true}));
+      return res.status(200).json({tenant:tenant.name,team});
+    }
+
+    if(resource==='services'){
+      const services=await listServices(tid);
+      const fallback=Array.isArray(tenant.services)?tenant.services:[];
+      return res.status(200).json({tenant:tenant.name,services:services.length?services.map(s=>({id:s.id,name:s.name,durationMin:Number(s.duration_minutes||60),price:Number(s.price||0),description:s.description||'',active:s.is_active!==false})):fallback.map(s=>({name:s.name,durationMin:Number(s.duration_minutes||60),price:Number(s.price||0),active:true}))});
+    }
+
+    if(resource==='calls'){
+      const {data=[],error}=await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
+      if(error) throw error;
+      return res.status(200).json({tenant:tenant.name,calls:data.map(x=>({id:x.id,from:x.from_number||'',when:ago(x.created_at),outcome:x.status||'handled',durationSec:Number(x.duration_seconds||0),summary:'',booked:String(x.status||'').toLowerCase()==='booked'}))});
+    }
+
+    if(resource==='inbox'){
+      const {data=[],error}=await c.from('conversations').select('id,client_name,client_phone,channel,status,content,created_at,updated_at').eq('tenant_id',tid).order('updated_at',{ascending:false}).limit(80);
+      if(error) throw error;
+      return res.status(200).json({tenant:tenant.name,threads:data.map(x=>({id:x.id,channel:x.channel||'sms',who:x.client_name||x.client_phone||'Client',when:ago(x.updated_at||x.created_at),preview:x.content||'',unread:String(x.status||'').toLowerCase()==='new'}))});
+    }
+
+    if(resource==='revenue'){
+      const bookings=await listBookings(tid,{limit:1000});
+      const live=bookings.filter(b=>b.status!=='cancelled');
+      const total=live.reduce((s,b)=>s+Number(b.price||0),0);
+      const byMonth={},byService={};
+      live.forEach(b=>{ const m=String(b.startsAt||'').slice(0,7); if(m) byMonth[m]=(byMonth[m]||0)+Number(b.price||0); byService[b.service||'Other']=(byService[b.service||'Other']||0)+Number(b.price||0); });
+      return res.status(200).json({tenant:tenant.name,total,money:money(total),months:Object.entries(byMonth).sort().map(([month,value])=>({month,value})),services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value})),bookingCount:live.length});
+    }
+
+    if(resource==='overview'){
+      const since=new Date(Date.now()-30*86400000).toISOString();
+      const [{count:clientsCount=0},{count:callsCount=0},bookings]=await Promise.all([
+        c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid),
+        c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since),
+        listBookings(tid,{from:since,limit:1000})
+      ]);
+      const active=bookings.filter(b=>b.status!=='cancelled');
+      const revenue=active.reduce((s,b)=>s+Number(b.price||0),0);
+      return res.status(200).json({tenant:tenant.name,kpis:{clients:clientsCount||0,calls30:callsCount||0,bookings30:active.length,revenue30:revenue,revenue30Money:money(revenue),upsellRevenue:0,upsellRate:'0%'}});
+    }
+
+    return res.status(400).json({error:'unknown resource'});
+  }catch(e){
+    console.error('/api/data',e);
+    return res.status(500).json({error:String(e?.message||e)});
+  }
 }
