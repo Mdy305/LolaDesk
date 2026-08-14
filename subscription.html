@@ -1,152 +1,184 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pricing — LolaDesk</title>
-<link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Billing — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
-.pwrap{max-width:1080px;margin:0 auto;padding:60px 24px 80px}
-.phead{text-align:center;margin-bottom:14px}
-.peyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--pink2);margin-bottom:18px}
-.ptitle{font-family:var(--ff-serif);font-style:italic;font-weight:300;font-size:48px;line-height:1.05;letter-spacing:-.01em}
-.psub{color:var(--text2);font-size:16px;font-weight:300;max-width:520px;margin:18px auto 0;line-height:1.6}
-.toggle{display:flex;justify-content:center;gap:10px;margin:34px 0 46px;align-items:center;font-size:13px;color:var(--text2)}
-.sw{width:46px;height:26px;border-radius:99px;background:var(--surface2);border:.5px solid var(--border);position:relative;cursor:pointer;transition:.2s}
-.sw.on{background:var(--pink-dim);border-color:var(--pink)}
-.sw .k{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
-.sw.on .k{left:23px;background:var(--pink)}
-.save{color:var(--pink2);font-size:12px}
-.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-@media(max-width:880px){.tiers{grid-template-columns:1fr;max-width:420px;margin:0 auto}}
-.tier{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-lg);padding:30px 26px;display:flex;flex-direction:column;position:relative;transition:.3s}
-.tier:hover{border-color:var(--border2);transform:translateY(-3px)}
-.tier.featured{border-color:var(--pink);box-shadow:0 0 50px rgba(204,255,0,.12)}
-.tier.featured::before{content:'Most popular';position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:4px 14px;border-radius:99px;font-weight:600}
-.tname{font-family:var(--ff-serif);font-style:italic;font-size:26px;font-weight:300}
-.tfor{font-size:12.5px;color:var(--text3);margin-top:3px;min-height:18px}
-.tprice{margin:22px 0 6px;display:flex;align-items:baseline;gap:4px}
-.tprice .amt{font-size:46px;font-weight:300;letter-spacing:-.02em}
-.tprice .per{font-size:14px;color:var(--text3)}
-.tnote{font-size:12px;color:var(--text3);min-height:16px;margin-bottom:22px}
-.feat{list-style:none;display:flex;flex-direction:column;gap:12px;margin-bottom:28px;flex:1}
-.feat li{display:flex;gap:10px;font-size:13.5px;color:var(--text2);line-height:1.45}
-.feat svg{flex-shrink:0;color:var(--pink);margin-top:2px}
-.tcta{padding:13px;border-radius:11px;text-align:center;font-size:14px;font-weight:500;cursor:pointer;transition:.2s;border:.5px solid var(--border)}
-.tcta.ghost{background:transparent;color:var(--text)}
-.tcta.ghost:hover{border-color:var(--border2);background:var(--surface2)}
-.tcta.solid{background:var(--pink);color:#fff;border-color:var(--pink)}
-.tcta.solid:hover{background:var(--pink2)}
-.foot{text-align:center;margin-top:40px;color:var(--text3);font-size:13px}
-.foot a{color:var(--pink2)}
+.banner{background:var(--surface);border:.5px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.banner.warn{border-color:#ffc04344;background:linear-gradient(180deg,rgba(255,192,67,.06),transparent)}
+.banner.danger{border-color:#ff6b6b44;background:linear-gradient(180deg,rgba(255,107,107,.06),transparent)}
+.banner h3{font-size:17px;font-weight:600;margin-bottom:4px}
+.banner p{font-size:13px;color:var(--text3);line-height:1.6}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:900px){.plans{grid-template-columns:1fr}}
+.plan{background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:26px;display:flex;flex-direction:column;transition:.2s}
+.plan.current{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.plan.featured{border-color:var(--text2)}
+.plan-tag{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);margin-bottom:8px;min-height:14px}
+.plan-name{font-size:20px;font-weight:600;margin-bottom:6px}
+.plan-price{font-size:38px;font-weight:300;letter-spacing:-.03em;margin-bottom:2px}
+.plan-price span{font-size:14px;color:var(--text3);font-weight:400}
+.plan-feat{list-style:none;padding:0;margin:20px 0;flex:1}
+.plan-feat li{font-size:13px;color:var(--text2);padding:7px 0;padding-left:22px;position:relative;line-height:1.5}
+.plan-feat li:before{content:'';position:absolute;left:0;top:13px;width:12px;height:2px;background:var(--accent);border-radius:2px}
+.plan-btn{width:100%;padding:13px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+.plan-btn.primary{background:var(--text);color:#080809}
+.plan-btn.ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
+.plan-btn:disabled{opacity:.4;cursor:not-allowed}
+.usage{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:900px){.usage{grid-template-columns:repeat(2,1fr)}}
+.u-card{background:var(--surface);border:.5px solid var(--border);border-radius:14px;padding:18px}
+.u-val{font-size:26px;font-weight:300;letter-spacing:-.02em}
+.u-lbl{font-size:11.5px;color:var(--text3);margin-top:3px}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:24px;margin-bottom:16px}
+.card h3{font-size:16px;font-weight:600;margin-bottom:6px}
+.card .desc{font-size:12.5px;color:var(--text3);margin-bottom:16px;line-height:1.6}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap}
+.btn-g{background:transparent;border:.5px solid var(--border);color:var(--text2);border-radius:11px;padding:11px 18px;font-size:13.5px;cursor:pointer;font-family:inherit}
+.msg{font-size:12.5px;margin-top:12px;min-height:18px}
+.msg.ok{color:var(--accent2)}.msg.err{color:#ff8a8a}
 </style>
 </head>
-<body data-page="settings">
-<div class="app">
-  <main class="main">
-    <div class="topbar">
-      <div class="page-head">
-        <h1 class="page-title">Subscription</h1>
-        <p class="page-sub">Choose a plan to activate your AI Front Desk.</p>
-      </div>
-    </div>
-
-    <div class="pwrap" style="padding-top:20px;">
-      <div class="toggle">
-        <span>Monthly</span>
-        <div class="sw" id="sw"><div class="k"></div></div>
-        <span>Yearly <span class="save">save 20%</span></span>
-      </div>
-
-      <div class="tiers">
-        <!-- Starter -->
-        <div class="tier">
-          <div class="tname">Starter</div>
-          <div class="tfor">Solo & small salons · 1–3 chairs</div>
-          <div class="tprice"><span class="amt" data-m="99" data-y="79">$99</span><span class="per">/mo</span></div>
-          <div class="tnote">Includes your Lola number</div>
-          <ul class="feat">
-            <li>${check} Lola answers & books 24/7</li>
-            <li>${check} Your custom voice</li>
-            <li>${check} Pricing, services & recommendations</li>
-            <li>${check} Lead capture — never lose a caller</li>
-            <li>${check} 1 phone number included</li>
-          </ul>
-          <div class="tcta ghost" data-plan="starter">Select Starter</div>
-        </div>
-
-        <!-- Pro -->
-        <div class="tier featured">
-          <div class="tname">Pro</div>
-          <div class="tfor">Growing salons · 4–10 chairs</div>
-          <div class="tprice"><span class="amt" data-m="399" data-y="319">$399</span><span class="per">/mo</span></div>
-          <div class="tnote">Everything in Starter, plus —</div>
-          <ul class="feat">
-            <li>${check} Multi-stylist resource calendar</li>
-            <li>${check} Win-back & rebooking campaigns</li>
-            <li>${check} Booking platform sync (Square, Google)</li>
-            <li>${check} Live activity & smart insights</li>
-            <li>${check} Priority call handling</li>
-          </ul>
-          <div class="tcta solid" data-plan="pro">Select Pro</div>
-        </div>
-
-        <!-- Med-Spa -->
-        <div class="tier">
-          <div class="tname">Med-Spa</div>
-          <div class="tfor">Med-spas & premium · high volume</div>
-          <div class="tprice"><span class="amt" data-m="599" data-y="479">$599</span><span class="per">/mo</span></div>
-          <div class="tnote">Everything in Pro, plus —</div>
-          <ul class="feat">
-            <li>${check} Highest call capacity</li>
-            <li>${check} Consultation & intake flows</li>
-            <li>${check} Compliance-ready call handling</li>
-            <li>${check} Dedicated onboarding</li>
-            <li>${check} All marketplace integrations</li>
-          </ul>
-          <div class="tcta ghost" data-plan="medspa">Talk to us</div>
-        </div>
-      </div>
-    </div>
-  </main>
+<body data-page="subscription">
+<div class="app"><main class="main">
+<div class="page-head">
+  <div><h1 class="page-title">Billing</h1>
+  <p style="font-size:13px;color:var(--text3);margin-top:4px">Your plan, usage, and payment method.</p></div>
 </div>
 
-<script src="auth-guard.js"></script>
-<script src="sidebar.js"></script>
+<div id="statusBanner"></div>
+
+<div class="usage" id="usageGrid"></div>
+
+<h2 style="font-size:15px;font-weight:600;margin:24px 0 14px">Plans</h2>
+<div class="plans" id="plansGrid"></div>
+
+<div class="card">
+  <h3>Payment method &amp; invoices</h3>
+  <div class="desc">Update your card, download invoices, or change your billing address.</div>
+  <div class="btn-row">
+    <button class="btn-g" onclick="openPortal()">Manage billing</button>
+    <button class="btn-g" id="cancelBtn" onclick="cancelSub()" style="display:none">Cancel subscription</button>
+    <button class="btn-g" id="resumeBtn" onclick="resumeSub()" style="display:none">Resume subscription</button>
+  </div>
+  <div class="msg" id="portalMsg"></div>
+</div>
+
+</main></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-const CHECK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>';
-document.querySelectorAll('.feat li').forEach(li=>{ li.innerHTML = li.innerHTML.replace('${check}', CHECK); });
+let STATE={};
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function msg(id,t,ok){const e=document.getElementById(id);if(e){e.textContent=t;e.className='msg '+(ok?'ok':'err');}}
 
-// monthly/yearly toggle
-const sw=document.getElementById('sw'); let yearly=false;
-sw.addEventListener('click',()=>{ yearly=!yearly; sw.classList.toggle('on',yearly);
-  document.querySelectorAll('.amt').forEach(a=>{ a.textContent='$'+(yearly?a.dataset.y:a.dataset.m); });
-});
+async function load(){
+  try{
+    const [sr,pr]=await Promise.all([
+      fetch('/api/billing?action=status',{headers:H()}).then(r=>r.json()),
+      fetch('/api/billing?action=plans',{headers:H()}).then(r=>r.json())
+    ]);
+    if(!sr.ok)throw new Error(sr.error||'Could not load billing');
+    STATE=sr;
+    renderBanner(sr);
+    renderUsage(sr.usage||{});
+    renderPlans(pr.plans||[],sr);
+    document.getElementById('cancelBtn').style.display=(sr.status==='active'&&!sr.cancel_at_period_end)?'':'none';
+    document.getElementById('resumeBtn').style.display=sr.cancel_at_period_end?'':'none';
+  }catch(e){
+    document.getElementById('statusBanner').innerHTML='<div class="banner danger"><div><h3>Billing unavailable</h3><p>'+esc(e.message)+'</p></div></div>';
+  }
+}
 
-// checkout
-window.LolaAuth.ready.then(() => {
-  document.querySelectorAll('.tcta').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const plan=btn.dataset.plan;
-      if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
-      btn.textContent='Loading…';
-      try{
-        const r=await fetch('/api/billing/checkout',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ 
-            plan: plan,
-            tenantId: window.LolaAuth.tenant.id,
-            email: window.LolaAuth.user.email
-          })
-        });
-        const d=await r.json();
-        if(d.url) window.location.href=d.url;
-        else { btn.textContent='Try again'; alert(d.error||'Could not start checkout'); }
-      }catch(e){ btn.textContent='Try again'; }
-    });
-  });
-});
+function renderBanner(s){
+  const b=document.getElementById('statusBanner');
+  if(!s.stripe_configured){
+    b.innerHTML='<div class="banner warn"><div><h3>Stripe not connected</h3><p>Add STRIPE_SECRET_KEY in Vercel to enable billing.</p></div></div>';
+    return;
+  }
+  if(s.status==='trialing'){
+    const d=s.trial_days_left;
+    b.innerHTML='<div class="banner'+(d<=3?' warn':'')+'"><div><h3>'+d+' day'+(d===1?'':'s')+' left in your trial</h3>'+
+      '<p>Pick a plan below to keep Lola answering your calls without interruption.</p></div></div>';
+  }else if(s.status==='active'){
+    const end=s.current_period_end?new Date(s.current_period_end).toLocaleDateString():'';
+    b.innerHTML='<div class="banner"><div><h3>'+esc(s.plan_details?.name||s.plan)+' plan — active</h3>'+
+      '<p>'+(s.cancel_at_period_end?'Ends on '+end:'Renews '+end)+'</p></div></div>';
+  }else if(s.status==='past_due'){
+    b.innerHTML='<div class="banner danger"><div><h3>Payment failed</h3><p>Update your card to keep Lola running.</p></div>'+
+      '<button class="plan-btn primary" style="width:auto;padding:11px 20px" onclick="openPortal()">Update card</button></div>';
+  }else if(s.status==='canceled'){
+    b.innerHTML='<div class="banner danger"><div><h3>Subscription canceled</h3><p>Choose a plan to reactivate Lola.</p></div></div>';
+  }
+}
+
+function renderUsage(u){
+  document.getElementById('usageGrid').innerHTML=
+    '<div class="u-card"><div class="u-val">'+(u.calls_handled||0)+'</div><div class="u-lbl">Calls handled</div></div>'+
+    '<div class="u-card"><div class="u-val">'+(u.bookings_made||0)+'</div><div class="u-lbl">Bookings made</div></div>'+
+    '<div class="u-card"><div class="u-val">'+(u.sms_sent||0)+'</div><div class="u-lbl">Texts sent</div></div>'+
+    '<div class="u-card"><div class="u-val">'+Math.round(u.minutes_used||0)+'</div><div class="u-lbl">Minutes used</div></div>';
+}
+
+function renderPlans(plans,s){
+  document.getElementById('plansGrid').innerHTML=plans.map(p=>{
+    const current=s.plan===p.id&&s.status==='active';
+    return '<div class="plan'+(current?' current':'')+(p.id==='pro'?' featured':'')+'">'+
+      '<div class="plan-tag">'+(current?'Your plan':(p.id==='pro'?'Most popular':''))+'</div>'+
+      '<div class="plan-name">'+esc(p.name)+'</div>'+
+      '<div class="plan-price">'+esc(p.price_display)+'<span>/mo</span></div>'+
+      '<ul class="plan-feat">'+p.features.map(f=>'<li>'+esc(f)+'</li>').join('')+'</ul>'+
+      '<button class="plan-btn '+(current?'ghost':'primary')+'" '+(current?'disabled':'')+
+      ' onclick="subscribe(\''+p.id+'\')">'+(current?'Current plan':(s.status==='trialing'?'Start '+esc(p.name):'Switch to '+esc(p.name)))+'</button>'+
+      '</div>';
+  }).join('');
+}
+
+async function subscribe(plan){
+  msg('portalMsg','Opening secure checkout...',true);
+  try{
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'checkout',plan})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Checkout failed');
+    location.href=d.url;
+  }catch(e){msg('portalMsg',e.message,false);}
+}
+
+async function openPortal(){
+  msg('portalMsg','Opening billing portal...',true);
+  try{
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'portal'})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Could not open portal');
+    location.href=d.url;
+  }catch(e){msg('portalMsg',e.message,false);}
+}
+
+async function cancelSub(){
+  if(!confirm('Cancel your subscription? Lola will stop answering calls at the end of your billing period.'))return;
+  try{
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'cancel'})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Cancel failed');
+    msg('portalMsg',d.message,true);load();
+  }catch(e){msg('portalMsg',e.message,false);}
+}
+
+async function resumeSub(){
+  try{
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'resume'})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Resume failed');
+    msg('portalMsg',d.message,true);load();
+  }catch(e){msg('portalMsg',e.message,false);}
+}
+
+if(new URLSearchParams(location.search).get('success')){
+  setTimeout(()=>msg('portalMsg','Subscription active. Lola is running.',true),500);
+}
+
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script>
 </body>
 </html>
