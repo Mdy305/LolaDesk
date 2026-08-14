@@ -9,6 +9,7 @@ export default async function handler(req,res){
   const body = typeof req.body==='string' ? (()=>{try{return JSON.parse(req.body||'{}')}catch{return {}}})() : (req.body||{});
   const action = body.action || req.query?.action || (req.method==='GET'?'catalog':'');
   if(!ALLOWED.has(action)) return res.status(405).json({ok:false,error:'action_not_allowed'});
+  req.__publicBooking = true;
   req.body = { ...body, action, channel:'public' };
   return calendarHandler(req,res);
 }
