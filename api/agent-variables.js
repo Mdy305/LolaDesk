@@ -103,7 +103,89 @@ export default async function handler(req, res){
       }
     }catch(e){ /* never block the call on memory */ }
 
-    const services = (tenant.services||[])
+    let services='', staffList='';
+    try{
+      const dbmod=await import('./lib/db.js');
+      const dbconn=dbmod.db();
+      if(dbconn&&tenant&&tenant.id){
+        const svcRes=await dbconn.from('services').select('name,price,duration_minutes').eq('tenant_id',tenant.id).eq('is_active',true).order('name');
+        const stfRes=await dbconn.from('staff').select('name,role').eq('tenant_id',tenant.id).eq('is_active',true).order('name');
+        services=(svcRes.data||[]).map(function(s){return s.name+(s.price?' ||[])
+      .map(s => `${s.name}${s.price?` $${s.price}`:''}${s.duration?` (${s.duration})`:''}`)
+      .join('; ');
+
+    const dynamic_variables = {
+      tenant_id: tenant.id || '',
+      company_name: tenant.name || 'our salon',
+      business_type: tenant.business_mode || 'salon',
+      location: tenant.location || '',
+      hours: tenant.hours || '',
+      services: services || '',
+      booking_url: tenant.booking_url || '',
+      // a compact knowledge block Lola can lean on for tone/positioning
+      knowledge: tenantKnowledgePrompt(tenant),
+      // caller memory — lets Lola greet returning clients by name with context
+      ...memory
+    };
+
+    // Telnyx expects the variables under "dynamic_variables".
+    return res.status(200).json({ dynamic_variables });
+  }catch(e){
+    // Never hard-fail the call — return safe generic variables.
+    return res.status(200).json({
+      dynamic_variables: {
+        company_name: 'our salon',
+        business_type: 'salon',
+        services: '',
+        hours: '',
+        booking_url: ''
+      },
+      _error: String(e)
+    });
+  }
+}
++s.price:'')+(s.duration_minutes?' ('+s.duration_minutes+'min)':'');}).join('; ');
+        staffList=(stfRes.data||[]).map(function(s){return s.name+(s.role?' ('+s.role+')':'');}).join(', ');
+      }
+    }catch(e){}
+    if(!services&&tenant&&tenant.services&&tenant.services.length){
+      services=(tenant.services||[]).map(function(s){return s.name+(s.price?' ||[])
+      .map(s => `${s.name}${s.price?` $${s.price}`:''}${s.duration?` (${s.duration})`:''}`)
+      .join('; ');
+
+    const dynamic_variables = {
+      tenant_id: tenant.id || '',
+      company_name: tenant.name || 'our salon',
+      business_type: tenant.business_mode || 'salon',
+      location: tenant.location || '',
+      hours: tenant.hours || '',
+      services: services || '',
+      booking_url: tenant.booking_url || '',
+      // a compact knowledge block Lola can lean on for tone/positioning
+      knowledge: tenantKnowledgePrompt(tenant),
+      // caller memory — lets Lola greet returning clients by name with context
+      ...memory
+    };
+
+    // Telnyx expects the variables under "dynamic_variables".
+    return res.status(200).json({ dynamic_variables });
+  }catch(e){
+    // Never hard-fail the call — return safe generic variables.
+    return res.status(200).json({
+      dynamic_variables: {
+        company_name: 'our salon',
+        business_type: 'salon',
+        services: '',
+        hours: '',
+        booking_url: ''
+      },
+      _error: String(e)
+    });
+  }
+}
++s.price:'')+(s.duration?' ('+s.duration+')':'');}).join('; ');
+    }
+    const UNUSED = (tenant.services||[])
       .map(s => `${s.name}${s.price?` $${s.price}`:''}${s.duration?` (${s.duration})`:''}`)
       .join('; ');
 
