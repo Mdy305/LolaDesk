@@ -77,10 +77,10 @@ async function load(){
   document.getElementById('calDate').textContent=cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('calSub').textContent='Loading...';
   try{
-    const r=await fetch('/api/appointments?date='+isoDay(cursor),{headers:hdr()});
+    const r=await fetch('/api/calendar?action=day&date='+isoDay(cursor),{headers:hdr()});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    STATE=d;render();
+    STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[]};render();
   }catch(e){
     document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';
     document.getElementById('calSub').textContent='Error';
@@ -159,7 +159,7 @@ async function saveBooking(){
   if(!name&&!phone){st.textContent='Please enter client name or phone.';return;}
   const starts=new Date(isoDay(cursor)+'T'+time+':00');
   try{
-    const r=await fetch('/api/appointments',{method:'POST',headers:hdr(),body:JSON.stringify({service_id:svcId,staff_id:staffId,start_time:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,source:'dashboard'})});
+    const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'book',service_id:svcId,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'})});
     const d=await r.json();
     if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');return;}
     closeModal();await load();
@@ -182,7 +182,7 @@ function showDetail(b){
 }
 async function cancelBooking(id){
   if(!confirm('Cancel this booking?'))return;
-  try{await fetch('/api/appointments?id='+id,{method:'DELETE',headers:hdr()});closeModal();await load();}catch(e){alert(e.message);}
+  try{await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:id})});closeModal();await load();}catch(e){alert(e.message);}
 }
 function nav(dir){cursor.setDate(cursor.getDate()+dir);load();}
 function goToday(){cursor=new Date();cursor.setHours(0,0,0,0);load();}

@@ -34,6 +34,7 @@ export default async function handler(req,res){
     }
 
     if(action==='day'){
+      const [svcs,stff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();
       const start=new Date(date); start.setUTCHours(0,0,0,0);
       const end=new Date(start.getTime()+86400000);
@@ -41,7 +42,7 @@ export default async function handler(req,res){
         listBookings(tenant.id,start.toISOString(),end.toISOString()),
         listServices(tenant.id),listStaff(tenant.id),getBookingSettings(tenant.id)
       ]);
-      return res.json({ ok:true,date:start.toISOString().slice(0,10),bookings,services,staff,settings });
+      return res.json({ ok:true, services:svcs||[], staff:stff||[],date:start.toISOString().slice(0,10),bookings,services,staff,settings });
     }
 
     if(action==='availability'){
