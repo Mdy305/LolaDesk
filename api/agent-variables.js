@@ -103,7 +103,7 @@ export default async function handler(req, res){
       }
     }catch(e){ /* never block the call on memory */ }
 
-    let services='', staffList='';
+    let services='', staffList='', marketingContext='';
     try{
       const dbmod=await import('./lib/db.js');
       const dbconn=dbmod.db();
@@ -146,6 +146,14 @@ export default async function handler(req, res){
 }
 +s.price:'')+(s.duration_minutes?' ('+s.duration_minutes+'min)':'');}).join('; ');
         staffList=(stfRes.data||[]).map(function(s){return s.name+(s.role?' ('+s.role+')':'');}).join(', ');
+        try{
+          const miRes=await dbconn.from('marketing_intelligence').select('kind,title,summary').eq('tenant_id',tenant.id).order('created_at',{ascending:false}).limit(5);
+          marketingContext=(miRes.data||[]).map(function(m){return m.kind+': '+(m.title||'')+(m.summary?' - '+m.summary:'');}).join(' | ');
+        }catch(e){}
+        try{
+          const miRes=await dbconn.from('marketing_intelligence').select('kind,title,summary').eq('tenant_id',tenant.id).order('created_at',{ascending:false}).limit(5);
+          marketingContext=(miRes.data||[]).map(function(m){return m.kind+': '+(m.title||'')+(m.summary?' - '+m.summary:'');}).join(' | ');
+        }catch(e){}
       }
     }catch(e){}
     if(!services&&tenant&&tenant.services&&tenant.services.length){

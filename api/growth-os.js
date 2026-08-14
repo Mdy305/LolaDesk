@@ -24,7 +24,7 @@ function buildSegments(clients, bookings){
     const spend = completed.reduce((s,b)=>s+(Number(b.price)||0),0);
     const last = completed.sort((a,b)=>new Date(b.starts_at||b.created_at)-new Date(a.starts_at||a.created_at))[0];
     const daysSince = last ? Math.floor((now-new Date(last.starts_at||last.created_at).getTime())/DAY) : null;
-    const base = { client_id:c.id,name:c.name||'Client',phone:c.phone_number||null,email:c.email||null,lifetime_value:money(spend),last_visit_at:last?.starts_at||last?.created_at||null,days_since_visit:daysSince };
+    const base = { client_id:c.id,name:c.name||'Client',phone:c.phone||null,email:c.email||null,lifetime_value:money(spend),last_visit_at:last?.starts_at||last?.created_at||null,days_since_visit:daysSince };
     if(!completed.length) segments.leads.push(base);
     if(daysSince!==null && daysSince>=60 && !future.length) segments.dormant.push(base);
     if(cancelled.length && !future.length) segments.cancelled.push({...base,last_cancelled_at:cancelled[0]?.starts_at||cancelled[0]?.created_at});
@@ -71,7 +71,7 @@ export default async function handler(req,res){
     }
     const since=new Date(Date.now()-365*DAY).toISOString();
     const [{data:clients,error:cErr},{data:bookings,error:bErr},{data:actions}]=await Promise.all([
-      c.from('clients').select('id,name,email,phone_number,opted_out,created_at').eq('tenant_id',tenant.id).limit(1000),
+      c.from('clients').select('id,name,email,phone,opted_out,created_at').eq('tenant_id',tenant.id).limit(1000),
       c.from('bookings').select('id,client_id,status,service,starts_at,created_at,price').eq('tenant_id',tenant.id).gte('created_at',since).limit(3000),
       c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id',tenant.id).eq('kind','growth_action').order('created_at',{ascending:false}).limit(100)
     ]);
