@@ -1,4 +1,34 @@
 import { db } from './db.js';
+import { sendSMS } from '../telnyx-sms.js';
+
+async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime}){
+  try{
+    const db2=require('./db.js').db();
+    if(!db2)return;
+    const [{data:tenant},{data:client},{data:svc}]=await Promise.all([db2.from('tenants').select('name,phone_number').eq('id',tenantId).maybeSingle(),db2.from('clients').select('name,phone').eq('id',clientId).maybeSingle(),db2.from('services').select('name').eq('id',serviceId).maybeSingle()]);
+    if(!client||!client.phone||!tenant||!tenant.phone_number)return;
+    const when=new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const text='Booked at '+(tenant.name||'the salon')+': '+(svc&&svc.name?svc.name:'Appointment')+' on '+when+'. Reply STOP to opt out.';
+    const {sendSMS}=require('./telnyx-sms.js');
+    sendSMS({from:tenant.phone_number,to:client.phone,text,tenantId});
+  }catch(e){console.warn('[repo] SMS:',e.message);}
+}
+
+import { sendSMS } from '../telnyx-sms.js';
+
+async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime}){
+  try{
+    const db2=require('./db.js').db();
+    if(!db2)return;
+    const [{data:tenant},{data:client},{data:svc}]=await Promise.all([db2.from('tenants').select('name,phone_number').eq('id',tenantId).maybeSingle(),db2.from('clients').select('name,phone').eq('id',clientId).maybeSingle(),db2.from('services').select('name').eq('id',serviceId).maybeSingle()]);
+    if(!client||!client.phone||!tenant||!tenant.phone_number)return;
+    const when=new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const text='Booked at '+(tenant.name||'the salon')+': '+(svc&&svc.name?svc.name:'Appointment')+' on '+when+'. Reply STOP to opt out.';
+    const {sendSMS}=require('./telnyx-sms.js');
+    sendSMS({from:tenant.phone_number,to:client.phone,text,tenantId});
+  }catch(e){console.warn('[repo] SMS:',e.message);}
+}
+
 
 const CANCELED = new Set(['cancelled','canceled']);
 
@@ -144,6 +174,7 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   const { data, error } = await c.from('bookings').insert(row).select().single();
   if(error) throw error;
   await appendBookingHistory({ tenantId, bookingId:data.id, fromStatus:null, toStatus:status, source });
+  if(status==='confirmed') sendConfirmationSMS({tenantId,clientId,serviceId,startTime}).catch(()=>{});
   return data;
 }
 
