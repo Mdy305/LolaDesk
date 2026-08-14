@@ -4,30 +4,188 @@
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Calendar — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
-.cal-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:22px;flex-wrap:wrap}.cal-title h1{font-size:32px;letter-spacing:-.04em}.cal-title p{color:var(--text3);font-size:13px;margin-top:4px}.date-nav{display:flex;gap:8px;align-items:center}.date-nav button{height:38px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);font-size:12px}.calendar{border:1px solid var(--border);border-radius:20px;overflow:auto;background:var(--surface);min-height:520px}.grid{display:grid;min-width:760px}.corner,.staff-head{position:sticky;top:0;z-index:3;background:var(--bg2);border-bottom:1px solid var(--border);height:72px}.corner{left:0;z-index:4;border-right:1px solid var(--border)}.staff-head{padding:14px;border-right:1px solid var(--border)}.staff-name{font-weight:600}.staff-role{font-size:11px;color:var(--text3)}.time{position:sticky;left:0;z-index:2;background:var(--bg2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px;font-size:10px;color:var(--text3);text-align:right}.slot{height:72px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);position:relative;cursor:pointer}.slot:hover{background:rgba(204,255,0,.035)}.booking{position:absolute;left:5px;right:5px;top:5px;min-height:58px;border-radius:12px;background:rgba(204,255,0,.1);border:1px solid rgba(204,255,0,.28);padding:8px;z-index:1;overflow:hidden}.booking strong{display:block;font-size:12px}.booking span{display:block;font-size:10px;color:var(--text2);margin-top:2px}.empty{padding:80px 30px;text-align:center;color:var(--text3)}.modal-wrap{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(12px);z-index:100;padding:20px}.modal-wrap.open{display:flex}.modal{width:min(520px,100%);background:var(--bg2);border:1px solid var(--border);border-radius:24px;padding:24px}.modal h2{font-size:23px;margin-bottom:18px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}.field input,.field select{height:42px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);padding:0 12px}.actions{display:flex;gap:10px;margin-top:18px}.status{font-size:12px;color:var(--text3);margin-top:12px;min-height:18px}.toolbar-links{display:flex;gap:8px}.toolbar-links a{font-size:12px;padding:9px 12px;border:1px solid var(--border);border-radius:11px;color:var(--text2)}@media(max-width:760px){.fields{grid-template-columns:1fr}.field.full{grid-column:auto}}
-</style></head>
+.cal-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.cal-date{font-size:26px;font-weight:560;letter-spacing:-.02em}
+.cal-nav{display:flex;gap:6px}
+.cal-nav button{height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer}
+.cal-nav button:hover{background:var(--surface2)}
+.cal-links{display:flex;gap:8px}
+.cal-links a,.cal-links button{padding:9px 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none}
+.cal-links .primary{background:var(--text);color:#080809;border-color:transparent;font-weight:560}
+.cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:20px;overflow:auto;min-height:520px}
+.cal-grid{display:grid;min-width:700px}
+.cal-corner{position:sticky;top:0;left:0;z-index:20;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px}
+.cal-head{position:sticky;top:0;z-index:10;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:14px 12px}
+.cal-head .nm{font-weight:600;font-size:13px}
+.cal-head .ro{font-size:11px;color:var(--text3);margin-top:2px}
+.cal-time{position:sticky;left:0;z-index:5;background:var(--surface);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:6px 8px;text-align:right;font-size:10.5px;color:var(--text3)}
+.cal-slot{border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;position:relative;cursor:pointer}
+.cal-slot:hover{background:rgba(204,255,0,.04)}
+.cal-slot:hover::after{content:"+ book";position:absolute;top:6px;left:8px;font-size:10px;color:var(--accent);font-weight:500}
+.appt{position:absolute;left:4px;right:4px;border-radius:8px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;overflow:hidden;border-left:3px solid var(--accent);background:rgba(204,255,0,.08);z-index:4}
+.appt:hover{box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:10}
+.appt .at{font-size:9.5px;color:var(--text3)}
+.appt .svc{font-weight:600;color:var(--text)}
+.appt .cli{font-size:10.5px;color:var(--text2)}
+.now-line{position:absolute;left:0;right:0;height:2px;background:var(--pink,#ff6b81);z-index:8;pointer-events:none}
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw.open{display:flex}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;padding:26px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:19px;font-weight:600;margin-bottom:18px}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fld input,.fld select,.fld textarea{background:var(--surface);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%}
+.fld input:focus,.fld select:focus{border-color:var(--accent)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.macts{display:flex;gap:10px;margin-top:6px}
+.macts button{flex:1;padding:12px;border-radius:11px;font-size:14px;font-weight:560;cursor:pointer;border:none}
+.macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
+.macts .primary{background:var(--text);color:#080809}
+.macts .danger{background:transparent;border:.5px solid #ff6b6b44;color:#ff8a8a}
+.mstatus{font-size:12px;color:var(--text3);margin-top:10px;min-height:16px}
+.empty-cal{padding:80px 20px;text-align:center;color:var(--text3);font-size:14px;line-height:2}
+.empty-cal a{color:var(--accent2);text-decoration:none}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
 <body data-page="bookings"><div class="app"><main class="main">
-<div class="cal-head"><div class="cal-title"><h1 id="dateTitle">Calendar</h1><p id="dateSub">Live tenant schedule</p></div><div class="toolbar-links"><a href="team.html">Team</a><a href="booking-settings.html">Booking settings</a></div><div class="date-nav"><button onclick="moveDay(-1)">‹</button><button onclick="today()">Today</button><button onclick="moveDay(1)">›</button><button class="btn btn-primary" onclick="openBooking()">New booking</button></div></div>
-<div class="calendar"><div class="grid" id="grid"><div class="empty">Loading calendar…</div></div></div>
+<div class="cal-bar">
+  <div><div class="cal-date" id="calDate">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div>
+  <div class="cal-nav"><button onclick="nav(-1)">&#8249;</button><button onclick="goToday()">Today</button><button onclick="nav(1)">&#8250;</button></div>
+  <div class="cal-links"><a href="services.html">Services</a><a href="team.html">Team</a><a href="booking-settings.html">Settings</a><button class="primary" onclick="openNew()">+ New booking</button></div>
+</div>
+<div class="kpis">
+  <div class="kpi"><div class="kpi-val" id="kCount">0</div><div class="kpi-label">Appointments</div></div>
+  <div class="kpi"><div class="kpi-val" id="kRev">$0</div><div class="kpi-label">Revenue</div></div>
+  <div class="kpi"><div class="kpi-val" id="kStaff">0</div><div class="kpi-label">Staff working</div></div>
+  <div class="kpi"><div class="kpi-val pink" id="kUtil">—</div><div class="kpi-label">Utilization</div></div>
+</div>
+<div class="cal-wrap"><div class="cal-grid" id="calGrid"><div class="empty-cal">Loading calendar...</div></div></div>
 </main></div>
-<div class="modal-wrap" id="modal"><div class="modal"><h2 id="modalTitle">New booking</h2><div class="fields">
-<div class="field full"><label>Client name</label><input id="clientName" autocomplete="name"/></div>
-<div class="field"><label>Phone</label><input id="clientPhone" autocomplete="tel"/></div><div class="field"><label>Email</label><input id="clientEmail" autocomplete="email"/></div>
-<div class="field"><label>Service</label><select id="service"></select></div><div class="field"><label>Team member</label><select id="staff"></select></div>
-<div class="field"><label>Date</label><input id="bookDate" type="date"/></div><div class="field"><label>Time</label><input id="bookTime" type="time" step="900"/></div>
-<div class="field full"><label>Notes</label><input id="notes"/></div></div>
-<div class="actions"><button class="btn btn-primary" onclick="saveBooking()">Confirm booking</button><button class="btn btn-ghost" onclick="closeModal()">Cancel</button></div><div class="status" id="status"></div></div></div>
-<script src="auth-guard.js"></script><script src="lola-data.js"></script><script src="sidebar.js"></script>
+<div class="mw" id="modal"><div class="modal"><h3 id="mTitle">New booking</h3><div id="mBody"></div></div></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-let cursor=new Date();cursor.setHours(0,0,0,0);let state={staff:[],services:[],bookings:[],clients:[],settings:{}};const START=8,END=21;
-function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||''}function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function api(url,opt={}){if(window.LolaAuth?.ready)await window.LolaAuth.ready;const r=await fetch(url,{...opt,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token(),...(opt.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
-async function load(){document.getElementById('dateTitle').textContent=cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});document.getElementById('dateSub').textContent='Loading live schedule…';try{const [day,clients]=await Promise.all([api('/api/calendar?action=day&date='+encodeURIComponent(isoDay(cursor))),LolaData.load('clients')]);state={...state,...day,clients:clients?.clients||[]};document.getElementById('dateSub').textContent=`${state.bookings.length} booking${state.bookings.length===1?'':'s'} · ${state.staff.length} active team member${state.staff.length===1?'':'s'}`;render()}catch(e){document.getElementById('grid').innerHTML='<div class="empty">Calendar unavailable: '+esc(e.message)+'</div>';document.getElementById('dateSub').textContent='Could not load tenant calendar'}}
-function render(){const g=document.getElementById('grid');if(!state.staff.length){g.innerHTML='<div class="empty">No active team members yet. Add your team first.</div>';return}g.style.gridTemplateColumns=`72px repeat(${state.staff.length},minmax(170px,1fr))`;let h='<div class="corner"></div>'+state.staff.map(s=>`<div class="staff-head"><div class="staff-name">${esc(s.name)}</div><div class="staff-role">${esc(s.role||'Team member')}</div></div>`).join('');for(let hr=START;hr<END;hr++){h+=`<div class="time">${new Date(2000,0,1,hr).toLocaleTimeString([],{hour:'numeric'})}</div>`;for(const s of state.staff)h+=`<div class="slot" data-staff="${s.id}" data-hour="${hr}" onclick="quickBook('${s.id}',${hr})"></div>`}g.innerHTML=h;for(const b of state.bookings){const s=state.staff.find(x=>x.id===b.staff_id);if(!s)continue;const d=new Date(b.start_time);const hr=d.getHours();if(hr<START||hr>=END)continue;const slot=g.querySelector(`.slot[data-staff="${s.id}"][data-hour="${hr}"]`);if(!slot)continue;const svc=state.services.find(x=>x.id===b.service_id);const client=state.clients.find(x=>x.id===b.client_id);const el=document.createElement('div');el.className='booking';el.innerHTML=`<strong>${esc(client?.name||'Client')}</strong><span>${esc(svc?.name||'Appointment')} · ${d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</span>`;el.onclick=(ev)=>{ev.stopPropagation();openDetail(b)};slot.appendChild(el)}}
-function fillSelects(){service.innerHTML=state.services.map(x=>`<option value="${x.id}">${esc(x.name)}${x.price!=null?' · $'+Number(x.price).toLocaleString():''}</option>`).join('');staff.innerHTML=state.staff.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}
-function openBooking(staffId='',hour=12){fillSelects();modalTitle.textContent='New booking';bookDate.value=isoDay(cursor);bookTime.value=String(hour).padStart(2,'0')+':00';if(staffId)staff.value=staffId;status.textContent='';modal.classList.add('open')}
-function quickBook(staffId,hour){openBooking(staffId,hour)}function closeModal(){modal.classList.remove('open')}
-async function saveBooking(){status.textContent='Saving…';const svc=state.services.find(x=>x.id===service.value);const starts=new Date(bookDate.value+'T'+bookTime.value+':00');try{const out=await api('/api/calendar',{method:'POST',body:JSON.stringify({action:'book',channel:'dashboard',client_name:clientName.value.trim(),client_phone:clientPhone.value.trim(),client_email:clientEmail.value.trim(),service_id:service.value,staff_id:staff.value,starts_at:starts.toISOString(),total_amount:svc?.price??0,notes:notes.value.trim()})});if(!out.ok)throw new Error(out.error||out.needs||'Booking could not be created');closeModal();await load()}catch(e){status.textContent=e.message}}
-function openDetail(b){const svc=state.services.find(x=>x.id===b.service_id);const client=state.clients.find(x=>x.id===b.client_id);if(confirm(`${client?.name||'Client'}\n${svc?.name||'Appointment'}\n${new Date(b.start_time).toLocaleString()}\n\nCancel this booking?`))cancelBooking(b.id)}async function cancelBooking(id){try{await api('/api/calendar',{method:'POST',body:JSON.stringify({action:'cancel',booking_id:id,channel:'dashboard'})});await load()}catch(e){alert(e.message)}}
-function moveDay(n){cursor.setDate(cursor.getDate()+n);load()}function today(){cursor=new Date();cursor.setHours(0,0,0,0);load()}load();
+const START=8,END=21,SLOT_H=64;
+let cursor=new Date();cursor.setHours(0,0,0,0);
+let STATE={bookings:[],services:[],staff:[]};
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function hdr(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+async function load(){
+  document.getElementById('calDate').textContent=cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
+  document.getElementById('calSub').textContent='Loading...';
+  try{
+    const r=await fetch('/api/appointments?date='+isoDay(cursor),{headers:hdr()});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    STATE=d;render();
+  }catch(e){
+    document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';
+    document.getElementById('calSub').textContent='Error';
+  }
+}
+function render(){
+  const {bookings,services,staff}=STATE;
+  const g=document.getElementById('calGrid');
+  if(!staff.length){g.innerHTML='<div class="empty-cal">No active team members yet.<br><a href="team.html">Add your team</a> to start booking.</div>';document.getElementById('calSub').textContent='No staff';return;}
+  if(!services.length){g.innerHTML='<div class="empty-cal">No services yet.<br><a href="services.html">Add your services</a> to start booking.</div>';document.getElementById('calSub').textContent='No services';return;}
+  const hours=END-START;
+  g.style.gridTemplateColumns='64px repeat('+staff.length+',minmax(160px,1fr))';
+  let html='<div class="cal-corner"></div>';
+  staff.forEach(s=>{html+='<div class="cal-head"><div class="nm">'+esc(s.name)+'</div><div class="ro">'+esc(s.role||'Stylist')+'</div></div>';});
+  for(let h=0;h<hours;h++){
+    const hr=START+h;
+    const lbl=hr>=12?(hr===12?'12 PM':(hr-12)+' PM'):hr+' AM';
+    html+='<div class="cal-time">'+lbl+'</div>';
+    staff.forEach(s=>{html+='<div class="cal-slot" data-staff="'+s.id+'" data-hour="'+hr+'" onclick="quickBook(\''+s.id+'\','+hr+')"></div>';});
+  }
+  g.innerHTML=html;
+  bookings.forEach(b=>{
+    if(!b.staff_id)return;
+    const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
+    if(!cell)return;
+    const start=new Date(b.start_time);
+    const mins=(start.getHours()-START)*60+start.getMinutes();
+    const dur=b.service?.duration_minutes||60;
+    const top=(mins/60)*SLOT_H,height=Math.max(28,(dur/60)*SLOT_H-4);
+    const endTotal=mins+dur,endH=START+Math.floor(endTotal/60),endM=endTotal%60;
+    const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;};
+    const el=document.createElement('div');el.className='appt';
+    el.style.cssText='top:'+top+'px;height:'+height+'px';
+    el.innerHTML='<div class="at">'+fmt(start.getHours(),start.getMinutes())+' - '+fmt(endH,endM)+'</div><div class="svc">'+esc(b.service?.name||'Appointment')+'</div><div class="cli">'+esc(b.client?.name||'Client')+'</div>';
+    el.onclick=ev=>{ev.stopPropagation();showDetail(b);};
+    cell.appendChild(el);
+  });
+  const now=new Date();
+  if(now.toDateString()===cursor.toDateString()){
+    const mins=(now.getHours()-START)*60+now.getMinutes();
+    if(mins>0&&mins<hours*60){
+      staff.forEach(s=>{const cell=g.querySelector('.cal-slot[data-staff="'+s.id+'"][data-hour="'+START+'"]');if(cell){const nl=document.createElement('div');nl.className='now-line';nl.style.top=(mins/60*SLOT_H)+'px';cell.appendChild(nl);}});
+    }
+  }
+  const rev=bookings.reduce((s,b)=>s+Number(b.total_amount||0),0);
+  const util=staff.length?(Math.round(bookings.reduce((s,b)=>s+(b.service?.duration_minutes||60),0)/(staff.length*(END-START)*60)*100))+'%':'—';
+  document.getElementById('kCount').textContent=bookings.length;
+  document.getElementById('kRev').textContent='$'+rev.toLocaleString();
+  document.getElementById('kStaff').textContent=staff.length;
+  document.getElementById('kUtil').textContent=util;
+  document.getElementById('calSub').textContent=bookings.length+' booking'+(bookings.length===1?'':'s')+' · '+staff.length+' staff';
+}
+function bookForm(staffId='',hour=10){
+  const svcOpts=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+s.duration_minutes+'min)</option>').join('');
+  const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===staffId?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+  return '<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div>'
+    +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
+    +'<div class="fld"><label>Service</label><select id="bkSvc">'+svcOpts+'</select></div>'
+    +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff">'+stfOpts+'</select></div>'
+    +'<div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div>'
+    +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>';
+}
+function openNew(){document.getElementById('mTitle').textContent='New booking';document.getElementById('mBody').innerHTML=bookForm();document.getElementById('modal').classList.add('open');}
+function quickBook(staffId,hour){document.getElementById('mTitle').textContent='New booking';document.getElementById('mBody').innerHTML=bookForm(staffId,hour);document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+async function saveBooking(){
+  const st=document.getElementById('mstatus');st.textContent='Saving...';
+  const name=document.getElementById('bkClient').value.trim();
+  const phone=document.getElementById('bkPhone').value.trim();
+  const svcId=document.getElementById('bkSvc').value;
+  const staffId=document.getElementById('bkStaff').value;
+  const time=document.getElementById('bkTime').value||'10:00';
+  const notes=document.getElementById('bkNotes').value.trim();
+  if(!name&&!phone){st.textContent='Please enter client name or phone.';return;}
+  const starts=new Date(isoDay(cursor)+'T'+time+':00');
+  try{
+    const r=await fetch('/api/appointments',{method:'POST',headers:hdr(),body:JSON.stringify({service_id:svcId,staff_id:staffId,start_time:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,source:'dashboard'})});
+    const d=await r.json();
+    if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');return;}
+    closeModal();await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';}
+}
+function showDetail(b){
+  const start=new Date(b.start_time);
+  const when=start.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  document.getElementById('mTitle').textContent=b.service?.name||'Appointment';
+  document.getElementById('mBody').innerHTML='<div style="font-size:13.5px;line-height:1.8;color:var(--text2)">'
+    +'<strong style="color:var(--text)">Client:</strong> '+esc(b.client?.name||'Unknown')+(b.client?.phone?'<br><strong style="color:var(--text)">Phone:</strong> '+esc(b.client.phone):'')+'<br>'
+    +'<strong style="color:var(--text)">Time:</strong> '+when+'<br>'
+    +'<strong style="color:var(--text)">Staff:</strong> '+esc(b.staff?.name||'—')+'<br>'
+    +'<strong style="color:var(--text)">Revenue:</strong> $'+Number(b.total_amount||0).toLocaleString()
+    +(b.notes?'<br><strong style="color:var(--text)">Notes:</strong> '+esc(b.notes):'')
+    +'</div>'
+    +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button><button class="danger" onclick="cancelBooking(\''+b.id+'\')">Cancel booking</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>';
+  document.getElementById('modal').classList.add('open');
+}
+async function cancelBooking(id){
+  if(!confirm('Cancel this booking?'))return;
+  try{await fetch('/api/appointments?id='+id,{method:'DELETE',headers:hdr()});closeModal();await load();}catch(e){alert(e.message);}
+}
+function nav(dir){cursor.setDate(cursor.getDate()+dir);load();}
+function goToday(){cursor=new Date();cursor.setHours(0,0,0,0);load();}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script></body></html>

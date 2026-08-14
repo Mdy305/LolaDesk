@@ -1,130 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Team — LolaDesk</title>
-<link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Team — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<style>
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:20px}
+.member{background:var(--surface);border:.5px solid var(--border);border-radius:16px;padding:18px 20px}
+.member-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#080809;flex:0 0 40px}
+.member-name{font-size:15px;font-weight:600}
+.member-role{font-size:12px;color:var(--text3);margin-top:2px}
+.member-acts{display:flex;gap:8px;margin-top:12px}
+.mbtn{padding:7px 14px;border-radius:9px;font-size:12px;cursor:pointer;border:.5px solid var(--border);background:transparent;color:var(--text2)}
+.mbtn.red{color:#ff8a8a;border-color:#ff6b6b33}
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw.open{display:flex}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;padding:26px;max-width:420px;width:100%}
+.modal h3{font-size:18px;font-weight:600;margin-bottom:18px}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fld input{background:var(--surface);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;width:100%}
+.fld input:focus{border-color:var(--accent)}
+.macts{display:flex;gap:10px;margin-top:6px}
+.macts button{flex:1;padding:12px;border-radius:11px;font-size:14px;font-weight:560;cursor:pointer;border:none}
+.macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
+.macts .save{background:var(--text);color:#080809}
+.err{color:#ff8a8a;font-size:12px;margin-top:8px;min-height:16px}
+.empty{color:var(--text3);padding:60px 0;text-align:center;font-size:14px;line-height:2}
+</style>
 </head>
-<body data-page="team">
-<div class="app">
-  <main class="main">
-    <div class="page-head">
-      <h1 class="page-title">Team</h1>
-      <button class="btn btn-primary" onclick="openStylistForm()">+ Add stylist</button>
-    </div>
-    <div class="kpis">
-      <div class="kpi"><div class="kpi-val" id="kpiRevenue">$0</div><div class="kpi-label">Team revenue</div><div class="kpi-sub" id="kpiRevenueSub">No data yet</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiCount">0</div><div class="kpi-label">Stylists</div><div class="kpi-sub" id="kpiCountSub">—</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiUtil">—</div><div class="kpi-label">Utilization</div><div class="kpi-sub" id="kpiUtilSub">—</div></div>
-      <div class="kpi"><div class="kpi-val pink" id="kpiAppts">0</div><div class="kpi-label">Appointments</div><div class="kpi-sub" id="kpiApptsSub">—</div></div>
-    </div>
-    <div class="team-grid" id="teamGrid"></div>
-    <div style="margin-top:40px;padding-top:24px;border-top:0.5px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div>
-          <h2 style="font-size:16px;font-weight:600">Booking schedule</h2>
-          <p style="font-size:12px;color:var(--text3);margin-top:2px">Who can be booked and when they are unavailable. Powers real availability on the dashboard, public booking page, and Lola on the phone.</p>
-        </div>
-      </div>
-      <div id="stylistCards" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
-  </main>
+<body data-page="team"><div class="app"><main class="main">
+<div class="page-head">
+  <div><h1 class="page-title">Team</h1><p style="font-size:13px;color:var(--text3);margin-top:4px">Your staff — shown in the booking calendar and selectable by clients online.</p></div>
+  <button class="btn btn-primary" onclick="openForm()">+ Add staff</button>
 </div>
-<div id="stylistModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px">
-  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:20px;padding:26px;max-width:400px;width:100%">
-    <h3 id="stylistModalTitle" style="font-size:18px;font-weight:600;margin-bottom:16px">Add stylist</h3>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">Name</label><input id="stName" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">Role</label><input id="stRole" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px" placeholder="Senior Stylist"/></div>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">Phone (optional)</label><input id="stPhone" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-    <div style="display:flex;gap:10px;margin-top:6px">
-      <button onclick="closeStylistModal()" style="flex:1;padding:11px;border-radius:11px;background:transparent;border:0.5px solid var(--border);color:var(--text2);cursor:pointer">Cancel</button>
-      <button onclick="saveStylist()" style="flex:1;padding:11px;border-radius:11px;background:var(--text);color:#080809;font-weight:560;cursor:pointer">Save</button>
-    </div>
-    <div id="stylistErr" style="color:#ff8a8a;font-size:12px;margin-top:10px;min-height:16px"></div>
-  </div>
-</div>
-<div id="timeOffModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px">
-  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:20px;padding:26px;max-width:400px;width:100%">
-    <h3 style="font-size:18px;font-weight:600;margin-bottom:16px">Mark time off</h3>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">Date</label><input id="toDate" type="date" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-    <div style="display:flex;gap:10px;margin-bottom:13px">
-      <div style="flex:1;display:flex;flex-direction:column;gap:5px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">From (blank = all day)</label><input id="toStart" type="time" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-      <div style="flex:1;display:flex;flex-direction:column;gap:5px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">To</label><input id="toEnd" type="time" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px"><label style="font-size:11px;color:var(--text3);text-transform:uppercase">Reason (optional)</label><input id="toReason" style="background:var(--surface);border:0.5px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-size:14px"/></div>
-    <div style="display:flex;gap:10px;margin-top:6px">
-      <button onclick="closeTimeOffModal()" style="flex:1;padding:11px;border-radius:11px;background:transparent;border:0.5px solid var(--border);color:var(--text2);cursor:pointer">Cancel</button>
-      <button onclick="saveTimeOff()" style="flex:1;padding:11px;border-radius:11px;background:var(--text);color:#080809;font-weight:560;cursor:pointer">Save</button>
-    </div>
-    <div id="timeOffErr" style="color:#ff8a8a;font-size:12px;margin-top:10px;min-height:16px"></div>
-  </div>
-</div>
-<script src="auth-guard.js"></script>
-<script src="lola-data.js"></script>
-<script src="sidebar.js"></script>
+<div class="team-grid" id="teamGrid"><div class="empty">Loading...</div></div>
+</main></div>
+<div class="mw" id="modal"><div class="modal">
+  <h3 id="mTitle">Add staff</h3>
+  <div class="fld"><label>Name</label><input id="fName" placeholder="e.g. Sarah Johnson"/></div>
+  <div class="fld"><label>Role</label><input id="fRole" placeholder="e.g. Senior Stylist, Colorist"/></div>
+  <div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="save" onclick="save()">Save</button></div>
+  <div class="err" id="err"></div>
+</div></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-let TEAM=[],STYLISTS_REAL=[],editingStylistId=null,timeOffStylistId=null;
-function av(m){const c=['#a8e000','#5ac8fa','#ffc043','#34d171','#cc73e1','#ff6b6b'];const i=TEAM.indexOf(m)%c.length;return `<div style="width:36px;height:36px;border-radius:50%;background:${c[i<0?0:i]};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;flex:0 0 36px">${(m.name||'?')[0].toUpperCase()}</div>`;}
-function fmtRev(n){return '$'+Math.round(n||0).toLocaleString();}
-function renderTeam(){document.getElementById('teamGrid').innerHTML=TEAM.length?TEAM.map(m=>`<div class="member"><div class="member-top">${av(m)}<div><div class="member-name">${m.name}</div><div class="member-role">${m.role}</div></div></div><div class="member-rev">${fmtRev(m.rev)}</div><div class="member-change${m.change>0?' up':''}">${m.change>0?'&#x2191; '+m.change+'% this month':(m.hasStats?'No change':'Not tracked yet')}</div><div class="member-bar"><div class="member-bar-fill" style="width:${m.pct!=null?m.pct:0}%;${m.pct==null?'opacity:.25':''}"></div></div><div class="member-stats"><div><div class="member-stat-val">${m.clients}</div><div class="member-stat-label">Clients</div></div><div><div class="member-stat-val">${m.rating!=null?'&#x2605; '+m.rating:'&#x2014;'}</div><div class="member-stat-label">Rating</div></div></div></div>`).join(''):'<div style="color:var(--text3);padding:40px 0;text-align:center">No team members yet.</div>';}
-function authHeader(){const t=(window.LolaAuth?.token)||localStorage.getItem('loladesk_token')||'';return{Authorization:'Bearer '+t};}
-async function loadStylists(){
-  try{const r=await fetch('/api/stylists',{headers:authHeader()});const data=await r.json();STYLISTS_REAL=data.ok?(data.stylists||[]):[];}catch(e){STYLISTS_REAL=[];}
-  renderStylistCards();
+const COLORS=['#ccff00','#5ac8fa','#ffc043','#34d171','#cc73e1','#ff9f43'];
+let STAFF=[],editId=null;
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function hdr(){return{Authorization:'Bearer '+token()};}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function load(){
+  try{const r=await fetch('/api/staff',{headers:hdr()});const d=await r.json();STAFF=d.ok?(d.staff||[]):[];}catch(e){STAFF=[];}
+  render();
 }
-function renderStylistCards(){
-  const host=document.getElementById('stylistCards');
-  if(!STYLISTS_REAL.length){host.innerHTML='<div style="color:var(--text3);font-size:13px;padding:16px 0">No stylists added yet. Add one so real availability works everywhere.</div>';return;}
-  host.innerHTML=STYLISTS_REAL.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:12px"><div style="width:32px;height:32px;border-radius:50%;background:${s.color||'#ccff00'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#080809">${(s.name||'?')[0].toUpperCase()}</div><div><div style="font-size:14px;font-weight:500">${s.name}</div><div style="font-size:11.5px;color:var(--text3)">${s.role||'Stylist'}</div></div></div><div style="display:flex;gap:8px"><button onclick="openTimeOffForm('${s.id}')" style="padding:7px 12px;border-radius:9px;background:transparent;border:0.5px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer">Mark time off</button><button onclick="editStylist('${s.id}')" style="padding:7px 12px;border-radius:9px;background:transparent;border:0.5px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer">Edit</button></div></div>`).join('');
+function render(){
+  const g=document.getElementById('teamGrid');
+  if(!STAFF.length){g.innerHTML='<div class="empty">No staff yet.<br>Add your team so they appear in the booking calendar<br>and clients can choose them when booking online.</div>';return;}
+  g.innerHTML=STAFF.map((s,i)=>`<div class="member"><div class="member-top"><div class="av" style="background:${COLORS[i%COLORS.length]}">${(s.name||'?')[0].toUpperCase()}</div><div><div class="member-name">${esc(s.name)}</div><div class="member-role">${esc(s.role||'Stylist')}</div></div></div><div class="member-acts"><button class="mbtn" onclick="edit('${s.id}')">Edit</button><button class="mbtn red" onclick="del('${s.id}')">Remove</button></div></div>`).join('');
 }
-function openStylistForm(){editingStylistId=null;document.getElementById('stylistModalTitle').textContent='Add stylist';document.getElementById('stName').value='';document.getElementById('stRole').value='';document.getElementById('stPhone').value='';document.getElementById('stylistErr').textContent='';document.getElementById('stylistModal').style.display='flex';}
-function editStylist(id){const s=STYLISTS_REAL.find(x=>x.id===id);if(!s)return;editingStylistId=id;document.getElementById('stylistModalTitle').textContent='Edit stylist';document.getElementById('stName').value=s.name||'';document.getElementById('stRole').value=s.role||'';document.getElementById('stPhone').value=s.phone||'';document.getElementById('stylistErr').textContent='';document.getElementById('stylistModal').style.display='flex';}
-function closeStylistModal(){document.getElementById('stylistModal').style.display='none';}
-async function saveStylist(){
-  const name=document.getElementById('stName').value.trim();
-  const role=document.getElementById('stRole').value.trim();
-  const phone=document.getElementById('stPhone').value.trim();
-  const err=document.getElementById('stylistErr');
+function openForm(){editId=null;document.getElementById('mTitle').textContent='Add staff';document.getElementById('fName').value='';document.getElementById('fRole').value='';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
+function edit(id){const s=STAFF.find(x=>x.id===id);if(!s)return;editId=id;document.getElementById('mTitle').textContent='Edit staff';document.getElementById('fName').value=s.name||'';document.getElementById('fRole').value=s.role||'';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+async function save(){
+  const name=document.getElementById('fName').value.trim();
+  const err=document.getElementById('err');
   if(!name){err.textContent='Name is required.';return;}
   err.textContent='';
-  try{const r=await fetch('/api/stylists',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({id:editingStylistId,name,role,phone})});const data=await r.json();if(!data.ok)throw new Error(data.error||'Could not save');closeStylistModal();await loadStylists();}catch(e){err.textContent=e.message||'Something went wrong.';}
+  try{
+    const r=await fetch('/api/staff',{method:'POST',headers:{...hdr(),'Content-Type':'application/json'},body:JSON.stringify({id:editId||undefined,name,role:document.getElementById('fRole').value.trim()||'Stylist'})});
+    const d=await r.json();if(!d.ok)throw new Error(d.error||'Failed');
+    closeModal();load();
+  }catch(e){err.textContent=e.message||'Something went wrong.';}
 }
-function openTimeOffForm(stylistId){timeOffStylistId=stylistId;document.getElementById('toDate').value=new Date().toISOString().slice(0,10);document.getElementById('toDate').min=new Date().toISOString().slice(0,10);document.getElementById('toStart').value='';document.getElementById('toEnd').value='';document.getElementById('toReason').value='';document.getElementById('timeOffErr').textContent='';document.getElementById('timeOffModal').style.display='flex';}
-function closeTimeOffModal(){document.getElementById('timeOffModal').style.display='none';}
-async function saveTimeOff(){
-  const date=document.getElementById('toDate').value;
-  const start_time=document.getElementById('toStart').value||null;
-  const end_time=document.getElementById('toEnd').value||null;
-  const reason=document.getElementById('toReason').value.trim();
-  const err=document.getElementById('timeOffErr');
-  if(!date){err.textContent='Pick a date.';return;}
-  if((start_time&&!end_time)||(!start_time&&end_time)){err.textContent='Set both start and end, or leave both blank for all day.';return;}
-  err.textContent='';
-  try{const r=await fetch('/api/stylists',{method:'POST',headers:{'Content-Type':'application/json',...authHeader()},body:JSON.stringify({action:'timeoff',stylist_id:timeOffStylistId,date,start_time,end_time,reason})});const data=await r.json();if(!data.ok)throw new Error(data.error||'Could not save');closeTimeOffModal();}catch(e){err.textContent=e.message||'Something went wrong.';}
+async function del(id){
+  if(!confirm('Remove this staff member?'))return;
+  try{await fetch('/api/staff?id='+id,{method:'DELETE',headers:hdr()});load();}catch(e){alert(e.message);}
 }
-(async()=>{
-  let auth;try{auth=await window.LolaAuth.ready;}catch(e){return;}
-  const data=await LolaData.load('team');
-  const list=(data&&data.team)||[];
-  TEAM=list.map((m,i)=>({name:m.name||'Team member',role:m.role||'Stylist',rev:m.rev||0,change:m.change||0,pct:m.pct!=null?m.pct:null,clients:m.clients||0,rating:m.rating!=null?m.rating:null,appointments:m.appointments||0,hasStats:m.rev!=null||m.pct!=null||m.appointments!=null}));
-  renderTeam();
-  const hasRealStats=TEAM.some(m=>m.hasStats);
-  const totalRevenue=TEAM.reduce((s,m)=>s+(m.rev||0),0);
-  const totalAppointments=TEAM.reduce((s,m)=>s+(m.appointments||0),0);
-  document.getElementById('kpiCount').textContent=TEAM.length;
-  document.getElementById('kpiCountSub').textContent=TEAM.length?'All active':'No stylists added yet';
-  if(hasRealStats){
-    document.getElementById('kpiRevenue').textContent=fmtRev(totalRevenue);
-    document.getElementById('kpiRevenueSub').textContent='This month';
-    document.getElementById('kpiAppts').textContent=totalAppointments.toLocaleString();
-    document.getElementById('kpiApptsSub').textContent='This month';
-  }else{
-    document.getElementById('kpiRevenueSub').textContent=TEAM.length?'Not tracked yet':'No data yet';
-    document.getElementById('kpiApptsSub').textContent=TEAM.length?'Not tracked yet':'No data yet';
-  }
-  loadStylists();
-})();
-</script>
-</body>
-</html>
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+</script></body></html>
