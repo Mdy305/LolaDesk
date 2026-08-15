@@ -13,14 +13,8 @@
  * one 'activate' restores everything (same churn-pause philosophy
  * as the rest of the platform).
  */
-import { bearer, getUserFromToken } from './lib/auth.js';
+import { bearer, getUserFromToken, isAdminEmail } from './lib/auth.js';
 import { db } from './lib/db.js';
-
-function isAdmin(email){
-  const list = String(process.env.ADMIN_EMAILS || '')
-    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  return !!email && list.includes(String(email).toLowerCase());
-}
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -30,7 +24,7 @@ export default async function handler(req, res){
 
   const user = await getUserFromToken(bearer(req));
   if(!user) return res.status(401).json({ ok:false, error:'Not signed in' });
-  if(!isAdmin(user.email)) return res.status(403).json({ ok:false, error:'Not authorized' });
+  if(!isAdminEmail(user.email)) return res.status(403).json({ ok:false, error:'Not authorized' });
 
   const c = db();
   if(!c) return res.status(503).json({ ok:false, error:'Database not configured' });

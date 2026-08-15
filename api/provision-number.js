@@ -1,6 +1,7 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { db } from './lib/db.js';
+import { db, upsertTenantNumber } from './lib/db.js';
+import { invalidateRouting } from './lib/tenant-resolver.js';
 
 const TELNYX='https://api.telnyx.com/v2';
 function telnyxH(){return{'Content-Type':'application/json','Authorization':'Bearer '+process.env.TELNYX_API_KEY};}
@@ -100,6 +101,10 @@ export default async function handler(req,res){
     if(c){
       await c.from('tenants').update({phone_number:phoneNumber,telnyx_phone_id:phoneNumberId||null,texml_app_id:texmlAppId||null,provisioning_status:'active',provisioned_at:new Date().toISOString(),booking_url:tenant.booking_url||appUrl()+'/book.html?t='+tenant.slug}).eq('id',tenant.id);
       await c.from('tenant_onboarding').update({stage:'phone_provisioned',updated_at:new Date().toISOString()}).eq('tenant_id',tenant.id).maybeSingle().catch(()=>{});
+      // Keep the authoritative routing table in sync so inbound calls
+      // resolve to this tenant on the very next webhook.
+      await upsertTenantNumber(tenant.id, phoneNumber, { kind:'primary', connectionId: texmlAppId || null, status:'active' });
+      invalidateRouting(phoneNumber);
     }
 
     return res.json({ok:true,phoneNumber,texmlAppId,messagingProfileLinked:smsLinked,lolaBrainLinked:brainLinked,message:'Your Lola number is ready: '+phoneNumber});

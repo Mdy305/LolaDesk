@@ -1,6 +1,7 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { db } from './lib/db.js';
+import { db, upsertTenantNumber } from './lib/db.js';
+import { invalidateRouting } from './lib/tenant-resolver.js';
 import { appUrl, normalizeE164, telnyxData, telnyxRequest, TelnyxApiError } from './lib/telnyx-client.js';
 
 function jsonBody(req) {
@@ -71,6 +72,11 @@ async function persistProvisionedNumber(tenant, phoneNumber, metadata) {
     .update({ phone_number: phoneNumber })
     .eq('id', tenant.id);
   if (tenantError) throw Object.assign(new Error(`Number ordered but tenant update failed: ${tenantError.message}`), { status: 500 });
+
+  // Keep the authoritative routing table in sync so inbound calls resolve
+  // to this tenant on the very next webhook.
+  await upsertTenantNumber(tenant.id, phoneNumber, { kind: 'primary', status: 'active' }).catch(() => {});
+  invalidateRouting(phoneNumber);
 
   const { data: onboarding } = await client
     .from('tenant_onboarding')

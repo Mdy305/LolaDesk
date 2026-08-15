@@ -60,3 +60,12 @@ export function bearer(req){
   const h = req.headers['authorization'] || req.headers['Authorization'] || '';
   return h.startsWith('Bearer ') ? h.slice(7) : null;
 }
+
+// Platform-operator gate: is this email in the ADMIN_EMAILS allow-list?
+// (comma-separated, case-insensitive). No env var set → nobody is admin.
+// Shared by /api/admin and /api/admin/numbers so the two stay in lockstep.
+export function isAdminEmail(email){
+  const list = String(process.env.ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return !!email && list.includes(String(email).toLowerCase());
+}

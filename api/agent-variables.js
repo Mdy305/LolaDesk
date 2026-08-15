@@ -4,7 +4,8 @@
  * speaking; we resolve which tenant owns the dialed number and return
  * that salon's real data from the database.
  */
-import { getTenantByPhone, getClientByPhone, tenantKnowledgePrompt, db } from './lib/db.js';
+import { getClientByPhone, tenantKnowledgePrompt, db } from './lib/db.js';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 
 function pickToNumber(b){
   return b?.data?.payload?.to || b?.payload?.to || b?.to ||
@@ -48,7 +49,26 @@ export default async function handler(req, res){
     const toNumber = qTo || pickToNumber(body);
     const fromNumber = pickFromNumber(body);
 
-    const tenant = await getTenantByPhone(toNumber);
+    // ── MULTI-TENANT ROUTING (the literal "before she speaks" gate) ──
+    // Telnyx calls this webhook to fetch the AI assistant's system facts
+    // BEFORE the first syllable. If the dialed number can't be resolved to
+    // exactly one tenant, return NEUTRAL placeholders — never the demo
+    // salon's name/services, never another tenant's data.
+    const routing = await resolveInboundTenant({ to: toNumber, from: fromNumber });
+    const tenant = routing.status === 'resolved' ? routing.tenant : null;
+    if(!tenant){
+      return res.status(200).json({
+        dynamic_variables: {
+          tenant_id: '',
+          company_name: 'our salon',
+          business_type: 'salon',
+          location: '', hours: '', services: '', staff: '', marketing_context: '',
+          booking_url: '', knowledge: '',
+          caller_known: 'false', caller_name: '', caller_brief: ''
+        },
+        routing: { status: routing.status, reason: routing.reason || null }
+      });
+    }
 
     let memory = { caller_known:'false', caller_name:'', caller_brief:'' };
     try{

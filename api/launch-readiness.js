@@ -1,6 +1,7 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { verifyTenantRouting } from './lib/tenant-resolver.js';
 
 function check(name, ready, detail){ return { name, ready:Boolean(ready), ...(detail ? { detail } : {}) }; }
 
@@ -26,6 +27,10 @@ export default async function handler(req, res){
 
     const connected = new Set((integrations || []).filter(x => x.status === 'connected').map(x => x.provider));
     const hasBooking = Boolean(tenant.booking_url || connected.has('boulevard') || connected.has('square') || connected.has('fresha') || connected.has('vagaro') || connected.has('mindbody'));
+    // Deployment gate: the tenant's number must round-trip back to THIS
+    // tenant through the resolver — otherwise inbound calls would be
+    // refused (or worse, land on another salon).
+    const routing = await verifyTenantRouting(tenant);
     const checks = [
       check('supabase', true, 'Tenant resolved'),
       check('business_profile', Boolean(tenant.name && tenant.location), tenant.name || 'Missing business name'),
@@ -34,10 +39,11 @@ export default async function handler(req, res){
       check('telnyx_voice', Boolean(process.env.TELNYX_VOICE_APP_ID), process.env.TELNYX_VOICE_APP_ID ? 'Configured' : 'Missing TELNYX_VOICE_APP_ID'),
       check('telnyx_messaging', Boolean(process.env.TELNYX_MESSAGING_PROFILE), process.env.TELNYX_MESSAGING_PROFILE ? 'Configured' : 'Missing TELNYX_MESSAGING_PROFILE'),
       check('phone_number', Boolean(tenant.phone_number), tenant.phone_number || 'No tenant number assigned'),
+      check('phone_routing', routing.ready, routing.ready ? `Number routes to this tenant (${routing.source || 'routing table'})` : (routing.reason || 'Number does not resolve back to this tenant')),
       check('onboarding', onboarding?.status === 'complete', onboarding?.status || 'not_started')
     ];
     const ready = checks.every(item => item.ready);
-    return res.status(200).json({ ok:true, ready, tenant_id:tenant.id, checks, onboarding:onboarding || null });
+    return res.status(200).json({ ok:true, ready, tenant_id:tenant.id, checks, routing, onboarding:onboarding || null });
   }catch(error){
     return res.status(500).json({ ok:false, error:String(error?.message || error) });
   }

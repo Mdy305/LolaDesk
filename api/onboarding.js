@@ -1,6 +1,7 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { journey } from './lib/onboarding-engine.js';
 
 function body(req){
   if(!req.body) return {};
@@ -46,7 +47,11 @@ export default async function handler(req, res){
 
   try{
     const { tenant, client } = await context(req);
-    if(req.method === 'GET') return res.status(200).json({ ok:true, tenant_id:tenant.id, onboarding:await getState(client, tenant) });
+    if(req.method === 'GET'){
+      const state = await getState(client, tenant);
+      const j = await journey(client, tenant);
+      return res.status(200).json({ ok:true, tenant_id:tenant.id, onboarding:state, ...j });
+    }
 
     const input = body(req);
     const current = await getState(client, tenant);
@@ -77,7 +82,8 @@ export default async function handler(req, res){
     if(input.persona?.persona) tenantPatch.persona = input.persona.persona;
     if(Object.keys(tenantPatch).length) await client.from('tenants').update(tenantPatch).eq('id', tenant.id);
 
-    return res.status(200).json({ ok:true, tenant_id:tenant.id, onboarding:result.data });
+    const j = await journey(client, { ...tenant, ...tenantPatch });
+    return res.status(200).json({ ok:true, tenant_id:tenant.id, onboarding:result.data, ...j });
   }catch(error){
     return res.status(error?.status || 500).json({ ok:false, error:String(error?.message || error) });
   }

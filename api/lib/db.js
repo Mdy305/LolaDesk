@@ -32,6 +32,14 @@ export function e164(num){
 }
 
 // ── TENANT RESOLUTION ──
+export const DEMO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+// DEMO-ENABLED. Resolves by the tenant's phone number but falls back to the
+// demo salon on ANY miss or DB error. That fallback is a cross-tenant leak
+// for inbound telecom: an unprovisioned number would be greeted as the demo
+// salon. Only use this for demo-flavored flows (booking tools, public
+// resources, execution). For inbound calls/texts use lib/tenant-resolver.js
+// (resolveInboundTenant) or getTenantByPhoneStrict below.
 export async function getTenantByPhone(toNumber){
   const c = db();
   if(!c) return demoTenant();
@@ -41,6 +49,23 @@ export async function getTenantByPhone(toNumber){
     .eq('phone_number', phone)
     .maybeSingle();
   if(error || !data) return demoTenant();
+  return data;
+}
+
+// STRICT. Same lookup as getTenantByPhone but returns null on a miss or DB
+// error — never the demo tenant. Inbound telecom routing MUST use this (or
+// the resolver, which wraps it) so an unrecognized number can never be
+// answered with someone else's salon data.
+export async function getTenantByPhoneStrict(toNumber){
+  const c = db();
+  if(!c) return null;
+  const phone = e164(toNumber);
+  if(!phone) return null;
+  const { data, error } = await c
+    .from('tenants').select('*')
+    .eq('phone_number', phone)
+    .maybeSingle();
+  if(error || !data || data.id === DEMO_TENANT_ID) return null;
   return data;
 }
 
@@ -87,6 +112,84 @@ export async function getTenantBySlug(slug){
   if(!c) return demoTenant();
   const { data } = await c.from('tenants').select('*').eq('slug', slug).maybeSingle();
   return data || demoTenant();
+}
+
+// ── Number routing table (tenant_numbers) ──────────────────────────
+// Canonical number → tenant map. Prefer this over tenants.phone_number so a
+// tenant can own multiple numbers. onConflict on phone_number means moving a
+// number to a different tenant re-points the existing row instead of
+// creating an ambiguous duplicate. Degrades safely (warn + null) when the
+// migration hasn't been applied yet, so provisioning never hard-fails.
+export async function upsertTenantNumber(tenantId, phoneNumber, opts = {}){
+  const c = db();
+  if(!c || !tenantId) return null;
+  const phone = e164(phoneNumber);
+  if(!phone) return null;
+  const row = {
+    tenant_id: tenantId,
+    phone_number: phone,
+    kind: opts.kind || 'primary',
+    connection_id: opts.connectionId || null,
+    status: opts.status || 'active',
+    notes: opts.notes || null,
+    updated_at: new Date().toISOString()
+  };
+  try{
+    const { data, error } = await c.from('tenant_numbers')
+      .upsert(row, { onConflict: 'phone_number' })
+      .select().maybeSingle();
+    if(error) throw new Error(error.message);
+    return data;
+  }catch(e){
+    console.warn('[db] upsertTenantNumber failed (migration pending?):', String(e?.message || e).slice(0, 200));
+    return null;
+  }
+}
+
+export async function listTenantNumbers(tenantId, limit = 20){
+  const c = db();
+  if(!c || !tenantId) return [];
+  const { data, error } = await c.from('tenant_numbers')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if(error) return [];
+  return data || [];
+}
+
+// Joined routing rows + tenant identity, for the admin control plane.
+// Relies on the FK created in migrations/20260815_tenant_number_routing.sql.
+export async function listTenantNumberRoutes(limit = 500){
+  const c = db();
+  if(!c) return [];
+  const { data, error } = await c.from('tenant_numbers')
+    .select('*, tenants(name,slug)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if(error) return [];
+  return data || [];
+}
+
+export async function removeTenantNumber(phoneNumber){
+  const c = db();
+  if(!c) return false;
+  const phone = e164(phoneNumber);
+  if(!phone) return false;
+  const { error } = await c.from('tenant_numbers').delete().eq('phone_number', phone);
+  return !error;
+}
+
+export async function setTenantNumberStatus(phoneNumber, status){
+  const c = db();
+  if(!c) return null;
+  const phone = e164(phoneNumber);
+  if(!phone) return null;
+  const { data, error } = await c.from('tenant_numbers')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('phone_number', phone).select().maybeSingle();
+  if(error) return null;
+  return data;
 }
 
 function demoTenant(){
@@ -445,6 +548,22 @@ export async function getOwnerMemory(tenantId){
 export async function setOwnerMemory(tenantId, key, value){
   const c = db(); if(!c) return null;
   const { data } = await c.from('client_memories').upsert({ tenant_id: tenantId, client_phone: 'owner', key, value }, { onConflict: 'tenant_id,client_phone,key' }).select().maybeSingle();
+  return data;
+}
+
+// ── Tenant memory ("Lola remembers all" — one memory set per salon) ──
+// Same client_memories substrate as owner memory, keyed under the literal
+// client_phone 'tenant'. Everything Lola learns about a salon — booking
+// events, preferences, learned facts — lives here, isolated by tenant_id.
+export async function getTenantMemory(tenantId){
+  const c = db(); if(!c) return [];
+  const { data } = await c.from('client_memories').select('key,value,created_at').eq('tenant_id', tenantId).eq('client_phone', 'tenant').order('created_at', { ascending: false });
+  return data || [];
+}
+
+export async function setTenantMemory(tenantId, key, value){
+  const c = db(); if(!c) return null;
+  const { data } = await c.from('client_memories').upsert({ tenant_id: tenantId, client_phone: 'tenant', key: String(key), value }, { onConflict: 'tenant_id,client_phone,key' }).select().maybeSingle();
   return data;
 }
 

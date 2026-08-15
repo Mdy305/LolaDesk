@@ -1,6 +1,6 @@
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { db,
   e164,
-  getTenantByPhone,
   upsertClient,
   getClientMemory,
   setClientMemory,
@@ -152,13 +152,21 @@ export default async function handler(req, res){
   const toN = e164(payload.to);
   const fromN = e164(payload.from);
 
-  let tenant = null;
-  try{ tenant = await getTenantByPhone(toN); }catch{}
-  if(!tenant?.id){
-    const xml = texmlSayAndGather({ say: 'Sorry, we cannot route this call yet. Please try again shortly.' });
+  // ── MULTI-TENANT ROUTING (before Lola's first syllable) ──
+  // Strictly resolve the DIALED number to one tenant. Any miss, disabled
+  // number, or ambiguous mapping is a hard refuse — never demo data, never
+  // another salon's book. Hang up (don't Gather) so an unroutable caller
+  // isn't left looping on the line.
+  const routing = await resolveInboundTenant({ to: toN });
+  if(routing.status !== 'resolved' || !routing.tenant){
+    const say = routing.status === 'disabled'
+      ? 'This number is not active yet. Please try again later.'
+      : 'Sorry, we cannot route this call yet. Please try again shortly.';
+    const xml = texmlSayAndGather({ say, hangupAfter: true });
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }
+  const tenant = routing.tenant;
 
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;

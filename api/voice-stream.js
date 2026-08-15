@@ -1,7 +1,8 @@
 import { WebSocketServer } from 'ws';
 import url from 'url';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import {
-  getTenantByPhone, upsertClient, getOrStartConversation,
+  upsertClient, getOrStartConversation,
   logMessage, getConversationHistory, logUsage, e164, tenantKnowledgePrompt
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
@@ -93,9 +94,19 @@ class CallContext {
 
   async initialize() {
     try {
-      // 1. Tenant lookup
-      const row = await getTenantByPhone(this.toN);
-      this.tenantId = row?.id;
+      // 1. Tenant lookup — STRICT. The dialed number must resolve to one
+      //    tenant before anything is spoken or streamed. A miss refuses
+      //    politely and hangs up; it never greets with demo/other data.
+      const routing = await resolveInboundTenant({ to: this.toN, from: this.fromN });
+      if(routing.status !== 'resolved' || !routing.tenant){
+        const refuse = routing.status === 'disabled'
+          ? 'This number is not active yet. Please try again later.'
+          : 'This number is not set up for Lola yet. Please call back soon.';
+        await this.rejectCall(refuse);
+        return;
+      }
+      const row = routing.tenant;
+      this.tenantId = row.id;
       this.tenant = shape(row);
 
       // 2. Client & Conversation
@@ -114,6 +125,20 @@ class CallContext {
 
     } catch (e) {
       console.error('[voice-stream] Init error:', e);
+    }
+  }
+
+  // Unroutable call: say one polite line and hang up. Never speaks any
+  // tenant's data because none was resolved.
+  async rejectCall(text) {
+    await sendCallControlCommand(this.callControlId, 'speak', {
+      text,
+      voice: 'en-US-Neural2-F',
+      payload_type: 'text'
+    });
+    await sendCallControlCommand(this.callControlId, 'hangup', {});
+    if (this.ws && this.ws.readyState === 1) {
+      try { this.ws.close(); } catch {}
     }
   }
 

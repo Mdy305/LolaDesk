@@ -2,7 +2,8 @@
  * /api/telnyx-sms — Telnyx SMS webhook · MULTI-TENANT + 10DLC compliant
  * Handles both API v1 (form-encoded) and API v2 (JSON) from Telnyx.
  */
-import { getTenantByPhone, getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
+import { getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -43,7 +44,7 @@ function extract(raw){
 
 export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,type='SMS',channel='sms'}){
   const isWhatsApp = String(type||channel||'').toUpperCase() === 'WHATSAPP';
-  if(!skipOptOut){ try{ const t=tenantId||(await getTenantByPhone(from))?.id; if(t&&await isOptedOut(t,to)) return {skipped:true}; }catch{} }
+  if(!skipOptOut){ try{ const t=tenantId||(await resolveInboundTenant({ to: from }))?.tenant?.id; if(t&&await isOptedOut(t,to)) return {skipped:true}; }catch{} }
   
   const payload = { from, to };
   if(isWhatsApp){
@@ -90,21 +91,20 @@ export default async function handler(req,res){
   const channel = isWhatsApp ? 'whatsapp' : 'sms';
   console.log(`[${channel}]`,{from:fromN,to:toN,text:text.slice(0,40)});
 
-  let row=null;
-  try{ row=await getTenantByPhone(toN); }catch{}
+  // ── MULTI-TENANT ROUTING: strict number → tenant, never the demo salon ──
+  const routing = await resolveInboundTenant({ to: toN, from: fromN }).catch(() => ({ status:'error', reason:'resolver-error', tenant:null }));
+  let row = routing.status === 'resolved' ? routing.tenant : null;
 
-  /* ── OWNER TEXTING THE JARVIS LINE ─────────────────────────────
-     The shared owner number belongs to NO tenant, so a text to it
-     matches nothing (getTenantByPhone returns the demo fallback,
-     id 000...000). When that happens AND the SENDER is a registered
+  /* ── OWNER TEXTING THE SHARED JARVIS LINE ─────────────────────────────
+     The shared owner number belongs to NO tenant, so a text to it resolves
+     to 'not_found'. When that happens AND the SENDER is a registered
      operator_phone, this is the owner texting their adviser: full
-     conversational owner brain — live business snapshot, owner
-     memory, operator-channel history — by text. Same continuous
-     Jarvis, second transport. 10DLC STOP/START gates don't apply
-     (this is the owner's own tool, not marketing), but the exchange
-     is persisted to the same operator audit trail. */
-  const DEMO_ID = '00000000-0000-0000-0000-000000000000';
-  if(!row?.id || row.id === DEMO_ID){
+     conversational owner brain — live business snapshot, owner memory,
+     operator-channel history — by text. Same continuous Jarvis, second
+     transport. 10DLC STOP/START gates don't apply (this is the owner's own
+     tool, not marketing), but the exchange is persisted to the same
+     operator audit trail. */
+  if(!row){
     const ownerTenant = await getTenantByOperatorPhone(fromN).catch(()=>null);
     if(ownerTenant?.id){
       let conv=null, hist=[];
@@ -125,9 +125,11 @@ export default async function handler(req,res){
       try{ await sendSMS({ from: toN, to: fromN, text: reply, tenantId: ownerTenant.id, skipOptOut:true, type }); }catch{}
       return res.status(200).json({ ok:true, handled:'owner_chat' });
     }
+    if(routing.status === 'disabled'){
+      try{ await sendSMS({ from: toN, to: fromN, text: 'This number is not active yet. Please contact support.', skipOptOut: true, type }); }catch{}
+    }
+    return res.status(200).json({ ok:true, ignored:'no_tenant', routing: routing.status });
   }
-
-  if(!row?.id) return res.status(200).json({ok:true,ignored:'no_tenant'});
   const tName=row.name;
 
   // 10DLC compliance
