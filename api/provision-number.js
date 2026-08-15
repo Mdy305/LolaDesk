@@ -26,7 +26,17 @@ async function searchNumbers(areaCode){
   p.set('filter[limit]','10');
   p.set('filter[phone_number_type]','local');
   if(areaCode&&/^\d{3}$/.test(areaCode))p.set('filter[national_destination_code]',areaCode);
-  const j=await tFetch('/available_phone_numbers?'+p);
+  let j;
+  try{
+    j=await tFetch('/available_phone_numbers?'+p);
+  }catch(e){
+    // Telnyx 422s when a code has no inventory; surface a friendly message
+    // instead of the raw "best_effort" error so onboarding stays legible.
+    if(/no numbers found|best_effort/i.test(String(e?.message||e))){
+      throw new Error('No numbers available'+(areaCode?' in area code '+areaCode:'')+'. Try a different area code.');
+    }
+    throw e;
+  }
   const nums=(j?.data||[]).filter(n=>n?.phone_number);
   if(!nums.length)throw new Error('No numbers available'+(areaCode?' in area code '+areaCode:'')+'. Try a different area code.');
   return nums;
