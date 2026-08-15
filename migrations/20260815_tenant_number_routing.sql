@@ -1,4 +1,35 @@
 -- ============================================================================
+-- exec_sql bootstrap — lets the app self-apply idempotent migrations at boot
+-- ============================================================================
+-- PostgREST (what @supabase/supabase-js talks to) cannot run DDL. This single
+-- security-definer function is the one-time bootstrap that api/lib/migrate.js
+-- calls via supabase.rpc('exec_sql', …) to create tenant_numbers (and future
+-- migrations) automatically on cold start. Executable ONLY with the service
+-- key; anon/authenticated are revoked so a browser token can never run SQL.
+create or replace function public.exec_sql(p_sql text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  execute p_sql;
+end;
+$$;
+
+revoke all on function public.exec_sql(text) from public;
+
+-- On Supabase, only the service_role key may call it (anon/authenticated lost
+-- it via the public revoke above). On a plain Postgres (local dev / e2e) that
+-- role doesn't exist, so skip the grant quietly instead of failing the script.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function public.exec_sql(text) to service_role';
+  end if;
+end $$;
+
+-- ============================================================================
 -- Multi-Tenant Inbound Call Routing table
 -- ============================================================================
 -- This is the AUTHORITATIVE number -> tenant map used by lib/tenant-resolver.js

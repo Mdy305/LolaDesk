@@ -21,6 +21,7 @@
 import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
 import { db, e164, upsertTenantNumber, listTenantNumberRoutes, removeTenantNumber, setTenantNumberStatus } from '../lib/db.js';
 import { invalidateRouting, verifyTenantRouting } from '../lib/tenant-resolver.js';
+import { ensureMigrations } from '../lib/migrate.js';
 
 // E.164 with sane bounds so 'abc' or a bare '+' can't slip through.
 function validPhone(input){
@@ -121,6 +122,9 @@ export default async function handler(req, res){
 
   const c = db();
   if(!c) return res.status(503).json({ ok:false, error:'Database not configured' });
+
+  // Self-heal the schema before reading/writing tenant_numbers.
+  await ensureMigrations();
 
   if(req.method === 'GET'){
     const [numbers, tenants] = await Promise.all([

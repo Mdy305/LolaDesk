@@ -31,6 +31,7 @@
  */
 
 import { db, e164, getTenantByPhoneStrict } from './db.js';
+import { ensureMigrations } from './migrate.js';
 
 export const DEMO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -80,6 +81,10 @@ async function lookupByNumber(number) {
   if (!phone) {
     return { status: 'not_found', reason: 'invalid-number', tenant: null, source: null, number: null };
   }
+
+  // Self-heal the schema on cold start: a fresh deployment whose DB never ran
+  // the tenant_numbers migration gets it applied here before the first lookup.
+  await ensureMigrations();
 
   // 1. Authoritative routing table
   try {

@@ -265,3 +265,28 @@ on conflict (slug) do update set
   services = excluded.services,
   team = excluded.team,
   updated_at = now();
+
+-- ─── exec_sql bootstrap: lets the app self-apply idempotent migrations ───
+-- PostgREST cannot run DDL, so api/lib/migrate.js calls this security-definer
+-- function (via supabase.rpc) to create the tenant_numbers table on cold start
+-- when it's missing. Revoked from anon/authenticated so a browser token can
+-- never execute arbitrary SQL; only the service_role key may call it.
+create or replace function public.exec_sql(p_sql text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  execute p_sql;
+end;
+$$;
+
+revoke all on function public.exec_sql(text) from public;
+
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function public.exec_sql(text) to service_role';
+  end if;
+end $$;

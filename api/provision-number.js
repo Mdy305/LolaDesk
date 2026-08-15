@@ -15,10 +15,19 @@ async function tFetch(path,opts={}){
 }
 
 async function searchNumbers(areaCode){
-  const p=new URLSearchParams({'filter[country_code]':'US','filter[features]':'sms,mms,voice','limit':'10'});
-  if(areaCode&&/^\d{3}$/.test(areaCode))p.set('filter[area_code]',areaCode);
+  // Use Telnyx's array-style feature filters and the correct area-code
+  // param. The old comma-separated `filter[features]=sms,mms,voice` +
+  // `filter[area_code]` form returns zero results, which broke the
+  // onboarding number picker with a permanent "No numbers available".
+  const p=new URLSearchParams();
+  p.set('filter[country_code]','US');
+  p.set('filter[features][]','voice');
+  p.append('filter[features][]','sms');
+  p.set('filter[limit]','10');
+  p.set('filter[phone_number_type]','local');
+  if(areaCode&&/^\d{3}$/.test(areaCode))p.set('filter[national_destination_code]',areaCode);
   const j=await tFetch('/available_phone_numbers?'+p);
-  const nums=(j?.data||[]).filter(n=>n?.availability==='available');
+  const nums=(j?.data||[]).filter(n=>n?.phone_number);
   if(!nums.length)throw new Error('No numbers available'+(areaCode?' in area code '+areaCode:'')+'. Try a different area code.');
   return nums;
 }

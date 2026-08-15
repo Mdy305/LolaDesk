@@ -67,6 +67,13 @@ export class FakeSupabase {
     this._seq += 1;
     return `fake-${table}-${this._seq}`;
   }
+  // Stand-in for supabase.rpc(). The migration runner only calls
+  // rpc('exec_sql', …) when a table is MISSING, which the seeded fake never
+  // simulates; return an error so an accidental call fails loudly instead of
+  // silently doing nothing.
+  async rpc() {
+    return { data: null, error: { message: 'rpc() not supported by FakeSupabase' } };
+  }
 }
 
 class FakeQueryBuilder {
