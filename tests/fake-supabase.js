@@ -48,6 +48,25 @@ export class FakeSupabase {
   constructor() {
     this.tables = new Map();
     this._seq = 0;
+    this.auth = {
+      users: new Map(), // token -> user object
+      signInWithOAuthCalls: [],
+      async signInWithOAuth({ provider, options = {} }) {
+        this.signInWithOAuthCalls.push({ provider, options });
+        const q = new URLSearchParams({
+          provider,
+          redirect_to: options.redirectTo || '',
+          flow: options.flowType || 'pkce'
+        });
+        return { data: { url: `https://fake.supabase.co/auth/v1/authorize?${q.toString()}` }, error: null };
+      },
+      async getUser(token) {
+        const user = this.users.get(token);
+        return user
+          ? { data: { user }, error: null }
+          : { data: { user: null }, error: { message: 'invalid token' } };
+      }
+    };
   }
   from(table) {
     if (!this.tables.has(table)) this.tables.set(table, []);

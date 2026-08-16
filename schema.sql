@@ -25,6 +25,7 @@ create table if not exists tenants (
   services        jsonb default '[]'::jsonb,            -- [{name, price, duration}]
   team            jsonb default '[]'::jsonb,            -- [{name, role}]
   persona         text default 'warm',                  -- Lola's voice style
+  voice_id        text,                                  -- per-tenant ElevenLabs voice (null = platform default)
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
 );

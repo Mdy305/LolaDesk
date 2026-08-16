@@ -391,6 +391,70 @@ export async function logUsage(tenantId, kind, units=1, metadata={}){
 }
 
 // ── ONBOARDING: create / update a tenant ──
+export function slugify(s){
+  return (s || 'salon').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+}
+
+// Create the tenant + owner membership + onboarding row for a freshly
+// authenticated user (email/password signup or a first-time Google OAuth).
+// Idempotent on owner_email so a retried OAuth callback can never mint a
+// duplicate workspace for the same email.
+export async function provisionTenantForUser(user, opts = {}){
+  const c = db();
+  if(!c || !user?.id) return null;
+  const email = String(user.email || opts.email || '').toLowerCase();
+  const ownerName = opts.name || user.user_metadata?.name || user.user_metadata?.full_name || (email ? email.split('@')[0] : 'My Salon');
+  const salonName = opts.salonName || ownerName || 'My Salon';
+  const trialEnds = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
+
+  // Reuse a workspace this email already owns (idempotency for OAuth retries).
+  if(email){
+    const { data: existing } = await c.from('tenants').select('*').eq('owner_email', email).limit(1);
+    if(existing?.[0]){
+      await c.from('tenant_users').upsert(
+        { tenant_id: existing[0].id, user_id: user.id, role: 'owner' },
+        { onConflict: 'tenant_id,user_id' }
+      );
+      return existing[0];
+    }
+  }
+
+  const slug = (slugify(salonName) || 'salon') + '-' + Math.random().toString(36).slice(2, 6);
+  const tenant = await upsertTenant({
+    slug, name: salonName, owner_name: ownerName, owner_email: email,
+    location: opts.location || '', hours: opts.hours || '', plan: opts.plan || 'starter',
+    website_url: opts.websiteUrl || '', business_mode: opts.businessMode || 'salon',
+    trial_ends_at: trialEnds
+  });
+  if(!tenant?.id) return null;
+
+  const linked = await c.from('tenant_users').upsert(
+    { tenant_id: tenant.id, user_id: user.id, role: 'owner' },
+    { onConflict: 'tenant_id,user_id' }
+  );
+  if(linked.error) throw linked.error;
+
+  const onboarding = await c.from('tenant_onboarding').upsert({
+    tenant_id: tenant.id,
+    stage: 'business',
+    status: 'in_progress',
+    progress: 10,
+    business: {
+      name: tenant.name,
+      location: tenant.location || '',
+      website_url: tenant.website_url || '',
+      business_mode: tenant.business_mode || 'salon'
+    },
+    booking: {},
+    channels: {},
+    persona: { persona: tenant.persona || 'warm' },
+    provisioning: {}
+  }, { onConflict: 'tenant_id' });
+  if(onboarding.error && !/tenant_onboarding/i.test(onboarding.error.message || '')) throw onboarding.error;
+
+  return tenant;
+}
+
 export async function upsertTenant(p = {}){
   const c = db();
   if(!c) return null;
@@ -409,6 +473,7 @@ export async function upsertTenant(p = {}){
     phone_number: phoneNumber ? e164(phoneNumber) : null,
     plan: plan || 'starter',
     persona: persona || 'warm',
+    voice_id: p.voiceId ?? p.voice_id ?? null,
     website_url: websiteUrl || null,
     business_mode: businessMode || 'salon'
   };
@@ -459,7 +524,7 @@ export async function getTenantIntegrations(tenantId, { status='connected' } = {
 export async function updateTenantFields(tenantId, patch = {}){
   const c = db();
   if(!c || !tenantId) return null;
-  const allowed = ['name','location','hours','booking_url','persona','services','team','phone_number'];
+  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','voice_id','services','team','phone_number','operator_phone'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   

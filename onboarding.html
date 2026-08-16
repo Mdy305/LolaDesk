@@ -167,6 +167,13 @@ const COPY=[
   ['Ready','Call her<br/>right now.','Your salon AI is live.']
 ];
 let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
+// Honor the plan the visitor chose on the pricing page (/start?plan=pro&billing=monthly).
+// The wizard used to hardcode 'starter', silently downgrading every paid signup
+// at the top of the funnel — a direct revenue leak.
+const Q=new URLSearchParams(location.search);
+S.plan=['starter','pro','medspa'].includes(Q.get('plan'))?Q.get('plan'):'starter';
+S.billing=Q.get('billing')==='annual'?'annual':'monthly';
+try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
 let orb;
 try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120});orb.setState('idle');}}catch(e){}
 function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
@@ -199,7 +206,7 @@ async function createAccount(){
   if(password.length<8){err.textContent='Password must be at least 8 characters.';return;}
   err.textContent='';btn.disabled=true;btn.textContent='Creating...';
   try{
-    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.ownerName||S.salonName,salonName:S.salonName,location:S.location,hours:S.hours,websiteUrl:S.website,plan:'starter'})});
+    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.ownerName||S.salonName,salonName:S.salonName,location:S.location,hours:S.hours,websiteUrl:S.website,plan:S.plan})});
     const d=await r.json();
     if(!d.ok&&!d.token&&!d.session)throw new Error(d.error||'Signup failed');
     S.token=d.token||d.session?.access_token||'';

@@ -32,10 +32,10 @@ export function isConfigured(){
 
 /**
  * Synthesize text to speech. Returns a Buffer of MP3 bytes, or throws.
- * Always uses Lola's one canonical voice (ELEVENLABS_VOICE_ID) — there
- * is intentionally no per-request override. One voice, everywhere,
- * always: that's the entire point of the brand-consistency goal, and
- * an override parameter here would be a backdoor around it.
+ * Uses the tenant's chosen voice when one is set (voice_id on the tenant),
+ * falling back to the platform default ELEVENLABS_VOICE_ID. Each salon
+ * picks its own Lola so the brand can be consistent per-tenant without
+ * every salon sounding identical.
  */
 /* ── EMOTIONAL REGISTERS — the difference between reading and feeling ──
    One fixed voice setting makes every sentence land identically: the
@@ -59,9 +59,9 @@ export function registerForText(text){
   return 'warm';
 }
 
-export async function synthesize(text, { modelId, outputFormat, signal, register } = {}) {
+export async function synthesize(text, { modelId, outputFormat, signal, register, voice: voiceOverride } = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voice = process.env.ELEVENLABS_VOICE_ID;
+  const voice = voiceOverride || process.env.ELEVENLABS_VOICE_ID;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
   if(!voice) throw new Error('Missing ELEVENLABS_VOICE_ID');
 
@@ -88,4 +88,24 @@ export async function synthesize(text, { modelId, outputFormat, signal, register
     throw new Error(`ElevenLabs ${r.status}: ${detail.slice(0,300)}`);
   }
   return Buffer.from(await r.arrayBuffer());
+}
+
+/**
+ * List the voices available on this ElevenLabs account, so the Settings
+ * page can render a real voice picker (id + name). Returns a small, safe
+ * subset of fields — never the full provider payload.
+ */
+export async function listVoices(){
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
+  const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+    headers: { 'xi-api-key': apiKey }
+  });
+  if(!r.ok) throw new Error(`ElevenLabs ${r.status}`);
+  const j = await r.json();
+  return (j?.voices || []).map(v => ({
+    id: v.voice_id,
+    name: v.name,
+    category: v.category || ''
+  }));
 }

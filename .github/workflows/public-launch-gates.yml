@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
       - name: Validate serverless JavaScript syntax
         run: |
-          find api e2e -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+          find api e2e tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
             | xargs -0 -n1 node --check
       - name: Verify production build contract
         run: npm run build
@@ -66,3 +66,20 @@ jobs:
       - run: npm ci
       - name: Run complete launch-readiness journey
         run: npm run test:e2e
+
+  onboarding-smoke:
+    name: Onboarding smoke (staging)
+    # Manual, opt-in: only runs when dispatched AND a staging URL is configured.
+    # Search-only so a CI run never purchases a real Telnyx number.
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.LOLA_STAGING_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Walk signup → number search against staging
+        env:
+          LOLA_BASE_URL: ${{ vars.LOLA_STAGING_URL }}
+        run: npm run smoke:onboarding:search

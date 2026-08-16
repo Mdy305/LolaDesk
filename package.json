@@ -11,6 +11,8 @@
     "start": "python3 -m http.server 8080",
     "test:e2e": "node e2e/run.mjs",
     "e2e:emulator": "node e2e/supabase-emulator.mjs",
+    "smoke:onboarding": "node tests/onboarding-smoke.mjs",
+    "smoke:onboarding:search": "node tests/onboarding-smoke.mjs --search-only",
     "setup": "bash setup.sh",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",

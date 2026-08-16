@@ -129,6 +129,18 @@
     <div class="btn-row"><button class="btn-p" onclick="saveVoice()">Save call settings</button></div>
     <div class="msg" id="voiceMsg"></div>
   </div>
+
+  <div class="card">
+    <h3>Owner voice command</h3>
+    <div class="desc">Call your Lola number from your own cell and run your day by voice — “what's my day”, “how much did we make this month”, “cancel Sarah's appointment”. Lola recognizes you by caller ID and switches to your private chief-of-staff mode.</div>
+    <div class="status" id="opStatus"><span class="dot off"></span><div class="status-txt"><b>Voice command not set up</b><small>Add your cell number below to unlock owner mode</small></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Your cell number</label><input id="opPhone" placeholder="+1 305 555 0100"/></div>
+      <div class="fld"><label>Spoken PIN (4–6 digits)</label><input id="opPin" maxlength="6" placeholder="1234" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-p" onclick="saveOperator()">Save voice command</button></div>
+    <div class="msg" id="opMsg"></div>
+  </div>
 </div>
 
 <!-- MESSAGING -->
@@ -196,11 +208,8 @@
     <div class="desc">How she sounds and behaves on every call.</div>
     <div class="grid2">
       <div class="fld"><label>Greeting</label><input id="lGreeting" placeholder="Hi, thank you for calling..."/></div>
-      <div class="fld"><label>Voice</label><select id="lVoice">
-        <option value="warm">Warm &amp; welcoming</option>
-        <option value="professional">Polished &amp; professional</option>
-        <option value="energetic">Bright &amp; energetic</option>
-      </select></div>
+      <div class="fld"><label>Lola's voice</label><select id="lVoice"><option value="">Platform default</option></select>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Pick the voice your clients hear on every call. Each salon can have its own Lola.</div></div>
     </div>
     <div class="fld"><label>Special instructions</label><textarea id="lInstructions" rows="4" placeholder="Anything Lola should always mention, avoid, or handle a specific way..."></textarea></div>
     <div class="btn-row"><button class="btn-p" onclick="saveLola()">Save Lola settings</button></div>
@@ -279,6 +288,10 @@ async function load(){
     setVal('sName',TENANT.name);setVal('sOwner',TENANT.owner_name);
     setVal('sLocation',TENANT.location);setVal('sHours',TENANT.hours);
     setVal('sWebsite',TENANT.website_url);
+    setVal('opPhone',TENANT.operator_phone||'');
+    if(TENANT.operator_phone){
+      document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
+    }
     const bookUrl=TENANT.booking_url||('https://www.loladesk.com/book.html?t='+(TENANT.slug||''));
     setVal('sBookingUrl',bookUrl);
     document.getElementById('bookLink').textContent=bookUrl;
@@ -383,6 +396,17 @@ async function startPort(){
   }catch(e){msg('portMsg',e.message,false);}
 }
 
+async function saveOperator(){
+  msg('opMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/operator-setup',{method:'POST',headers:H(),body:JSON.stringify({operator_phone:val('opPhone'),pin:val('opPin')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(val('opPhone'))+' and just talk</small></div>';
+    msg('opMsg',"Saved. Call your Lola number from your cell — Lola will know it's you.",true);
+  }catch(e){msg('opMsg',e.message,false);}
+}
+
 async function saveVoice(){
   msg('voiceMsg','Saving...',true);
   try{
@@ -424,12 +448,22 @@ async function saveBooking(){
   }catch(e){msg('bookMsg',e.message,false);}
 }
 
+async function loadVoices(){
+  try{
+    const r=await fetch('/api/voices',{headers:H()});
+    const d=await r.json();
+    if(!d.ok)return;
+    const sel=document.getElementById('lVoice');
+    sel.innerHTML='<option value="">Platform default</option>'+d.voices.map(v=>'<option value="'+esc(v.id)+'"'+(v.id===d.current?' selected':'')+'>'+esc(v.name)+'</option>').join('');
+  }catch(e){}
+}
+
 async function saveLola(){
   msg('lolaMsg','Saving...',true);
   try{
     await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
-      greeting:val('lGreeting'),voice_style:val('lVoice'),instructions:val('lInstructions')})});
-    msg('lolaMsg','Saved. Lola uses this on her next call.',true);
+      voice_id:val('lVoice')||null,instructions:val('lInstructions')})});
+    msg('lolaMsg','Saved. Lola uses this voice on her next call.',true);
   }catch(e){msg('lolaMsg',e.message,false);}
 }
 
@@ -459,7 +493,7 @@ async function exportData(){
   }catch(e){alert('Export failed: '+e.message);}
 }
 
-(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();loadVoices();})();
 </script>
 </body>
 </html>

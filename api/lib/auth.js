@@ -41,6 +41,29 @@ export async function signIn({ email, password }){
   return data; // { user, session }
 }
 
+// Start a Google OAuth sign-in from the server and return the authorization
+// URL the browser must be redirected to. Uses the implicit flow so the tokens
+// land in the URL fragment of `redirectTo` — they never touch server logs and a
+// static page captures them into localStorage, matching how the email/password
+// flow already stores its session. `redirectTo` must be allow-listed in
+// Supabase Auth → URL Configuration.
+export async function googleAuthUrl(redirectTo){
+  const a = admin(); if(!a) throw new Error('Auth not configured');
+  const { data, error } = await a.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      flowType: 'implicit',
+      scopes: 'email profile',
+      // access_type=offline + prompt=consent guarantees a refresh token even
+      // when the owner has previously consented via Google.
+      queryParams: { access_type: 'offline', prompt: 'consent' }
+    }
+  });
+  if(error) throw new Error(error.message);
+  return data.url;
+}
+
 // Verify an access token from the Authorization header -> the user
 export async function getUserFromToken(token){
   // demo_token is a dev convenience AND a production backdoor (it authenticates

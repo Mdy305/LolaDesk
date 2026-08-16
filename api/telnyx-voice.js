@@ -168,6 +168,20 @@ export default async function handler(req, res){
   }
   const tenant = routing.tenant;
 
+  // ── OWNER VOICE COMMAND ("Jarvis, but better") ────────────────
+  // If the CALLER is this salon's registered owner (tenants.operator_phone,
+  // set in Settings), the owner's OWN Lola number doubles as their private
+  // voice-command line — no second number to remember, no app to open.
+  // Hand off to /api/operator-voice, which re-resolves by caller ID and
+  // runs the privileged owner flow (schedule, revenue, rebooking radar;
+  // PIN-gated for anything destructive). Caller ID is a soft signal here —
+  // the PIN still guards every action that changes the book or texts clients.
+  if(fromN && tenant.operator_phone && e164(tenant.operator_phone) === fromN){
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Redirect method="POST">/api/operator-voice</Redirect>\n</Response>`;
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  }
+
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;
   // everyone after gets instant answer at zero tts_chars cost.
@@ -178,10 +192,15 @@ export default async function handler(req, res){
   const VOICE_BUCKET = 'voice-audio';
   const supabase = db(); // reuse the shared Supabase client
 
+  // Per-tenant voice: the owner's chosen ElevenLabs voice, falling back to
+  // the platform default. Included in the cache key so two salons with the
+  // same words but different voices never collide.
+  const voiceId = tenant.voice_id || process.env.ELEVENLABS_VOICE_ID || '';
+
   async function speakCached(text, register){
     if(!elevenLabsConfigured() || !supabase) return '';
     const reg = register || registerForText(text);
-    const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
+    const key = crypto.createHash('sha1').update(`${voiceId}|${reg}|${text}`).digest('hex');
     const storagePath = `cached/${key}.mp3`;
 
     // Check if already cached in Supabase Storage (HEAD request)
@@ -200,7 +219,7 @@ export default async function handler(req, res){
 
     // Cache miss — synthesize via ElevenLabs and upload to Supabase
     try{
-      const audio = await synthesize(text, { register: reg });
+      const audio = await synthesize(text, { register: reg, voice: tenant.voice_id || undefined });
       const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
         .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
       if(upErr){

@@ -1,0 +1,35 @@
+/**
+ * POST /api/auth/google/finalize
+ * Authorization: Bearer <access_token>
+ *
+ * After a first-time Google OAuth sign-in, the user has a Supabase identity
+ * but no workspace. This provisions one (tenant + owner membership + onboarding
+ * row). Idempotent: if the user already maps to a tenant it is returned
+ * unchanged, so a retried OAuth callback can never mint a duplicate salon.
+ */
+import { getUserFromToken, bearer } from '../../lib/auth.js';
+import { resolveTenantForUser } from '../../lib/tenant-access.js';
+import { provisionTenantForUser } from '../../lib/db.js';
+
+export default async function handler(req, res){
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if(req.method === 'OPTIONS') return res.status(204).end();
+  if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  try{
+    const user = await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({ error: 'not authenticated' });
+
+    const existing = await resolveTenantForUser(user);
+    if(existing?.id) return res.status(200).json({ tenant: existing, created: false });
+
+    const tenant = await provisionTenantForUser(user, {});
+    if(!tenant) return res.status(500).json({ error: 'Could not provision workspace' });
+
+    return res.status(200).json({ tenant, created: true });
+  }catch(e){
+    return res.status(500).json({ error: String(e && e.message || e) });
+  }
+}
