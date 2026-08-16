@@ -19,9 +19,21 @@ $$;
 
 revoke all on function public.exec_sql(text) from public;
 
--- On Supabase, only the service_role key may call it (anon/authenticated lost
--- it via the public revoke above). On a plain Postgres (local dev / e2e) that
--- role doesn't exist, so skip the grant quietly instead of failing the script.
+-- Supabase grants EXECUTE on functions to anon + authenticated DIRECTLY (not
+-- via PUBLIC), so the revoke above alone does NOT stop a browser token there.
+-- Revoke from each role explicitly; skip roles that don't exist so this stays
+-- portable to plain Postgres / local e2e.
+do $$
+declare r text;
+begin
+  foreach r in array array['anon','authenticated']
+  loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('revoke execute on function public.exec_sql(text) from %I', r);
+    end if;
+  end loop;
+end $$;
+
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
