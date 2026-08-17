@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- LolaDesk — ALL MIGRATIONS (idempotent, ordered)
--- Generated from the 16 date-prefixed files in migrations/.
+-- Generated from the 19 date-prefixed files in migrations/.
 --
 -- PREREQUISITES (already applied on production — do NOT re-run schema.sql;
 -- its demo-tenant seed insert is not guarded):
@@ -972,3 +972,168 @@ alter table tenants add column if not exists voice_id text;
 
 comment on column tenants.voice_id is
   'Per-tenant ElevenLabs voice id. NULL = platform default ELEVENLABS_VOICE_ID.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260816_booking_sync.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ============================================================================
+-- Booking sync pipeline (idempotent)
+-- Vercel cron polls the connected booking providers (Square / Boulevard /
+-- Vagaro / Mindbody / Fresha / Google Calendar) and refreshes the cached
+-- availability table that the voice/web booking engine fast-reads.
+-- ============================================================================
+
+-- ── cached_availability: provider snapshot, normalized ─────────────
+-- One row per appointment the provider reports for this tenant's calendar.
+-- The availability engine treats rows with status 'booked' as busy time.
+-- external_booking_id is the provider's appointment id (or a synthetic key
+-- when the provider exposes none), so re-syncs upsert instead of duplicating.
+create table if not exists cached_availability (
+  id                   uuid primary key default gen_random_uuid(),
+  tenant_id            uuid not null references tenants(id) on delete cascade,
+  provider             text not null,
+  external_booking_id  text not null,
+  starts_at            timestamptz not null,
+  ends_at              timestamptz not null,
+  duration_min         integer not null default 60,
+  staff_id             text,                 -- provider-side staff id/name (unmapped)
+  service              text,
+  client_name          text,
+  status               text not null default 'booked',  -- booked | cancelled | completed
+  last_synced_at       timestamptz not null default now(),
+  unique (tenant_id, provider, external_booking_id)
+);
+
+create index if not exists idx_cached_availability_tenant on cached_availability (tenant_id, starts_at);
+create index if not exists idx_cached_availability_status on cached_availability (tenant_id, status, starts_at);
+
+-- ── booking_sync_log: audit trail for every cron run ───────────────
+create table if not exists booking_sync_log (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      uuid references tenants(id) on delete cascade,
+  provider       text,
+  kind           text not null default 'availability',
+  fetched        integer not null default 0,
+  upserted       integer not null default 0,
+  stale_removed  integer not null default 0,
+  error_message  text,
+  duration_ms    integer,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists idx_booking_sync_log_tenant on booking_sync_log (tenant_id, created_at desc);
+
+-- ── external_appointments: view over the cache (health check + read path) ──
+create or replace view external_appointments as
+select id, tenant_id, provider, external_booking_id as external_id,
+       starts_at, ends_at, duration_min, service, client_name, status, last_synced_at
+from cached_availability;
+
+-- ── RLS: service-role only (deny by default); tenant-scoped reads ──
+alter table cached_availability enable row level security;
+drop policy if exists cached_availability_read on cached_availability;
+create policy cached_availability_read on cached_availability
+  for select using (tenant_id = auth_tenant());
+
+alter table booking_sync_log enable row level security;
+drop policy if exists booking_sync_log_read on booking_sync_log;
+create policy booking_sync_log_read on booking_sync_log
+  for select using (tenant_id = auth_tenant());
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260816_review_syndication.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ============================================================================
+-- Review Syndication pipeline (idempotent)
+-- 5-star reviews -> rendered 1080x1080 cards -> Meta Graph API publish cron
+-- ============================================================================
+-- Queue holds the ONLY reviews that survive the filter (rating = 5 and body
+-- longer than 10 chars). content_hash (sha-256 of author + body) makes the
+-- queue de-duplicated: the same review can never be scheduled twice.
+--
+-- Meta credentials are NOT stored here. They live per-tenant on the
+-- `integrations` table (provider 'meta': encrypted access_token +
+-- metadata.page_id / metadata.ig_user_id) and fall back to the
+-- META_ACCESS_TOKEN / META_PAGE_ID / META_IG_ID env vars for a single
+-- default tenant. See api/lib/review-syndication.js resolveMetaConfig().
+
+create table if not exists review_queue (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      uuid not null references tenants(id) on delete cascade,
+  source         text not null check (source in ('google_gmb','yelp_csv','shopify','manual_csv')),
+  content_hash   text not null unique,
+  author_name    text not null,
+  rating         integer not null check (rating = 5),
+  review_body    text not null,
+  image_url      text,                                  -- rendered card in review-cards bucket
+  status         text not null default 'scheduled'
+                 check (status in ('queued','scheduled','published','failed')),
+  scheduled_for  timestamptz not null default now(),    -- staggered +48h apart
+  meta_post_id   text,                                  -- facebook post id / ig media id
+  error_message  text,
+  created_at     timestamptz not null default now(),
+  published_at   timestamptz
+);
+
+create index if not exists idx_review_queue_due  on review_queue (tenant_id, status, scheduled_for);
+create index if not exists idx_review_queue_hash on review_queue (content_hash);
+
+-- Reads go through the service-role client in this codebase; RLS is enabled
+-- with a tenant-scoped read policy so a leaked anon key cannot enumerate the
+-- queue. Default is deny.
+alter table review_queue enable row level security;
+drop policy if exists review_queue_read on review_queue;
+create policy review_queue_read on review_queue
+  for select using (tenant_id = auth_tenant());
+
+-- ── storage: public review-cards bucket ───────────────────────────
+-- Public read is required: Meta's Graph API must fetch the card image by URL
+-- anonymously. Only server endpoints write here.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('review-cards', 'review-cards', true, 5242880, array['image/png','image/jpeg'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists review_cards_public_read on storage.objects;
+create policy review_cards_public_read on storage.objects
+  for select using (bucket_id = 'review-cards');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260816_stripe_provisioning.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ============================================================================
+-- Stripe production billing + automated Telnyx provisioning (idempotent)
+-- Backs api/stripe-webhook.js: idempotency log, subscription lifecycle
+-- columns, and the auto-provision state machine.
+-- ============================================================================
+
+-- ── billing_events: idempotency + audit for every Stripe webhook ──
+create table if not exists billing_events (
+  id               uuid primary key default gen_random_uuid(),
+  tenant_id        uuid references tenants(id) on delete cascade,
+  stripe_event_id  text not null unique,
+  type             text not null,
+  amount           numeric,
+  currency         text default 'usd',
+  status           text,
+  data             jsonb default '{}'::jsonb,
+  created_at       timestamptz not null default now()
+);
+
+create index if not exists idx_billing_events_tenant on billing_events (tenant_id, created_at desc);
+create index if not exists idx_billing_events_event on billing_events (stripe_event_id);
+
+-- ── tenants: subscription lifecycle + provisioning state ──────────
+alter table tenants add column if not exists subscription_status text default 'trial';
+alter table tenants add column if not exists billing_status     text default 'trial';
+alter table tenants add column if not exists current_period_end timestamptz;
+alter table tenants add column if not exists provisioning_status text;   -- active | provisioning_pending
+alter table tenants add column if not exists provisioning_error  text;
+alter table tenants add column if not exists telnyx_phone_id     text;
+alter table tenants add column if not exists texml_app_id        text;
+alter table tenants add column if not exists provisioned_at      timestamptz;
