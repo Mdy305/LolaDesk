@@ -70,10 +70,17 @@ function json(payload, status = 200) {
 }
 
 // Telnyx stub — records the /v2/calls POST body so tests can assert what was
-// actually sent, and serves /phone_numbers for auto-from discovery.
-function stubTelnyx({ failCalls = false, numbers = [OWNED_A, OWNED_B] } = {}) {
+// actually sent, and serves /phone_numbers for connection + from discovery.
+// The tenant's own line lives on its OWN connection (CONN-TENANT), mirroring
+// real accounts where numbers are spread across several connections.
+function stubTelnyx({ failCalls = false, numbers } = {}) {
   const realFetch = globalThis.fetch;
   const calls = [];
+  const list = numbers || [
+    { phone_number: OWNED_A, connection_id: 'CONN-LOLA' },
+    { phone_number: OWNED_B, connection_id: 'CONN-LOLA' },
+    { phone_number: TENANT_LINE, connection_id: 'CONN-TENANT' }
+  ];
   globalThis.fetch = async (url, opts = {}) => {
     const u = String(url);
     if (!u.includes('api.telnyx.com')) throw new Error('unexpected non-Telnyx call: ' + u);
@@ -85,7 +92,7 @@ function stubTelnyx({ failCalls = false, numbers = [OWNED_A, OWNED_B] } = {}) {
       return json({ data: { id: 'call-1', record_type: 'call', call_control_id: 'v3:test-call-control', call_leg_id: 'leg-1' } });
     }
     if (path === '/phone_numbers') {
-      return json({ data: numbers.map((n, i) => ({ id: 'PN' + i, phone_number: n, status: 'active', connection_id: 'CONN-LOLA' })) });
+      return json({ data: list.map((n, i) => ({ id: 'PN' + i, phone_number: n.phone_number, status: 'active', connection_id: n.connection_id })) });
     }
     throw new Error('unmocked Telnyx path: ' + path);
   };
@@ -152,12 +159,14 @@ test('originates a real call with an explicit from and reports routing', async (
     assert.equal(status, 200);
     assert.equal(j.ok, true);
 
-    // The exact Telnyx request that was sent
+    // The exact Telnyx request that was sent — the outbound leg originates
+    // from the DESTINATION number's own connection, not the platform default.
     assert.equal(t.calls.length, 1);
-    assert.deepEqual(t.calls[0], { connection_id: 'CONN-LOLA', from: OWNED_A, to: TENANT_LINE, if_machine: 'continue' });
+    assert.deepEqual(t.calls[0], { connection_id: 'CONN-TENANT', from: OWNED_A, to: TENANT_LINE, if_machine: 'continue' });
 
     assert.equal(j.call_control_id, 'v3:test-call-control');
-    assert.equal(j.connection_id, 'CONN-LOLA');
+    assert.equal(j.connection_id, 'CONN-TENANT');
+    assert.match(j.connection_note, /own connection/);
     assert.equal(j.from, OWNED_A);
     assert.equal(j.to, TENANT_LINE);
 
@@ -170,7 +179,10 @@ test('originates a real call with an explicit from and reports routing', async (
 
 test('auto-discovers an owned from number when none is given', async () => {
   seed();
-  const t = stubTelnyx({ numbers: [OWNED_A, TENANT_LINE] });
+  const t = stubTelnyx({ numbers: [
+    { phone_number: OWNED_A, connection_id: 'CONN-LOLA' },
+    { phone_number: TENANT_LINE, connection_id: 'CONN-TENANT' }
+  ] });
   try {
     const { status, json: j } = await call({
       method: 'POST', headers: { authorization: 'Bearer tok-admin' },
@@ -181,19 +193,24 @@ test('auto-discovers an owned from number when none is given', async () => {
     // Picks the first owned number that isn't the destination
     assert.equal(j.from, OWNED_A);
     assert.equal(t.calls[0].from, OWNED_A);
+    // and still originates from the destination's own connection
+    assert.equal(t.calls[0].connection_id, 'CONN-TENANT');
   } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('upgrades the legacy app id to the live connection', async () => {
+test('falls back to the platform connection (legacy upgrade) for unowned destinations', async () => {
   seed();
   process.env.TELNYX_VOICE_APP_ID = '2982432232334951429';
   const t = stubTelnyx();
   try {
     const { json: j } = await call({
       method: 'POST', headers: { authorization: 'Bearer tok-admin' },
-      body: JSON.stringify({ to: TENANT_LINE, from: OWNED_A })
+      body: JSON.stringify({ to: '+19999999999', from: OWNED_A })
     });
+    // Destination isn't an owned number → platform connection, with the
+    // legacy app id transparently upgraded to the live one.
     assert.equal(j.connection_id, '2991758319724529273');
+    assert.match(j.connection_note, /not an owned number/);
     assert.equal(t.calls[0].connection_id, '2991758319724529273');
   } finally {
     globalThis.fetch = t.realFetch;
@@ -231,17 +248,19 @@ test('calls a number that routes nowhere — reported, not blocked', async () =>
   } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('fails cleanly when TELNYX_VOICE_APP_ID is missing', async () => {
+test('fails cleanly when no connection can be resolved', async () => {
   seed();
   delete process.env.TELNYX_VOICE_APP_ID;
-  const t = stubTelnyx();
+  const t = stubTelnyx({ numbers: [{ phone_number: TENANT_LINE, connection_id: null }] });
   try {
+    // Destination is owned but has no connection, and the platform default
+    // is missing → nothing to originate from.
     const { status, json: j } = await call({
       method: 'POST', headers: { authorization: 'Bearer tok-admin' },
       body: JSON.stringify({ to: TENANT_LINE, from: OWNED_A })
     });
     assert.equal(status, 400);
-    assert.match(j.error, /TELNYX_VOICE_APP_ID/);
+    assert.match(j.error, /no voice connection/i);
     assert.equal(t.calls.length, 0);
   } finally {
     globalThis.fetch = t.realFetch;

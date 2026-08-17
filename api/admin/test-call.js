@@ -80,11 +80,6 @@ export default async function handler(req, res) {
     if (!from) return res.status(400).json({ ok: false, error: '"from" must be a valid E.164 number (8–15 digits)' });
   }
 
-  const connectionId = expectedConnectionId();
-  if (!connectionId) {
-    return res.status(400).json({ ok: false, error: 'TELNYX_VOICE_APP_ID is not configured — cannot resolve the voice connection' });
-  }
-
   // Who will answer? Best-effort: routing failures never block the call,
   // they just tell the operator the number isn't wired to a tenant yet.
   let routing = null;
@@ -94,22 +89,40 @@ export default async function handler(req, res) {
     routing = { status: 'error', reason: String(e?.message || e).slice(0, 200), tenant: null };
   }
 
+  // Discover the account's numbers once: used both for the caller ID and,
+  // crucially, for the destination's own connection. Real accounts spread
+  // numbers across several connections, and the platform's TELNYX_VOICE_APP_ID
+  // may not be the one a given number actually rings through — originating
+  // from the destination number's own connection guarantees the inbound leg
+  // lands on the right app AND that the outbound leg uses a connection Telnyx
+  // accepts (a number is only attached to a working Call Control app).
+  let ownedNumbers = [];
+  try {
+    ownedNumbers = telnyxData(await telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 })) || [];
+    if (!Array.isArray(ownedNumbers)) ownedNumbers = [];
+  } catch (e) {
+    return res.status(502).json({
+      ok: false, error: `Could not list account numbers: ${String(e?.message || e)}`, to
+    });
+  }
+
+  const destNumber = ownedNumbers.find(n => n.phone_number === to);
+  const connectionId = destNumber?.connection_id || expectedConnectionId();
+  if (!connectionId) {
+    return res.status(400).json({ ok: false, error: 'No voice connection for the destination number and TELNYX_VOICE_APP_ID is not configured' });
+  }
+  const connectionNote = destNumber?.connection_id
+    ? `originating from ${to}'s own connection (${connectionId})`
+    : `destination is not an owned number — using platform connection ${connectionId}`;
+
   // Pick the outbound caller ID: explicit → env → first owned number that
   // isn't the destination.
   if (!from) {
     from = process.env.DEMO_FROM_NUMBER || process.env.TELNYX_FROM_NUMBER || null;
   }
   if (!from) {
-    try {
-      const numbers = telnyxData(await telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 }));
-      const candidates = (Array.isArray(numbers) ? numbers : [])
-        .filter(n => n.phone_number && n.phone_number !== to);
-      from = candidates[0]?.phone_number || null;
-    } catch (e) {
-      return res.status(502).json({
-        ok: false, error: `Could not discover an owned outbound number: ${String(e?.message || e)}`, to
-      });
-    }
+    const candidates = ownedNumbers.filter(n => n.phone_number && n.phone_number !== to);
+    from = candidates[0]?.phone_number || null;
   }
   if (!from) {
     return res.status(400).json({
@@ -136,6 +149,7 @@ export default async function handler(req, res) {
       to,
       from,
       connection_id: connectionId,
+      connection_note: connectionNote,
       call_control_id: callControlId,
       telnyx: data,
       routing
