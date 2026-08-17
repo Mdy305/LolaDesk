@@ -27,6 +27,7 @@ import { getAvailability, holdAvailability } from './availability-engine-v2.js';
 import * as crm from './lola-crm.js';
 import { writeAppointment } from './aggregator.js';
 import { listBookings, enrichBookings, resolveDate, to24, moveBooking } from './operator-db.js';
+import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
 
 // Providers Lola can WRITE appointments to. boulevard (partner sandbox) and
 // shopify (retail only) deliberately excluded; google_calendar is a sync
@@ -451,6 +452,16 @@ export async function runBookingAction(action, tenant, params = {}, opts = {}){
   const fn = BOOKING_ACTIONS[action];
   if(!fn) return { ok: false, error: 'unsupported_action', speak: "I can't do that right now." };
   if(!tenant?.id) return { ok: false, error: 'tenant_required', speak: "I couldn't tell which salon this is." };
+
+  // Trial-to-paid gate: expired/suspended tenants cannot create new bookings
+  // (or check availability / reschedule). Cancels stay open so clients are
+  // never stranded. Owner-facing channels get the upgrade prompt; callers
+  // get a graceful decline that never reveals billing state.
+  if(BLOCKED_BOOKING_ACTIONS.has(action)){
+    const gate = bookingGateResponse(tenant, opts.channel);
+    if(gate) return gate;
+  }
+
   return fn(tenant, params, opts);
 }
 

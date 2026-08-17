@@ -15,6 +15,7 @@ import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
+import { bookingGateResponse } from './lib/billing-gate.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -247,6 +248,13 @@ export default async function handler(req,res){
     }
 
     if(resource==='appointment'||resource==='booking'){
+      // Trial-to-paid gate: an expired/suspended tenant cannot CREATE new
+      // bookings from the dashboard either. Cancels/reschedules stay open so
+      // existing clients are never stranded. Owner-facing -> conversion copy.
+      if(action!=='cancel'&&action!=='update'&&action!=='reschedule'){
+        const gate=bookingGateResponse(tenant,'operator');
+        if(gate)return res.status(402).json({ok:false,...gate,error:gate.speak});
+      }
       if(action==='cancel'){
         await c.from('bookings').update({status:'cancelled',updated_at:new Date().toISOString()})
           .eq('id',body.id).eq('tenant_id',T);

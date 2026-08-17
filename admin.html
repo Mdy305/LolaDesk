@@ -65,6 +65,14 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   </div>
 
   <div id="tableWrap"><div class="state">Loading…</div></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Booking Sync Health</h2>
+    <button class="btn" onclick="loadSync()">Refresh</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Last sync per salon from <code>booking_sync_log</code> — provider errors, cache size, and staleness.</p>
+  <div class="grid" id="syncKpis" style="display:none"></div>
+  <div id="syncWrap"><div class="state">Load to check every salon's sync engine.</div></div>
 </div>
 
 <script>
@@ -125,8 +133,65 @@ async function act(action, id){
   if(r.ok) load();
 }
 
+// ── Booking Sync Health panel ───────────────────────────────────────
+let SYNC = null;
+
+function fmtAge(min){
+  if(min == null) return '—';
+  if(min < 60) return `${min}m ago`;
+  if(min < 1440) return `${(min/60).toFixed(1)}h ago`;
+  return `${(min/1440).toFixed(1)}d ago`;
+}
+function fmtTime(iso){
+  if(!iso) return '—';
+  try{ return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
+  catch(e){ return '—'; }
+}
+
+async function loadSync(){
+  const kpis = document.getElementById('syncKpis');
+  const wrap = document.getElementById('syncWrap');
+  try{
+    const r = await fetch('/api/admin/sync', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    SYNC = await r.json();
+    kpis.style.display = 'grid';
+    kpis.innerHTML = [
+      ['Syncing', SYNC.counts.synced], ['Erroring', SYNC.counts.erroring],
+      ['Stale', SYNC.counts.stale], ['Never synced', SYNC.counts.never]
+    ].map(([l,v])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+    renderSync();
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t load sync health.</div>'; }
+}
+
+function renderSync(){
+  const rows = SYNC.tenants;
+  document.getElementById('syncWrap').innerHTML = rows.length ? `
+  <table><thead><tr>
+    <th>Salon</th><th>Status</th><th>Last sync</th><th class="hide-m">Provider</th>
+    <th class="hide-m">Cached</th><th class="hide-m">Fetched</th><th>Errors (7d)</th>
+  </tr></thead><tbody>` + rows.map(t => {
+    const pill = { ok:'active', error:'suspended', stale:'trial', never:'trial' }[t.status] || 'trial';
+    const label = { ok:'Syncing', error:'Error', stale:'Stale', never:'Never' }[t.status] || t.status;
+    const err = t.error ? `<div class="muted" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(t.error)}">${esc(t.error.slice(0,80))}</div>` : '';
+    return `
+    <tr>
+      <td><strong>${esc(t.name)}</strong><br><span class="muted">${esc(t.slug)}</span></td>
+      <td><span class="pill ${pill}">${label}</span></td>
+      <td>${fmtTime(t.last_sync_at)}<br><span class="muted">${fmtAge(t.last_sync_age_min)}</span></td>
+      <td class="hide-m muted">${esc(t.provider||'—')}</td>
+      <td class="hide-m">${t.cached_appointments}</td>
+      <td class="hide-m muted">${t.fetched == null ? '—' : t.fetched}</td>
+      <td>${t.error_count_7d ? `<span class="pill suspended">${t.error_count_7d}</span>` : '—'}${err}</td>
+    </tr>`;
+  }).join('') + '</tbody></table>'
+  : '<div class="state">No tenants yet.</div>';
+}
+
 document.getElementById('q').addEventListener('input', ()=> DATA && renderTable());
 load();
+loadSync();
 </script>
 </body>
 </html>
