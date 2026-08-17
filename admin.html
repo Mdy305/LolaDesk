@@ -94,6 +94,19 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   <div id="lolaWrap"><div class="state">Load to watch Lola's routing in real time.</div></div>
 
   <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Live Test Call</h2>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Ring any number through Lola's real voice line — a genuine Telnyx call placed with the server-side key, no local secrets. If it's a tenant number, she answers and the call shows up in Live Routing.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+    <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:18px">
+      <div class="fld"><label>Number to call (E.164)</label><input id="tcTo" placeholder="+19294568227"/></div>
+      <div class="fld"><label>From (optional — auto-picks an owned number)</label><input id="tcFrom" placeholder="+13055550100"/></div>
+      <button class="btn" style="width:100%" onclick="testCall()">Place test call</button>
+      <div id="tcResult" style="margin-top:12px;font-size:12.5px"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
     <h2 style="font-size:15px;letter-spacing:-.01em">10DLC Onboarding</h2>
     <button class="btn" onclick="loadCompliance()">Refresh</button>
   </div>
@@ -196,7 +209,9 @@ function renderTable(){
       <td>${esc(t.plan||'—')}</td>
       <td><span class="pill ${esc(t.billing_status||'trial')}">${esc(t.billing_status||'trial')}</span></td>
       <td class="hide-m muted">${fmtDate(t.created_at)}</td>
-      <td>${t.billing_status==='suspended'
+      <td style="white-space:nowrap">
+        ${t.phone_number ? `<button class="act" onclick="testCall('${esc(t.phone_number)}',this)" title="Ring ${esc(t.phone_number)} — Lola answers if it's wired">Test call</button>` : ''}
+        ${t.billing_status==='suspended'
           ? `<button class="act" onclick="act('activate','${t.id}')">Activate</button>`
           : `<button class="act" onclick="act('suspend','${t.id}')">Suspend</button>`}</td>
     </tr>`).join('') + '</tbody></table>'
@@ -367,6 +382,43 @@ function renderSync(){
     </tr>`;
   }).join('') + '</tbody></table>'
   : '<div class="state">No tenants yet.</div>';
+}
+
+// ── Live Test Call panel ───────────────────────────────────────────
+async function testCall(phone, btn){
+  const to = (phone || document.getElementById('tcTo')?.value || '').trim();
+  const from = (document.getElementById('tcFrom')?.value || '').trim();
+  const result = document.getElementById('tcResult');
+  if(!to){ result.innerHTML = '<div class="err">Enter a number to call (E.164).</div>'; return; }
+  if(btn){ btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Calling…'; }
+  try{
+    const r = await fetch('/api/admin/test-call', { method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ to, from: from || undefined }) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ result.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ result.innerHTML = `<div class="err">Call failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const rt = j.routing;
+    const routePill = rt && rt.status === 'resolved'
+      ? `<span class="pill active">will answer: ${esc(rt.tenant?.name||'')}</span>`
+      : (rt ? `<span class="pill trial">${esc(rt.status)} — no tenant on this number</span>` : '');
+    result.innerHTML = `
+      <div style="margin-top:6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="pill active">Ringing</span>
+        <strong>${esc(j.to)}</strong>
+        <span class="muted">from ${esc(j.from)}</span>
+        ${routePill}
+      </div>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        call_control_id <code>${esc(j.call_control_id||'—')}</code> · connection <code>${esc(j.connection_id)}</code>
+      </div>
+      <div class="muted" style="margin-top:6px;font-size:12px">Lola answers in seconds — watch Live Routing's active calls.</div>`;
+  }catch(e){
+    result.innerHTML = `<div class="err">Couldn't place the call.</div>`;
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = orig; }
+  }
 }
 
 // ── Telnyx AI Assistants panel ─────────────────────────────────────
