@@ -30,9 +30,8 @@ import {
 } from './lib/db.js';
 import { OPERATOR_SKILLS } from './operator-tools.js';
 import { answerOwner, briefingLine } from './lib/owner-brain.js';
-import { getConversationHistory } from './lib/db.js';
+import { getConversationHistory, db } from './lib/db.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
-import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
 import crypto from 'crypto';
 
 function escapeXml(v=''){ return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
@@ -157,18 +156,49 @@ export default async function handler(req, res){
     }));
   }
 
-  // cached synthesis for repeated owner-line phrases (greeting, prompts)
+  // Supabase Storage-backed TTS cache — same bucket as telnyx-voice.js.
+  const VOICE_BUCKET = 'voice-audio';
+
+  // Cached synthesis for repeated owner-line phrases (greeting, prompts) —
+  // same Supabase Storage-backed cache as telnyx-voice.js: synthesize once
+  // per cache window, replay instantly via the public CDN URL. Never an
+  // in-memory cache (doesn't survive instances); never a substitute voice.
   async function speakCached(text){
-    if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
+    if(!elevenLabsConfigured()) return '';
+    const supabase = db();
+    if(!supabase) return '';
     // Lola's one canonical voice — same everywhere (like Siri on Apple).
     const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
-    const key = crypto.createHash('sha1').update(`op|${voiceId}|${text}`).digest('hex');
-    let id = getKeyedAudioId(key);
-    if(!id){
-      try{ id = putAudioKeyed(key, await synthesize(text)); }
-      catch{ return ''; }
+    const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
+    const storagePath = `cached/${key}.mp3`;
+    // Cache hit: public CDN URL already serves this exact (voice, text) pair.
+    try{
+      const { data: pubData } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      if(pubData?.publicUrl){
+        const controller = new AbortController();
+        const timer = setTimeout(()=>controller.abort(), 3000);
+        try{
+          const r = await fetch(pubData.publicUrl, { method:'HEAD', signal:controller.signal });
+          clearTimeout(timer);
+          if(r.ok) return pubData.publicUrl;
+        }catch{ clearTimeout(timer); }
+      }
+    }catch{}
+    // Cache miss — synthesize via ElevenLabs and upload to Supabase.
+    try{
+      const audio = await synthesize(text);
+      const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
+        .upload(storagePath, audio, { contentType:'audio/mpeg', upsert:true });
+      if(upErr){
+        console.error('[OPERATOR-VOICE] Supabase upload error:', upErr?.message || upErr);
+        return '';
+      }
+      const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      return pubData2?.publicUrl || '';
+    }catch(e){
+      console.error('[OPERATOR-VOICE] cached synth failed:', String(e.message||e).slice(0,100));
+      return '';
     }
-    return `${process.env.APP_URL.replace(/\/+$/,'')}/api/voice-audio?id=${encodeURIComponent(id)}`;
   }
 
   // audit trail: the owner line writes to the same memory substrate
