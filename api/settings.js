@@ -29,7 +29,14 @@ export default async function handler(req, res){
     if(req.method === 'GET'){
       // Never expose the operator PIN hash back to the browser.
       const { operator_pin_hash, ...safe } = tenant;
-      return res.status(200).json({ ok:true, tenant: safe, settings: {} });
+      // Connected integrations (providers only — never tokens) so the
+      // Integrations tab can show real connect state.
+      let integrations = [];
+      try{
+        const { data: rows } = await c.from('integrations').select('provider,status,updated_at').eq('tenant_id', tenant.id);
+        integrations = (rows || []).map(r => ({ provider:r.provider, status:r.status, updated_at:r.updated_at }));
+      }catch{}
+      return res.status(200).json({ ok:true, tenant: safe, settings: {}, integrations });
     }
 
     if(req.method !== 'POST') return res.status(405).json({ error:'POST only' });
@@ -39,7 +46,9 @@ export default async function handler(req, res){
     // but being explicit here means a typo'd extra field in the client
     // can't silently slip through as a no-op instead of an error.
     const patch = {};
-    for(const k of ['name','owner_name','location','hours','booking_url','website_url','voice_id','knowledge']){
+    // NOTE: voice_id is intentionally NOT in this list — Lola's voice is
+    // canonical platform-wide and cannot be changed per tenant.
+    for(const k of ['name','owner_name','location','hours','booking_url','website_url','knowledge']){
       if(body[k] !== undefined) patch[k] = body[k];
     }
     if(Object.keys(patch).length === 0) return res.status(400).json({ error:'no fields to update' });

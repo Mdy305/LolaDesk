@@ -157,12 +157,12 @@ export default async function handler(req, res){
   // cached synthesis for repeated owner-line phrases (greeting, prompts)
   async function speakCached(text){
     if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
-    // Per-tenant voice: owner's chosen voice (fallback: platform default).
-    const voiceId = tenant.voice_id || process.env.ELEVENLABS_VOICE_ID || '';
+    // Lola's one canonical voice — same everywhere (like Siri on Apple).
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
     const key = crypto.createHash('sha1').update(`op|${voiceId}|${text}`).digest('hex');
     let id = getKeyedAudioId(key);
     if(!id){
-      try{ id = putAudioKeyed(key, await synthesize(text, { voice: tenant.voice_id || undefined })); }
+      try{ id = putAudioKeyed(key, await synthesize(text)); }
       catch{ return ''; }
     }
     return `${process.env.APP_URL.replace(/\/+$/,'')}/api/voice-audio?id=${encodeURIComponent(id)}`;

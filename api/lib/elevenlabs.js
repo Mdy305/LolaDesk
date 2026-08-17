@@ -5,7 +5,10 @@
  * voice: the dashboard's /api/speak AND real phone calls via Telnyx.
  *
  * This is the file that makes "Lola sounds the same everywhere" true.
- * If you ever change her voice settings, change them here once.
+ * Lola is the brain of LolaDesk — one identity, one voice, across the
+ * entire platform. Like Siri on Apple, she is NOT configurable per tenant:
+ * every salon, every call, every channel hears the same Lola. If you ever
+ * change her voice, change it here once and it changes everywhere.
  *
  * ENV VARS:
  *   ELEVENLABS_API_KEY    required
@@ -32,10 +35,9 @@ export function isConfigured(){
 
 /**
  * Synthesize text to speech. Returns a Buffer of MP3 bytes, or throws.
- * Uses the tenant's chosen voice when one is set (voice_id on the tenant),
- * falling back to the platform default ELEVENLABS_VOICE_ID. Each salon
- * picks its own Lola so the brand can be consistent per-tenant without
- * every salon sounding identical.
+ * ALWAYS uses Lola's one canonical voice (ELEVENLABS_VOICE_ID) — the
+ * `voice` option is deliberately ignored so no code path can ever give
+ * a tenant its own Lola. One brain, one voice, everywhere.
  */
 /* ── EMOTIONAL REGISTERS — the difference between reading and feeling ──
    One fixed voice setting makes every sentence land identically: the
@@ -59,9 +61,10 @@ export function registerForText(text){
   return 'warm';
 }
 
-export async function synthesize(text, { modelId, outputFormat, signal, register, voice: voiceOverride } = {}) {
+export async function synthesize(text, { modelId, outputFormat, signal, register } = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const voice = voiceOverride || process.env.ELEVENLABS_VOICE_ID;
+  // Lola's canonical voice — always. There is no per-tenant voice.
+  const voice = process.env.ELEVENLABS_VOICE_ID;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
   if(!voice) throw new Error('Missing ELEVENLABS_VOICE_ID');
 

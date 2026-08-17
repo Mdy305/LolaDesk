@@ -524,7 +524,9 @@ export async function getTenantIntegrations(tenantId, { status='connected' } = {
 export async function updateTenantFields(tenantId, patch = {}){
   const c = db();
   if(!c || !tenantId) return null;
-  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','voice_id','services','team','phone_number','operator_phone'];
+  // voice_id is intentionally NOT in the allow-list — Lola's voice is
+  // canonical platform-wide and cannot be changed per tenant.
+  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   

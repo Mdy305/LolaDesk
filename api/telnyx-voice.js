@@ -192,10 +192,10 @@ export default async function handler(req, res){
   const VOICE_BUCKET = 'voice-audio';
   const supabase = db(); // reuse the shared Supabase client
 
-  // Per-tenant voice: the owner's chosen ElevenLabs voice, falling back to
-  // the platform default. Included in the cache key so two salons with the
-  // same words but different voices never collide.
-  const voiceId = tenant.voice_id || process.env.ELEVENLABS_VOICE_ID || '';
+  // Lola's one canonical voice — same for every salon, every call (like
+  // Siri on Apple). Included in the cache key so the audio cache stays
+  // consistent across the platform.
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
 
   async function speakCached(text, register){
     if(!elevenLabsConfigured() || !supabase) return '';
@@ -219,7 +219,7 @@ export default async function handler(req, res){
 
     // Cache miss — synthesize via ElevenLabs and upload to Supabase
     try{
-      const audio = await synthesize(text, { register: reg, voice: tenant.voice_id || undefined });
+      const audio = await synthesize(text, { register: reg });
       const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
         .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
       if(upErr){

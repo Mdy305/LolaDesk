@@ -208,8 +208,7 @@
     <div class="desc">How she sounds and behaves on every call.</div>
     <div class="grid2">
       <div class="fld"><label>Greeting</label><input id="lGreeting" placeholder="Hi, thank you for calling..."/></div>
-      <div class="fld"><label>Lola's voice</label><select id="lVoice"><option value="">Platform default</option></select>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Pick the voice your clients hear on every call. Each salon can have its own Lola.</div></div>
+      <div class="fld"><label>Lola's voice</label><div style="padding:9px 12px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:10px;font-size:13px;color:var(--text2,#ddd)"><b style="color:#d4ff00">LOLA™</b> — signature voice<div style="font-size:11px;color:var(--text3);margin-top:2px">One voice, every call, every salon. Lola is the brain of LolaDesk — like Siri on Apple, her voice is the brand. Not changeable.</div></div></div>
     </div>
     <div class="fld"><label>Special instructions</label><textarea id="lInstructions" rows="4" placeholder="Anything Lola should always mention, avoid, or handle a specific way..."></textarea></div>
     <div class="btn-row"><button class="btn-p" onclick="saveLola()">Save Lola settings</button></div>
@@ -238,16 +237,16 @@
   <div class="card">
     <h3>Booking platforms</h3>
     <div class="desc">Sync appointments both ways with your existing system.</div>
-    <div class="toggle-row"><div><div class="tl">Square Appointments</div><div class="ts">Two-way sync</div></div><button class="btn-g" onclick="connect('square')">Connect</button></div>
-    <div class="toggle-row"><div><div class="tl">Boulevard</div><div class="ts">Two-way sync</div></div><button class="btn-g" onclick="connect('boulevard')">Connect</button></div>
-    <div class="toggle-row"><div><div class="tl">Vagaro</div><div class="ts">Two-way sync</div></div><button class="btn-g" onclick="connect('vagaro')">Connect</button></div>
-    <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" onclick="connect('mindbody')">Connect</button></div>
-    <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" onclick="connect('fresha')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Square Appointments</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-square" onclick="connect('square')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Boulevard</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-boulevard" onclick="connect('boulevard')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Vagaro</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-vagaro" onclick="connect('vagaro')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-mindbody" onclick="connect('mindbody')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-fresha" onclick="connect('fresha')">Connect</button></div>
   </div>
 
   <div class="card">
     <h3>Calendar</h3>
-    <div class="toggle-row"><div><div class="tl">Google Calendar</div><div class="ts">Block time from your personal calendar</div></div><button class="btn-g" onclick="connect('google')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Google Calendar</div><div class="ts">Block time from your personal calendar</div></div><button class="btn-g" id="c-google" onclick="connect('google')">Connect</button></div>
   </div>
 
   <div class="card">
@@ -319,6 +318,7 @@ async function load(){
 
     setVal('lGreeting',SETTINGS.greeting||'Hi, thank you for calling '+(TENANT.name||'the salon')+'. This is Lola, how can I help you?');
     setVal('lInstructions',SETTINGS.instructions||'');
+    renderIntegrations(d.integrations);
     setVal('forwardNumber',SETTINGS.forward_number||'');
   }catch(e){console.warn(e);}
 
@@ -448,22 +448,12 @@ async function saveBooking(){
   }catch(e){msg('bookMsg',e.message,false);}
 }
 
-async function loadVoices(){
-  try{
-    const r=await fetch('/api/voices',{headers:H()});
-    const d=await r.json();
-    if(!d.ok)return;
-    const sel=document.getElementById('lVoice');
-    sel.innerHTML='<option value="">Platform default</option>'+d.voices.map(v=>'<option value="'+esc(v.id)+'"'+(v.id===d.current?' selected':'')+'>'+esc(v.name)+'</option>').join('');
-  }catch(e){}
-}
-
 async function saveLola(){
   msg('lolaMsg','Saving...',true);
   try{
     await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
-      voice_id:val('lVoice')||null,instructions:val('lInstructions')})});
-    msg('lolaMsg','Saved. Lola uses this voice on her next call.',true);
+      instructions:val('lInstructions')})});
+    msg('lolaMsg','Saved. Lola will follow these instructions on every call.',true);
   }catch(e){msg('lolaMsg',e.message,false);}
 }
 
@@ -482,7 +472,16 @@ function copyLink(){
   navigator.clipboard.writeText(document.getElementById('bookLink').textContent);
   const b=event.target;const t=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=t,1200);
 }
-function connect(p){location.href='numbers.html#connect='+p;}
+function connect(p){
+  const slug=(TENANT&&TENANT.slug)||'';
+  location.href='/api/oauth/connect?provider='+encodeURIComponent(p)+'&tenant='+encodeURIComponent(slug);
+}
+function renderIntegrations(list){
+  (list||[]).forEach(i=>{
+    const b=document.getElementById('c-'+i.provider);
+    if(b){b.textContent=i.status==='connected'?'Connected ✓':'Reconnect';b.style.borderColor='#22c55e';b.style.color='#22c55e';}
+  });
+}
 async function exportData(){
   try{
     const r=await fetch('/api/salon?resource=clients',{headers:H()});
@@ -493,7 +492,7 @@ async function exportData(){
   }catch(e){alert('Export failed: '+e.message);}
 }
 
-(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();loadVoices();})();
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script>
 </body>
 </html>
