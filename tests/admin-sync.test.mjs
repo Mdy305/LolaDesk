@@ -134,3 +134,195 @@ test('tenants with no sync logs are "never"', async () => {
   assert.equal(json.counts.never, 3);
   assert.ok(json.tenants.every(t => t.status === 'never' && t.last_sync_at === null));
 });
+
+// ── POST: one-click "Sync now" ────────────────────────────────────
+// The fake stores integration tokens in legacy plaintext; db.js decrypt()
+// passes those through but logs a loud console.error. Silence it around the
+// calls that read integrations so the test output stays readable.
+async function quietAsync(fn){
+  const orig = console.error;
+  console.error = () => {};
+  try{ return await fn(); }finally{ console.error = orig; }
+}
+
+function callPost(req){
+  const res = {};
+  res.statusCode = 200;
+  res._json = null;
+  res.setHeader = () => {};
+  res.status = (code) => { res.statusCode = code; return res; };
+  res.json = (obj) => { res._json = obj; return res; };
+  return handler(req, res).then(() => ({ status: res.statusCode, json: res._json }));
+}
+
+test('POST syncs a single tenant and returns the live result + refreshed snapshot', async () => {
+  seed();
+  // Give T1 a connected Vagaro integration so the sync has something to poll.
+  fake.seed('integrations', [
+    { tenant_id: T1, provider: 'vagaro', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null }
+  ]);
+  const start = new Date(Date.now() + 2 * 864e5).toISOString();
+  const end = new Date(new Date(start).getTime() + 60 * 60000).toISOString();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.ok(String(url).includes('api.vagaro.com'), `expected vagaro call, got ${url}`);
+    return { ok: true, status: 200, json: async () => ({ appointments: [{ id: 'VAG-9', startDateTime: start, endDateTime: end, duration: 60, customerName: 'Sarah', serviceTitle: 'Balayage', serviceProviderName: 'Mia', status: 'confirmed' }] }) };
+  };
+
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+
+  try{
+    const { status, json } = await quietAsync(() => callPost({
+      method: 'POST',
+      headers: { authorization: 'Bearer tok-admin', 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant_id: T1 })
+    }));
+    assert.equal(status, 200);
+    assert.equal(json.ok, true);
+
+    // live sync result
+    assert.equal(json.sync.ok, true);
+    assert.equal(json.sync.fetched, 1);
+    assert.equal(json.sync.upserted, 1);
+
+    // refreshed snapshot reflects the new run
+    const byId = Object.fromEntries(json.tenants.map(t => [t.id, t]));
+    assert.equal(byId[T1].status, 'ok');
+    assert.equal(byId[T1].cached_appointments, 3);   // 2 seeded + 1 fresh
+    assert.ok(byId[T1].last_sync_at);
+
+    // audit row written
+    const logs = fake.all('booking_sync_log');
+    assert.ok(logs.some(l => l.tenant_id === T1 && l.fetched === 1));
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('POST requires tenant_id and rejects unknown tenants', async () => {
+  seed();
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  const missing = await quietAsync(() => callPost({
+    method: 'POST', headers: { authorization: 'Bearer tok-admin' }, body: '{}'
+  }));
+  assert.equal(missing.status, 400);
+
+  const unknown = await quietAsync(() => callPost({
+    method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+    body: JSON.stringify({ tenant_id: '00000000-0000-0000-0000-000000000000' })
+  }));
+  assert.equal(unknown.status, 404);
+});
+
+test('POST is admin-gated like GET', async () => {
+  seed();
+  fake.auth.users.set('tok-user', { id: 'u2', email: 'salon@example.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  const denied = await quietAsync(() => callPost({
+    method: 'POST', headers: { authorization: 'Bearer tok-user' },
+    body: JSON.stringify({ tenant_id: T1 })
+  }));
+  assert.equal(denied.status, 403);
+});
+
+// ── Drift check (read-only) ────────────────────────────────────────
+function seedDrift(){
+  seed();
+  fake.seed('integrations', [
+    { tenant_id: T1, provider: 'vagaro', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null },
+    { tenant_id: T1, provider: 'square', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null }
+  ]);
+  // Cache holds 2 vagaro + 1 square rows; provider will report 5 vagaro + 1 square.
+  fake.seed('cached_availability', [
+    { tenant_id: T1, provider: 'vagaro', external_booking_id: 'VAG-1' },
+    { tenant_id: T1, provider: 'vagaro', external_booking_id: 'VAG-2' },
+    { tenant_id: T1, provider: 'square', external_booking_id: 'SQ-1' }
+  ]);
+  const start = new Date(Date.now() + 2 * 864e5).toISOString();
+  const end = new Date(new Date(start).getTime() + 60 * 60000).toISOString();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if(String(url).includes('api.vagaro.com')){
+      return { ok: true, status: 200, json: async () => ({ appointments: [0,1,2,3,4].map(i => ({ id: 'VAG-'+i, startDateTime: start, endDateTime: end, duration: 60 })) }) };
+    }
+    if(String(url).includes('connect.squareupsandbox.com') || String(url).includes('connect.squareup.com')){
+      // Square's listAppointments does a two-step flow: locations -> bookings/search.
+      if(String(url).includes('/v2/locations')){
+        return { ok: true, status: 200, json: async () => ({ locations: [{ id: 'L1' }] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ bookings: [{ id: 'SQ-1', start_at: start, appointment_segments: [{ duration_minutes: 60 }] }] }) };
+    }
+    throw new Error('unexpected ' + url);
+  };
+  return realFetch;
+}
+
+test('drift action reports per-provider live vs cached counts', async () => {
+  const realFetch = seedDrift();
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  try{
+    const { status, json } = await quietAsync(() => callPost({
+      method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+      body: JSON.stringify({ tenant_id: T1, action: 'drift' })
+    }));
+    assert.equal(status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(json.drift.ok, true);
+    assert.equal(json.drift.accurate, false);
+    assert.equal(json.drift.drifted, 1);
+
+    const byProvider = Object.fromEntries(json.drift.providers.map(p => [p.provider, p]));
+    assert.equal(byProvider.vagaro.provider_count, 5);
+    assert.equal(byProvider.vagaro.cached_count, 2);
+    assert.equal(byProvider.vagaro.drift, 3);          // cache is behind by 3
+    assert.equal(byProvider.square.provider_count, 1);
+    assert.equal(byProvider.square.cached_count, 1);
+    assert.equal(byProvider.square.drift, 0);          // in sync
+    assert.equal(json.drift.total_drift, 3);
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('drift is read-only: it never writes to the cache or the audit log', async () => {
+  const realFetch = seedDrift();
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  const beforeCache = fake.all('cached_availability').length;
+  const beforeLogs = fake.all('booking_sync_log').length;
+  try{
+    await quietAsync(() => callPost({
+      method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+      body: JSON.stringify({ tenant_id: T1, action: 'drift' })
+    }));
+    assert.equal(fake.all('cached_availability').length, beforeCache, 'drift must not change the cache');
+    assert.equal(fake.all('booking_sync_log').length, beforeLogs, 'drift must not write audit logs');
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('drift with no connected providers is a clean no-op', async () => {
+  seed();   // no integrations
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  const { json } = await quietAsync(() => callPost({
+    method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+    body: JSON.stringify({ tenant_id: T1, action: 'drift' })
+  }));
+  assert.equal(json.drift.skipped, true);
+});
+
+test('unknown action is rejected', async () => {
+  seed();
+  fake.auth.users.set('tok-admin', { id: 'u1', email: 'boss@loladesk.com' });
+  process.env.ADMIN_EMAILS = 'boss@loladesk.com';
+  const { status } = await quietAsync(() => callPost({
+    method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+    body: JSON.stringify({ tenant_id: T1, action: 'explode' })
+  }));
+  assert.equal(status, 400);
+});

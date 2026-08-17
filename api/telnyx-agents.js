@@ -108,8 +108,11 @@ export default async function handler(req, res){
 
   try{
     if(req.method === 'GET'){
-      const data = await listAgents();
-      return res.status(200).json({ ok:true, assistants: data });
+      const raw = await listAgents();
+      // Normalize to a clean array so the Command UI can render directly
+      // without reaching into the Telnyx `{ data, meta }` envelope.
+      const assistants = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+      return res.status(200).json({ ok:true, assistants, meta: raw?.meta || null });
     }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});

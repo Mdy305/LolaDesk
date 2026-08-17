@@ -73,7 +73,85 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   <p class="muted" style="margin:6px 0 16px">Last sync per salon from <code>booking_sync_log</code> — provider errors, cache size, and staleness.</p>
   <div class="grid" id="syncKpis" style="display:none"></div>
   <div id="syncWrap"><div class="state">Load to check every salon's sync engine.</div></div>
+  <div id="syncResult"></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Telnyx AI Assistants</h2>
+    <button class="btn" onclick="loadAgents()">Refresh</button>
+    <button class="btn" onclick="provisionLola(this)">Provision Lola</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">The singular Lola agent that every salon's calls route through — one brain, like Siri. List the account's assistants or (re)provision Lola.</p>
+  <div id="agentsWrap"><div class="state">Load to see the account's AI assistants.</div></div>
+  <div id="agentsResult"></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Lola · Live Routing</h2>
+    <span id="lolaLive" class="pill trial">—</span>
+    <button class="btn" onclick="loadLolaHealth()">Refresh</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">The brain's vitals, live from Telnyx — is the agent attached, are numbers wired to the right voice connection, and are calls flowing through her right now. Auto-refreshes every 15s.</p>
+  <div class="grid" id="lolaKpis"></div>
+  <div id="lolaWrap"><div class="state">Load to watch Lola's routing in real time.</div></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
+    <h2 style="font-size:15px;letter-spacing:-.01em">10DLC Onboarding</h2>
+    <button class="btn" onclick="loadCompliance()">Refresh</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Register your business brand and messaging campaign with TCR without leaving the Command screen. Brands gate A2P throughput; campaigns gate what Lola may text.</p>
+  <div id="complianceState"><div class="state">Load to see brands &amp; campaigns.</div></div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+    <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:18px">
+      <h3 style="font-size:13px;letter-spacing:-.01em;margin-bottom:4px">Register a brand</h3>
+      <p class="muted" style="margin:0 0 14px;font-size:12px">Legal entity for TCR. EIN must match IRS records exactly.</p>
+      <div class="fld"><label>Entity type</label><select id="bEntity"><option>PRIVATE_PROFIT</option><option>PUBLIC_PROFIT</option><option>NON_PROFIT</option><option>GOVERNMENT</option><option>SOLE_PROPRIETOR</option></select></div>
+      <div class="fld"><label>Display name</label><input id="bDisplay" placeholder="Acme Salon"/></div>
+      <div class="fld"><label>Legal company name</label><input id="bCompany" placeholder="Acme Salon LLC"/></div>
+      <div class="fld"><label>EIN</label><input id="bEin" placeholder="12-3456789"/></div>
+      <div class="fld"><label>Phone (E.164)</label><input id="bPhone" placeholder="+15551234567"/></div>
+      <div class="fld"><label>Street</label><input id="bStreet" placeholder="123 Main St"/></div>
+      <div class="fld"><label>City</label><input id="bCity" placeholder="Miami"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fld"><label>State</label><input id="bState" placeholder="FL"/></div>
+        <div class="fld"><label>ZIP</label><input id="bZip" placeholder="33101"/></div>
+      </div>
+      <div class="fld"><label>Country</label><input id="bCountry" value="US"/></div>
+      <div class="fld"><label>Email</label><input id="bEmail" placeholder="admin@salon.com"/></div>
+      <div class="fld"><label>Website</label><input id="bWebsite" placeholder="https://salon.com"/></div>
+      <div class="fld"><label>Vertical</label><input id="bVertical" placeholder="PROFESSIONAL_SERVICES"/></div>
+      <button class="btn" id="bBtn" onclick="registerBrand(this)">Register brand</button>
+      <div id="brandMsg" style="margin-top:10px;font-size:12.5px"></div>
+    </div>
+
+    <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:18px">
+      <h3 style="font-size:13px;letter-spacing:-.01em;margin-bottom:4px">Register a campaign</h3>
+      <p class="muted" style="margin:0 0 14px;font-size:12px">Needs a verified brand. Samples must include opt-out language.</p>
+      <div class="fld"><label>Brand</label><select id="cBrand"><option value="">Select a brand…</option></select></div>
+      <div class="fld"><label>Use case</label><select id="cUsecase"><option>CUSTOMER_CARE</option><option>DELIVERY_NOTIFICATION</option><option>ACCOUNT_NOTIFICATION</option><option>MARKETING</option><option>MIXED</option><option>LOW_VOLUME</option><option>SOLE_PROPRIETOR</option></select></div>
+      <div class="fld"><label>Description</label><textarea id="cDesc" rows="2" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:var(--ff);font-size:13px">Appointment reminders, confirmations, and booking follow-ups for salon clients.</textarea></div>
+      <div class="fld"><label>Sample 1</label><textarea id="cS1" rows="2" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:var(--ff);font-size:13px">Hi {{name}}, your appointment at Acme Salon is confirmed for {{date}} at {{time}}. Reply YES to confirm, HELP for assistance, STOP to unsubscribe.</textarea></div>
+      <div class="fld"><label>Sample 2</label><textarea id="cS2" rows="2" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:var(--ff);font-size:13px">Reminder: you have an appointment at Acme Salon tomorrow at {{time}}. Reply RESCHEDULE to change it, STOP to opt out.</textarea></div>
+      <div class="fld"><label>Opt-in flow</label><textarea id="cFlow" rows="2" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:var(--ff);font-size:13px">Clients opt in when booking by checking a consent box agreeing to appointment updates via SMS. Msg frequency varies. Msg &amp; data rates may apply.</textarea></div>
+      <div class="fld"><label>HELP message</label><input id="cHelp" value="Acme Salon appointments. For help, call +15551234567. Reply STOP to cancel."/></div>
+      <button class="btn" id="cBtn" onclick="registerCampaign(this)">Register campaign</button>
+      <div id="campaignMsg" style="margin-top:10px;font-size:12.5px"></div>
+    </div>
+  </div>
 </div>
+
+<style>
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
+.fld label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.fld input,.fld select{background:var(--surface);border:0.5px solid var(--border);border-radius:10px;color:var(--text);padding:9px 12px;font-size:13px;font-family:var(--ff);outline:none;width:100%}
+.fld input:focus,.fld select:focus{border-color:var(--volt)}
+.ok{color:#8affc4}.err{color:#ffb3aa}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#ffb3aa;margin-right:6px;vertical-align:middle}
+.dot.live{background:#8affc4;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(138,255,196,.45)}50%{box-shadow:0 0 0 7px rgba(138,255,196,0)}}
+.wire{margin-top:14px;background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:16px}
+.wire h4{margin:0 0 4px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wire .val{font-size:13px}
+</style>
 
 <script>
 const token = localStorage.getItem('loladesk_token') || '';
@@ -165,12 +243,110 @@ async function loadSync(){
   }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t load sync health.</div>'; }
 }
 
+async function syncNow(id, name, btn){
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Syncing…';
+  const result = document.getElementById('syncResult');
+  try{
+    const r = await fetch('/api/admin/sync', { method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ tenant_id:id }) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ result.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ result.innerHTML = `<div class="state">Sync failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const s = j.sync || {};
+    const ok = s.ok && !s.error;
+    const pill = ok ? 'active' : 'suspended';
+    const label = ok ? 'Synced' : 'Error';
+    const detail = s.skipped ? ' — no connected booking providers' : '';
+    const err = s.error ? `<br><span class="muted">${esc(s.error)}</span>` : '';
+    const provErr = (s.provider_errors||[]).map(e=>`${esc(e.provider)}: ${esc(e.error)}`).join('<br>');
+    result.innerHTML = `
+      <div style="margin-top:14px;background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="pill ${pill}">${label}</span>
+          <strong>${esc(name)}</strong>
+          <span class="muted">${s.duration_ms != null ? `in ${s.duration_ms}ms` : ''}</span>
+        </div>
+        <div class="muted" style="margin-top:8px;font-size:13px">
+          ${s.fetched != null ? `Fetched <b>${s.fetched}</b>, upserted <b>${s.upserted}</b>, pruned <b>${s.stale_removed}</b>` : ''}${detail}${err}
+        </div>
+        ${provErr ? `<div class="muted" style="margin-top:6px;font-size:12px">${provErr}</div>` : ''}
+      </div>`;
+    SYNC = j;              // refresh snapshot from the POST response
+    renderSync();
+  }catch(e){
+    result.innerHTML = `<div class="state">Couldn't trigger the sync.</div>`;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function checkDrift(id, name, btn){
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Checking…';
+  const result = document.getElementById('syncResult');
+  try{
+    const r = await fetch('/api/admin/sync', { method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ tenant_id:id, action:'drift' }) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ result.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ result.innerHTML = `<div class="state">Drift check failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const d = j.drift || {};
+    if(d.skipped){
+      result.innerHTML = `
+        <div style="margin-top:14px;background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:16px">
+          <div style="display:flex;align-items:center;gap:12px"><span class="pill trial">No providers</span><strong>${esc(name)}</strong></div>
+          <div class="muted" style="margin-top:8px;font-size:13px">No connected booking providers to compare.</div>
+        </div>`;
+      return;
+    }
+    const rows = (d.providers||[]).map(p => {
+      if(p.error) return `<tr><td>${esc(p.provider)}</td><td colspan="2" class="muted">error: ${esc(p.error)}</td></tr>`;
+      const drift = p.drift;
+      const ok = drift === 0;
+      const pill = ok ? 'active' : 'suspended';
+      const label = ok ? 'In sync' : (drift > 0 ? `Behind by ${drift}` : `Extra ${-drift}`);
+      return `<tr>
+        <td>${esc(p.provider)}</td>
+        <td>${p.provider_count}</td>
+        <td>${p.cached_count}</td>
+        <td><span class="pill ${pill}">${label}</span>${p.drift_pct != null && p.drift_pct !== 0 ? ` <span class="muted">(${p.drift_pct>0?'+':''}${p.drift_pct}%)</span>` : ''}</td>
+      </tr>`;
+    }).join('');
+    const badge = d.accurate ? `<span class="pill active">Accurate</span>` : `<span class="pill suspended">${d.drifted} provider${d.drifted===1?'':'s'} off</span>`;
+    result.innerHTML = `
+      <div style="margin-top:14px;background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="pill trial">Drift</span><strong>${esc(name)}</strong>${badge}
+        </div>
+        <table style="margin-top:12px"><thead><tr>
+          <th>Provider</th><th>Live</th><th>Cached</th><th>Drift</th>
+        </tr></thead><tbody>${rows}</tbody></table>
+        <div class="muted" style="margin-top:8px;font-size:12px">
+          Live = appointments the provider reports right now · Cached = rows in cached_availability. Positive drift = cache is behind.
+        </div>
+      </div>`;
+  }catch(e){
+    result.innerHTML = `<div class="state">Couldn't run the drift check.</div>`;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
 function renderSync(){
   const rows = SYNC.tenants;
   document.getElementById('syncWrap').innerHTML = rows.length ? `
   <table><thead><tr>
     <th>Salon</th><th>Status</th><th>Last sync</th><th class="hide-m">Provider</th>
-    <th class="hide-m">Cached</th><th class="hide-m">Fetched</th><th>Errors (7d)</th>
+    <th class="hide-m">Cached</th><th class="hide-m">Fetched</th><th>Errors (7d)</th><th></th>
   </tr></thead><tbody>` + rows.map(t => {
     const pill = { ok:'active', error:'suspended', stale:'trial', never:'trial' }[t.status] || 'trial';
     const label = { ok:'Syncing', error:'Error', stale:'Stale', never:'Never' }[t.status] || t.status;
@@ -184,14 +360,267 @@ function renderSync(){
       <td class="hide-m">${t.cached_appointments}</td>
       <td class="hide-m muted">${t.fetched == null ? '—' : t.fetched}</td>
       <td>${t.error_count_7d ? `<span class="pill suspended">${t.error_count_7d}</span>` : '—'}${err}</td>
+      <td style="white-space:nowrap">
+        <button class="act" onclick="syncNow('${t.id}','${esc(t.name).replace(/'/g,"\\'")}',this)">Sync now</button>
+        <button class="act" onclick="checkDrift('${t.id}','${esc(t.name).replace(/'/g,"\\'")}',this)">Drift</button>
+      </td>
     </tr>`;
   }).join('') + '</tbody></table>'
   : '<div class="state">No tenants yet.</div>';
 }
 
+// ── Telnyx AI Assistants panel ─────────────────────────────────────
+async function loadAgents(){
+  const wrap = document.getElementById('agentsWrap');
+  try{
+    const r = await fetch('/api/telnyx-agents', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't list assistants: ${esc(j.error||'unknown error')}</div>`; return; }
+    const list = j.assistants || [];
+    if(!list.length){ wrap.innerHTML = '<div class="state">No AI assistants on this Telnyx account yet. Click <b>Provision Lola</b> to create her.</div>'; return; }
+    wrap.innerHTML = `
+      <table><thead><tr><th>Assistant</th><th>Model</th><th>Voice</th><th>Created</th></tr></thead><tbody>` +
+      list.map(a => `
+        <tr>
+          <td><strong>${esc(a.name||'—')}</strong><br><span class="muted">${esc(a.id||'—')}</span></td>
+          <td class="hide-m">${esc(a.model||'—')}</td>
+          <td>${esc(a.voice_settings?.voice||'—')}</td>
+          <td class="hide-m muted">${fmtDate(a.created_at)}</td>
+        </tr>`).join('') + '</tbody></table>';
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the AI assistants API.</div>'; }
+}
+
+async function provisionLola(btn){
+  if(!confirm('Provision Lola? This creates (or updates) the single shared Lola agent in Telnyx — one brain for every salon.')) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Provisioning…';
+  const result = document.getElementById('agentsResult');
+  try{
+    const r = await fetch('/api/telnyx-agents', { method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({}) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ result.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ result.innerHTML = `<div class="state">Provision failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const bad = (j.results||[]).filter(x => x.status >= 400);
+    result.innerHTML = `
+      <div style="margin-top:14px;background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:16px">
+        <span class="pill ${bad.length?'suspended':'active'}">${bad.length?'Provision error':'Lola provisioned'}</span>
+        <span class="muted" style="margin-left:8px">${j.created||0} assistant(s) sent to Telnyx</span>
+        ${bad.map(x=>`<div class="muted" style="margin-top:6px">${esc(x.name)}: ${esc(JSON.stringify(x.data||x))}</div>`).join('')}
+      </div>`;
+    loadAgents();
+  }catch(e){
+    result.innerHTML = '<div class="state">Couldn\'t reach the AI assistants API.</div>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+// ── Lola · Live Routing panel ─────────────────────────────────────
+let LOLA = null;
+let LOLA_TIMER = null;
+
+async function loadLolaHealth(){
+  const wrap = document.getElementById('lolaWrap');
+  const live = document.getElementById('lolaLive');
+  try{
+    const r = await fetch('/api/admin/lola-health', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    LOLA = await r.json();
+    renderLolaHealth();
+  }catch(e){
+    live.className = 'pill trial';
+    live.innerHTML = '<span class="dot"></span>offline';
+    wrap.innerHTML = '<div class="state">Couldn\'t reach the routing-health API.</div>';
+  }
+}
+
+function renderLolaHealth(){
+  const a = LOLA.agent || {}, v = LOLA.voice || {}, c = LOLA.calls || {};
+  const live = document.getElementById('lolaLive');
+  const total = v.counts?.total ?? 0;
+  const wired = v.counts?.matching ?? 0;
+  const attached = v.counts?.attached ?? 0;
+  const healthy = !!a.exists && wired > 0;
+  live.className = 'pill ' + (healthy ? 'active' : 'trial');
+  live.innerHTML = '<span class="dot' + (healthy ? ' live' : '') + '"></span>' + (healthy ? 'live' : 'attention');
+
+  document.getElementById('lolaKpis').innerHTML = [
+    ['Agent', a.exists ? 'Attached' : 'Missing'],
+    ['Voice wired', wired + '/' + total],
+    ['Active calls', c.active ?? 0]
+  ].map(([l,val]) => `<div class="kpi"><b>${esc(val)}</b><span>${esc(l)}</span></div>`).join('');
+
+  const agentRows = (a.assistants || []).map(x =>
+    `<tr><td><strong>${esc(x.name||'—')}</strong><br><span class="muted">${esc(x.id||'')}</span></td><td class="hide-m">${esc(x.model||'—')}</td><td>${esc(x.voice||'—')}</td></tr>`).join('');
+  const agentHtml = (a.assistants || []).length
+    ? `<table style="margin-top:10px"><thead><tr><th>Assistant</th><th class="hide-m">Model</th><th>Voice</th></tr></thead><tbody>${agentRows}</tbody></table>`
+    : '<div class="state" style="padding:14px">No assistants on the account — provision Lola above.</div>';
+  const agentErr = a.error ? `<div class="muted" style="margin-top:6px">${esc(a.error)}</div>` : '';
+
+  const voiceRows = (v.numbers || []).map(n => {
+    const ok = n.matches_expected === true;
+    return `<tr><td>${esc(n.phone_number||'—')}</td><td class="hide-m muted">${esc(n.connection_id||'none')}</td><td><span class="pill ${ok?'active':'suspended'}">${ok?'Lola wired':'wired elsewhere'}</span></td></tr>`;
+  }).join('');
+  const voiceHtml = (v.numbers || []).length
+    ? `<table style="margin-top:10px"><thead><tr><th>Number</th><th class="hide-m">Connection</th><th>Routing</th></tr></thead><tbody>${voiceRows}</tbody></table>`
+    : '<div class="state" style="padding:14px">No phone numbers on the account.</div>';
+  const voiceErr = v.error ? `<div class="muted" style="margin-top:6px">${esc(v.error)}</div>` : '';
+
+  const callRows = (c.calls || []).map(x =>
+    `<tr><td class="muted">${esc(x.call_control_id||'—')}</td><td>${x.call_duration != null ? x.call_duration + 's' : '—'}</td></tr>`).join('');
+  const callHtml = (c.calls || []).length
+    ? `<table style="margin-top:10px"><thead><tr><th>Call control id</th><th>Duration</th></tr></thead><tbody>${callRows}</tbody></table>`
+    : '<div class="state" style="padding:14px">No calls in flight right now.</div>';
+  const callErr = c.error ? `<div class="muted" style="margin-top:6px">${esc(c.error)}</div>` : '';
+
+  document.getElementById('lolaWrap').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+      <div class="wire">
+        <h4>Agent attached</h4>
+        <div class="val"><span class="pill ${a.exists?'active':'suspended'}">${a.exists?'Attached':'Missing'}</span>${a.count ? ` <span class="muted">${a.count} assistant(s)</span>` : ''}</div>
+        ${agentHtml}${agentErr}
+      </div>
+      <div class="wire">
+        <h4>Voice connection</h4>
+        <div class="val">${attached}/${total} numbers attached · ${wired} on Lola's connection</div>
+        <div class="muted" style="margin-top:4px">Expected connection: ${esc(v.expected_connection_id||'not configured')}</div>
+        ${voiceHtml}${voiceErr}
+      </div>
+      <div class="wire">
+        <h4>Active calls</h4>
+        <div class="val"><b style="font-size:22px;color:var(--volt)">${c.active ?? 0}</b> live on Lola's connection</div>
+        ${callHtml}${callErr}
+      </div>
+    </div>`;
+}
+
+function startLolaPoll(){
+  if(LOLA_TIMER) clearInterval(LOLA_TIMER);
+  LOLA_TIMER = setInterval(loadLolaHealth, 15000);
+}
+
+// ── 10DLC Onboarding panel ────────────────────────────────────────
+let BRANDS = [];
+
+async function loadCompliance(){
+  const wrap = document.getElementById('complianceState');
+  try{
+    const r = await fetch('/api/admin/compliance', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't load compliance: ${esc(j.error||'unknown error')}</div>`; return; }
+    BRANDS = Array.isArray(j.brands) ? j.brands : [];
+    const bSel = document.getElementById('cBrand');
+    bSel.innerHTML = BRANDS.length
+      ? '<option value="">Select a brand…</option>' + BRANDS.map(b=>`<option value="${esc(b.id)}">${esc(b.name||b.id)} (${esc(b.status||'unknown')})</option>`).join('')
+      : '<option value="">No brands yet — register one first</option>';
+    const bErr = BRANDS.error ? `<div class="muted">${esc(BRANDS.error)}</div>` : '';
+    const bRows = BRANDS.length ? `<table style="margin-top:12px"><thead><tr><th>Brand</th><th>Status</th><th class="hide-m">Vetting</th></tr></thead><tbody>` +
+      BRANDS.map(b=>`<tr><td><strong>${esc(b.name||'—')}</strong><br><span class="muted">${esc(b.id||'—')}</span></td>
+        <td><span class="pill ${b.status==='VERIFIED'||b.status==='VETTED_VERIFIED'?'active':'trial'}">${esc(b.status||'unknown')}</span></td>
+        <td class="hide-m">${b.vetting_score ?? '—'}</td></tr>`).join('') + '</tbody></table>' : '<div class="state">No brands registered.</div>';
+    const cList = Array.isArray(j.campaigns) ? j.campaigns : [];
+    const cErr = cList.error ? `<div class="muted">${esc(cList.error)}</div>` : '';
+    const cRows = cList.length ? `<table style="margin-top:12px"><thead><tr><th>Campaign</th><th>Use case</th><th>Status</th></tr></thead><tbody>` +
+      cList.map(c=>`<tr><td>${esc(c.id||'—')}</td><td>${esc(c.use_case||'—')}</td><td><span class="pill ${c.status==='ACTIVE'?'active':'trial'}">${esc(c.status||'unknown')}</span></td></tr>`).join('') + '</tbody></table>' : '<div class="state" style="margin-top:12px">No campaigns registered.</div>';
+    wrap.innerHTML = bErr + bRows + '<h3 style="font-size:13px;margin:18px 0 6px">Campaigns</h3>' + cErr + cRows;
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the compliance API.</div>'; }
+}
+
+function val(id){ return document.getElementById(id).value.trim(); }
+
+async function registerBrand(btn){
+  const msg = document.getElementById('brandMsg');
+  msg.textContent = '';
+  const body = {
+    action: 'brands.create',
+    entity_type: val('bEntity'),
+    display_name: val('bDisplay'),
+    company_name: val('bCompany'),
+    ein: val('bEin'),
+    phone: val('bPhone'),
+    street: val('bStreet'),
+    city: val('bCity'),
+    state: val('bState'),
+    postal_code: val('bZip'),
+    country: val('bCountry'),
+    email: val('bEmail'),
+    website: val('bWebsite'),
+    vertical: val('bVertical')
+  };
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Registering…';
+  try{
+    const r = await fetch('/api/admin/compliance', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(j.ok){
+      msg.innerHTML = `<span class="ok">Brand registered</span> <span class="muted">${esc(j.brand_id||'')} · ${esc(j.status||'submitted')}</span>`;
+      loadCompliance();
+    } else {
+      msg.innerHTML = `<span class="err">${esc(j.error||'Register failed')}</span>`;
+    }
+  }catch(e){
+    msg.innerHTML = '<span class="err">Couldn\'t reach the compliance API.</span>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function registerCampaign(btn){
+  const msg = document.getElementById('campaignMsg');
+  msg.textContent = '';
+  const brandId = val('cBrand');
+  if(!brandId){ msg.innerHTML = '<span class="err">Select a brand first.</span>'; return; }
+  const body = {
+    action: 'campaigns.create',
+    brand_id: brandId,
+    use_case: val('cUsecase'),
+    description: val('cDesc'),
+    sample1: val('cS1'),
+    sample2: val('cS2'),
+    message_flow: val('cFlow'),
+    help_message: val('cHelp')
+  };
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Registering…';
+  try{
+    const r = await fetch('/api/admin/compliance', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(body) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(j.ok){
+      msg.innerHTML = `<span class="ok">Campaign registered</span> <span class="muted">${esc(j.campaign_id||'')} · ${esc(j.status||'submitted')}</span>`;
+      loadCompliance();
+    } else {
+      msg.innerHTML = `<span class="err">${esc(j.error||'Register failed')}</span>`;
+    }
+  }catch(e){
+    msg.innerHTML = '<span class="err">Couldn\'t reach the compliance API.</span>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
 document.getElementById('q').addEventListener('input', ()=> DATA && renderTable());
 load();
 loadSync();
+loadAgents();
+loadCompliance();
+loadLolaHealth();
+startLolaPoll();
 </script>
 </body>
 </html>

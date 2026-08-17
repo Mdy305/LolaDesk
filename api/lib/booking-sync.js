@@ -119,4 +119,71 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
   };
 }
 
-export default { SYNC_PROVIDERS, syncTenantAvailability };
+/**
+ * Read-only drift check for one tenant: compare the appointments each
+ * connected provider ACTUALLY reports right now against how many are cached
+ * in cached_availability. Unlike syncTenantAvailability this writes nothing —
+ * it's the panel's "is my cache accurate?" signal.
+ *
+ * Returns per-provider { provider, provider_count, cached_count, drift, drift_pct }
+ * where drift = provider_count - cached_count (positive = cache is behind,
+ * negative = cache has rows the provider no longer lists).
+ */
+export async function checkProviderDrift(client, tenantId, { rangeDays = 45 } = {}){
+  if(!client) return { ok: false, error: 'db_not_configured' };
+
+  let integrations = [];
+  try{ integrations = await getTenantIntegrations(tenantId); }
+  catch(e){ return { ok: false, error: `integrations unavailable: ${e?.message || e}` }; }
+
+  const targets = integrations.filter(i => SYNC_PROVIDERS.includes(i.provider));
+  if(!targets.length) return { ok: true, skipped: true, note: 'no connected booking integrations' };
+
+  const from = new Date().toISOString();
+  const to = new Date(Date.now() + rangeDays * 86400000).toISOString();
+
+  const providers = [];
+  let totalDrift = 0;
+  for(const integration of targets){
+    let providerCount = 0;
+    let error = null;
+    try{
+      const connector = getConnector(integration.provider);
+      const apps = await connector.listAppointments(integration, { from, to });
+      providerCount = apps.length;
+    }catch(e){
+      error = String(e?.message || e).slice(0, 200);
+    }
+
+    let cachedCount = 0;
+    try{
+      const { count } = await client.from('cached_availability')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId).eq('provider', integration.provider);
+      cachedCount = Number(count || 0);
+    }catch{ /* cache table may be missing pre-migration */ }
+
+    const drift = error ? null : providerCount - cachedCount;
+    if(drift !== null) totalDrift += Math.abs(drift);
+    providers.push({
+      provider: integration.provider,
+      provider_count: providerCount,
+      cached_count: cachedCount,
+      drift,
+      drift_pct: (error || cachedCount === 0) ? null
+        : Math.round(((providerCount - cachedCount) / cachedCount) * 100),
+      error
+    });
+  }
+
+  const drifted = providers.filter(p => p.drift !== null && p.drift !== 0);
+  return {
+    ok: true,
+    providers,
+    drifted: drifted.length,
+    total_drift: totalDrift,
+    accurate: drifted.length === 0
+  };
+}
+
+export default { SYNC_PROVIDERS, syncTenantAvailability, checkProviderDrift };
