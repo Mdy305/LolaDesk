@@ -2,11 +2,10 @@
  * GET /api/voices  (Authorization: Bearer <access_token>)
  * → { ok, voices:[{id,name,category}], defaultVoice, current }
  *
- * Lists the voices available on the account's ElevenLabs key so the
- * Settings page can render a REAL voice picker (the old dropdown was
- * hardcoded "warm/professional/energetic" labels that were never real
- * voice ids). `current` is this tenant's chosen voice (or null = default),
- * so the owner sees exactly which voice is live right now.
+ * Lists the voices available on the account's ElevenLabs key. Lola's
+ * voice is CANONICAL — one voice for every tenant, like Siri — so
+ * `current` is always the platform's ELEVENLABS_VOICE_ID, never a
+ * per-tenant choice. There is no voice picker.
  */
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
@@ -30,7 +29,7 @@ export default async function handler(req, res){
       ok: true,
       voices,
       defaultVoice: process.env.ELEVENLABS_VOICE_ID || null,
-      current: tenant?.voice_id || null
+      current: process.env.ELEVENLABS_VOICE_ID || null
     });
   }catch(e){
     return res.status(500).json({ ok:false, error:String(e&&e.message||e) });

@@ -58,7 +58,7 @@ function stubTelnyx(){
     const path = u.replace('https://api.telnyx.com/v2', '').split('?')[0];
     if (path === '/ai/assistants' && (opts.method || 'GET') === 'GET') {
       return json({ data: [
-        { id: 'asst-1', name: 'Lola — MMA Salon', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'Polly.Joanna-Neural' }, created_at: '2026-08-17T00:00:00Z' }
+        { id: 'asst-1', name: 'Lola — MMA Salon', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'elevenlabs:lola-canonical' }, created_at: '2026-08-17T00:00:00Z' }
       ], meta: { total: 1 } });
     }
     if (path === '/ai/assistants' && (opts.method || 'GET') === 'POST') {
@@ -109,7 +109,7 @@ test('lists assistants as a clean array with meta', async () => {
     assert.equal(Array.isArray(json.assistants), true);
     assert.equal(json.assistants.length, 1);
     assert.equal(json.assistants[0].name, 'Lola — MMA Salon');
-    assert.equal(json.assistants[0].voice_settings.voice, 'Polly.Joanna-Neural');
+    assert.equal(json.assistants[0].voice_settings.voice, 'elevenlabs:lola-canonical');
     assert.equal(json.meta.total, 1);
   }finally{ globalThis.fetch = t.realFetch; }
 });

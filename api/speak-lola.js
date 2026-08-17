@@ -1,5 +1,5 @@
 // api/speak-lola.js — Lola's canonical dashboard voice
-import { synthesize, isConfigured, registerForText } from './lib/elevenlabs.js';
+import { synthesize, isConfigured } from './lib/elevenlabs.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -28,7 +28,6 @@ export default async function handler(req, res) {
     const audio = await synthesize(text, {
       modelId: process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5',
       outputFormat: 'mp3_44100_128',
-      register: registerForText(text),
       signal: controller.signal
     });
 

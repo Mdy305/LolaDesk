@@ -70,7 +70,7 @@ function stubTelnyx(failPaths = []) {
     if (failPaths.includes(path)) return json({ errors: [{ detail: 'forbidden' }] }, 403);
 
     if (path === '/ai/assistants') return json({ data: [
-      { id: 'A1', name: 'Lola — Salon A', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'Polly.Joanna-Neural' }, created_at: '2026-08-01T00:00:00Z' }
+      { id: 'A1', name: 'Lola — Salon A', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'elevenlabs:lola-canonical' }, created_at: '2026-08-01T00:00:00Z' }
     ] });
     if (path === '/phone_numbers') return json({ data: [
       { id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: 'CONN-LOLA' },
@@ -129,7 +129,7 @@ test('reports agent attached, voice wiring, and active calls', async () => {
     assert.equal(j.agent.exists, true);
     assert.equal(j.agent.count, 1);
     assert.equal(j.agent.assistants[0].name, 'Lola — Salon A');
-    assert.equal(j.agent.assistants[0].voice, 'Polly.Joanna-Neural');
+    assert.equal(j.agent.assistants[0].voice, 'elevenlabs:lola-canonical');
     assert.equal(j.agent.error, null);
 
     // Voice connection: 2 numbers, 2 attached, 1 on Lola's connection

@@ -126,7 +126,9 @@ export function parsePinConfirm(text){
 const HINTS = 'schedule, revenue, this week, this month, rebook, overdue, cancel, move, reschedule, appointment, text my VIPs, confirm, today, tomorrow';
 
 function texml({ say, playUrl, state = null, hangup = false }){
-  const speak = playUrl ? `<Play>${escapeXml(playUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  // ONE LOLA, ONE VOICE — no Polly, ever. Fail loudly if her voice can't play.
+  if(!playUrl) throw new Error('[OPERATOR-VOICE] Lola\'s canonical voice unavailable — refusing a non-Lola fallback voice.');
+  const speak = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangup) return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Hangup/>\n</Response>`;
   const action = '/api/operator-voice' + (state ? `?state=${packState(state)}` : '');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="speech" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;
@@ -150,6 +152,7 @@ export default async function handler(req, res){
   if(!tenant){
     return xmlOut(texml({
       say: "This line is reserved for registered salon owners. Add your cell as the operator phone in your LolaDesk settings, then call me right back.",
+      playUrl: await speakCached("This line is reserved for registered salon owners. Add your cell as the operator phone in your LolaDesk settings, then call me right back."),
       hangup: true
     }));
   }
@@ -232,7 +235,7 @@ export default async function handler(req, res){
     const brain = await answerOwner(tenant, history, speech, { channel: 'voice' });
     if(brain.ok){
       await audit(speech, brain.text);
-      return xmlOut(texml({ say: brain.text }));
+      return xmlOut(texml({ say: brain.text, playUrl: await speakCached(brain.text) }));
     }
     const help = "I can read your day, pull revenue, flag who's due to rebook, move or cancel appointments, book clients, or text a segment. What do you need?";
     await audit(speech, help);

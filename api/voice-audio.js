@@ -8,8 +8,8 @@
  * Telnyx fetches it within ~1-2 seconds of receiving the TeXML.
  *
  * If the id isn't found (cold start race, wrong instance, expired),
- * we return 404 — telnyx-voice.js always has a <Say> fallback in the
- * same TeXML response so a caller never hears dead air either way.
+ * we return 404 — telnyx-voice.js refuses the turn loudly (502) rather
+ * than ever substituting a non-Lola voice.
  */
 
 import { takeAudio } from './lib/tts-cache.js';

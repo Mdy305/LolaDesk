@@ -138,7 +138,10 @@ async function createAssistant(tenant, model){
     description: `Owner-facing operator assistant for ${tenant?.name || 'a salon'}.`,
     tools: buildTools(tenant)
   };
-  if(process.env.TELNYX_VOICE_ID) body.voice_settings = { voice: process.env.TELNYX_VOICE_ID };
+  // One voice, everywhere: the owner's canonical voice (ELEVENLABS_VOICE_ID
+  // authoritative, TELNYX_VOICE_ID as a legacy alias). Never a Polly default.
+  const voice = process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOICE_ID;
+  if(voice) body.voice_settings = { voice };
 
   const r = await fetch(`${TELNYX}/ai/assistants`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
   const data = await r.json();

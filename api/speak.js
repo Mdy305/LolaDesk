@@ -13,7 +13,7 @@
  * POST { text: "..." }  →  audio/mpeg bytes (always Lola's one canonical voice)
  */
 
-import { synthesize, registerForText } from './lib/elevenlabs.js';
+import { synthesize } from './lib/elevenlabs.js';
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -27,12 +27,9 @@ export default async function handler(req, res){
     const text = (body.text||'').toString().slice(0, 2500);
     if(!text) return res.status(400).json({ error:'text required' });
 
-    // Phone calls (telnyx-voice.js) already pick warm/empathic/bright
-    // per-message based on the reply's own content — this was the one
-    // surface that never did, so dashboard chat always sounded flat
-    // regardless of what she was actually saying.
-    const register = registerForText(text);
-    const buf = await synthesize(text, { register });
+    // No register, no voice_settings — Lola speaks in the voice exactly
+    // as the owner created it (see lib/elevenlabs.js).
+    const buf = await synthesize(text);
     res.setHeader('Content-Type','audio/mpeg');
     res.setHeader('Content-Length', buf.length);
     return res.status(200).send(buf);

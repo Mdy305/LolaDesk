@@ -30,7 +30,11 @@ function authHeaders(){
 }
 
 const DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
-const DEFAULT_VOICE = process.env.TELNYX_VOICE_ID || 'Polly.Joanna-Neural';
+// Lola's ONE canonical voice — the exact voice the owner created.
+// ELEVENLABS_VOICE_ID is authoritative; TELNYX_VOICE_ID is a legacy alias.
+// Never default to a different (e.g. Polly) voice: if no canonical voice is
+// configured, provisioning must fail loudly rather than ship a modified one.
+const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOICE_ID || '';
 
 function buildAgents(tenant){
   const t = tenant || {};

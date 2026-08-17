@@ -13,7 +13,7 @@ import { db,
   updateCallByTelnyxId
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
-import { synthesize, isConfigured as elevenLabsConfigured, registerForText } from './lib/elevenlabs.js';
+import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 // tts-cache.js is now a stub — Supabase Storage logic is inline below
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
@@ -107,11 +107,12 @@ function buildHints(tenant){
 }
 
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
-  // <Play> ElevenLabs brand voice when available; <Say> Polly fallback if not.
-  // Audio URLs point to Supabase Storage CDN — no Vercel instance dependency.
-  const speakBlock = playUrl
-    ? `<Play>${escapeXml(playUrl)}</Play>`
-    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  // ONE LOLA, ONE VOICE — never a substitute. If Lola's canonical voice
+  // can't be produced, fail loudly instead of speaking in a Polly voice.
+  if(!playUrl){
+    throw new Error('[VOICE] Lola\'s canonical voice unavailable (ELEVENLABS_VOICE_ID missing or synthesis failed) — refusing a non-Lola fallback voice.');
+  }
+  const speakBlock = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -135,8 +136,8 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  // Top-level try-catch: any crash returns valid TeXML with Polly fallback
-  // so callers never hear dead air, and we get the error in Vercel logs.
+  // Top-level try-catch: any crash returns a loud 502 (never a substitute
+  // voice) so the failure is visible in Vercel logs and the Telnyx dashboard.
   try{
   const incoming = await readBody(req);
   if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
@@ -197,10 +198,11 @@ export default async function handler(req, res){
   // consistent across the platform.
   const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
 
-  async function speakCached(text, register){
+  async function speakCached(text){
     if(!elevenLabsConfigured() || !supabase) return '';
-    const reg = register || registerForText(text);
-    const key = crypto.createHash('sha1').update(`${voiceId}|${reg}|${text}`).digest('hex');
+    // Cache key is the canonical voice + text only — no register, no
+    // settings, because Lola's voice is never modified per message.
+    const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
     const storagePath = `cached/${key}.mp3`;
 
     // Check if already cached in Supabase Storage (HEAD request)
@@ -219,7 +221,7 @@ export default async function handler(req, res){
 
     // Cache miss — synthesize via ElevenLabs and upload to Supabase
     try{
-      const audio = await synthesize(text, { register: reg });
+      const audio = await synthesize(text);
       const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
         .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
       if(upErr){
@@ -342,8 +344,10 @@ export default async function handler(req, res){
       ];
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
       const state = Buffer.from(speech).toString('base64url');
-      const ackUrl = await speakCached(ack, 'warm');
-      const ackBlock = ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`;
+      const ackUrl = await speakCached(ack);
+      // Lola only — if the ack can't be synthesized in her voice, fail loudly.
+      if(!ackUrl) throw new Error('[VOICE] Ack synthesis failed — refusing a non-Lola fallback voice.');
+      const ackBlock = `<Play>${escapeXml(ackUrl)}</Play>`;
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackBlock}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
@@ -478,7 +482,7 @@ export default async function handler(req, res){
   // deterministic skill replies repeat constantly across calls — they
   // synthesize once per cache window and replay instantly (faster
   // answer, zero repeated ElevenLabs spend). Unique LLM replies simply
-  // pass through the same path. <Say> fallback preserved when empty.
+  // pass through the same path. No <Say> fallback — Lola's voice or nothing.
   if(!elevenLabsConfigured()){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
@@ -487,15 +491,18 @@ export default async function handler(req, res){
   }
   // clean for the mouth: no markdown, no newlines, spoken-length cap
   reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
-  const playUrl = await speakCached(reply, registerForText(reply));
+  const playUrl = await speakCached(reply);
 
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');
   return res.status(200).send(xml);
   }catch(handlerErr){
     console.error('[VOICE] HANDLER CRASH:', String(handlerErr?.message||handlerErr).slice(0,500), handlerErr?.stack?.slice(0,500));
-    const fallbackXml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Say voice="Polly.Joanna-Neural">Hi, this is Lola. How can I help you today?</Say>\n  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto" action="/api/telnyx-voice" method="POST"/>\n  <Redirect method="POST">/api/telnyx-voice?silence=1</Redirect>\n</Response>`;
-    res.setHeader('Content-Type', 'application/xml');
-    return res.status(200).send(fallbackXml);
+    // Fail loudly, never substitute a voice. A 502 is visible in Vercel
+    // logs and the Telnyx dashboard — misconfig becomes unmissable.
+    return res.status(502).json({
+      error: 'Lola voice unavailable — call refused rather than speaking in a substitute voice',
+      detail: String(handlerErr?.message||handlerErr).slice(0,300)
+    });
   }
 }

@@ -14,7 +14,7 @@ LolaDesk runs the full Telnyx suite. This is what powers the phone, the texting,
 
 Real callers hear Lola's actual ElevenLabs voice — the same one used in the dashboard's voice chat (`api/speak.js`) — not a generic TTS voice. `telnyx-voice.js` synthesizes each reply through ElevenLabs (`api/lib/elevenlabs.js`), caches the audio briefly (`api/lib/tts-cache.js` + `api/voice-audio.js`), and points TeXML's `<Play>` verb at that cached URL.
 
-**Requires `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`.** If either is missing, or synthesis fails on a given turn, that turn falls back to Telnyx's built-in `Polly.Joanna-Neural` voice automatically — callers never hear dead air, but you also won't get the "real Lola" experience until those env vars are set correctly. If live calls sound like a generic voice, check those two vars first.
+**Requires `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`.** There is **no fallback voice — ever**. Lola speaks only in her canonical ElevenLabs voice (`ELEVENLABS_VOICE_ID`). If either var is missing or synthesis fails on a turn, the call is refused loudly (HTTP 502, visible in Vercel logs and the Telnyx dashboard) instead of substituting a generic voice like Polly. If calls start failing, check those two vars first.
 
 This trades a small amount of latency (~0.5–1.5s per turn for ElevenLabs synthesis + fetch, vs. instant for Telnyx's built-in `<Say>`) for full brand-voice consistency. That's intentional.
 
