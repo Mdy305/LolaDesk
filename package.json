@@ -3,6 +3,7 @@
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1078.0",
     "@supabase/supabase-js": "^2.108.2",
+    "@vercel/og": "^1.0.1",
     "ws": "^8.21.0"
   },
   "scripts": {

@@ -171,6 +171,98 @@ test('cancelAppointment cancels the booking and records status history', async (
   assert.equal(cancelled.length, 1);
 });
 
+// ── external provider commit ───────────────────────────────────────
+// The fake stores integration tokens in legacy plaintext; db.js decrypt()
+// passes those through but logs a loud console.error. Silence it around the
+// calls that read integrations so the test output stays readable.
+async function quietAsync(fn){
+  const orig = console.error;
+  console.error = () => {};
+  try{ return await fn(); }finally{ console.error = orig; }
+}
+
+// Seed a connected Vagaro integration for tenant A with a legacy-plaintext token.
+function seedVagaro(){
+  fake.seed('integrations', [
+    { tenant_id: tenantA.id, provider: 'vagaro', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null }
+  ]);
+}
+
+test('bookAppointment commits to the connected provider and records the external id', async () => {
+  const { startsAt } = seedStandard();
+  seedVagaro();
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    assert.ok(String(url).includes('vagaro'), `expected vagaro call, got ${url}`);
+    assert.equal(opts.method, 'POST');
+    const body = JSON.parse(opts.body);
+    assert.equal(body.startDateTime, new Date(startsAt).toISOString());
+    return { ok: true, status: 200, json: async () => ({ appointment: { id: 'VAG-123', startDateTime: new Date(startsAt).toISOString(), duration: 60 } }) };
+  };
+
+  try{
+    const r = await quietAsync(() => brain.bookAppointment(tenantA, bookParams({ starts_at: startsAt }), { channel: 'voice' }));
+    assert.equal(r.ok, true);
+    assert.equal(r.booked, true);
+
+    const booking = fake.all('bookings')[0];
+    assert.equal(booking.external_id, 'VAG-123');
+    assert.equal(booking.external_source, 'vagaro');
+
+    const mapping = fake.all('provider_mappings').find(m => m.entity_type === 'booking');
+    assert.ok(mapping, 'provider_mapping for the booking should be recorded');
+    assert.equal(mapping.external_id, 'VAG-123');
+    assert.equal(mapping.local_id, booking.id);
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('provider 409 conflict pivots to alternatives and releases the hold', async () => {
+  const { startsAt } = seedStandard();
+  seedVagaro();
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 409, json: async () => ({ message: '409 conflict: slot already booked' }) });
+
+  try{
+    const r = await quietAsync(() => brain.bookAppointment(tenantA, bookParams({ starts_at: startsAt }), { channel: 'voice' }));
+    assert.equal(r.ok, false);
+    assert.equal(r.conflict, true);
+    assert.equal(r.needs, 'alternate_time');
+    assert.match(r.speak, /filled up|just got taken/i);
+
+    // Nothing was booked locally, and the local hold was released.
+    assert.equal(fake.all('bookings').length, 0);
+    const holds = fake.all('availability_holds');
+    assert.ok(holds.length >= 1);
+    assert.ok(holds.every(h => h.status !== 'active'), 'no hold may remain active after a 409');
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('transient provider outage keeps the booking local (caller never loses)', async () => {
+  const { startsAt } = seedStandard();
+  seedVagaro();
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('ECONNRESET'); };
+
+  try{
+    const r = await quietAsync(() => brain.bookAppointment(tenantA, bookParams({ starts_at: startsAt }), { channel: 'voice' }));
+    assert.equal(r.ok, true);
+    assert.equal(r.booked, true);
+
+    const booking = fake.all('bookings')[0];
+    assert.ok(booking.id);
+    assert.equal(booking.external_id, null);   // not committed — logged as local-only
+  }finally{
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('tenant memory is isolated per tenant', async () => {
   const { startsAt } = seedStandard();
   await brain.remember(tenantA, { key: 'vip_note', value: 'prefers Balayage with Mia' });

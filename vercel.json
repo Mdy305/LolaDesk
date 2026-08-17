@@ -12,5 +12,9 @@
     {"source":"/operations","destination":"/operations-os","permanent":false},
     {"source":"/growth","destination":"/growth-os","permanent":false}
   ],
-  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}]
+  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}],
+  "crons":[
+    {"path":"/api/cron/sync-availability","schedule":"* * * * *"},
+    {"path":"/api/cron/publish-reviews","schedule":"0 * * * *"}
+  ]
 }

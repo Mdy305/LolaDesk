@@ -48,6 +48,18 @@ export class FakeSupabase {
   constructor() {
     this.tables = new Map();
     this._seq = 0;
+    this.storage = {
+      buckets: new Map(),
+      from(bucket) {
+        return {
+          upload: async (path, data, opts) => {
+            this.buckets.set(bucket, { ...(this.buckets.get(bucket) || {}), [path]: { data, opts } });
+            return { error: null };
+          },
+          getPublicUrl: (path) => ({ data: { publicUrl: `https://fake.supabase.co/storage/v1/object/public/${bucket}/${path}` } })
+        };
+      }
+    };
     this.auth = {
       users: new Map(), // token -> user object
       signInWithOAuthCalls: [],

@@ -20,12 +20,74 @@
  * operator-db read path keeps working while tenants migrate.
  */
 
-import { db, getTenantMemory, setTenantMemory } from './db.js';
+import { db, getTenantMemory, setTenantMemory, getTenantIntegrations } from './db.js';
 import * as repo from './booking-repository.js';
 import { resolveBookingRequest } from './booking-resolver.js';
 import { getAvailability, holdAvailability } from './availability-engine-v2.js';
 import * as crm from './lola-crm.js';
+import { writeAppointment } from './aggregator.js';
 import { listBookings, enrichBookings, resolveDate, to24, moveBooking } from './operator-db.js';
+
+// Providers Lola can WRITE appointments to. boulevard (partner sandbox) and
+// shopify (retail only) deliberately excluded; google_calendar is a sync
+// target, not a booking source of truth, so committing there would duplicate.
+const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha'];
+
+// ── external commit ("bookings land on Square/Vagaro") ──────────────
+// After the LOCAL hold is taken, push the appointment to the tenant's
+// connected booking provider. Provider-specific ids are resolved through
+// provider_mappings (local -> external); where a mapping is missing we pass
+// the local id as best-effort and let the connector decide. Outcomes:
+//   { ok:true,  external:{id,provider} }  -> committed upstream
+//   { ok:false, conflict:true }           -> provider says slot taken (409)
+//   { ok:false, skipped:true }            -> no provider connected (normal)
+//   { ok:false, conflict:false }          -> transient failure (auth/network)
+const CONFLICT_RE = /(conflict|409|already (booked|taken|reserved)|(not|no longer) available|unavailable|double.?book|slot.*(taken|filled|gone)|taken|filled up)/i;
+
+async function commitToExternalProvider(tenantId, ctx){
+  let integrations = [];
+  try{ integrations = await getTenantIntegrations(tenantId); }
+  catch(e){ return { ok:false, skipped:true, error:`integrations unavailable: ${e?.message||e}` }; }
+  const targets = integrations.filter(i => BOOKING_PROVIDERS.includes(i.provider));
+  if(!targets.length) return { ok:false, skipped:true };
+  const provider = targets[0].provider;
+
+  const mapId = async (entityType, localId) => {
+    if(!localId) return null;
+    try{ const m = await repo.getProviderMapping(tenantId, provider, entityType, localId); return m?.external_id || null; }catch{ return null; }
+  };
+  const [customerId, serviceId, teamMemberId] = await Promise.all([
+    mapId('client', ctx.client?.id),
+    mapId('service', ctx.service?.id),
+    mapId('staff', ctx.staff?.id)
+  ]);
+
+  const payload = {
+    starts_at: ctx.startsAt,
+    ends_at: ctx.endsAt,
+    duration_min: ctx.durationMin,
+    customer_id: customerId || undefined,
+    client_name: ctx.client?.name || null,
+    client_phone: ctx.client?.phone || null,
+    client: { name: ctx.client?.name || null, email: ctx.client?.email || null },
+    service_id: serviceId || ctx.service?.id || undefined,
+    service: ctx.service?.name || null,
+    team_member_id: teamMemberId || ctx.staff?.id || undefined,
+    notes: ctx.notes || 'Booked by Lola (LolaDesk AI front desk)',
+    timezone: ctx.timezone || 'America/New_York',
+    price: ctx.price
+  };
+
+  try{
+    const created = await writeAppointment(integrations, payload, { provider });
+    const externalId = created?.id || created?.external_id;
+    if(!externalId) return { ok:false, skipped:true, error:'provider returned no id' };
+    return { ok:true, external:{ id: externalId, provider } };
+  }catch(e){
+    const msg = String(e?.message || e);
+    return { ok:false, conflict: CONFLICT_RE.test(msg), error: msg };
+  }
+}
 
 // ── small helpers ──────────────────────────────────────────────────
 const timeLabel = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -253,13 +315,45 @@ export async function bookAppointment(tenant, params, opts = {}){
 
     const services = await repo.listServices(tenantId);
     const svcRow = services.find(s => s.id === resolved.service.id) || resolved.service;
+
+    // ── EXTERNAL COMMIT: push to the connected booking provider ──
+    // The local hold is already taken; now the appointment must LAND on
+    // Square/Vagaro/etc. If the provider rejects it as already taken (409),
+    // release the hold and pivot to the closest openings — exactly the
+    // blueprint's conflict protocol. Any other failure (auth, network) keeps
+    // the booking local so the caller is never left unbooked; it's logged.
+    let externalRef = null;
+    const commit = await commitToExternalProvider(tenantId, {
+      client, service: svcRow, staff: selected,
+      startsAt: held.slot.starts_at, endsAt: held.slot.ends_at,
+      durationMin: held.slot.duration_minutes, notes: params.notes || null,
+      price: held.slot.price ?? svcRow.price ?? 0, timezone: held.slot.time_zone
+    }).catch(e => ({ ok:false, conflict:false, error:String(e?.message||e) }));
+
+    if(commit?.conflict){
+      await repo.releaseHold(tenantId, held.hold.hold_token, 'released');
+      await logEvent(tenantId, 'external_conflict', { provider: commit.provider || 'provider', time: held.slot.starts_at });
+      const alt = await getAvailability({ tenantId, serviceId: resolved.service.id, date: startsAt, limit: 5 }).catch(() => ({ ok:false, slots: [] }));
+      const hint = alt.ok && alt.slots.length ? ` I could do ${timeLabel(alt.slots[0].starts_at)}.` : '';
+      return { ok:false, conflict:true, needs:'alternate_time', speak:`That slot just filled up a second ago.${hint} Want me to grab the closest opening?`, alternatives: alt.slots || [] };
+    }
+    if(commit?.ok) externalRef = commit.external;
+    else if(commit && !commit.skipped) console.warn('[booking-brain] external commit failed — booking kept local:', commit.error);
+
     const booking = await repo.createCanonicalBooking({
       tenantId, clientId: client.id, serviceId: resolved.service.id, staffId: selected.id,
       startTime: held.slot.starts_at, endTime: held.slot.ends_at, status: 'confirmed',
       totalAmount: held.slot.price ?? svcRow.price ?? 0, notes: params.notes || null,
-      source: channel, conversationId, holdId: held.hold.id
+      source: channel, conversationId, holdId: held.hold.id,
+      externalId: externalRef?.id || null, externalSource: externalRef?.provider || null
     });
     await repo.releaseHold(tenantId, held.hold.hold_token, 'converted');
+    if(externalRef){
+      try{
+        await repo.upsertProviderMapping({ tenantId, provider: externalRef.provider, entityType:'booking', localId: booking.id, externalId: externalRef.id, metadata:{ starts_at: booking.start_time } });
+      }catch{}
+      await logEvent(tenantId, 'external_commit', { provider: externalRef.provider, external_id: externalRef.id });
+    }
     await writeLegacyCompat(tenantId, booking.id, { serviceName: svcRow.name || resolved.service.name, staffName: selected.name, startsAt: booking.start_time, durationMin: held.slot.duration_minutes, price: booking.total_amount });
 
     await logEvent(tenantId, 'booking_created', { booking_id: booking.id, client_id: client.id, service: svcRow.name, staff: selected.name, at: booking.start_time });

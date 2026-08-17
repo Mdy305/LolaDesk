@@ -69,18 +69,22 @@ export function priceFor(plan, interval='monthly'){
 }
 
 // Create a Checkout Session for a subscription
-export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly' }){
+export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly', areaCode }){
   const price = priceFor(plan, interval);
   if(!price) throw new Error('No Stripe price configured for plan: '+plan);
   const appUrl = process.env.APP_URL || 'https://www.loladesk.com';
+  // Both spellings are shipped so the webhook can never miss the tenant, and
+  // preferred_area_code lets checkout.session.completed auto-provision the
+  // salon's own local area-code number (defaults to 305 upstream).
+  const md = { tenantId: tenantId||'', tenant_id: tenantId||'', plan, interval, preferred_area_code: areaCode || '' };
   const payload = {
     mode: 'subscription',
     'line_items': [{ price, quantity: 1 }],
     success_url: `${appUrl}/settings?billing=success`,
     cancel_url: `${appUrl}/settings?billing=cancelled`,
     client_reference_id: tenantId || '',
-    metadata: { tenantId: tenantId||'', plan, interval },
-    subscription_data: { metadata: { tenantId: tenantId||'', plan, interval } }
+    metadata: md,
+    subscription_data: { metadata: md }
   };
   if(customerId) payload.customer = customerId;
   else if(email) payload.customer_email = email;

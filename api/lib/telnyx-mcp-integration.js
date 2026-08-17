@@ -308,6 +308,20 @@ Do NOT attempt to make raw HTTP requests. Always use MCP tools.
 }
 
 /**
+ * Pull a tool invocation out of an LLM reply: "[TOOL: lola_book_appointment {…}]".
+ * Returns { name, params } or null. Used by every voice/text transport so the
+ * LLM can call booking-brain tools conversationally.
+ */
+export function extractToolCall(text){
+  const m = String(text || '').match(/\[TOOL:\s*(\w+)\s*\{([^}]*)\}\]/);
+  if(!m) return null;
+  try{
+    const params = JSON.parse('{' + m[2] + '}');
+    return { name: m[1], params };
+  }catch{ return null; }
+}
+
+/**
  * MCP Tool Execution Handler
  * When LLM calls a tool, this intercepts and routes to the appropriate backend
  */
