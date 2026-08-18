@@ -73,7 +73,9 @@ function json(payload, status = 200) {
 // actually sent, and serves /phone_numbers for connection + from discovery.
 // The tenant's own line lives on its OWN connection (CONN-TENANT), mirroring
 // real accounts where numbers are spread across several connections.
-function stubTelnyx({ failCalls = false, numbers } = {}) {
+// `badConnections` makes /calls reject for those connection ids (the real
+// Telnyx "not a valid Call Control App" error), so fallback logic is exercised.
+function stubTelnyx({ failCalls = false, numbers, badConnections = [] } = {}) {
   const realFetch = globalThis.fetch;
   const calls = [];
   const list = numbers || [
@@ -87,8 +89,12 @@ function stubTelnyx({ failCalls = false, numbers } = {}) {
     const path = u.replace('https://api.telnyx.com/v2', '').split('?')[0];
 
     if (path === '/calls') {
-      calls.push(JSON.parse(opts.body || '{}'));
+      const body = JSON.parse(opts.body || '{}');
+      calls.push(body);
       if (failCalls) return json({ errors: [{ detail: 'invalid caller ID — number not owned' }] }, 400);
+      if (badConnections.includes(body.connection_id)) {
+        return json({ errors: [{ detail: 'The requested connection_id (Call Control App ID) is either invalid or does not exist. Only Call Control Apps with valid webhook URL are accepted.' }] }, 400);
+      }
       return json({ data: { id: 'call-1', record_type: 'call', call_control_id: 'v3:test-call-control', call_leg_id: 'leg-1' } });
     }
     if (path === '/phone_numbers') {
@@ -198,27 +204,41 @@ test('auto-discovers an owned from number when none is given', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('falls back to the platform connection (legacy upgrade) for unowned destinations', async () => {
+test('falls back to TELNYX_VOICE_APP_ID when the destination connection is rejected', async () => {
   seed();
-  process.env.TELNYX_VOICE_APP_ID = '2982432232334951429';
+  const t = stubTelnyx({ badConnections: ['CONN-TENANT'] });
+  try {
+    const { status, json: j } = await call({
+      method: 'POST', headers: { authorization: 'Bearer tok-admin' },
+      body: JSON.stringify({ to: TENANT_LINE, from: OWNED_A })
+    });
+    assert.equal(status, 200);
+    assert.equal(j.ok, true);
+    // The destination's own connection was tried and rejected → the raw
+    // TELNYX_VOICE_APP_ID (tried verbatim, no legacy rewrite) succeeded.
+    assert.equal(j.connection_id, 'CONN-LOLA');
+    assert.match(j.connection_note, /TELNYX_VOICE_APP_ID/);
+    assert.equal(t.calls.length, 2);
+    assert.equal(t.calls[0].connection_id, 'CONN-TENANT'); // tried first
+    assert.equal(t.calls[1].connection_id, 'CONN-LOLA');   // then the fallback
+  } finally { globalThis.fetch = t.realFetch; }
+});
+
+test('uses TELNYX_VOICE_APP_ID for unowned destinations', async () => {
+  seed();
   const t = stubTelnyx();
   try {
     const { json: j } = await call({
       method: 'POST', headers: { authorization: 'Bearer tok-admin' },
       body: JSON.stringify({ to: '+19999999999', from: OWNED_A })
     });
-    // Destination isn't an owned number → platform connection, with the
-    // legacy app id transparently upgraded to the live one.
-    assert.equal(j.connection_id, '2991758319724529273');
-    assert.match(j.connection_note, /not an owned number/);
-    assert.equal(t.calls[0].connection_id, '2991758319724529273');
-  } finally {
-    globalThis.fetch = t.realFetch;
-    process.env.TELNYX_VOICE_APP_ID = 'CONN-LOLA';
-  }
+    // Not an owned number → straight to the platform connection.
+    assert.equal(j.connection_id, 'CONN-LOLA');
+    assert.equal(t.calls[0].connection_id, 'CONN-LOLA');
+  } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('maps Telnyx upstream errors loudly', async () => {
+test('maps Telnyx upstream errors loudly with every connection tried', async () => {
   seed();
   const t = stubTelnyx({ failCalls: true });
   try {
@@ -226,12 +246,13 @@ test('maps Telnyx upstream errors loudly', async () => {
       method: 'POST', headers: { authorization: 'Bearer tok-admin' },
       body: JSON.stringify({ to: TENANT_LINE, from: OWNED_A })
     });
-    assert.equal(status, 400);
+    assert.equal(status, 502);
     assert.equal(j.ok, false);
     assert.match(j.error, /invalid caller ID/);
-    // the failing response still names the connection it tried
-    assert.equal(j.connection_id, 'CONN-TENANT');
-    assert.match(j.connection_note, /own connection/);
+    // the failure names every connection it tried
+    assert.match(j.tried_connections, /CONN-TENANT/);
+    assert.match(j.tried_connections, /TELNYX_VOICE_APP_ID/);
+    assert.equal(j.first_error.connection_id, 'CONN-TENANT');
   } finally { globalThis.fetch = t.realFetch; }
 });
 
@@ -263,7 +284,7 @@ test('fails cleanly when no connection can be resolved', async () => {
       body: JSON.stringify({ to: TENANT_LINE, from: OWNED_A })
     });
     assert.equal(status, 400);
-    assert.match(j.error, /no voice connection/i);
+    assert.match(j.error, /No voice connection available/i);
     assert.equal(t.calls.length, 0);
   } finally {
     globalThis.fetch = t.realFetch;

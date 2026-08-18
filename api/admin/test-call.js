@@ -31,13 +31,26 @@ import { db, e164, logUsage } from '../lib/db.js';
 import { resolveInboundTenant } from '../lib/tenant-resolver.js';
 import { telnyxData, telnyxRequest, TelnyxApiError } from '../lib/telnyx-client.js';
 
-// The connection the outbound leg originates from. Mirrors the provisioning
-// logic in telecom.js / telnyx-numbers.js / demo-call.js: the legacy app id
-// is transparently upgraded to the live connection id.
-function expectedConnectionId() {
-  const raw = process.env.TELNYX_VOICE_APP_ID;
-  if (!raw) return null;
-  return raw === '2982432232334951429' ? '2991758319724529273' : raw;
+// Candidate connections for the outbound leg, in order of preference:
+//   1. the destination number's own connection (the app that handles its
+//      inbound leg — the right one when it is a working Call Control app)
+//   2. the raw TELNYX_VOICE_APP_ID (NOT the legacy-upgraded value: this
+//      account's upgrade mapping points at a connection Telnyx rejects, while
+//      the raw id is a working Call Control app)
+//   3. any other owned number's connection (first one Telnyx accepts)
+// The first candidate Telnyx accepts wins; if none do, the first error is
+// reported with the full list so the operator can see the account state.
+function connectionCandidates({ to, ownedNumbers }) {
+  const seen = new Set();
+  const out = [];
+  const push = (id, note) => {
+    if (id && !seen.has(id)) { seen.add(id); out.push({ id, note }); }
+  };
+  const dest = (ownedNumbers || []).find(n => n.phone_number === to);
+  if (dest?.connection_id) push(dest.connection_id, `${to}'s own connection`);
+  if (process.env.TELNYX_VOICE_APP_ID) push(process.env.TELNYX_VOICE_APP_ID, 'TELNYX_VOICE_APP_ID');
+  for (const n of ownedNumbers || []) push(n.connection_id, `${n.phone_number}'s connection`);
+  return out;
 }
 
 // E.164 with sane bounds so 'abc' or a bare '+' can't slip through.
@@ -106,15 +119,6 @@ export default async function handler(req, res) {
     });
   }
 
-  const destNumber = ownedNumbers.find(n => n.phone_number === to);
-  const connectionId = destNumber?.connection_id || expectedConnectionId();
-  if (!connectionId) {
-    return res.status(400).json({ ok: false, error: 'No voice connection for the destination number and TELNYX_VOICE_APP_ID is not configured' });
-  }
-  const connectionNote = destNumber?.connection_id
-    ? `originating from ${to}'s own connection (${connectionId})`
-    : `destination is not an owned number — using platform connection ${connectionId}`;
-
   // Pick the outbound caller ID: explicit → env → first owned number that
   // isn't the destination.
   if (!from) {
@@ -130,39 +134,59 @@ export default async function handler(req, res) {
     });
   }
 
-  try {
-    const data = telnyxData(await telnyxRequest('/calls', {
-      method: 'POST',
-      body: { connection_id: connectionId, from, to, if_machine: 'continue' },
-      timeoutMs: 15000
-    }));
-    const callControlId = data?.call_control_id || data?.id || null;
+  // Try each candidate connection until Telnyx accepts one. The first error
+  // is remembered so a total failure still explains the account state.
+  const candidates = connectionCandidates({ to, ownedNumbers });
+  if (candidates.length === 0) {
+    return res.status(400).json({ ok: false, error: 'No voice connection available to originate from', to, from });
+  }
 
-    if (routing?.tenant?.id) {
-      try {
-        await logUsage(routing.tenant.id, 'test_call', 1, { to, from });
-      } catch {}
+  let firstError = null;
+  let connectionId = null;
+  let connectionNote = null;
+  let data = null;
+  for (const c of candidates) {
+    try {
+      data = telnyxData(await telnyxRequest('/calls', {
+        method: 'POST',
+        body: { connection_id: c.id, from, to, if_machine: 'continue' },
+        timeoutMs: 15000
+      }));
+      connectionId = c.id;
+      connectionNote = `originating on ${c.note} (${c.id})`;
+      break;
+    } catch (e) {
+      if (!firstError) firstError = { connection_id: c.id, note: c.note, error: String(e?.message || e) };
     }
+  }
 
-    return res.status(200).json({
-      ok: true,
-      to,
-      from,
-      connection_id: connectionId,
-      connection_note: connectionNote,
-      call_control_id: callControlId,
-      telnyx: data,
-      routing
-    });
-  } catch (e) {
-    const status = e instanceof TelnyxApiError && e.status >= 400 && e.status < 600 ? e.status : 502;
-    return res.status(status).json({
+  if (!data) {
+    const tried = candidates.map(c => `${c.note} (${c.id})`).join('; ');
+    return res.status(502).json({
       ok: false,
-      error: String(e?.message || e),
+      error: firstError?.error || 'Telnyx rejected every candidate connection',
       to,
       from,
-      connection_id: connectionId,
-      connection_note: connectionNote
+      tried_connections: tried,
+      first_error: firstError
     });
   }
+
+  const callControlId = data?.call_control_id || data?.id || null;
+  if (routing?.tenant?.id) {
+    try {
+      await logUsage(routing.tenant.id, 'test_call', 1, { to, from });
+    } catch {}
+  }
+
+  return res.status(200).json({
+    ok: true,
+    to,
+    from,
+    connection_id: connectionId,
+    connection_note: connectionNote,
+    call_control_id: callControlId,
+    telnyx: data,
+    routing
+  });
 }
