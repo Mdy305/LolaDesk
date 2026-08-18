@@ -165,6 +165,22 @@ test('degrades gracefully when a probe fails', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
+test('uses TELNYX_VOICE_APP_ID verbatim (legacy app id is NOT rewritten)', async () => {
+  seed();
+  process.env.TELNYX_VOICE_APP_ID = '2982432232334951429'; // the working app
+  const t = stubTelnyx();
+  try {
+    const { json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
+    // Live probing proved this id is the working Call Control app and the
+    // old rewrite target (2991758319724529273) is rejected by Telnyx.
+    assert.equal(j.voice.expected_connection_id, '2982432232334951429');
+    assert.equal(j.calls.connection_id, '2982432232334951429');
+  } finally {
+    globalThis.fetch = t.realFetch;
+    process.env.TELNYX_VOICE_APP_ID = 'CONN-LOLA';
+  }
+});
+
 test('reports the missing-env case for active calls', async () => {
   seed();
   delete process.env.TELNYX_VOICE_APP_ID;

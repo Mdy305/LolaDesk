@@ -25,12 +25,12 @@ import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
 import { telnyxData, telnyxRequest } from '../lib/telnyx-client.js';
 
 // The connection every tenant's number must point at for inbound calls to
-// reach Lola. Mirrors the provisioning logic in telecom.js / telnyx-numbers.js:
-// the legacy app id is transparently upgraded to the live connection id.
+// reach Lola. Mirrors the provisioning logic in telecom.js / telnyx-numbers.js.
+// Used VERBATIM: live probing proved TELNYX_VOICE_APP_ID (2982432232334951429)
+// is the working Call Control app, while the old 'legacy upgrade' target
+// (2991758319724529273) is rejected by Telnyx for call origination.
 function expectedConnectionId() {
-  const raw = process.env.TELNYX_VOICE_APP_ID;
-  if (!raw) return null;
-  return raw === '2982432232334951429' ? '2991758319724529273' : raw;
+  return process.env.TELNYX_VOICE_APP_ID || null;
 }
 
 // ── 1. Agent attached ────────────────────────────────────────────────

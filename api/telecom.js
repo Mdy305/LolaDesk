@@ -121,7 +121,9 @@ async function provisionNumber(body, tenant) {
   }));
   const item = ordered?.phone_numbers?.[0] || {};
   const phoneNumberId = item.id || item.phone_number_id || null;
-  const voiceConnectionId = body.voice_connection_id || (process.env.TELNYX_VOICE_APP_ID === '2982432232334951429' ? '2991758319724529273' : process.env.TELNYX_VOICE_APP_ID);
+    // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
+  // the old 'legacy upgrade' to 2991758319724529273 is rejected by Telnyx.
+  const voiceConnectionId = body.voice_connection_id || process.env.TELNYX_VOICE_APP_ID;
   const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
   if (phoneNumberId && voiceConnectionId) {
     await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });
