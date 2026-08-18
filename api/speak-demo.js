@@ -39,7 +39,7 @@ export default async function handler(req, res){
 
   try{
     const text = "Hi — I'm Lola, your front desk assistant. I answer calls, book appointments, and follow up with clients in your salon's voice.";
-    const buf = await synthesize(text, { outputFormat: 'mp3' });
+    const buf = await synthesize(text, { outputFormat: 'mp3_44100_128' });
 
     // upload to Supabase Storage (bucket: voice-audio)
     const path = `demo-${demo}.mp3`;
