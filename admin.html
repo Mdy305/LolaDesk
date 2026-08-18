@@ -76,6 +76,14 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   <div id="syncResult"></div>
 
   <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Widget Adoption</h2>
+    <button class="btn" onclick="loadEmbed()">Refresh</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Widget loads per salon from <code>usage_events</code> (30 days). <b>Embedded</b> = the widget is running on a foreign site — a real install. <b>First-party</b> = loladesk.com <code>/book</code> pages. <b>Snippet copies</b> = how often the embed code was copied from settings or onboarding.</p>
+  <div class="grid" id="embedKpis" style="display:none"></div>
+  <div id="embedWrap"><div class="state">Load to see which salons actually put the widget online.</div></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
     <h2 style="font-size:15px;letter-spacing:-.01em">Telnyx AI Assistants</h2>
     <button class="btn" onclick="loadAgents()">Refresh</button>
     <button class="btn" onclick="provisionLola(this)">Provision Lola</button>
@@ -239,6 +247,28 @@ function fmtTime(iso){
   if(!iso) return '—';
   try{ return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
   catch(e){ return '—'; }
+}
+
+async function loadEmbed(){
+  const kpis = document.getElementById('embedKpis');
+  const wrap = document.getElementById('embedWrap');
+  try{
+    const r = await fetch('/api/admin/embed', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    const t = j.totals || {};
+    kpis.style.display = 'grid';
+    kpis.innerHTML = [
+      ['Widget loads', t.widget_loads ?? 0], ['Embedded (real install)', t.embedded ?? 0],
+      ['Salons embedding', t.salons_embedding ?? 0], ['Snippet copies', t.snippet_copies ?? 0]
+    ].map(([l,v])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+    const rows = j.tenants || [];
+    if(!rows.length){ wrap.innerHTML = '<div class="state">No widget activity yet — it appears once salons open their booking pages or embed the widget.</div>'; return; }
+    wrap.innerHTML = '<table><thead><tr><th>Salon</th><th>Widget loads</th><th>Embedded</th><th>First-party</th><th>Embed %</th><th>Copies</th></tr></thead><tbody>' +
+      rows.map(r=>`<tr><td>${esc(r.name || r.slug || r.tenant_id)}</td><td>${r.widget_loads}</td><td style="color:var(--volt2)">${r.embedded}</td><td>${r.first_party}</td><td>${r.embed_ratio_pct}%</td><td>${r.snippet_copies}</td></tr>`).join('') +
+      '</tbody></table>';
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t load adoption.</div>'; }
 }
 
 async function loadSync(){
