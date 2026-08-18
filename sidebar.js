@@ -14,12 +14,13 @@
     clients:'<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/>',
     growth:'<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/><path d="M4 8l6-4 6 5 5-6"/>',
     revenue:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    reviews:'<path d="M12 2l2.9 6.26 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8-5.1-4.7 6.9-.8z"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };icons.settings=icons.settings.slice(0,-1);
   const items=[
     {id:'brain',label:'Lola',href:'brain-os.html'},{id:'overview',label:'Home',href:'dashboard.html'},{id:'operations',label:'Operate',href:'operations-os.html'},
     {id:'bookings',label:'Calendar',href:'bookings.html'},{id:'team',label:'Team',href:'team.html'},{id:'inbox',label:'Inbox',href:'inbox.html'},
-    {id:'clients',label:'Clients',href:'clients.html'},{id:'growth',label:'Grow',href:'growth-os.html'},{id:'revenue',label:'Revenue',href:'revenue.html'},
+    {id:'clients',label:'Clients',href:'clients.html'},{id:'growth',label:'Grow',href:'growth-os.html'},{id:'reviews',label:'Reviews',href:'reviews.html'},{id:'revenue',label:'Revenue',href:'revenue.html'},
     {id:'telecom',label:'Telecom',href:'telecom.html'},{id:'settings',label:'Settings',href:'settings.html'}
   ];
   icons.telecom='<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>';
