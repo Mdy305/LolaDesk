@@ -150,6 +150,69 @@ test('POST book — full round trip: hold → canonical booking → hold release
   assert.equal(holds.filter(h => h.status === 'active').length, 0, 'hold must be released after conversion');
 });
 
+test('booked appointment carries a confirmation code', async () => {
+  // Re-run the booking setup so the code assertions are self-contained.
+  const availReq = getReq({ action: 'availability', tenant: 'test-salon', service_id: 'svc-1', staff_id: 'st-1', date: DATE_KEY });
+  const [availRes, availOut] = makeRes();
+  await handler(availReq, availRes);
+  const slot = availOut.body.slots[0].starts_at;
+  const req = postReq({
+    tenant: 'test-salon', action: 'book', channel: 'public_web',
+    service_id: 'svc-1', staff_id: 'st-1', starts_at: slot,
+    client_name: 'Jane Doe', client_phone: '+15551234567', total_amount: 80
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, true);
+  assert.ok(out.body.booking.confirmation_code, 'booking must return a confirmation_code');
+  assert.match(out.body.booking.confirmation_code, /^[A-Z2-9]{6}$/, 'code is 6 unambiguous chars');
+});
+
+test('public cancel rejects a code/phone mismatch (no data leak)', async () => {
+  const booking = fake.all('bookings')[0];
+  const code = booking.confirmation_code;
+  const req = postReq({
+    tenant: 'test-salon', action: 'cancel', channel: 'public_widget',
+    code, client_phone: '(555) 999-9999'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, false);
+  assert.equal(out.body.error, 'code_phone_mismatch');
+  assert.equal(fake.all('bookings')[0].status, 'confirmed', 'booking must survive a failed cancel');
+});
+
+test('public cancel with the right code + phone cancels the booking', async () => {
+  const booking = fake.all('bookings')[0];
+  const code = booking.confirmation_code;
+  // Phone formats differ (formatted vs E.164) — must still match.
+  const req = postReq({
+    tenant: 'test-salon', action: 'cancel', channel: 'public_widget',
+    code, client_phone: '(555) 123-4567'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, true);
+  assert.equal(out.body.cancelled, true);
+  assert.equal(fake.all('bookings')[0].status, 'cancelled');
+  const history = fake.all('booking_status_history').filter(h => h.booking_id === booking.id);
+  assert.equal(history.length, 2, 'create + cancel history rows for this booking');
+  assert.equal(history[history.length - 1].to_status, 'cancelled');
+  assert.equal(history[history.length - 1].reason, 'client_self_service');
+});
+
+test('cancelling the same booking again is rejected', async () => {
+  const booking = fake.all('bookings')[0];
+  const req = postReq({
+    tenant: 'test-salon', action: 'cancel', channel: 'public_widget',
+    code: booking.confirmation_code, client_phone: '(555) 123-4567'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, false);
+  assert.equal(out.body.error, 'not_cancellable');
+});
+
 test('unknown tenant resolves to the demo tenant only — never real data', async () => {
   const req = getReq({ action: 'catalog', tenant: 'does-not-exist' });
   const [res, out] = makeRes();

@@ -11,6 +11,23 @@
 --
 -- SAFE TO RE-RUN: every statement is IF NOT EXISTS / ON CONFLICT guarded.
 -- Paste the whole file into Supabase → SQL Editor → New query → Run.
+--
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PRODUCTION STATUS — verified 2026-08-18 via Supabase Management API
+-- (project cfowesxlebbtyioplijt, LolaDesk, us-west-2):
+--   ALL 21 migrations below are APPLIED on production. Verified:
+--     * all 25 core tables present, incl. sync_alert_log, tenant_numbers,
+--       cached_availability, review_queue, tenant_sims, platform_config
+--     * tenants.voice_id column present
+--     * external_appointments is the canonical VIEW over cached_availability
+--     * storage bucket 'review-cards' created (public-read policy)
+--     * RLS enabled on sync_alert_log with tenant-scoped read policy
+--       sync_alert_log_read (tenant_id = auth_tenant()); writes are
+--       service-role only (deny by default)
+--   Legacy reconciliation on 2026-08-18: production held EMPTY legacy
+--   booking_sync_log (organization_id schema) and external_appointments
+--   (table) objects that blocked the 20260816_booking_sync migration.
+--   Both were dropped and recreated canonically — zero rows lost.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -465,7 +482,7 @@ create policy voice_audio_public_read on storage.objects
   for select using (bucket_id = 'voice-audio');
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  FILE: 20260705_admin_control_panel.sql
+--  FILE: 20260705_admin_control_panel.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Admin control panel storage. Run in the Supabase SQL editor.
@@ -628,7 +645,7 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS source text;
 CREATE INDEX IF NOT EXISTS idx_bookings_external_id ON bookings(external_id) WHERE external_id IS NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  FILE: 20260811_tenant_sims_isolation.sql
+--  FILE: 20260811_tenant_sims_isolation.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Fixes a real cross-tenant data leak: api/telnyx-sims.js previously
@@ -974,7 +991,7 @@ comment on column tenants.voice_id is
   'Per-tenant ElevenLabs voice id. NULL = platform default ELEVENLABS_VOICE_ID.';
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  FILE: 20260816_booking_sync.sql
+--  FILE: 20260816_booking_sync.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ============================================================================
@@ -1042,7 +1059,7 @@ create policy booking_sync_log_read on booking_sync_log
   for select using (tenant_id = auth_tenant());
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  FILE: 20260816_review_syndication.sql
+--  FILE: 20260816_review_syndication.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ============================================================================
@@ -1139,7 +1156,8 @@ alter table tenants add column if not exists texml_app_id        text;
 alter table tenants add column if not exists provisioned_at      timestamptz;
 
 -- ═══════════════════════════════════════════════════════════════════════════
---  FILE: 20260817_sync_alerts.sql
+--  FILE: 20260817_sync_alerts.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
+--  (verified: table + RLS + tenant-scoped read policy; idempotent re-run OK)
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ============================================================================
@@ -1171,3 +1189,28 @@ alter table sync_alert_log enable row level security;
 drop policy if exists sync_alert_log_read on sync_alert_log;
 create policy sync_alert_log_read on sync_alert_log
   for select using (tenant_id = auth_tenant());
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260818_booking_confirmation_codes.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ============================================================================
+-- Client self-cancel: confirmation codes on bookings (idempotent).
+--
+-- Every booking gets a short human-friendly confirmation_code so clients can
+-- cancel their own appointment online (code + phone) without an account.
+-- The code is also included in the confirmation SMS.
+-- ============================================================================
+
+alter table bookings add column if not exists confirmation_code text;
+
+-- Codes are unique where present (nullable so non-cancellable rows can be null).
+create unique index if not exists idx_bookings_confirmation_code
+  on bookings (confirmation_code) where confirmation_code is not null;
+
+-- Backfill existing confirmed/future bookings that predate this migration so
+-- their clients can self-cancel too. Deterministic enough, idempotent: only
+-- rows with a null code are touched, and each gets a random 6-char code.
+update bookings
+   set confirmation_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))
+ where confirmation_code is null
+   and status in ('confirmed', 'pending');

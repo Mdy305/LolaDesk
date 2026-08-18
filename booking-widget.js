@@ -72,6 +72,10 @@
     '.lw-orb{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,var(--accent) 55%,#7a9e00);margin:0 auto 18px}',
     '.lw-done-title{font-size:22px;font-weight:600;text-align:center;margin-bottom:8px}',
     '.lw-done-sub{color:var(--muted);font-size:14px;text-align:center;line-height:1.7}',
+    '.lw-code{background:var(--surface2);border-radius:12px;padding:12px 16px;margin:18px 0 4px;font-size:14px;color:var(--muted);text-align:center}',
+    '.lw-code b{color:var(--accent2);font-weight:600;letter-spacing:.08em}',
+    '.lw-link{display:block;margin:16px auto 0;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}',
+    '.lw-link:hover{color:var(--accent2)}',
     /* modal chrome */
     '.lw-fab{position:fixed;right:22px;bottom:22px;z-index:2147483000;background:var(--accent);color:#080809;border:none;border-radius:999px;padding:15px 22px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 8px 28px rgba(0,0,0,.5)}',
     '.lw-fab:hover{background:var(--accent2)}',
@@ -143,7 +147,8 @@
         return '<button class="lw-opt" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
           (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min</div>' : '') +
           '</span>' + (s.price != null ? '<span class="lw-price">' + money(s.price) + '</span>' : '') + '</button>';
-      }).join('') + '</div></div>'
+      }).join('') + '</div>' +
+      '<button class="lw-link" data-cancel>Cancel an appointment</button></div>'
     );
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -152,6 +157,7 @@
         else { w.staff = null; stepTime(w, catalog); }
       });
     });
+    w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepCancel(w); });
   }
 
   function stepStaff(w, catalog) {
@@ -249,16 +255,70 @@
         btn.disabled = false; btn.textContent = 'Confirm booking';
         return;
       }
+      var code = result.booking && result.booking.confirmation_code;
       w.render(
         '<div class="lw-step on" data-step="done"><div class="lw-orb"></div>' +
         '<div class="lw-done-title">You are all set!</div>' +
         '<div class="lw-done-sub">' + esc(w.service.name) + ' on ' + whenLabel(w.time) +
-        '.<br>We will text you a confirmation shortly.</div></div>'
+        '.<br>We texted your confirmation — keep the code below to cancel or change online.</div>' +
+        (code ? '<div class="lw-code">Your code: <b>' + esc(code) + '</b></div>' : '') +
+        '<button class="lw-link" data-cancel>Cancel this appointment</button></div>'
       );
+      w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepCancel(w); });
     }).catch(function (e) {
       err.textContent = e.message || 'Something went wrong.';
       btn.disabled = false; btn.textContent = 'Confirm booking';
     });
+  }
+
+  function stepCancel(w) {
+    w.render(
+      '<div class="lw-step on" data-step="cancel"><button class="lw-back" data-back>← Back</button>' +
+      '<div class="lw-label">Cancel an appointment</div>' +
+      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwCode" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
+      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwCancelPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
+      '<button class="lw-btn" id="lwCancelBtn">Cancel appointment</button><div class="lw-err"></div></div>'
+    );
+    w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (w.catalog) stepService(w, w.catalog);
+    });
+    w.host.querySelector('#lwCancelBtn').addEventListener('click', function () { doCancel(w); });
+  }
+
+  function doCancel(w) {
+    var code = w.host.querySelector('#lwCode').value.trim();
+    var phone = w.host.querySelector('#lwCancelPhone').value.trim();
+    var err = w.host.querySelector('.lw-err');
+    var btn = w.host.querySelector('#lwCancelBtn');
+    if (!code || !phone) { err.textContent = 'Enter your code and the phone you booked with.'; return; }
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Cancelling…';
+    apiPost({ action: 'cancel', channel: 'public_widget', code: code, client_phone: phone })
+      .then(function (result) {
+        if (!result.ok) {
+          var msg = result.error === 'code_not_found' ? 'No booking matches that code.' :
+            result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
+            result.error === 'appointment_passed' ? 'That appointment has already passed.' :
+            result.error === 'not_cancellable' ? 'That booking is no longer cancellable.' :
+            (result.error || 'Could not cancel.');
+          err.textContent = msg;
+          btn.disabled = false; btn.textContent = 'Cancel appointment';
+          return;
+        }
+        w.render(
+          '<div class="lw-step on" data-step="cancelled"><div class="lw-orb" style="background:radial-gradient(circle at 35% 30%,#ffd9c0,#ff7a7a 55%,#7a1e00)"></div>' +
+          '<div class="lw-done-title">Cancelled</div>' +
+          '<div class="lw-done-sub">Your appointment is cancelled. We\'ll text you to confirm.<br>' +
+          '<button class="lw-link" data-rebook>Book something else</button></div></div>'
+        );
+        w.host.querySelector('[data-rebook]').addEventListener('click', function () {
+          if (w.catalog) stepService(w, w.catalog);
+        });
+      })
+      .catch(function (e) {
+        err.textContent = e.message || 'Something went wrong.';
+        btn.disabled = false; btn.textContent = 'Cancel appointment';
+      });
   }
 
   function boot() {
@@ -304,6 +364,7 @@
     apiGet('catalog').then(function (data) {
       var c = { name: data.name || 'Book an appointment', location: data.location || '', services: data.services || [], staff: data.staff || [] };
       state.catalog = c;
+      w.catalog = c;
       w.render('<div class="lw-name">' + esc(c.name) + '</div>' +
         (c.location ? '<div class="lw-meta">' + esc(c.location) + '</div>' : '') +
         '<div class="lw-step on" data-step="service"><div class="lw-label">1 · Choose a service</div><div class="lw-opts"></div></div>');

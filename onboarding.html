@@ -60,6 +60,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .btn-p{background:var(--text);color:#080809;border:0;border-radius:13px;padding:14px 20px;font-weight:650;font-size:14px;flex:1;cursor:pointer;font-family:inherit;transition:transform .15s cubic-bezier(.22,1,.36,1),box-shadow .2s}
 .btn-p:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(246,246,247,.14)}
 .btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.embed-box{margin:0 auto 26px;max-width:440px;background:var(--surface);border:.5px solid var(--line);border-radius:16px;padding:20px}
+.embed-eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.embed-title{font-size:15px;font-weight:600;margin-bottom:6px}
+.embed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px}
+.embed-snippet{background:#0a0a0c;border:.5px solid var(--line);border-radius:10px;padding:12px 14px;font-size:11.5px;line-height:1.6;color:var(--accent2);white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.embed-actions{display:flex;gap:10px;margin-top:14px;align-items:center}
+.embed-actions .btn-p{flex:1;padding:12px 14px;font-size:13px}
+.embed-link{font-size:12.5px;color:var(--muted);text-decoration:none;white-space:nowrap}
+.embed-link:hover{color:var(--accent2)}
+.embed-note{font-size:12px;color:var(--accent2);margin-top:10px;opacity:0;transition:opacity .3s;text-align:center}
 .btn-g{background:var(--surface2);color:var(--muted);border:1px solid var(--line);border-radius:13px;padding:14px 20px;font-size:13px;cursor:pointer;font-family:inherit}
 .error{min-height:18px;margin-top:10px;color:var(--danger);font-size:12px;font-weight:550}
 .fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:12px}
@@ -205,6 +215,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
           </button>
           <div class="voice-copy"><b>Hear her again</b><small>Same voice on the phone, in texts, everywhere.</small></div>
         </div>
+        <div class="embed-box" id="embedBox" style="display:none">
+          <div class="embed-eyebrow">Put her on your website</div>
+          <div class="embed-title">Your booking widget</div>
+          <div class="embed-sub">One script tag — the same engine Lola uses on the phone. Clients see live slots and can cancel later with their confirmation code.</div>
+          <div class="embed-snippet" id="embedCode"></div>
+          <div class="embed-actions">
+            <button class="btn-p" onclick="copyEmbed()">Copy embed code</button>
+            <a class="embed-link" id="embedLink" href="#" onclick="openBookingLink(event)">Preview booking page ↗</a>
+          </div>
+          <div class="embed-note" id="embedNote"></div>
+        </div>
         <div class="actions" style="justify-content:center"><button class="btn-p" onclick="location.href='dashboard.html'">Open LolaDesk</button></div>
       </div>
     </div>
@@ -217,7 +238,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 <script src="lola-alive.js"></script>
 <script>
 const COPY=[
-  ['Meet Lola','Hear the voice<br/>that runs your salon.','One decision at a time. Thirty seconds from now, Lola will be answering your calls.'],
+  ['Meet Lola — she executes','Hear the voice<br/>that runs your salon.','Jarvis talks. Alexa answers. Lola executes. Thirty seconds from now, she\'ll be answering your calls — and booking them.'],
   ['Your business','One name.<br/>She knows the rest.','Lola learns your services, hours, and team as you go.'],
   ['Your account','Your private<br/>command center.','Every salon gets an isolated workspace. Your data is yours alone.'],
   ['Her number','A dedicated line,<br/>just for Lola.','One tap and Lola is live on it — voice and SMS wired automatically.'],
@@ -290,6 +311,7 @@ async function createAccount(){
     const d=await r.json();
     if(!d.ok&&!d.token&&!d.session)throw new Error(d.error||'Signup failed');
     S.token=d.token||d.session?.access_token||'';
+    S.slug=d.tenant?.slug||'';
     localStorage.setItem('loladesk_token',S.token);
     if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
     go(3);
@@ -367,10 +389,13 @@ async function runActivation(){
     mark('s-sms',d.messagingProfileLinked?'done':'fail',d.messagingProfileLinked?'10DLC messaging profile linked':'Set TELNYX_MESSAGING_PROFILE_ID in Vercel');
     mark('s-brain',d.lolaBrainLinked?'done':'fail',d.lolaBrainLinked?'LolaBrain connected':'Set TELNYX_LOLA_BRAIN_ID in Vercel');
     mark('s-biz','running');
-    try{await fetch('/api/onboarding/step2-ingest',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({websiteUrl:S.website||''})});}catch(e){}
+    // Only ingest when the owner actually gave us a website — an empty URL
+    // 400s server-side and only adds console noise to an otherwise clean flow.
+    if(S.website) try{await fetch('/api/onboarding/step2-ingest',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({websiteUrl:S.website})});}catch(e){}
     mark('s-biz','done','Business profile loaded');
     document.getElementById('doneNum').textContent=fmtPhone(d.phoneNumber);
     document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
+    renderEmbed();
     finishMeter();
     setTimeout(()=>{go(5);setOrb('speaking');},900);
   }catch(e){
@@ -379,6 +404,42 @@ async function runActivation(){
     document.getElementById('meterCopy').textContent='We hit a snag — try again.';
     setOrb('idle');
   }
+}
+
+// ── EMBED ON THE SUCCESS SCREEN ──────────────────────────────────
+let EMBED='';
+function renderEmbed(){
+  const box=document.getElementById('embedBox');
+  const codeEl=document.getElementById('embedCode');
+  if(!box||!codeEl||!S.slug){if(box)box.style.display='none';return;}
+  const base=location.origin||'https://www.loladesk.com';
+  EMBED='<script src="'+base+'/booking-widget.js" data-tenant="'+S.slug+'" data-accent="#ccff00" data-mode="inline"><\/script>';
+  codeEl.textContent=EMBED;
+  document.getElementById('embedLink').href=base+'/book?t='+encodeURIComponent(S.slug);
+  box.style.display='block';
+}
+function flashEmbedNote(){
+  const note=document.getElementById('embedNote');
+  note.textContent='Copied ✓ — paste it right before </body> on your site.';
+  note.style.opacity='1';
+  setTimeout(()=>{note.style.opacity='0';},2200);
+}
+function copyEmbed(){
+  const done=()=>flashEmbedNote();
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(EMBED).then(done).catch(()=>fallbackEmbed(done));}
+  else fallbackEmbed(done);
+}
+function fallbackEmbed(done){
+  const t=document.createElement('textarea');
+  t.value=EMBED;t.style.position='fixed';t.style.opacity='0';
+  document.body.appendChild(t);t.select();
+  try{document.execCommand('copy');done();}catch(e){}
+  t.remove();
+}
+function openBookingLink(e){
+  e.preventDefault();
+  const a=document.getElementById('embedLink');
+  if(a&&a.href)window.open(a.href,'_blank');
 }
 
 // Autoplay the preview once, on first visit, so the very first thing a

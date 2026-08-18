@@ -1,7 +1,17 @@
+import { randomInt } from 'node:crypto';
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 
-async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime}){
+// Short, human-friendly confirmation code for client self-cancel. 6 chars,
+// unambiguous alphabet (no 0/O/1/I/L), crypto-random.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export function makeConfirmationCode(){
+  let out = '';
+  for(let i = 0; i < 6; i++) out += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  return out;
+}
+
+async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode=null}){
   try{
     const db2 = db();
     if(!db2) return;
@@ -12,7 +22,8 @@ async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime}){
     ]);
     if(!client || !client.phone || !tenant || !tenant.phone_number) return;
     const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    const text = 'Booked at ' + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '. Reply STOP to opt out.';
+    const code = confirmationCode ? ' Your code: ' + confirmationCode + ' — use it to cancel or reschedule online.' : '';
+    const text = 'Booked at ' + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
     sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
   }catch(e){ console.warn('[repo] SMS:', e.message); }
 }
@@ -157,12 +168,13 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
     tenant_id: tenantId, client_id: clientId, service_id: serviceId, staff_id: staffId,
     location_id: locationId, start_time: startTime, end_time: endTime, status,
     total_amount: totalAmount || 0, notes, source, conversation_id: conversationId, hold_id: holdId,
-    external_id: externalId, external_source: externalSource
+    external_id: externalId, external_source: externalSource,
+    confirmation_code: makeConfirmationCode()
   };
   const { data, error } = await c.from('bookings').insert(row).select().single();
   if(error) throw error;
   await appendBookingHistory({ tenantId, bookingId:data.id, fromStatus:null, toStatus:status, source });
-  if(status==='confirmed') sendConfirmationSMS({tenantId,clientId,serviceId,startTime}).catch(()=>{});
+  if(status==='confirmed') sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode:row.confirmation_code}).catch(()=>{});
   return data;
 }
 

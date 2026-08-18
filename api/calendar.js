@@ -12,6 +12,14 @@ function jsonBody(req){
   return req.body || {};
 }
 
+// Compare phone numbers loosely: digits only, tolerate a leading US '1'.
+// '(555) 123-4567' and '+15551234567' both normalize to '5551234567'.
+function normPhone(p){
+  let d=String(p||'').replace(/\D/g,'');
+  if(d.length===11 && d[0]==='1') d=d.slice(1);
+  return d;
+}
+
 export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS');
@@ -128,6 +136,26 @@ export default async function handler(req,res){
     }
 
     if(action==='cancel'){
+      // Public self-cancel: confirmation code + phone (never booking_id, which
+      // would let anyone cancel by guessing a UUID). The code alone can't
+      // cancel — the client's phone must match the booking.
+      if(req.__publicBooking){
+        const code=String(body.code||'').trim().toUpperCase();
+        const phone=String(body.client_phone||'').trim();
+        if(!code || !phone) return res.status(200).json({ok:false,error:'code_and_phone_required'});
+        const c=db();
+        const { data: booking }=await c.from('bookings').select('*')
+          .eq('tenant_id',tenant.id).eq('confirmation_code',code).maybeSingle();
+        if(!booking) return res.status(200).json({ok:false,error:'code_not_found'});
+        if(booking.status!=='confirmed') return res.status(200).json({ok:false,error:'not_cancellable'});
+        if(new Date(booking.start_time)<=new Date()) return res.status(200).json({ok:false,error:'appointment_passed'});
+        const { data: client }=await c.from('clients').select('phone').eq('id',booking.client_id).maybeSingle();
+        if(!client || normPhone(client.phone)!==normPhone(phone)){
+          return res.status(200).json({ok:false,error:'code_phone_mismatch'});
+        }
+        const updated=await updateCanonicalBooking(tenant.id,booking.id,{status:'cancelled'},{source:'public_widget',reason:'client_self_service'});
+        return res.json({ok:!!updated,cancelled:!!updated,booking:updated});
+      }
       if(!body.booking_id) return res.status(400).json({ok:false,error:'booking_id_required'});
       const updated=await updateCanonicalBooking(tenant.id,body.booking_id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
       return res.json({ok:!!updated,cancelled:!!updated,booking:updated});
