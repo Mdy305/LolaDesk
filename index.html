@@ -6,7 +6,7 @@
 <title>LolaDesk — The AI Concierge That Runs Your Front Desk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="canonical" href="https://www.loladesk.com/">
-<meta name="description" content="Lola runs your front desk and your marketing — answers every call, text, and website chat, books the appointment, and fills your chair. 24/7. 14-day free trial.">
+<meta name="description" content="Jarvis talks. Alexa answers. Lola executes — she answers every call, books the appointment, locks the slot, and texts the confirmation. Your front desk that never sleeps. 14-day free trial.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LolaDesk">
 <meta property="og:title" content="LolaDesk — Your front desk never sleeps">
@@ -72,6 +72,10 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .voice-demo-title{font-size:clamp(24px,3.4vw,38px);font-weight:600;letter-spacing:-.02em;line-height:1.1;margin-bottom:8px}
 .voice-demo-sub{font-size:14px;color:var(--text2);margin-bottom:14px}
 .voice-demo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.position-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0 16px}
+.position-pill{font-size:12px;letter-spacing:.06em;color:var(--text3);border:0.5px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--surface)}
+.position-pill b{font-weight:600}
+.position-pill.lola{color:var(--pink2);border-color:rgba(204,255,0,.35);background:rgba(204,255,0,.06)}
 .voice-chip{background:rgba(204,255,0,.08);color:var(--text);border:1px solid rgba(204,255,0,.25);padding:11px 14px;border-radius:999px;font-size:13px}
 .voice-chip:hover{background:rgba(204,255,0,.15)}
 .voice-demo-status{font-size:12px;color:var(--text3);margin-top:10px;min-height:18px}
@@ -185,6 +189,8 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 </head>
 <body>
 
+<script src="lola-alive.js"></script>
+
 <nav class="nav" id="nav">
   <div class="nav-logo">LOLADESK</div>
   <div class="nav-actions">
@@ -196,9 +202,9 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 <header class="hero">
   <canvas class="hero-orb-canvas" id="heroOrb" width="680" height="680"></canvas>
   <div class="hero-content">
-    <div class="hero-eyebrow">Meet Lola</div>
+    <div class="hero-eyebrow">Meet Lola — she executes</div>
     <h1 class="hero-title">Your front desk<em>never sleeps.</em></h1>
-    <p class="hero-sub">Lola is the AI concierge that answers every call, books every client, and turns missed calls into revenue — 24 hours a day.</p>
+    <p class="hero-sub"><strong>Jarvis talks. Alexa answers. Lola executes.</strong> She answers every call, books every client, locks the slot, and texts the confirmation — before the call even ends.</p>
     <div class="hero-ctas">
       <a href="/start" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <a href="/login" class="btn-ghost">Talk to Lola</a>
@@ -209,9 +215,14 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 
 <section class="voice-demo" aria-label="Lola trial voice demo">
   <div class="voice-demo-card">
-    <div class="voice-demo-kicker">Lola trial demo</div>
+    <div class="voice-demo-kicker">Lola executes — hear her work</div>
     <h2 class="voice-demo-title">Hear Lola in real salon conversations</h2>
-    <p class="voice-demo-sub">Tap a scenario. Prospects hear Lola's real voice before they start trial.</p>
+    <p class="voice-demo-sub">Jarvis talks. Alexa answers. Lola executes. Tap a scenario and hear her book, recover, and sell.</p>
+    <div class="position-row">
+      <span class="position-pill">Jarvis · <b>talks</b></span>
+      <span class="position-pill">Alexa · <b>answers</b></span>
+      <span class="position-pill lola">Lola · <b>executes</b></span>
+    </div>
     <div class="voice-demo-actions">
       <button class="voice-chip" data-voice-demo="book">Play booking call</button>
       <button class="voice-chip" data-voice-demo="recover">Play missed-call recovery</button>
@@ -458,7 +469,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   <canvas class="final-orb" id="finalOrb" width="560" height="560"></canvas>
   <div class="final-content">
     <h1 class="final-title">Meet your<br><em>Lola.</em></h1>
-    <p class="final-sub">Set her up in five minutes. Watch her answer your first call today.</p>
+    <p class="final-sub">Jarvis talks. Alexa answers. Lola executes. Set her up in five minutes — watch her answer your first call today.</p>
     <a href="/start" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
   </div>
 </section>
@@ -575,29 +586,14 @@ makeOrb(document.getElementById('finalOrb'), 560);
   let currentAudio = null;
 
   async function playVoice(text){
-    if(currentAudio){
-      currentAudio.pause();
-      currentAudio = null;
-    }
+    if(currentAudio){ currentAudio.pause(); currentAudio = null; }
     if(status) status.textContent = 'Loading voice…';
-    const r = await fetch('/api/speak', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ text })
-    });
-    if(!r.ok) throw new Error('voice unavailable');
-    const bytes = await r.arrayBuffer();
-    const blob = new Blob([bytes], { type: r.headers.get('content-type') || 'audio/mpeg' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    currentAudio = audio;
-    if(status) status.textContent = 'Playing…';
-    await audio.play();
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      if(currentAudio === audio) currentAudio = null;
-      if(status) status.textContent = 'Ready to play';
-    };
+    // LolaAlive.speak() prefers her real ElevenLabs voice and falls back to
+    // the open-source browser voice — so the demo plays even in the static
+    // preview where /api/speak has no backend.
+    const s = await LolaAlive.speak(text);
+    if(status) status.textContent = s.engine === 'elevenlabs' ? 'Playing…' : "Lola's voice is warming up — tap again in a moment";
+    setTimeout(() => { if(status && s.engine === 'elevenlabs') status.textContent = 'Ready to play'; }, 8000);
   }
 
   document.querySelectorAll('[data-voice-demo]').forEach((btn) => {

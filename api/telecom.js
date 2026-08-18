@@ -121,7 +121,7 @@ async function provisionNumber(body, tenant) {
   }));
   const item = ordered?.phone_numbers?.[0] || {};
   const phoneNumberId = item.id || item.phone_number_id || null;
-    // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
+  // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
   // the old 'legacy upgrade' to 2991758319724529273 is rejected by Telnyx.
   const voiceConnectionId = body.voice_connection_id || process.env.TELNYX_VOICE_APP_ID;
   const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
@@ -233,11 +233,98 @@ async function assign10dlc(body) {
   }));
 }
 
+// ── MESSAGING PROFILES (the central object that powers SMS/MMS/WhatsApp) ──
+async function listMessagingProfiles() {
+  const profiles = telnyxData(await telnyxRequest('/messaging_profiles', { query: { 'page[size]': 100 } }));
+  return (Array.isArray(profiles) ? profiles : []).map(p => ({
+    id: p.id,
+    name: p.name,
+    webhook_url: p.webhook_url || null,
+    whitelisted_destinations: p.whitelisted_destinations || [],
+    features: Array.isArray(p.features) ? p.features : [],
+    created_at: p.created_at || null,
+    // 10DLC registration state lives on the profile
+    tcr: p.tcr_campaign_id ? { campaign_id: p.tcr_campaign_id, status: p.tcr_campaign_status || 'registered' } : null,
+    use_case: p.use_case || null
+  }));
+}
+
+async function createMessagingProfile(body) {
+  const name = required(body, 'name');
+  const webhookUrl = body.webhook_url || `${appUrl()}/api/telnyx-sms`;
+  return telnyxData(await telnyxRequest('/messaging_profiles', {
+    method: 'POST',
+    body: {
+      name,
+      webhook_url: webhookUrl,
+      webhook_failover_url: body.webhook_failover_url || webhookUrl
+    }
+  }));
+}
+
+async function assignMessagingProfile(body, tenant) {
+  const messagingProfileId = required(body, 'messaging_profile_id');
+  const phoneNumber = normalizeE164(body.phone_number || tenant.phone_number);
+  if (!phoneNumber) throw Object.assign(new Error('A valid phone_number is required — get a number first'), { status: 400 });
+  return telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
+    method: 'PATCH',
+    body: { messaging_profile_id: messagingProfileId }
+  }));
+}
+
+// ── ROUTING STATUS for one number (voice connection + messaging profile) ──
+async function numberStatus(body, tenant) {
+  const phoneNumber = normalizeE164(body.phone_number || tenant.phone_number);
+  if (!phoneNumber) throw Object.assign(new Error('No phone number on this account yet — get one first'), { status: 400 });
+  const numbers = telnyxData(await telnyxRequest('/phone_numbers', { query: { 'filter[phone_number]': phoneNumber, 'page[size]': 5 } }));
+  const record = (Array.isArray(numbers) ? numbers : []).find(n => normalizeE164(n.phone_number) === phoneNumber) || null;
+  const result = {
+    phone_number: phoneNumber,
+    phone_number_id: record?.id || null,
+    status: record?.status || null,
+    connection_id: record?.connection_id || null
+  };
+  if (record?.id) {
+    try {
+      const v = telnyxData(await telnyxRequest(`/phone_numbers/${record.id}/voice`, { timeoutMs: 8000 }));
+      result.voice = { connection_id: v?.connection_id || null };
+    } catch { result.voice = null; }
+  }
+  try {
+    const m = telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, { timeoutMs: 8000 }));
+    result.messaging = {
+      messaging_profile_id: m?.messaging_profile_id || null,
+      messaging_product: m?.messaging_product || null
+    };
+  } catch { result.messaging = null; }
+  return result;
+}
+
+// ── 10DLC / A2P compliance state (brands + campaigns) ──
+async function complianceStatus() {
+  const out = { brands: [], campaigns: [] };
+  try {
+    const brands = telnyxData(await telnyxRequest('/10dlc/brands', { query: { 'page[size]': 100 }, timeoutMs: 8000 }));
+    out.brands = (Array.isArray(brands) ? brands : []).map(b => ({ id: b.id, name: b.brand, status: b.status || 'unknown' }));
+  } catch (e) { out.brands_error = String(e.message || e); }
+  try {
+    const campaigns = telnyxData(await telnyxRequest('/10dlc/campaigns', { query: { 'page[size]': 100 }, timeoutMs: 8000 }));
+    out.campaigns = (Array.isArray(campaigns) ? campaigns : []).map(c => ({
+      id: c.id,
+      campaign_id: c.campaign_id || null,
+      status: c.status || 'unknown',
+      use_case: c.use_case || null
+    }));
+  } catch (e) { out.campaigns_error = String(e.message || e); }
+  return out;
+}
+
 const handlers = {
   capabilities: async () => capabilities(),
   'numbers.search': async ({ body }) => searchNumbers(body),
   'numbers.list': async () => listNumbers(),
   'numbers.provision': async ({ body, tenant }) => provisionNumber(body, tenant),
+  'numbers.status': async ({ body, tenant }) => numberStatus(body, tenant),
   'routing.update': async ({ body }) => updateRouting(body),
   'ports.create': async ({ body, tenant }) => createPort(body, tenant),
   'ports.list': async () => listPorts(),
@@ -246,7 +333,11 @@ const handlers = {
   'sims.activate': async ({ body }) => activateSim(body),
   'sims.enable_voice': async ({ body }) => enableSimVoice(body),
   'mobile_numbers.list': async () => listMobileNumbers(),
-  'compliance.assign_10dlc': async ({ body }) => assign10dlc(body)
+  'messaging_profiles.list': async () => listMessagingProfiles(),
+  'messaging_profiles.create': async ({ body }) => createMessagingProfile(body),
+  'messaging_profiles.assign': async ({ body, tenant }) => assignMessagingProfile(body, tenant),
+  'compliance.assign_10dlc': async ({ body }) => assign10dlc(body),
+  'compliance.status': async () => complianceStatus()
 };
 
 export default async function handler(req, res) {

@@ -276,6 +276,17 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   background:var(--accent-dim);border-color:var(--accent);color:var(--accent2);
   box-shadow:0 0 20px var(--accent-glow);
 }
+.ambient-toggle{
+  margin-top:16px;display:flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:999px;cursor:pointer;
+  background:var(--surface2);border:.5px solid var(--border2);color:var(--text3);
+  font-size:11.5px;letter-spacing:.02em;transition:.2s;
+}
+.ambient-toggle .ambient-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:.2s}
+.ambient-toggle.on{color:var(--accent2);border-color:var(--accent);background:var(--accent-dim)}
+.ambient-toggle.on .ambient-dot{background:var(--accent2);box-shadow:0 0 10px var(--accent-glow);animation:lola-pulse-dot 1.8s ease-in-out infinite}
+.ambient-toggle.muted{opacity:.55}
+@keyframes lola-pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(204,255,0,.4)}50%{box-shadow:0 0 0 6px rgba(204,255,0,0)}}
 .usage-banner{
   display:flex;align-items:center;gap:12px;
   padding:12px 16px;border-radius:var(--r-sm);margin-bottom:14px;font-size:13px;
@@ -867,6 +878,9 @@ button{cursor:pointer;border:0;background:none;color:inherit}
           <button class="lola-mic" id="orbMic" onclick="toggleVoice()" aria-label="Talk to Lola">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
           </button>
+          <button class="ambient-toggle" id="ambientToggle" onclick="toggleAmbientListening()" aria-pressed="false" aria-label="Always listening for Lola">
+            <span class="ambient-dot"></span><span id="ambientToggleLabel">Always listening for “Lola”</span>
+          </button>
           <div class="lola-suggestions" aria-label="Suggested actions">
             <button class="lola-suggestion" onclick="askLola('Find the best client to fill the next open appointment gap.')">Fill next gap</button>
             <button class="lola-suggestion" onclick="askLola('Show me the clients who need a callback today.')">Callbacks due</button>
@@ -1141,7 +1155,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         bookingUrl:tenant.booking_url || "",
         websiteUrl:tenant.website_url || "",
         googleBusinessUrl:tenant.google_business_url || "",
-        persona:{name:"Lola",voice:"Samantha"},
+        persona:{name:"Lola",voice:"lola"},  // Lola's ONE canonical voice — never a picker
         services:tenant.services || [],
         team:tenant.team || [],
         knowledge:tenant.knowledge || {}
@@ -1568,16 +1582,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
   window.playBriefing = function(){
     if(!window._briefingText) return;
+    // ONE LOLA, ONE VOICE — route through the canonical ElevenLabs speak
+    // when available; otherwise stay silent rather than use a browser TTS
+    // substitute.
     if(typeof window.speak === "function"){
       window.speak(window._briefingText);
-      return;
-    }
-    if(window.speechSynthesis){
-      const utterance = new SpeechSynthesisUtterance(window._briefingText);
-      utterance.rate = .94;
-      utterance.pitch = 1.04;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
     }
   };
 

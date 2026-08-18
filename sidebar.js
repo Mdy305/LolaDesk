@@ -20,8 +20,9 @@
     {id:'brain',label:'Lola',href:'brain-os.html'},{id:'overview',label:'Home',href:'dashboard.html'},{id:'operations',label:'Operate',href:'operations-os.html'},
     {id:'bookings',label:'Calendar',href:'bookings.html'},{id:'team',label:'Team',href:'team.html'},{id:'inbox',label:'Inbox',href:'inbox.html'},
     {id:'clients',label:'Clients',href:'clients.html'},{id:'growth',label:'Grow',href:'growth-os.html'},{id:'revenue',label:'Revenue',href:'revenue.html'},
-    {id:'settings',label:'Settings',href:'settings.html'}
+    {id:'telecom',label:'Telecom',href:'telecom.html'},{id:'settings',label:'Settings',href:'settings.html'}
   ];
+  icons.telecom='<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>';
   const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}</a>`).join('');
   const sidebar=document.createElement('aside');sidebar.className='sidebar';
   sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="location.href='brain-os.html'" style="margin:0 16px 10px;padding:12px;border:1px solid rgba(204,255,0,.25);border-radius:12px;display:flex;justify-content:space-between;color:#ccff00;background:rgba(204,255,0,.06)"><span>Talk to Lola</span><kbd style="font:11px var(--ff)">⌘ K</kbd></button><a class="nav-user" href="settings.html"><div class="nav-user-av" id="sbInitial">W</div><div class="nav-user-info"><div class="nav-user-name" id="sbBusiness">Workspace</div><div class="nav-user-role">Signed-in tenant</div></div></a>`;

@@ -24,7 +24,7 @@ const DEFAULT_TENANT = {
   persona: {
     name: 'Lola',
     energy: 'warm, intelligent, lightly playful Valley Girl confidence',
-    voice: 'Samantha'
+    voice: 'lola'  // Lola's ONE canonical voice — never a picker, never a substitute
   },
   // Services drive Lola's booking knowledge
   services: [
@@ -835,11 +835,23 @@ window.toggleAmbientListening = function(){
 // Restore the owner's last preference on page load — ambient listening
 // is opt-in (off by default for a brand-new salon) but persists once chosen.
 (function restoreAmbientPreference(){
-  if(localStorage.getItem(AMBIENT_STORAGE_KEY) === '1'){
+  // ALWAYS-ON BY DEFAULT: Lola is the owner's Jarvis — she should be
+  // listening for her name without being asked to switch it on. The
+  // first visit sets the preference; the owner can mute (tap the toggle)
+  // or fully turn it off (hold the toggle) anytime, and the choice
+  // persists across sessions.
+  const stored = localStorage.getItem(AMBIENT_STORAGE_KEY);
+  if(stored === '1' || stored === null){
+    if(stored === null){
+      try{ localStorage.setItem(AMBIENT_STORAGE_KEY, '1'); }catch{}
+      const sub = document.getElementById('orbSub');
+      const prev = sub ? sub.textContent : '';
+      if(sub) sub.textContent = 'Lola is listening for “Hey Lola” — tap the toggle to mute, hold to turn off.';
+      setTimeout(()=>{ if(sub && sub.textContent === 'Lola is listening for “Hey Lola” — tap the toggle to mute, hold to turn off.') sub.textContent = prev; }, 6000);
+    }
     ambientOn = true;
-    // Don't auto-start the mic without a user gesture — most browsers
-    // block getUserMedia/SpeechRecognition until the page has had a
-    // real click/keypress, so we arm it and start on first interaction.
+    // Browsers need a user gesture before the mic can open — arm it and
+    // start on the first interaction.
     const arm = ()=>{ startAmbientListening(); updateAmbientToggleUI(); document.removeEventListener('click', arm); };
     document.addEventListener('click', arm, { once:true });
   }
@@ -974,47 +986,19 @@ async function speak(text){
       throw playbackError;
     }
   }catch(e){
-    // Fallback: the browser's built-in voice, only if ElevenLabs is
-    // unreachable or unconfigured — keeps the dashboard from going silent.
-    console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
-    if(!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(clean);
-    window._ttsU = u;
-    u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
-    const voices = speechSynthesis.getVoices();
-    const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
-    for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
-    onStart();
-
-    // Real resonance without real audio analysis: browser TTS has no
-    // accessible waveform (unlike a real <audio> element), but it does
-    // fire onboundary at each spoken word — genuine speech timing, not
-    // a fake loop. Spike the orb's level on each word, decay smoothly
-    // between via rAF, so the orb still pulses in time with what's
-    // actually being said rather than sitting in a static "speaking" pose.
-    let fallbackLevel = 0, fallbackRaf = 0, fallbackActive = true;
-    function decayLoop(){
-      if(!fallbackActive) return;
-      fallbackLevel *= 0.88;
-      if(orb?.setLevel) orb.setLevel(fallbackLevel);
-      fallbackRaf = requestAnimationFrame(decayLoop);
-    }
-    decayLoop();
-    u.onboundary = (ev)=>{
-      if(ev.name === 'word' || ev.charIndex != null){
-        fallbackLevel = 0.55 + Math.random()*0.35;
-      }
-    };
-    const stopFallbackResonance = ()=>{
-      fallbackActive = false;
-      cancelAnimationFrame(fallbackRaf);
-      if(orb?.setLevel) orb.setLevel(0);
-    };
-    u.onend = ()=>{ stopFallbackResonance(); onEnd(); };
-    u.onerror = ()=>{ stopFallbackResonance(); onEnd(); };
-    speechSynthesis.speak(u);
+    // ONE LOLA, ONE VOICE — never a substitute. If her canonical
+    // ElevenLabs voice can't be produced, Lola stays silent (and the orb
+    // returns to its resting state) rather than speaking in a generic
+    // browser voice. A silent Lola is honest; a fake voice is not her.
+    console.error('[speak] Lola voice unavailable — staying silent (no fallback voice):', e);
+    onEnd();
   }
 }
+
+// Expose the canonical-voice speak to other scripts (e.g. dashboard's
+// playBriefing) so they route through Lola's ElevenLabs voice — never a
+// browser-TTS substitute.
+window.speak = speak;
 
 /* ─────────────────────────────────────────────────────────────
    KEYBOARD + INPUT WIRING

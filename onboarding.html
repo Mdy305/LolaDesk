@@ -32,9 +32,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .step-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.18em;margin-bottom:14px}
 .step h2{font-size:38px;letter-spacing:-.04em;line-height:1.06;font-weight:520;margin-bottom:12px}
 .sub{color:var(--muted);font-size:14px;line-height:1.75;margin-bottom:32px;max-width:460px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .field{margin-bottom:16px}
-.field.full{grid-column:1/-1}
 .field label{display:block;font-size:11px;color:var(--muted);margin:0 0 7px 1px;letter-spacing:.04em}
 .input{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:13px;padding:14px 15px;outline:none;font-size:14px;font-family:inherit;transition:.18s}
 .input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.07)}
@@ -59,15 +57,39 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .scopy b{font-size:12.5px;display:block}
 .scopy small{font-size:11px;color:var(--muted);margin-top:2px;display:block}
 .actions{display:flex;align-items:center;gap:10px;margin-top:28px}
-.btn-p{background:var(--text);color:#080809;border:0;border-radius:13px;padding:14px 20px;font-weight:650;font-size:14px;flex:1;cursor:pointer;font-family:inherit}
-.btn-p:disabled{opacity:.4;cursor:not-allowed}
+.btn-p{background:var(--text);color:#080809;border:0;border-radius:13px;padding:14px 20px;font-weight:650;font-size:14px;flex:1;cursor:pointer;font-family:inherit;transition:transform .15s cubic-bezier(.22,1,.36,1),box-shadow .2s}
+.btn-p:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(246,246,247,.14)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .btn-g{background:var(--surface2);color:var(--muted);border:1px solid var(--line);border-radius:13px;padding:14px 20px;font-size:13px;cursor:pointer;font-family:inherit}
 .error{min-height:18px;margin-top:10px;color:var(--danger);font-size:12px;font-weight:550}
 .fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:12px}
+
+/* ── Voice preview ── */
+.voice-preview{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:28px}
+.voice-btn{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 52px;transition:transform .2s}
+.voice-btn:hover{transform:scale(1.06)}
+.voice-btn.playing{animation:speak .9s ease-in-out infinite}
+@keyframes speak{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.voice-btn svg{width:20px;height:20px;color:#080809}
+.voice-copy b{font-size:14px;display:block}
+.voice-copy small{font-size:11.5px;color:var(--muted);margin-top:3px;display:block;line-height:1.5}
+
+/* ── Live-in-60 meter ── */
+.live-meter{display:flex;flex-direction:column;align-items:center;gap:10px;margin:6px 0 26px}
+.meter-ring{position:relative;width:150px;height:150px}
+.meter-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.meter-ring .track{fill:none;stroke:var(--line);stroke-width:6}
+.meter-ring .fill{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .5s cubic-bezier(.22,1,.36,1);filter:drop-shadow(0 0 6px var(--glow))}
+.meter-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.meter-num b{font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1}
+.meter-num span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:4px}
+.meter-num b.live{color:var(--accent);font-size:30px;font-weight:600;letter-spacing:.02em}
+.meter-copy{font-size:12.5px;color:var(--muted);text-align:center;max-width:400px;line-height:1.6}
+
 .done-orb{width:90px;height:90px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);margin:0 auto 18px}
 .done-wrap{text-align:center;padding:20px 0}
 .done-num{font-size:24px;font-weight:300;color:var(--accent2);letter-spacing:.05em;margin:10px 0 18px}
-@media(max-width:900px){.shell{display:block}.presence{min-height:280px;border-right:0;border-bottom:1px solid var(--line);padding:28px;position:relative}.orb-wrap{width:160px;height:160px;position:absolute;right:-10px;top:30px;opacity:.4}.workspace{padding:24px 16px}.card{padding:24px;border-radius:20px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
+@media(max-width:900px){.shell{display:block}.presence{min-height:280px;border-right:0;border-bottom:1px solid var(--line);padding:28px;position:relative}.orb-wrap{width:160px;height:160px;position:absolute;right:-10px;top:30px;opacity:.4}.workspace{padding:24px 16px}.card{padding:24px;border-radius:20px}}
 </style>
 </head>
 <body>
@@ -76,9 +98,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
   <div class="brand">LOLA<small>DESK</small></div>
   <div class="stage"><div class="orb-wrap"><canvas id="orbCanvas"></canvas></div></div>
   <div class="presence-copy">
-    <div class="eyebrow" id="presenceEyebrow">AI Front Desk OS</div>
-    <h1 id="presenceTitle">The salon AI that actually answers.</h1>
-    <p id="presenceText">Lola handles every call, books appointments, and texts clients — so your team focuses on what they do best.</p>
+    <div class="eyebrow" id="presenceEyebrow">Meet Lola — she executes</div>
+    <h1 id="presenceTitle">Hear the voice<br/>that runs your salon.</h1>
+    <p id="presenceText">Jarvis talks. Alexa answers. Lola executes. Thirty seconds from now, she'll be answering your calls — and booking them.</p>
     <div class="trust"><span>✦ Telnyx voice</span><span>✦ Real bookings</span><span>✦ 10DLC SMS</span><span>✦ Multi-tenant</span></div>
   </div>
 </div>
@@ -89,49 +111,76 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
   </div>
   <div class="card">
 
+    <!-- STEP 0 · MEET LOLA — one decision: does she sound right? -->
     <div class="step on" data-step="0">
-      <div class="step-label">Your business</div>
-      <h2>Tell Lola who she works for.</h2>
-      <p class="sub">These details appear in every call, text, and client interaction.</p>
-      <div class="grid">
-        <div class="field full"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon"/></div>
-        <div class="field"><label>Your name</label><input class="input" id="ownerName" placeholder="Meddy"/></div>
-        <div class="field"><label>City</label><input class="input" id="location" placeholder="Miami Beach, FL"/></div>
-        <div class="field"><label>Business hours</label><input class="input" id="hours" placeholder="Tue-Sat, Noon-8pm"/></div>
-        <div class="field full"><label>Website (optional)</label><input class="input" id="website" placeholder="https://yoursalon.com"/></div>
+      <div class="step-label">Meet Lola</div>
+      <h2>This is the voice<br/>your clients will hear.</h2>
+      <p class="sub">Press play. Jarvis talks, Alexa answers — Lola executes: she answers the call, locks the slot, and texts the confirmation. One voice, everywhere. One decision: is she right for you?</p>
+      <div class="voice-preview">
+        <button class="voice-btn" id="voiceBtn" onclick="playPreview()" aria-label="Play Lola's voice">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="voice-copy">
+          <b id="voiceLine">Hi, thank you for calling your salon. This is Lola — how can I help you today?</b>
+          <small id="voiceStatus">Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.</small>
+        </div>
       </div>
-      <div class="actions"><button class="btn-p" onclick="next0()">Continue</button></div>
+      <div class="actions"><button class="btn-p" onclick="go(1)">She sounds great</button></div>
       <div class="error" id="err0"></div>
     </div>
 
+    <!-- STEP 1 · NAME — one decision: what's it called? -->
     <div class="step" data-step="1">
-      <div class="step-label">Your account</div>
-      <h2>Create your workspace.</h2>
-      <p class="sub">Your account creates a private, tenant-isolated workspace. Only you can see your clients, bookings, and calls.</p>
-      <div class="field"><label>Owner email</label><input class="input" id="email" type="email" placeholder="you@yoursalon.com"/></div>
-      <div class="field"><label>Password</label><input class="input" id="password" type="password" placeholder="At least 8 characters"/></div>
-      <div class="actions"><button class="btn-g" onclick="go(0)">Back</button><button class="btn-p" id="createBtn" onclick="createAccount()">Create workspace</button></div>
+      <div class="step-label">Your business</div>
+      <h2>What's your salon<br/>called?</h2>
+      <p class="sub">That's all we need right now. Lola learns the rest as you go.</p>
+      <div class="field"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon" autocomplete="organization"/></div>
+      <div class="actions"><button class="btn-p" onclick="next1()">Continue</button></div>
       <div class="error" id="err1"></div>
-      <div class="fine">14-day free trial. No credit card required.</div>
     </div>
 
+    <!-- STEP 2 · ACCOUNT — one decision: create the workspace -->
     <div class="step" data-step="2">
-      <div class="step-label">Lola's phone number</div>
-      <h2>Pick a number for Lola.</h2>
-      <p class="sub">Clients call this number. Lola answers every call, books appointments, and sends confirmation texts automatically.</p>
-      <div class="num-search">
-        <input class="input" id="areaCode" placeholder="Area code (e.g. 305)" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')"/>
-        <button onclick="searchNums()">Search</button>
-      </div>
-      <div class="num-grid" id="numGrid"><div style="color:var(--muted);font-size:13px;padding:12px 0">Enter an area code and tap Search, or leave blank for any US number.</div></div>
-      <div class="actions"><button class="btn-g" onclick="go(1)">Back</button><button class="btn-p" onclick="provisionNum()">Get this number</button></div>
+      <div class="step-label">Your account</div>
+      <h2>Create your<br/>workspace.</h2>
+      <p class="sub">A private, tenant-isolated workspace. Only you can see your clients, bookings, and calls.</p>
+      <div class="field"><label>Owner email</label><input class="input" id="email" type="email" placeholder="you@yoursalon.com" autocomplete="email"/></div>
+      <div class="field"><label>Password</label><input class="input" id="password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/></div>
+      <div class="actions"><button class="btn-p" id="createBtn" onclick="createAccount()">Create workspace</button></div>
       <div class="error" id="err2"></div>
+      <div class="fine">14-day free trial. No credit card required. Cancel anytime.</div>
     </div>
 
+    <!-- STEP 3 · NUMBER — one decision: give Lola her line -->
     <div class="step" data-step="3">
+      <div class="step-label">Lola's phone number</div>
+      <h2>Give Lola<br/>her number.</h2>
+      <p class="sub">One tap. We pick the best local number in your area code and Lola is live on it — voice and SMS wired automatically.</p>
+      <div class="num-search">
+        <input class="input" id="areaCode" placeholder="Area code (e.g. 305) — optional" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')"/>
+        <button onclick="searchNums()">Browse</button>
+      </div>
+      <div class="num-grid" id="numGrid" style="display:none"><div style="color:var(--muted);font-size:13px;padding:12px 0">Choose one, or just auto-pick below.</div></div>
+      <div class="actions"><button class="btn-p" onclick="provisionNum()">Give Lola her number</button></div>
+      <div class="error" id="err3"></div>
+      <div class="fine">Auto-picks the best available local number in your area code. Keep it forever — it's yours.</div>
+    </div>
+
+    <!-- STEP 4 · LIVE IN 60 — the meter -->
+    <div class="step" data-step="4">
       <div class="step-label">Activation</div>
-      <h2>Setting Lola up.</h2>
-      <p class="sub">Each step below is a real Telnyx operation. Nothing is marked complete until confirmed.</p>
+      <h2>Live in 60 seconds.</h2>
+      <p class="sub">Every step below is a real Telnyx operation. Nothing is marked done until it actually is.</p>
+      <div class="live-meter">
+        <div class="meter-ring">
+          <svg viewBox="0 0 150 150">
+            <circle class="track" cx="75" cy="75" r="66"/>
+            <circle class="fill" id="meterFill" cx="75" cy="75" r="66"/>
+          </svg>
+          <div class="meter-num"><b id="meterNum">60</b><span>seconds</span></div>
+        </div>
+        <div class="meter-copy" id="meterCopy">Wiring your number, voice, SMS, and brain. Don't go anywhere.</div>
+      </div>
       <div class="status">
         <div class="srow" id="s-num"><span class="dot"></span><div class="scopy"><b>Purchasing your Lola number</b><small>Buying and linking the number to LolaDesk</small></div></div>
         <div class="srow" id="s-voice"><span class="dot"></span><div class="scopy"><b>Wiring voice</b><small>Connecting to Lola's voice webhook</small></div></div>
@@ -139,16 +188,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <div class="srow" id="s-brain"><span class="dot"></span><div class="scopy"><b>Connecting LolaBrain</b><small>Wiring AI assistant to your number</small></div></div>
         <div class="srow" id="s-biz"><span class="dot"></span><div class="scopy"><b>Loading business profile</b><small>Feeding Lola your services, hours, and team</small></div></div>
       </div>
-      <div class="error" id="err3"></div>
+      <div class="error" id="err4"></div>
     </div>
 
-    <div class="step" data-step="4">
+    <!-- STEP 5 · LIVE -->
+    <div class="step" data-step="5">
       <div class="done-wrap">
         <div class="done-orb"></div>
         <div class="step-label">Lola is live</div>
         <h2>She is ready.</h2>
         <div class="done-num" id="doneNum"></div>
         <p id="doneCopy" style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:28px">Call that number right now. Lola will answer, know your salon, and can book appointments.</p>
+        <div class="voice-preview" style="margin:0 auto 26px;max-width:440px">
+          <button class="voice-btn" id="doneVoiceBtn" onclick="playDone()" aria-label="Hear Lola again">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="voice-copy"><b>Hear her again</b><small>Same voice on the phone, in texts, everywhere.</small></div>
+        </div>
         <div class="actions" style="justify-content:center"><button class="btn-p" onclick="location.href='dashboard.html'">Open LolaDesk</button></div>
       </div>
     </div>
@@ -158,18 +214,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 </div>
 
 <script src="lola-orb.js"></script>
+<script src="lola-alive.js"></script>
 <script>
 const COPY=[
-  ['Business identity','The salon AI<br/>that actually<br/>answers.','Lola handles every call, books appointments, and texts clients automatically.'],
-  ['Secure workspace','Your private<br/>command center.','Every salon gets an isolated workspace. Your data is yours alone.'],
-  ['Your Lola number','A dedicated line,<br/>just for Lola.','Clients call this number. Lola answers every time.'],
-  ['Activation','Wiring everything<br/>together.','Each step is a real Telnyx operation.'],
+  ['Meet Lola','Hear the voice<br/>that runs your salon.','One decision at a time. Thirty seconds from now, Lola will be answering your calls.'],
+  ['Your business','One name.<br/>She knows the rest.','Lola learns your services, hours, and team as you go.'],
+  ['Your account','Your private<br/>command center.','Every salon gets an isolated workspace. Your data is yours alone.'],
+  ['Her number','A dedicated line,<br/>just for Lola.','One tap and Lola is live on it — voice and SMS wired automatically.'],
+  ['Activation','Live in<br/>60 seconds.','Every step is a real Telnyx operation.'],
   ['Ready','Call her<br/>right now.','Your salon AI is live.']
 ];
 let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
-// Honor the plan the visitor chose on the pricing page (/start?plan=pro&billing=monthly).
-// The wizard used to hardcode 'starter', silently downgrading every paid signup
-// at the top of the funnel — a direct revenue leak.
 const Q=new URLSearchParams(location.search);
 S.plan=['starter','pro','medspa'].includes(Q.get('plan'))?Q.get('plan'):'starter';
 S.billing=Q.get('billing')==='annual'?'annual':'monthly';
@@ -177,7 +232,7 @@ try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
 let orb;
 try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120});orb.setState('idle');}}catch(e){}
 function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
-function renderProgress(){document.getElementById('progress').innerHTML=[0,1,2,3,4].map((_,i)=>'<i class="'+(i<=S.step?'on':'')+'"></i>').join('');}
+function renderProgress(){document.getElementById('progress').innerHTML=[0,1,2,3,4,5].map((_,i)=>'<i class="'+(i<=S.step?'on':'')+'"></i>').join('');}
 function go(n){
   S.step=n;
   document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on',Number(s.dataset.step)===n));
@@ -186,40 +241,67 @@ function go(n){
   document.getElementById('presenceTitle').innerHTML=c[1];
   document.getElementById('presenceText').textContent=c[2];
   renderProgress();
-  setOrb(n===3?'thinking':n===4?'speaking':'idle');
+  setOrb(n===4?'thinking':n===5?'speaking':'idle');
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function v(id){return(document.getElementById(id)||{}).value||'';}
-function fmtPhone(n){return n.replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3')||n;}
+function fmtPhone(n){return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3')||n;}
 
-function next0(){
-  const err=document.getElementById('err0');
-  if(!v('salonName').trim()){err.textContent='Please enter your salon name.';return;}
-  S.salonName=v('salonName').trim();S.ownerName=v('ownerName').trim();S.location=v('location').trim();S.hours=v('hours').trim();S.website=v('website').trim();
-  err.textContent='';go(1);
+// ── VOICE PREVIEW ────────────────────────────────────────────────
+let audioEl=null;
+async function playPreview(){
+  const btn=document.getElementById('voiceBtn');
+  const status=document.getElementById('voiceStatus');
+  btn.classList.add('playing');status.textContent='Lola is speaking…';
+  setOrb('speaking');
+  // LolaAlive.speak() speaks ONLY in her official ElevenLabs voice (no
+  // fake voice). In the preview, /api/speak-lola is proxied to the live
+  // deployment so this still plays the real Lola.
+  const s=await LolaAlive.speak(document.getElementById('voiceLine').textContent);
+  if(audioEl)audioEl.pause();
+  const done=()=>{btn.classList.remove('playing');status.textContent='Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.';setOrb('idle');};
+  status.textContent = s.engine==='elevenlabs' ? 'Lola is speaking…' : "Lola's voice is warming up — tap again in a moment";
+  if(s.engine==='elevenlabs') setTimeout(done, 9000); else { btn.classList.remove('playing'); setOrb('idle'); }
+}
+async function playDone(){
+  const btn=document.getElementById('doneVoiceBtn');
+  btn.classList.add('playing');setOrb('speaking');
+  await LolaAlive.speak('Hi, this is Lola from '+S.salonName+'. I will answer every call, book every appointment, and text every client. Call me anytime.');
+  setTimeout(()=>{btn.classList.remove('playing');setOrb('speaking');},6000);
 }
 
+// ── STEP 1 · NAME ────────────────────────────────────────────────
+function next1(){
+  const err=document.getElementById('err1');
+  if(!v('salonName').trim()){err.textContent='Please enter your salon name.';return;}
+  S.salonName=v('salonName').trim();
+  err.textContent='';go(2);
+}
+
+// ── STEP 2 · ACCOUNT ─────────────────────────────────────────────
 async function createAccount(){
-  const err=document.getElementById('err1'),btn=document.getElementById('createBtn');
+  const err=document.getElementById('err2'),btn=document.getElementById('createBtn');
   const email=v('email').trim(),password=v('password');
   if(!/\S+@\S+\.\S+/.test(email)){err.textContent='Enter a valid email.';return;}
   if(password.length<8){err.textContent='Password must be at least 8 characters.';return;}
-  err.textContent='';btn.disabled=true;btn.textContent='Creating...';
+  err.textContent='';btn.disabled=true;btn.textContent='Creating…';
   try{
-    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.ownerName||S.salonName,salonName:S.salonName,location:S.location,hours:S.hours,websiteUrl:S.website,plan:S.plan})});
+    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
     const d=await r.json();
     if(!d.ok&&!d.token&&!d.session)throw new Error(d.error||'Signup failed');
     S.token=d.token||d.session?.access_token||'';
     localStorage.setItem('loladesk_token',S.token);
     if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
-    go(2);searchNums();
+    go(3);
   }catch(e){err.textContent=e.message||'Something went wrong.';btn.disabled=false;btn.textContent='Create workspace';}
 }
 
+// ── STEP 3 · NUMBER ──────────────────────────────────────────────
 async function searchNums(){
   const areaCode=v('areaCode').trim();
   const grid=document.getElementById('numGrid');
-  grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Searching...</div>';
+  grid.style.display='block';
+  grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Searching…</div>';
   try{
     const url='/api/provision-number'+(areaCode?'?areaCode='+areaCode:'');
     const r=await fetch(url,{headers:{Authorization:'Bearer '+S.token}});
@@ -229,22 +311,51 @@ async function searchNums(){
     grid.innerHTML=d.numbers.slice(0,6).map(n=>'<div class="num-card'+(n.phone_number===S.selectedNumber?' on':'')+'" onclick="selNum(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+'</div><div class="num-meta">'+(n.region||'United States')+'</div></div><div class="num-price">'+(n.monthly_cost||'~$2/mo')+'</div></div>').join('');
   }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
 }
-
 function selNum(num,el){S.selectedNumber=num;document.querySelectorAll('.num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');}
 
 async function provisionNum(){
-  const err=document.getElementById('err2');
-  if(!S.selectedNumber){err.textContent='Please select a number.';return;}
-  err.textContent='';go(3);setOrb('thinking');
+  const err=document.getElementById('err3');
+  err.textContent='';
+  go(4);setOrb('thinking');startMeter();
   await runActivation();
 }
 
+// ── LIVE-IN-60 METER ─────────────────────────────────────────────
+const METER_TOTAL=60;
+const RING_C=2*Math.PI*66;
+let meterTimer=null,meterLeft=METER_TOTAL,meterDone=false;
+function startMeter(){
+  meterLeft=METER_TOTAL;meterDone=false;
+  const fill=document.getElementById('meterFill');
+  fill.style.strokeDasharray=RING_C;
+  fill.style.strokeDashoffset=0;
+  document.getElementById('meterNum').textContent='60';
+  document.getElementById('meterNum').classList.remove('live');
+  document.getElementById('meterCopy').textContent='Wiring your number, voice, SMS, and brain. Don\'t go anywhere.';
+  clearInterval(meterTimer);
+  meterTimer=setInterval(()=>{
+    if(meterDone)return;
+    meterLeft=Math.max(0,meterLeft-1);
+    document.getElementById('meterNum').textContent=String(meterLeft);
+    const frac=meterLeft/METER_TOTAL;
+    document.getElementById('meterFill').style.strokeDashoffset=RING_C*(1-frac);
+    if(meterLeft===0)finishMeter();
+  },1000);
+}
+function finishMeter(){
+  meterDone=true;clearInterval(meterTimer);
+  const num=document.getElementById('meterNum');
+  num.textContent='LIVE';num.classList.add('live');
+  document.getElementById('meterCopy').textContent='She\'s live. Number, voice, SMS, and brain all wired.';
+  setOrb('speaking');
+}
 function mark(id,state,detail){
   const row=document.getElementById(id);if(!row)return;
   row.className='srow '+state;
   if(detail)row.querySelector('small').textContent=detail;
 }
 
+// ── ACTIVATION ───────────────────────────────────────────────────
 async function runActivation(){
   try{
     mark('s-num','running');
@@ -260,9 +371,23 @@ async function runActivation(){
     mark('s-biz','done','Business profile loaded');
     document.getElementById('doneNum').textContent=fmtPhone(d.phoneNumber);
     document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
-    setTimeout(()=>{go(4);setOrb('speaking');},1200);
-  }catch(e){document.getElementById('err3').textContent=e.message||'Activation failed.';setOrb('idle');}
+    finishMeter();
+    setTimeout(()=>{go(5);setOrb('speaking');},900);
+  }catch(e){
+    clearInterval(meterTimer);
+    document.getElementById('err4').textContent=e.message||'Activation failed.';
+    document.getElementById('meterCopy').textContent='We hit a snag — try again.';
+    setOrb('idle');
+  }
 }
+
+// Autoplay the preview once, on first visit, so the very first thing a
+// visitor hears is Lola — the product is the voice.
+try{
+  if(!sessionStorage.getItem('lola_heard')){
+    setTimeout(()=>{sessionStorage.setItem('lola_heard','1');playPreview();},600);
+  }
+}catch(e){}
 
 go(0);renderProgress();
 </script>
