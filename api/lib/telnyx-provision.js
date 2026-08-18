@@ -146,8 +146,9 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
         provisioned_at: new Date().toISOString(),
         booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
       }).eq('id', tenant.id);
+      // PostgrestBuilder is only PromiseLike (.then) — never .catch on the chain.
       await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
-        .eq('tenant_id', tenant.id).maybeSingle().catch(() => {});
+        .eq('tenant_id', tenant.id).maybeSingle().then(() => {}).catch(() => {});
       await upsertTenantNumber(tenant.id, phoneNumber, { kind: 'primary', connectionId: texmlAppId || null, status: 'active' });
       invalidateRouting(phoneNumber);
     }
