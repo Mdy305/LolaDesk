@@ -22,11 +22,18 @@ export default async function handler(req, res){
   if(!c) return res.status(500).json({ error: 'Supabase not configured' });
 
   try{
-    // check if file exists and return public url
-    const path = `voice-audio/${demo}-hero.mp3`;
-    const { data: getPublic } = c.storage.from('voice-audio').getPublicUrl(path);
-    if(getPublic?.publicUrl){
-      return res.status(200).json({ url: getPublic.publicUrl });
+    // Only return the public URL if the object ACTUALLY exists — getPublicUrl
+    // just builds a URL string and does not verify the object, so a missing
+    // file would hand the caller a 404 link. download() is the real check.
+    // The bucket IS `voice-audio`, so the key is just `demo-hero.mp3` — no
+    // bucket-name prefix (that would double it to `voice-audio/voice-audio/…`).
+    const path = `demo-${demo}.mp3`;
+    const { data, error } = await c.storage.from('voice-audio').download(path);
+    if(!error && data){
+      const { data: getPublic } = c.storage.from('voice-audio').getPublicUrl(path);
+      if(getPublic?.publicUrl){
+        return res.status(200).json({ url: getPublic.publicUrl });
+      }
     }
   }catch(e){ /* continue to synthesize */ }
 
@@ -35,7 +42,7 @@ export default async function handler(req, res){
     const buf = await synthesize(text, { outputFormat: 'mp3' });
 
     // upload to Supabase Storage (bucket: voice-audio)
-    const path = `voice-audio/${demo}-hero.mp3`;
+    const path = `demo-${demo}.mp3`;
     const { error: uploadErr } = await c.storage.from('voice-audio').upload(path, buf, { contentType: 'audio/mpeg', upsert: true });
     if(uploadErr) {
       // If upload fails, fall back to returning bytes directly

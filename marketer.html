@@ -562,37 +562,6 @@ function renderControlPlane(data){
   }).join('');
 }
 
-function controlStatus(el, text, tone){
-  if(!el) return;
-  el.textContent = text || '';
-  el.style.color = tone === 'ok' ? 'var(--text)' : tone === 'bad' ? '#ff5a4d' : 'var(--text3)';
-}
-
-async function dispatchAgent(agentId, task, statusId){
-  const statusEl = document.getElementById(statusId);
-  controlStatus(statusEl, 'Dispatching…');
-  try{
-    const r = await fetch('/api/orchestrator', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        route_to: agentId,
-        task,
-        tenant: { slug: 'demo' }
-      })
-    });
-    const d = await r.json();
-    if(!d.ok){
-      controlStatus(statusEl, d.error || 'Dispatch failed', 'bad');
-      return;
-    }
-    const routed = d.routed?.agent?.name || agentId;
-    controlStatus(statusEl, `Delegated to ${routed}.`, 'ok');
-  }catch(e){
-    controlStatus(statusEl, e.message || 'Dispatch error', 'bad');
-  }
-}
-
 (function initControlPlaneHash(){
   if(location.hash === '#control'){
     switchTab(null, 'control');
