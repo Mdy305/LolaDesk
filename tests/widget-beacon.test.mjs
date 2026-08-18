@@ -39,7 +39,10 @@ process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
 
 const handler = (await import('../api/widget-beacon.js')).default;
-fake.seed('tenants', [{ id: 't1', slug: 'test-salon', name: 'Test Salon' }]);
+fake.seed('tenants', [
+  { id: 't1', slug: 'test-salon', name: 'Test Salon' },
+  { id: 't2', slug: 'dedupe-salon', name: 'Dedupe Salon' }
+]);
 fake.seed('usage_events', []);
 
 function makeRes() {
@@ -73,6 +76,30 @@ test('embed_copied POST from the settings page logs the snippet kind', async () 
   assert.equal(rows[1].kind, 'embed_copied');
   assert.equal(rows[1].metadata.snippet, 'embedInline');
   assert.equal(rows[1].metadata.source, 'settings');
+});
+
+test('widget_load dedupes to one row per tenant per UTC day', async () => {
+  const before = fake.all('usage_events').length;
+  const [res, out] = makeRes();
+  await handler({ method: 'GET', query: { tenant: 'dedupe-salon', kind: 'widget_load', origin: 'https://client-site.com/a', host: 'client-site.com' }, headers: {}, body: undefined }, res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.ok, true);
+  assert.equal(fake.all('usage_events').length, before + 1, 'first load writes a row');
+  const [res2, out2] = makeRes();
+  await handler({ method: 'GET', query: { tenant: 'dedupe-salon', kind: 'widget_load', origin: 'https://client-site.com/b', host: 'client-site.com' }, headers: {}, body: undefined }, res2);
+  assert.equal(out2.code, 200);
+  assert.equal(out2.body.deduped, true, 'second load the same day must be deduped');
+  assert.equal(fake.all('usage_events').length, before + 1, 'only one widget_load row per day');
+});
+
+test('embed_copied is NOT deduped — every copy is a distinct action', async () => {
+  const before = fake.all('usage_events').length;
+  for (let i = 0; i < 3; i++) {
+    const [res, out] = makeRes();
+    await handler({ method: 'POST', query: {}, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tenant: 'test-salon', kind: 'embed_copied', snippet: 'embedInline' }) }, res);
+    assert.equal(out.body.ok, true);
+  }
+  assert.equal(fake.all('usage_events').length, before + 3, 'copies stay one row each');
 });
 
 test('unknown tenant is silent — the demo fallback is never logged', async () => {
