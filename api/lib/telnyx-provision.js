@@ -46,14 +46,38 @@ export async function searchNumbers(areaCode, { limit = 10 } = {}){
 
 export async function getOrCreateTexmlApp(){
   const webhookUrl = appUrl() + '/api/telnyx-voice';
+  // TeXML applications carry the name as `friendly_name` (and the webhook as
+  // `webhook_url` or `voice_url` depending on API version) — never `name`.
+  // Match on all three so a pre-existing app is reused instead of colliding.
+  const matches = (a) => a?.friendly_name === 'LolaDesk' || a?.webhook_url === webhookUrl || a?.voice_url === webhookUrl;
   const list = await tFetch('/texml_applications?page[size]=20').catch(() => ({ data: [] }));
-  const ex = (list?.data || []).find(a => a?.webhook_url === webhookUrl || a?.name === 'LolaDesk');
+  const ex = (list?.data || []).find(matches);
   if(ex) return ex;
-  const j = await tFetch('/texml_applications', {
-    method: 'POST',
-    body: JSON.stringify({ friendly_name: 'LolaDesk', webhook_url: webhookUrl, webhook_api_version: '2', inbound: { channel_limit: 10 }, outbound: { channel_limit: 10 } })
-  });
-  return j?.data || {};
+  try{
+    const j = await tFetch('/texml_applications', {
+      method: 'POST',
+      body: JSON.stringify({ friendly_name: 'LolaDesk', webhook_url: webhookUrl, webhook_api_version: '2', inbound: { channel_limit: 10 }, outbound: { channel_limit: 10 } })
+    });
+    return j?.data || {};
+  }catch(e){
+    // Name collision — a stale 'LolaDesk' app exists with a different webhook
+    // (created before the friendly_name fix). Adopt it instead of failing
+    // provisioning, and repoint its webhook so calls route to the voice line.
+    if(/already in use|conflict|duplicate/i.test(String(e?.message || e))){
+      const retry = await tFetch('/texml_applications?page[size]=20').catch(() => ({ data: [] }));
+      const adopt = (retry?.data || []).find(a => a?.friendly_name === 'LolaDesk');
+      if(adopt){
+        try{
+          await tFetch('/texml_applications/' + adopt.id, {
+            method: 'PATCH',
+            body: JSON.stringify({ webhook_url: webhookUrl, webhook_api_version: '2' })
+          });
+        }catch(patchErr){ console.warn('[PROVISION] adopted app webhook update:', patchErr.message); }
+        return adopt;
+      }
+    }
+    throw e;
+  }
 }
 
 export async function purchaseNumber(phoneNumber, texmlAppId){
