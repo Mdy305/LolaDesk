@@ -156,6 +156,13 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     const status = e instanceof TelnyxApiError && e.status >= 400 && e.status < 600 ? e.status : 502;
-    return res.status(status).json({ ok: false, error: String(e?.message || e), to, from });
+    return res.status(status).json({
+      ok: false,
+      error: String(e?.message || e),
+      to,
+      from,
+      connection_id: connectionId,
+      connection_note: connectionNote
+    });
   }
 }

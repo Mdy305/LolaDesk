@@ -229,6 +229,9 @@ test('maps Telnyx upstream errors loudly', async () => {
     assert.equal(status, 400);
     assert.equal(j.ok, false);
     assert.match(j.error, /invalid caller ID/);
+    // the failing response still names the connection it tried
+    assert.equal(j.connection_id, 'CONN-TENANT');
+    assert.match(j.connection_note, /own connection/);
   } finally { globalThis.fetch = t.realFetch; }
 });
 
