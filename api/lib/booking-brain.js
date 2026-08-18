@@ -32,7 +32,7 @@ import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js'
 // Providers Lola can WRITE appointments to. boulevard (partner sandbox) and
 // shopify (retail only) deliberately excluded; google_calendar is a sync
 // target, not a booking source of truth, so committing there would duplicate.
-const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha'];
+const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha', 'booksy'];
 
 // ── external commit ("bookings land on Square/Vagaro") ──────────────
 // After the LOCAL hold is taken, push the appointment to the tenant's

@@ -16,7 +16,7 @@ import { getConnector } from './aggregator.js';
 
 // The six sync targets. shopify is retail-only (no appointments API), so it
 // is deliberately not polled.
-export const SYNC_PROVIDERS = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'google_calendar'];
+export const SYNC_PROVIDERS = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'booksy', 'google_calendar'];
 
 function normStatus(status){
   const s = String(status || '').toLowerCase();

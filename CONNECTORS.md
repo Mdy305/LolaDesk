@@ -90,8 +90,9 @@ Every connector maps its provider's API to this exact shape — this is what
    node tests/connector-contract.test.mjs
    ```
 
-   Green means it conforms. Add provider-specific mocked-fetch tests next to
-   `tests/booking-sync.test.mjs` to pin its normalized mapping.
+   Green means it conforms. Then pin your provider's normalized mapping with
+   a mocked-fetch test in `tests/connector-contract.test.mjs` (Square and
+   Vagaro are already pinned there — copy those tests).
 
 ### Connect flow (OAuth)
 
@@ -112,6 +113,7 @@ The platform's connect screen uses the same contract:
 | Vagaro | available | |
 | Mindbody | available | |
 | Fresha | available | |
+| Booksy | beta | Partner-gated — RSA JWT-assertion auth (no browser OAuth); `getAuthUrl()` throws a descriptive error |
 | Google Calendar | available | |
 | Boulevard | pending_partner_approval | Requires partner approval before activation |
 | Shopify | available | Retail-only — deliberately **not** polled by the sync cron (no appointments API) |

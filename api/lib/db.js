@@ -277,8 +277,11 @@ export async function setOptOut(tenantId, phone, optedOut){
   if(!phoneE) return null;
   const { data: existing } = await c.from('clients').select('id')
     .eq('tenant_id', tenantId).eq('phone', phoneE).maybeSingle();
+  // Opt-out is represented as a status value in the canonical schema; the
+  // legacy `opted_out` boolean is a GENERATED column (status-derived) and
+  // therefore cannot be written directly.
   const patch = {
-    opted_out: optedOut,
+    status: optedOut ? 'opted_out' : 'active',
     opted_out_at: optedOut ? new Date().toISOString() : null,
     updated_at: new Date().toISOString()
   };

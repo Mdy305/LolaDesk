@@ -133,6 +133,52 @@ test('Square connector returns the NORMALIZED appointment shape (mocked fetch)',
   }
 });
 
+test('Vagaro connector returns the NORMALIZED appointment shape (mocked fetch)', async () => {
+  const vagaro = aggregator.getConnector('vagaro');
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('/appointments?') || String(url).includes('/appointments')) {
+      return {
+        ok: true,
+        json: async () => ({
+          appointments: [{
+            id: 'va-1',
+            startDateTime: '2026-09-01T10:00:00Z',
+            endDateTime: '2026-09-01T10:45:00Z',
+            customerName: 'Jane Doe',
+            serviceTitle: 'Haircut',
+            serviceProviderName: 'Alice',
+            status: 'CONFIRMED'
+          }]
+        })
+      };
+    }
+    throw new Error('unexpected fetch: ' + url);
+  };
+  try {
+    const apps = await vagaro.listAppointments({ access_token: 't' }, { from: '2026-09-01T00:00:00Z', to: '2026-09-02T00:00:00Z' });
+    assert.equal(apps.length, 1);
+    const a = apps[0];
+    for (const k of NORMALIZED_KEYS) {
+      assert.ok(k in a, `normalized appointment missing key "${k}"`);
+    }
+    assert.equal(a.id, 'va-1');
+    assert.equal(a.starts_at, '2026-09-01T10:00:00Z');
+    assert.equal(a.ends_at, '2026-09-01T10:45:00Z');
+    assert.equal(a.duration_min, 45, 'duration must be computed from start/end');
+    assert.equal(a.client.name, 'Jane Doe');
+    assert.equal(a.service, 'Haircut');
+    assert.equal(a.stylist, 'Alice');
+    assert.equal(a.status, 'confirmed', 'status must be normalized lowercase');
+    assert.ok(calls.length >= 1, 'should hit the appointments endpoint');
+    assert.match(calls[0], /startDate=/, 'listAppointments must send the date range');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('writeAppointment routes to the matched provider connector', async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('contract test should not hit network'); };

@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- LolaDesk — ALL MIGRATIONS (idempotent, ordered)
--- Generated from the 21 date-prefixed files in migrations/.
+-- Generated from the 24 date-prefixed files in migrations/.
 --
 -- PREREQUISITES (already applied on production — do NOT re-run schema.sql;
 -- its demo-tenant seed insert is not guarded):
@@ -15,7 +15,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PRODUCTION STATUS — verified 2026-08-18 via Supabase Management API
 -- (project cfowesxlebbtyioplijt, LolaDesk, us-west-2):
---   ALL 22 migrations below are APPLIED on production. Verified:
+--   ALL 24 migrations below are APPLIED on production. Verified:
 --     * all 25 core tables present, incl. sync_alert_log, tenant_numbers,
 --       cached_availability, review_queue, tenant_sims, platform_config
 --     * tenants.voice_id column present
@@ -25,6 +25,9 @@
 --       sync_alert_log_read (tenant_id = auth_tenant()); writes are
 --       service-role only (deny by default)
 --     * idx_usage_widget_load_daily unique partial index present
+--     * clients legacy compat columns (name, phone_number, last_service,
+--       is_vip, opted_out) present as generated columns
+--     * review_queue.source accepts 'facebook'
 --   Legacy reconciliation on 2026-08-18: production held EMPTY legacy
 --   booking_sync_log (organization_id schema) and external_appointments
 --   (table) objects that blocked the 20260816_booking_sync migration.
@@ -1217,6 +1220,43 @@ update bookings
    and status in ('confirmed', 'pending');
 
 -- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260818_clients_schema_compat.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Reconcile legacy client columns after the production `clients` table moved
+-- to first_name/last_name/phone/status/preferred_service/preferred_staff_id.
+-- Many API paths still read legacy columns (name, phone_number, opted_out,
+-- is_vip, last_service), so recreate them as STORED GENERATED columns derived
+-- from the canonical columns. Writers that target generated columns are fixed
+-- in code (salon.js, db.js setOptOut).
+--
+-- Idempotent and safe to re-run.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table clients
+  add column if not exists name text generated always as (
+    nullif(btrim(coalesce(first_name,'') || ' ' || coalesce(last_name,'')), '')
+  ) stored;
+
+alter table clients
+  add column if not exists phone_number text generated always as (phone) stored;
+
+alter table clients
+  add column if not exists last_service text generated always as (preferred_service) stored;
+
+alter table clients
+  add column if not exists is_vip boolean generated always as (
+    lower(coalesce(status, '')) = 'vip' or coalesce(lifetime_value, 0) >= 1000
+  ) stored;
+
+alter table clients
+  add column if not exists opted_out boolean generated always as (
+    lower(coalesce(status, '')) = 'opted_out'
+  ) stored;
+
+alter table clients
+  add column if not exists opted_out_at timestamptz;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 --  FILE: 20260818_widget_load_daily_unique.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ============================================================================
@@ -1245,3 +1285,16 @@ where id in (select id from dupes where rn > 1);
 create unique index if not exists idx_usage_widget_load_daily
   on usage_events (tenant_id, ((created_at at time zone 'utc')::date))
   where kind = 'widget_load';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260818_review_sources_facebook.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Widen review_queue.source to accept 'facebook' so Facebook review CSVs can
+-- be imported alongside Yelp/Google/Shopify. Dropping + re-adding is safe: it
+-- only ADDS an allowed value, so existing rows always pass.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table review_queue drop constraint if exists review_queue_source_check;
+
+alter table review_queue add constraint review_queue_source_check
+  check (source in ('google_gmb','yelp_csv','shopify','manual_csv','facebook'));

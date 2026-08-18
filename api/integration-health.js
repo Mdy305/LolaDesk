@@ -2,7 +2,7 @@ import { getUserFromToken, bearer } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 
-const PROVIDERS = ['square','boulevard','fresha','vagaro','mindbody','shopify','google_calendar'];
+const PROVIDERS = ['square','boulevard','fresha','vagaro','mindbody','booksy','shopify','google_calendar'];
 
 function state(id, name, status, detail, action, metadata={}){
   return { id, name, status, detail, action, metadata };

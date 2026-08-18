@@ -74,6 +74,13 @@ export default async function handler(req, res){
     try{
       if(tenant?.id && fromNumber){
         const client = await getClientByPhone(tenant.id, fromNumber);
+        // Resolve the stylist's NAME from preferred_staff_id (the canonical
+        // schema has no preferred_stylist text column).
+        if(client?.preferred_staff_id){
+          const c2 = db();
+          const { data: st } = await c2.from('staff').select('name').eq('id', client.preferred_staff_id).maybeSingle();
+          if(st?.name) client.preferred_stylist = st.name;
+        }
         memory = callerMemory(client);
       }
     }catch(e){}

@@ -16,7 +16,7 @@ import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { db } from '../lib/db.js';
 import { parseReviewCSV, scheduleReviews } from '../lib/review-syndication.js';
 
-const SOURCES = ['google_gmb', 'yelp_csv', 'shopify', 'manual_csv'];
+const SOURCES = ['google_gmb', 'yelp_csv', 'shopify', 'manual_csv', 'facebook'];
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');

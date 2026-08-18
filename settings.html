@@ -242,6 +242,7 @@
     <div class="toggle-row"><div><div class="tl">Vagaro</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-vagaro" onclick="connect('vagaro')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-mindbody" onclick="connect('mindbody')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-fresha" onclick="connect('fresha')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Booksy</div><div class="ts">Two-way sync · partner-gated</div></div><button class="btn-g" id="c-booksy" onclick="requestBooksy()">Request access</button></div>
   </div>
 
   <div class="card">
@@ -475,6 +476,10 @@ function copyLink(){
 function connect(p){
   const slug=(TENANT&&TENANT.slug)||'';
   location.href='/api/oauth/connect?provider='+encodeURIComponent(p)+'&tenant='+encodeURIComponent(slug);
+}
+function requestBooksy(){
+  window.open('https://docs.booksy.com/','_blank');
+  alert('Booksy is partner-gated: request API access at docs.booksy.com, then support@loladesk.com wires your partner keys.');
 }
 function renderIntegrations(list){
   (list||[]).forEach(i=>{

@@ -188,7 +188,13 @@ export default async function handler(req,res){
         await c.from('clients').delete().eq('id',body.id).eq('tenant_id',T);
         return res.json({ok:true});
       }
-      const row={tenant_id:T,name:body.name,phone:body.phone||null,email:body.email||'',
+      // `name` is a GENERATED column (derived from first_name/last_name), so
+      // write the canonical columns instead of the legacy name field.
+      const nameParts=String(body.name||'').trim().split(/\s+/).filter(Boolean);
+      const row={tenant_id:T,
+        first_name:body.first_name||nameParts.shift()||'',
+        last_name:body.last_name||nameParts.join(' ')||null,
+        phone:body.phone||null,email:body.email||'',
         notes:body.notes||'',allergies:body.allergies||'',formula:body.formula||'',
         birthday:body.birthday||null,tags:body.tags||[],preferred_staff_id:body.preferred_staff_id||null};
       const {data,error}=body.id
