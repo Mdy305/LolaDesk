@@ -321,6 +321,21 @@
       });
   }
 
+  // Silent adoption beacon — fires on every boot, first-party AND embedded
+  // sites, so LolaDesk knows which salons actually put the widget online.
+  function beacon() {
+    try {
+      var p = new URLSearchParams({
+        tenant: cfg.tenant, kind: 'widget_load',
+        origin: (location.href || '').slice(0, 300),
+        host: (location.host || '').slice(0, 120)
+      });
+      var url = API.replace(/\/[^/]*$/, '/widget-beacon') + '?' + p.toString();
+      if (navigator.sendBeacon) { navigator.sendBeacon(url, ''); }
+      else { fetch(url, { method: 'POST', keepalive: true }).catch(function () {}); }
+    } catch (e) { /* never break the widget */ }
+  }
+
   function boot() {
     if (!cfg.tenant) {
       var missing = document.createElement('div');
@@ -328,6 +343,7 @@
       (SCRIPT.parentNode || document.body).appendChild(missing);
       return;
     }
+    beacon();
 
     var host = document.createElement('div');
     host.id = 'loladesk-widget';

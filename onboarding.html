@@ -424,7 +424,12 @@ function flashEmbedNote(){
   note.style.opacity='1';
   setTimeout(()=>{note.style.opacity='0';},2200);
 }
+function trackEmbed(kind,snippet){
+  if(!S.slug)return;
+  try{fetch('/api/widget-beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:S.slug,kind,snippet:snippet||'',source:'onboarding'})}).catch(()=>{});}catch(e){}
+}
 function copyEmbed(){
+  trackEmbed('embed_copied','inline');
   const done=()=>flashEmbedNote();
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(EMBED).then(done).catch(()=>fallbackEmbed(done));}
   else fallbackEmbed(done);
@@ -438,6 +443,7 @@ function fallbackEmbed(done){
 }
 function openBookingLink(e){
   e.preventDefault();
+  trackEmbed('embed_preview','link');
   const a=document.getElementById('embedLink');
   if(a&&a.href)window.open(a.href,'_blank');
 }
