@@ -4,149 +4,21 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Book an appointment</title>
+<meta name="description" content="Book online with LolaDesk — instant availability, one tap."/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#050506;--surface:#141416;--surface2:#19191d;--line:#25252b;--text:#f6f6f7;--muted:#92929b;--dim:#5c5c65;--accent:#ccff00;--accent2:#e4ff78;--font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif}
-body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;-webkit-font-smoothing:antialiased}
-.wrap{max-width:520px;margin:0 auto;padding:40px 20px 80px}
-.salon-name{font-size:28px;font-weight:560;letter-spacing:-.02em;margin-bottom:4px}
-.salon-meta{color:var(--muted);font-size:13px;margin-bottom:32px}
-.step{display:none}.step.on{display:block;animation:in .3s cubic-bezier(.22,1,.36,1)}
-@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.step-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:14px}
-.back{color:var(--muted);font-size:13px;cursor:pointer;margin-bottom:16px;display:inline-block;background:none;border:none;padding:0}
-.opts{display:flex;flex-direction:column;gap:8px}
-.opt{background:var(--surface);border:.5px solid var(--line);border-radius:14px;padding:15px 18px;text-align:left;color:var(--text);cursor:pointer;transition:.15s;display:flex;justify-content:space-between;align-items:center;width:100%}
-.opt:hover{border-color:#3a3a42;background:var(--surface2)}
-.opt-name{font-size:14.5px;font-weight:500}
-.opt-meta{font-size:12px;color:var(--muted);margin-top:2px}
-.opt-price{font-size:14px;color:var(--accent2);white-space:nowrap;margin-left:12px}
-.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
-.slot{background:var(--surface);border:.5px solid var(--line);border-radius:10px;padding:12px 8px;text-align:center;color:var(--text);cursor:pointer;font-size:13px;transition:.15s;width:100%}
-.slot:hover{border-color:var(--accent);color:var(--accent2)}
-.date-pick{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:13px 15px;font-size:14px;margin-bottom:16px;outline:none}
-.fld{margin-bottom:14px}
-.fld label{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}
-.inp{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:12px;padding:13px 15px;font-size:14px;outline:none}
-.inp:focus{border-color:var(--accent)}
-.summary-box{background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:var(--muted);line-height:1.6}
-.summary-box b{color:var(--text)}
-.btn{width:100%;padding:14px;border-radius:12px;font-size:14px;font-weight:560;cursor:pointer;border:none;margin-top:8px}
-.btn-p{background:var(--text);color:#080809}
-.btn-p:disabled{opacity:.4;cursor:not-allowed}
-.err{color:#ff8a8a;font-size:12.5px;margin-top:10px;min-height:16px}
-.empty{color:var(--dim);font-size:13px;padding:18px 0;text-align:center}
-.done-orb{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);margin:0 auto 18px}
-.done-title{font-size:22px;font-weight:560;text-align:center;margin-bottom:8px}
-.done-sub{color:var(--muted);font-size:14px;text-align:center;line-height:1.7}
+body{background:#050506;color:#f6f6f7;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.host{max-width:560px;margin:0 auto;padding:28px 14px 80px}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="salon-name" id="sName">Loading...</div>
-  <div class="salon-meta" id="sMeta"></div>
-  <div class="step on" data-step="service">
-    <div class="step-label">1. Choose a service</div>
-    <div class="opts" id="serviceOpts"><div class="empty">Loading...</div></div>
-  </div>
-  <div class="step" data-step="staff">
-    <button class="back" onclick="go('service')">Back</button>
-    <div class="step-label">2. Choose a team member</div>
-    <div class="opts" id="staffOpts"></div>
-  </div>
-  <div class="step" data-step="time">
-    <button class="back" onclick="go('staff')">Back</button>
-    <div class="step-label">3. Pick a time</div>
-    <input type="date" class="date-pick" id="datePick" onchange="loadSlots()"/>
-    <div class="slots" id="slotList"><div class="empty">Pick a date above.</div></div>
-  </div>
-  <div class="step" data-step="details">
-    <button class="back" onclick="go('time')">Back</button>
-    <div class="step-label">4. Your details</div>
-    <div class="summary-box" id="summaryBox"></div>
-    <div class="fld"><label>Name</label><input class="inp" id="cName" placeholder="Your name"/></div>
-    <div class="fld"><label>Phone</label><input class="inp" id="cPhone" type="tel" placeholder="(555) 555-5555"/></div>
-    <div class="fld"><label>Email (optional)</label><input class="inp" id="cEmail" type="email"/></div>
-    <button class="btn btn-p" id="bookBtn" onclick="confirmBook()">Confirm booking</button>
-    <div class="err" id="bookErr"></div>
-  </div>
-  <div class="step" data-step="done">
-    <div class="done-orb"></div>
-    <div class="done-title">You are all set!</div>
-    <div class="done-sub" id="doneText"></div>
-  </div>
+<div class="host">
+  <!--
+    LolaDesk booking widget — the same engine Lola uses on the phone.
+    The tenant is taken from ?t=SLUG (or ?slug=) on the URL, or set
+    data-tenant below for a fixed salon.
+  -->
+  <script src="/booking-widget.js" data-mode="inline"></script>
 </div>
-<script>
-const params=new URLSearchParams(location.search);
-const slug=params.get('t')||params.get('slug')||'';
-let CATALOG=null,selService=null,selStaff=null,selTime=null;
-function go(step){document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on',s.dataset.step===step));window.scrollTo({top:0,behavior:'smooth'});}
-function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-async function apiGet(action,extra={}){const p=Object.assign({action,tenant:slug},extra);const r=await fetch('/api/public-booking?'+new URLSearchParams(p));const j=await r.json();if(!j.ok)throw new Error(j.error||'Failed');return j;}
-async function apiPost(body){const r=await fetch('/api/public-booking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({tenant:slug},body))});return r.json();}
-async function init(){
-  if(!slug){document.getElementById('sName').textContent='Booking link not found';return;}
-  try{
-    const data=await apiGet('catalog');
-    CATALOG=data;
-    document.getElementById('sName').textContent=data.name||'Book an appointment';
-    document.title='Book at '+(data.name||'the salon');
-    const meta=[];if(data.location)meta.push(data.location);
-    document.getElementById('sMeta').textContent=meta.join(' · ');
-    const list=document.getElementById('serviceOpts');
-    if(!data.services||!data.services.length){list.innerHTML='<div class="empty">No services listed yet.</div>';return;}
-    list.innerHTML=data.services.map((s,i)=>'<button class="opt" onclick="pickService('+i+')">'+'<div><div class="opt-name">'+esc(s.name)+'</div>'+(s.duration_minutes?'<div class="opt-meta">'+s.duration_minutes+' min</div>':'')+'</div>'+(s.price!=null?'<div class="opt-price">$'+Number(s.price).toLocaleString()+'</div>':'')+'</button>').join('');
-    const today=new Date().toISOString().slice(0,10);
-    document.getElementById('datePick').value=today;
-    document.getElementById('datePick').min=today;
-  }catch(e){document.getElementById('sName').textContent='Unavailable';document.getElementById('sMeta').textContent=e.message;}
-}
-function pickService(i){
-  selService=CATALOG.services[i];
-  const staffOpts=document.getElementById('staffOpts');
-  const any='<button class="opt" onclick="pickStaff(null)"><div class="opt-name">Any available</div></button>';
-  if(!CATALOG.staff||!CATALOG.staff.length){staffOpts.innerHTML=any;}
-  else{staffOpts.innerHTML=any+CATALOG.staff.map(s=>'<button class="opt" onclick="pickStaff(\''+s.id+'\')">'+'<div><div class="opt-name">'+esc(s.name)+'</div>'+(s.role?'<div class="opt-meta">'+esc(s.role)+'</div>':'')+'</div></button>').join('');}
-  go('staff');
-}
-function pickStaff(id){selStaff=id?CATALOG.staff.find(s=>s.id===id):null;go('time');loadSlots();}
-async function loadSlots(){
-  const date=document.getElementById('datePick').value;
-  const host=document.getElementById('slotList');
-  host.innerHTML='<div class="empty">Checking availability...</div>';
-  try{
-    const params={service_id:selService.id,date};
-    if(selStaff)params.staff_id=selStaff.id;
-    const data=await apiGet('availability',params);
-    const slots=data.slots||[];
-    if(!slots.length){host.innerHTML='<div class="empty">No open times that day - try another date.</div>';return;}
-    host.innerHTML=slots.map(s=>{const d=new Date(s.starts_at||s);const label=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});const iso=s.starts_at||s;return '<button class="slot" onclick="pickTime(\''+iso+'\')">'+label+'</button>';}).join('');
-  }catch(e){host.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
-}
-function pickTime(iso){
-  selTime=iso;
-  const d=new Date(iso);
-  const when=d.toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});
-  document.getElementById('summaryBox').innerHTML='<b>'+esc(selService.name)+'</b>'+(selStaff?' with <b>'+esc(selStaff.name)+'</b>':'')+'<br>'+when;
-  go('details');
-}
-async function confirmBook(){
-  const name=document.getElementById('cName').value.trim();
-  const phone=document.getElementById('cPhone').value.trim();
-  const email=document.getElementById('cEmail').value.trim();
-  const err=document.getElementById('bookErr');
-  const btn=document.getElementById('bookBtn');
-  if(!name||!phone){err.textContent='Please add your name and phone.';return;}
-  err.textContent='';btn.disabled=true;btn.textContent='Booking...';
-  try{
-    const result=await apiPost({action:'book',channel:'public_web',service_id:selService.id,staff_id:selStaff?.id||null,starts_at:selTime,client_name:name,client_phone:phone,client_email:email||null,total_amount:selService.price||0});
-    if(!result.ok){err.textContent=result.conflict?'That time was just taken - go back and pick another.':(result.error||result.needs||'Could not complete booking.');btn.disabled=false;btn.textContent='Confirm booking';return;}
-    const when=new Date(selTime).toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});
-    document.getElementById('doneText').textContent=selService.name+' on '+when+'. We will text you a confirmation shortly.';
-    go('done');
-  }catch(e){err.textContent=e.message||'Something went wrong.';btn.disabled=false;btn.textContent='Confirm booking';}
-}
-init();
-</script>
 </body>
 </html>

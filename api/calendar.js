@@ -19,7 +19,9 @@ export default async function handler(req,res){
   if(req.method==='OPTIONS') return res.status(204).end();
 
   try{
-    const body=jsonBody(req);
+    // Merge query params into the body so GET requests (public booking,
+    // calendar links) carry service_id / staff_id / date like POST does.
+    const body={ ...(req.query||{}), ...jsonBody(req) };
     const tenant=await tenantForRequest(req,body);
     if(!tenant?.id){
       return res.status(req.__publicBooking===true?404:401).json({ ok:false,error:req.__publicBooking===true?'tenant_not_found':'not_authenticated' });
