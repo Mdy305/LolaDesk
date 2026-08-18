@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- LolaDesk — ALL MIGRATIONS (idempotent, ordered)
--- Generated from the 20 date-prefixed files in migrations/.
+-- Generated from the 21 date-prefixed files in migrations/.
 --
 -- PREREQUISITES (already applied on production — do NOT re-run schema.sql;
 -- its demo-tenant seed insert is not guarded):
@@ -15,7 +15,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PRODUCTION STATUS — verified 2026-08-18 via Supabase Management API
 -- (project cfowesxlebbtyioplijt, LolaDesk, us-west-2):
---   ALL 21 migrations below are APPLIED on production. Verified:
+--   ALL 22 migrations below are APPLIED on production. Verified:
 --     * all 25 core tables present, incl. sync_alert_log, tenant_numbers,
 --       cached_availability, review_queue, tenant_sims, platform_config
 --     * tenants.voice_id column present
@@ -24,6 +24,7 @@
 --     * RLS enabled on sync_alert_log with tenant-scoped read policy
 --       sync_alert_log_read (tenant_id = auth_tenant()); writes are
 --       service-role only (deny by default)
+--     * idx_usage_widget_load_daily unique partial index present
 --   Legacy reconciliation on 2026-08-18: production held EMPTY legacy
 --   booking_sync_log (organization_id schema) and external_appointments
 --   (table) objects that blocked the 20260816_booking_sync migration.
@@ -1214,3 +1215,33 @@ update bookings
    set confirmation_code = upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6))
  where confirmation_code is null
    and status in ('confirmed', 'pending');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260818_widget_load_daily_unique.sql   ═  APPLIED ON PRODUCTION 2026-08-18  ═
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ============================================================================
+-- Enforce one widget_load usage row per tenant per UTC day at the DB level.
+--
+-- The beacon dedupes at write time, but that is read-then-write: two
+-- concurrent beacons could both pass the check and both insert. This unique
+-- partial index makes the rule authoritative in Postgres.
+-- ============================================================================
+
+-- Collapse any pre-existing duplicates across ALL days (idempotent; deletes
+-- zero rows when the table is already clean), keeping the earliest per day.
+with dupes as (
+  select
+    id,
+    row_number() over (
+      partition by tenant_id, (created_at at time zone 'utc')::date
+      order by created_at asc, id asc
+    ) as rn
+  from usage_events
+  where kind = 'widget_load'
+)
+delete from usage_events
+where id in (select id from dupes where rn > 1);
+
+create unique index if not exists idx_usage_widget_load_daily
+  on usage_events (tenant_id, ((created_at at time zone 'utc')::date))
+  where kind = 'widget_load';
