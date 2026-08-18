@@ -113,7 +113,7 @@ The platform's connect screen uses the same contract:
 | Vagaro | available | |
 | Mindbody | available | |
 | Fresha | available | |
-| Booksy | beta | Partner-gated — RSA JWT-assertion auth (no browser OAuth); `getAuthUrl()` throws a descriptive error |
+| Booksy | beta | Partner-gated — RSA JWT-assertion auth (no browser OAuth). Operator attaches a tenant's `business_id` via `POST /api/admin/booksy`; the sync cron then scopes `/business/<business_id>/appointment/` with a platform-minted token |
 | Google Calendar | available | |
 | Boulevard | pending_partner_approval | Requires partner approval before activation |
 | Shopify | available | Retail-only — deliberately **not** polled by the sync cron (no appointments API) |
