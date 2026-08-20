@@ -30,14 +30,26 @@ import {
   getTenantByPhone, getTenantBySlug, upsertClient, getClientByPhone,
   logUsage, getOrStartConversation, getTenantIntegrations, db
 } from './lib/db.js';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
 
-// Resolve which salon this call is for
+// Resolve which salon this call is for. When a dialed `to` number is present
+// (a Telnyx-originated call), resolution goes through the STRICT inbound
+// resolver — the same gate every other inbound transport uses — so an
+// unrecognized number can never slide into the demo salon's data. The
+// legacy getTenantByPhone path is kept only for callers that pass no
+// number at all (e.g. dashboard/slug-driven calls).
 async function resolveTenant(body){
   if(body.tenant) return getTenantBySlug(body.tenant);
   const to = body.to || body.To || body.called_number || '';
+  const phone = to ? String(to).replace(/\D/g, '') : '';
+  if(phone.length >= 8){
+    const routing = await resolveInboundTenant({ to });
+    if(routing.status === 'resolved') return routing.tenant;
+    return null; // hard gate: unrouted number → no tenant, never demo data
+  }
   return getTenantByPhone(to);
 }
 
@@ -347,7 +359,10 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
-    const tool = body.tool || body.function || body.skill;
+    // Tool name may arrive in the body (legacy) OR as ?tool=… on the URL —
+    // Telnyx configures each webhook tool with its own URL, so pointing them
+    // all at this endpoint with ?tool=<name> keeps one dispatched handler.
+    const tool = req.query?.tool || body.tool || body.function || body.skill;
     
     // Special Memory Injection Skill requested by Telnyx to start a call
     if (tool === 'inject_memory') {
