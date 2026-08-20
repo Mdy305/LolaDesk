@@ -165,6 +165,40 @@ test('degrades gracefully when a probe fails', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
+test('flags tenant_numbers with missing or rejected-legacy connection ids', async () => {
+  seed();
+  fake.seed('tenant_numbers', [
+    { id: 'tn1', phone_number: '+13055550100', tenant_id: 't1', kind: 'primary', status: 'active', connection_id: 'CONN-LOLA', tenants: { name: 'Salon A', slug: 'salon-a' } },
+    { id: 'tn2', phone_number: '+13055550101', tenant_id: 't2', kind: 'primary', status: 'active', connection_id: '2991758319724529273', tenants: { name: 'Salon B', slug: 'salon-b' } },
+    { id: 'tn3', phone_number: '+13055550102', tenant_id: 't3', kind: 'forwarded', status: 'active', connection_id: null, tenants: { name: 'Salon C', slug: 'salon-c' } }
+  ]);
+  const t = stubTelnyx();
+  try {
+    const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
+    assert.equal(status, 200);
+    assert.deepEqual(j.routing.counts, { total: 3, ok: 1, flagged: 2 });
+    const byPhone = Object.fromEntries(j.routing.numbers.map(n => [n.phone_number, n]));
+    // Working connection → ok; the dead 'upgrade' target → rejected_legacy;
+    // never-recorded → missing.
+    assert.equal(byPhone['+13055550100'].flag, 'ok');
+    assert.equal(byPhone['+13055550101'].flag, 'rejected_legacy');
+    assert.equal(byPhone['+13055550102'].flag, 'missing');
+    assert.equal(byPhone['+13055550100'].tenant_name, 'Salon A');
+  } finally { globalThis.fetch = t.realFetch; }
+});
+
+test('handles a missing tenant_numbers table gracefully', async () => {
+  seed();
+  const t = stubTelnyx();
+  try {
+    const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
+    assert.equal(status, 200);
+    // No routing rows seeded → empty report, not a 500.
+    assert.deepEqual(j.routing.counts, { total: 0, ok: 0, flagged: 0 });
+    assert.deepEqual(j.routing.numbers, []);
+  } finally { globalThis.fetch = t.realFetch; }
+});
+
 test('uses TELNYX_VOICE_APP_ID verbatim (legacy app id is NOT rewritten)', async () => {
   seed();
   process.env.TELNYX_VOICE_APP_ID = '2982432232334951429'; // the working app

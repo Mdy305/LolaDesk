@@ -1298,3 +1298,23 @@ alter table review_queue drop constraint if exists review_queue_source_check;
 
 alter table review_queue add constraint review_queue_source_check
   check (source in ('google_gmb','yelp_csv','shopify','manual_csv','facebook'));
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  FILE: 20260819_backfill_number_connections.sql   ═  APPLIED ON PRODUCTION 2026-08-19  ═
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Backfill tenant_numbers.connection_id so every active voice line points at
+-- the working Call Control app (TELNYX_VOICE_APP_ID = 2982432232334951429).
+-- Routing keys off tenant_id + status, so calls always answered — this just
+-- repairs the health record: null (never populated) and the dead 'legacy
+-- upgrade' mapping 2991758319724529273 (rejected by Telnyx for origination).
+-- Idempotent — numbers already on the working connection are untouched.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+update tenant_numbers
+set connection_id = '2982432232334951429',
+    updated_at    = now()
+where status = 'active'
+  and (
+    connection_id is null
+    or connection_id in ('2991758319724529273')
+  );

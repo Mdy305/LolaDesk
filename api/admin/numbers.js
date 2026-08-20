@@ -36,6 +36,26 @@ function err(status, message){
   return Object.assign(new Error(message), { status });
 }
 
+// The connection every tenant's voice line must point at — the same working
+// Call Control app networking/telecom.js provisions against. The legacy
+// 'upgrade' target (2991758319724529273) is rejected by Telnyx for
+// origination, so rows recorded against it are flagged, never silently
+// trusted. Exported for tests.
+export const EXPECTED_CONNECTION_ID =
+  process.env.TELNYX_VOICE_APP_ID || '2982432232334951429';
+export const REJECTED_LEGACY_CONNECTION_ID = '2991758319724529273';
+
+// 'expected'  → pointing at Lola's working voice connection
+// 'other'     → some other (possibly fine) connection, not the voice app
+// 'rejected_legacy' → recorded against the dead 'upgrade' connection
+// 'missing'   → no connection recorded at all
+export function connectionState(connectionId){
+  if(!connectionId) return 'missing';
+  if(connectionId === REJECTED_LEGACY_CONNECTION_ID) return 'rejected_legacy';
+  if(connectionId === EXPECTED_CONNECTION_ID) return 'expected';
+  return 'other';
+}
+
 async function reassign(c, body){
   const phone = validPhone(body.phone_number);
   const tenantId = String(body.tenant_id || '').trim();
@@ -131,18 +151,22 @@ export default async function handler(req, res){
       listTenantNumberRoutes(500),
       c.from('tenants').select('id,name,slug,phone_number,plan,billing_status').order('name').limit(500).then(r => r.data || []).catch(() => [])
     ]);
-    const rows = (numbers || []).map(n => ({
-      id: n.id,
-      tenant_id: n.tenant_id,
-      tenant_name: n.tenants?.name || null,
-      tenant_slug: n.tenants?.slug || null,
-      phone_number: n.phone_number,
-      kind: n.kind,
-      status: n.status,
-      connection_id: n.connection_id,
-      notes: n.notes,
-      updated_at: n.updated_at
-    }));
+    const rows = (numbers || []).map(n => {
+      const connection_id = n.connection_id || null;
+      return {
+        id: n.id,
+        tenant_id: n.tenant_id,
+        tenant_name: n.tenants?.name || null,
+        tenant_slug: n.tenants?.slug || null,
+        phone_number: n.phone_number,
+        kind: n.kind,
+        status: n.status,
+        connection_id,
+        connection_state: connectionState(connection_id),
+        notes: n.notes,
+        updated_at: n.updated_at
+      };
+    });
     return res.status(200).json({ ok:true, numbers: rows, tenants });
   }
 
@@ -233,8 +257,8 @@ const DASHBOARD_HTML = `<!doctype html>
 
   <div class="card">
     <table>
-      <thead><tr><th>Phone</th><th>Tenant</th><th>Kind</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead>
-      <tbody id="tbody"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      <thead><tr><th>Phone</th><th>Tenant</th><th>Kind</th><th>Status</th><th>Connection</th><th>Updated</th><th>Actions</th></tr></thead>
+      <tbody id="tbody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
     </table>
   </div>
 </main>
@@ -255,7 +279,7 @@ function api(path, opts){
 function badge(s){ return '<span class="badge ' + esc(s) + '">' + esc(s) + '</span>'; }
 function render(numbers){
   var tb = byId('tbody');
-  if(!numbers || !numbers.length){ tb.innerHTML = '<tr><td colspan="6" class="muted">No routing rows yet.</td></tr>'; return; }
+  if(!numbers || !numbers.length){ tb.innerHTML = '<tr><td colspan="7" class="muted">No routing rows yet.</td></tr>'; return; }
   tb.innerHTML = numbers.map(function(n){
     var name = n.tenant_name
       ? esc(n.tenant_name) + ' <span class="muted">(' + esc(n.tenant_slug || '') + ')</span>'
@@ -265,11 +289,21 @@ function render(numbers){
     var actions =
       '<button class="secondary" data-act="' + toggleAct + '" data-phone="' + esc(n.phone_number) + '">' + toggleLabel + '</button>' +
       '<button class="danger" data-act="unassign" data-phone="' + esc(n.phone_number) + '">Unassign</button>';
+    var conn = n.connection_id
+      ? '<span class="muted" title="' + esc(n.connection_id) + '">' + esc(n.connection_id.slice(0, 13)) + '…</span>'
+      : '<span class="muted">none</span>';
+    var connState = n.connection_state || 'missing';
+    var connBadge = connState === 'expected'
+      ? '<span class="badge active">on Lola</span>'
+      : connState === 'other'
+        ? '<span class="badge pending">other conn</span>'
+        : '<span class="badge disabled">' + esc(connState) + '</span>';
     return '<tr>' +
       '<td>' + esc(n.phone_number) + '</td>' +
       '<td>' + name + '</td>' +
       '<td>' + esc(n.kind) + '</td>' +
       '<td>' + badge(n.status) + '</td>' +
+      '<td>' + connBadge + ' ' + conn + '</td>' +
       '<td class="muted">' + esc((n.updated_at || '').slice(0, 10)) + '</td>' +
       '<td class="actions">' + actions + '</td>' +
       '</tr>';

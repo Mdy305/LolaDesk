@@ -22,6 +22,7 @@
  */
 
 import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
+import { listTenantNumberRoutes } from '../lib/db.js';
 import { telnyxData, telnyxRequest } from '../lib/telnyx-client.js';
 
 // The connection every tenant's number must point at for inbound calls to
@@ -32,6 +33,11 @@ import { telnyxData, telnyxRequest } from '../lib/telnyx-client.js';
 function expectedConnectionId() {
   return process.env.TELNYX_VOICE_APP_ID || null;
 }
+
+// A connection id we KNOW Telnyx rejects for origination — supposedly the
+// account's 'upgrade' mapping, but live probing proved it is dead. Any
+// tenant_number still recorded against it is a health flag.
+const REJECTED_LEGACY_CONNECTION = '2991758319724529273';
 
 // ── 1. Agent attached ────────────────────────────────────────────────
 async function agentStatus() {
@@ -82,9 +88,56 @@ async function voiceStatus() {
       error: String(e?.message || e)
     };
   }
+}  // ── 3. Number-routing health (tenant_numbers) ──────────────────────
+  // Every tenant's line in the routing table should carry the working voice
+  // connection id. A null id means the record was never populated (routing
+  // itself keys off tenant_id+status, so the line still answers — but the
+  // record is missing data the operator needs), and the legacy 'upgrade'
+  // target is rejected by Telnyx for origination. Either way the row is
+  // flagged here so drift shows up on the health screen, not just in the
+  // admin table.
+async function routingStatus() {
+  const expected = expectedConnectionId();
+  try {
+    const routes = await listTenantNumberRoutes(500);
+    const numbers = (routes || []).map(r => {
+      const id = r.connection_id || null;
+      let flag = 'ok';
+      if (!id) flag = 'missing';
+      else if (id === REJECTED_LEGACY_CONNECTION) flag = 'rejected_legacy';
+      else if (expected && id !== expected) flag = 'mismatch';
+      return {
+        phone_number: r.phone_number,
+        tenant_name: r.tenants?.name || r.tenant_name || null,
+        tenant_slug: r.tenants?.slug || r.tenant_slug || null,
+        kind: r.kind,
+        status: r.status,
+        connection_id: id,
+        flag
+      };
+    });
+    const flagged = numbers.filter(n => n.flag !== 'ok');
+    return {
+      expected_connection_id: expected,
+      numbers,
+      counts: {
+        total: numbers.length,
+        ok: numbers.length - flagged.length,
+        flagged: flagged.length
+      },
+      error: null
+    };
+  } catch (e) {
+    return {
+      expected_connection_id: expected,
+      numbers: [],
+      counts: { total: 0, ok: 0, flagged: 0 },
+      error: String(e?.message || e)
+    };
+  }
 }
 
-// ── 3. Active calls ─────────────────────────────────────────────────
+  // ── 4. Active calls ─────────────────────────────────────────────────
 async function activeCalls() {
   const connectionId = expectedConnectionId();
   if (!connectionId) {
@@ -116,13 +169,16 @@ export default async function handler(req, res) {
   if (!isAdminEmail(user.email)) return res.status(403).json({ ok: false, error: 'Not authorized' });
 
   try {
-    const [agent, voice, calls] = await Promise.all([agentStatus(), voiceStatus(), activeCalls()]);
+    const [agent, voice, calls, routing] = await Promise.all([
+      agentStatus(), voiceStatus(), activeCalls(), routingStatus()
+    ]);
     return res.status(200).json({
       ok: true,
       generated_at: new Date().toISOString(),
       agent,
       voice,
-      calls
+      calls,
+      routing
     });
   } catch (e) {
     console.error('[admin/lola-health]', e?.message || e);
