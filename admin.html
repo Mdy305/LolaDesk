@@ -585,14 +585,35 @@ function renderLolaHealth(){
     : '<div class="state" style="padding:14px">No assistants on the account — provision Lola above.</div>';
   const agentErr = a.error ? `<div class="muted" style="margin-top:6px">${esc(a.error)}</div>` : '';
 
+  // Telnyx-side truth per number: connection NAME (LolaBrain / LolaDesk /
+  // ai-assistant-…) + Telnyx status + whether it's a known-good Lola path.
   const voiceRows = (v.numbers || []).map(n => {
-    const ok = n.matches_expected === true;
-    return `<tr><td>${esc(n.phone_number||'—')}</td><td class="hide-m muted">${esc(n.connection_id||'none')}</td><td><span class="pill ${ok?'active':'suspended'}">${ok?'Lola wired':'wired elsewhere'}</span></td></tr>`;
+    const ok = n.known_good === true;
+    const name = n.connection_name || n.connection_id || 'none';
+    const st = n.status || '';
+    const stPill = st === 'active'
+      ? '<span class="pill active">active</span>'
+      : st ? `<span class="pill suspended">${esc(st)}</span>` : '<span class="muted">—</span>';
+    return `<tr><td>${esc(n.phone_number||'—')}</td><td><span class="muted" title="${esc(n.connection_id||'')}">${esc(name)}</span></td><td>${stPill}</td><td><span class="pill ${ok?'active':'suspended'}">${ok?'Lola path':'other'}</span></td></tr>`;
   }).join('');
   const voiceHtml = (v.numbers || []).length
-    ? `<table style="margin-top:10px"><thead><tr><th>Number</th><th class="hide-m">Connection</th><th>Routing</th></tr></thead><tbody>${voiceRows}</tbody></table>`
+    ? `<table style="margin-top:10px"><thead><tr><th>Number</th><th>Connection</th><th>Telnyx status</th><th>Routing</th></tr></thead><tbody>${voiceRows}</tbody></table>`
     : '<div class="state" style="padding:14px">No phone numbers on the account.</div>';
   const voiceErr = v.error ? `<div class="muted" style="margin-top:6px">${esc(v.error)}</div>` : '';
+
+  // The routing probe: recorded id vs LIVE Telnyx attachment, per number,
+  // with the drift flag (ok / mismatch / missing / unattached / …).
+  const routingRows = (LOLA.routing?.numbers || []).map(n => {
+    const flag = n.flag || 'ok';
+    const pillCls = flag === 'ok' ? 'active' : (flag === 'mismatch' ? 'suspended' : 'trial');
+    const liveName = n.connection_name || n.live_connection_id || '—';
+    const tenant = n.tenant_name || '—';
+    return `<tr><td>${esc(n.phone_number||'—')}</td><td class="hide-m">${esc(tenant)}</td><td><span class="muted" title="recorded ${esc(n.connection_id||'—')}">${esc(n.connection_id ? (n.connection_id.slice(0,10)+'…') : 'none')}</span></td><td><span class="muted" title="live ${esc(n.live_connection_id||'—')}">${esc(liveName)}</span></td><td><span class="pill ${pillCls}">${esc(flag)}</span></td></tr>`;
+  }).join('');
+  const routingHtml = (LOLA.routing?.numbers || []).length
+    ? `<table style="margin-top:10px"><thead><tr><th>Number</th><th class="hide-m">Tenant</th><th>Recorded</th><th>Live attachment</th><th>Flag</th></tr></thead><tbody>${routingRows}</tbody></table>`
+    : '<div class="state" style="padding:14px">No routing rows.</div>';
+  const routingErr = LOLA.routing?.error ? `<div class="muted" style="margin-top:6px">${esc(LOLA.routing.error)}</div>` : '';
 
   const callRows = (c.calls || []).map(x =>
     `<tr><td class="muted">${esc(x.call_control_id||'—')}</td><td>${x.call_duration != null ? x.call_duration + 's' : '—'}</td></tr>`).join('');
@@ -613,6 +634,11 @@ function renderLolaHealth(){
         <div class="val">${attached}/${total} numbers attached · ${wired} on Lola's connection</div>
         <div class="muted" style="margin-top:4px">Expected connection: ${esc(v.expected_connection_id||'not configured')}</div>
         ${voiceHtml}${voiceErr}
+      </div>
+      <div class="wire">
+        <h4>Routing table vs live Telnyx</h4>
+        <div class="val muted">Recorded connection id vs the live attachment Telnyx reports</div>
+        ${routingHtml}${routingErr}
       </div>
       <div class="wire">
         <h4>Active calls</h4>
