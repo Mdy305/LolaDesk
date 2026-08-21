@@ -96,8 +96,10 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
     <h2 style="font-size:15px;letter-spacing:-.01em">Lola · Live Routing</h2>
     <span id="lolaLive" class="pill trial">—</span>
     <button class="btn" onclick="loadLolaHealth()">Refresh</button>
+    <button class="btn" id="syncNowBtn" onclick="syncConnections()">Sync now</button>
   </div>
   <p class="muted" style="margin:6px 0 16px">The brain's vitals, live from Telnyx — is the agent attached, are numbers wired to the right voice connection, and are calls flowing through her right now. Auto-refreshes every 15s.</p>
+  <div id="syncNowResult" class="muted" style="margin:0 0 10px;font-size:12.5px"></div>
   <div class="grid" id="lolaKpis"></div>
   <div id="lolaWrap"><div class="state">Load to watch Lola's routing in real time.</div></div>
 
@@ -507,6 +509,42 @@ async function provisionLola(btn){
 // ── Lola · Live Routing panel ─────────────────────────────────────
 let LOLA = null;
 let LOLA_TIMER = null;
+
+// Fire the admin sync-connections action right from the Command screen:
+// Telnyx's live per-number attachments are written into tenant_numbers,
+// then the routing panel refreshes so the operator sees the reconciled
+// state without leaving the dashboard.
+async function syncConnections(){
+  const btn = document.getElementById('syncNowBtn');
+  const out = document.getElementById('syncNowResult');
+  if(!btn || !out) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Syncing…';
+  out.innerHTML = '';
+  try{
+    const r = await fetch('/api/admin/numbers', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
+      body: JSON.stringify({ action: 'sync-connections' })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ out.innerHTML = '<span class="pill suspended">Operator access only</span>'; return; }
+    const j = await r.json();
+    if(!j.ok){ out.innerHTML = `<span class="pill suspended">Sync failed</span> <span>${esc(j.error||'unknown error')}</span>`; return; }
+    const names = (j.connection_names && Object.keys(j.connection_names).length)
+      ? ' · ' + Object.entries(j.connection_names).slice(0,4).map(([id,name]) => esc(name||id)).join(', ') + (Object.keys(j.connection_names).length>4?'…':'') : '';
+    const updated = (j.updated||[]).map(u => `${esc(u.phone_number)} → ${esc(u.connection_name||u.to||'unattached')}`).join(', ');
+    out.innerHTML = `<span class="pill active">Synced</span> <span>${j.message||('Reconciled '+updated.length+' number(s)')}${names}</span>` +
+      (updated ? `<div class="muted" style="margin-top:4px">${updated}</div>` : '');
+    loadLolaHealth();
+  }catch(e){
+    out.innerHTML = '<span class="pill suspended">Sync failed</span> <span>Couldn\'t reach the numbers API.</span>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
 
 async function loadLolaHealth(){
   const wrap = document.getElementById('lolaWrap');
