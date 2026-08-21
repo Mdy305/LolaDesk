@@ -38,7 +38,9 @@ const fake = new FakeSupabase();
 globalThis.__LOLA_FAKE_SUPABASE__ = fake;
 process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
+process.env.TELNYX_API_KEY = 'test-telnyx-key';
 process.env.TELNYX_VOICE_APP_ID = '2982432232334951429';
+process.env.TELNYX_LOLA_BRAIN_ID = 'ASSIST-BRAIN';
 process.env.ADMIN_EMAILS = 'boss@loladesk.com';
 
 const { default: handler, connectionState } = await import('../api/admin/numbers.js');
@@ -83,6 +85,88 @@ test('connectionState classifies every state', () => {
   assert.equal(connectionState(null), 'missing');
   assert.equal(connectionState(undefined), 'missing');
   assert.equal(connectionState('CONN-OTHER'), 'other');
+});
+
+test('connectionState accepts a known-good set (LolaBrain / AI assistants)', () => {
+  const good = new Set(['2982432232334951429', 'ASSIST-BRAIN']);
+  assert.equal(connectionState('ASSIST-BRAIN', good), 'expected');
+  assert.equal(connectionState('AI-12345', good), 'other');
+});
+
+// Telnyx API stub for the sync + live tests — returns real attachment ids.
+function stubTelnyx() {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (!u.includes('api.telnyx.com')) throw new Error('unexpected non-Telnyx call: ' + u);
+    const path = u.replace('https://api.telnyx.com/v2', '').split('?')[0];
+    if (path === '/phone_numbers') return json({ data: [
+      { id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: '2982432232334951429' },
+      { id: 'PN2', phone_number: '+13055550101', status: 'active', connection_id: 'ASSIST-BRAIN' },
+      { id: 'PN3', phone_number: '+13055550103', status: 'active', connection_id: 'AI-12345' }
+    ] });
+    if (path === '/connections') return json({ data: [
+      { id: '2982432232334951429', connection_name: 'LolaDesk' },
+      { id: 'AI-12345', connection_name: 'ai-assistant-a0d68' }
+    ] });
+    if (path === '/ai/assistants') return json({ data: [
+      { id: 'ASSIST-BRAIN', name: 'LolaBrain' },
+      { id: 'AI-12345', name: 'ai-assistant-a0d68' }
+    ] });
+    throw new Error('unmocked Telnyx path: ' + path);
+  };
+  return { realFetch };
+}
+
+test('?live=1 enriches rows with Telnyx truth + connection names', async () => {
+  seed();
+  const t = stubTelnyx();
+  try {
+    const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin', accept: 'application/json' }, query: { live: '1' } });
+    assert.equal(status, 200);
+    assert.equal(j.live.available, true);
+    const byPhone = Object.fromEntries(j.numbers.map(n => [n.phone_number, n]));
+    // +13055550100: recorded id == live id, on the voice app.
+    assert.equal(byPhone['+13055550100'].live_connection_id, '2982432232334951429');
+    assert.equal(byPhone['+13055550100'].live_state, 'expected');
+    assert.equal(byPhone['+13055550100'].connection_name, 'LolaDesk');
+    // +13055550101: live says LolaBrain assistant → expected via known-good set.
+    assert.equal(byPhone['+13055550101'].live_connection_id, 'ASSIST-BRAIN');
+    assert.equal(byPhone['+13055550101'].live_state, 'expected');
+    assert.equal(byPhone['+13055550101'].connection_name, 'LolaBrain');
+    // +13055550103: live says an ai-assistant connection → still 'other' until
+    // the operator syncs (it's a real attachment, just not yet recorded).
+    assert.equal(byPhone['+13055550103'].live_connection_id, 'AI-12345');
+    assert.equal(byPhone['+13055550103'].live_state, 'other');
+  } finally { globalThis.fetch = t.realFetch; }
+});
+
+test('sync-connections writes live Telnyx attachments into tenant_numbers', async () => {
+  seed();
+  const t = stubTelnyx();
+  try {
+    const { status, json: j } = await call({
+      method: 'POST',
+      headers: { authorization: 'Bearer tok-admin', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'sync-connections' })
+    });
+    assert.equal(status, 200);
+    assert.equal(j.ok, true);
+    assert.ok(j.updated.length >= 2, 'rows with drift should be updated');
+    const updatedByPhone = Object.fromEntries(j.updated.map(u => [u.phone_number, u]));
+    // tn2 recorded the rejected legacy id; live says the LolaBrain assistant.
+    assert.equal(updatedByPhone['+13055550101'].to, 'ASSIST-BRAIN');
+    assert.equal(updatedByPhone['+13055550101'].connection_name, 'LolaBrain');
+    // tn5 recorded CONN-OTHER; live says an ai-assistant connection.
+    assert.equal(updatedByPhone['+13055550103'].to, 'AI-12345');
+    assert.equal(j.connection_names['ASSIST-BRAIN'], 'LolaBrain');
+    assert.equal(j.connection_names['2982432232334951429'], 'LolaDesk');
+
+    // The DB now carries the live ids.
+    const rows = fake.all('tenant_numbers');
+    assert.equal(rows.find(r => r.phone_number === '+13055550101').connection_id, 'ASSIST-BRAIN');
+    assert.equal(rows.find(r => r.phone_number === '+13055550103').connection_id, 'AI-12345');
+  } finally { globalThis.fetch = t.realFetch; }
 });
 
 test('rejects anonymous and non-admin users', async () => {

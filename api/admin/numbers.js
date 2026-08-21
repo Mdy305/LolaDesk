@@ -21,6 +21,7 @@
 import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
 import { db, e164, upsertTenantNumber, listTenantNumberRoutes, removeTenantNumber, setTenantNumberStatus } from '../lib/db.js';
 import { invalidateRouting, verifyTenantRouting } from '../lib/tenant-resolver.js';
+import { telnyxData, telnyxRequest } from '../lib/telnyx-client.js';
 import { ensureMigrations } from '../lib/migrate.js';
 
 // E.164 with sane bounds so 'abc' or a bare '+' can't slip through.
@@ -45,15 +46,61 @@ export const EXPECTED_CONNECTION_ID =
   process.env.TELNYX_VOICE_APP_ID || '2982432232334951429';
 export const REJECTED_LEGACY_CONNECTION_ID = '2991758319724529273';
 
-// 'expected'  → pointing at Lola's working voice connection
-// 'other'     → some other (possibly fine) connection, not the voice app
+// 'expected'  → pointing at Lola's working voice connection (or, when a
+//               known-good set is passed, any connection in it — e.g.
+//               TELNYX_LOLA_BRAIN_ID or a live AI-assistant attachment)
+// 'other'     → some other (possibly fine) connection, not one we know
 // 'rejected_legacy' → recorded against the dead 'upgrade' connection
 // 'missing'   → no connection recorded at all
-export function connectionState(connectionId){
+export function connectionState(connectionId, knownGood = null){
   if(!connectionId) return 'missing';
   if(connectionId === REJECTED_LEGACY_CONNECTION_ID) return 'rejected_legacy';
-  if(connectionId === EXPECTED_CONNECTION_ID) return 'expected';
+  const good = knownGood instanceof Set ? knownGood : new Set([EXPECTED_CONNECTION_ID]);
+  if(good.has(connectionId)) return 'expected';
   return 'other';
+}
+
+// Known-good connections: the working voice app + the LolaBrain assistant.
+// Any connection Telnyx reports as attached to an account number is added at
+// compare time by the live snapshot, because a number on an AI-assistant
+// connection is on the native LolaBrain path, not drift.
+export function knownGoodConnectionIds(){
+  const ids = new Set();
+  if(process.env.TELNYX_VOICE_APP_ID) ids.add(process.env.TELNYX_VOICE_APP_ID);
+  if(process.env.TELNYX_LOLA_BRAIN_ID) ids.add(process.env.TELNYX_LOLA_BRAIN_ID);
+  return ids;
+}
+
+// One live Telnyx snapshot: numbers with their REAL connection id, plus the
+// connection/assistant id → name map so the panel can say "LolaBrain" /
+// "LolaDesk" instead of raw ids. Fails soft with a single `error` string.
+export async function liveTelnyxSnapshot(){
+  try{
+    const [numbersList, connsList, asstsList] = await Promise.all([
+      telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 }),
+      telnyxRequest('/connections', { query: { 'page[size]': 100 }, timeoutMs: 8000 }).catch(() => ({ data: [] })),
+      telnyxRequest('/ai/assistants', { query: { 'page[size]': 50 }, timeoutMs: 8000 }).catch(() => ({ data: [] }))
+    ]);
+    const numbers = (Array.isArray(telnyxData(numbersList)) ? telnyxData(numbersList) : []);
+    const nameById = new Map();
+    for(const c of (Array.isArray(telnyxData(connsList)) ? telnyxData(connsList) : [])){
+      nameById.set(c.id, c.connection_name || c.friendly_name || c.name || null);
+    }
+    for(const a of (Array.isArray(telnyxData(asstsList)) ? telnyxData(asstsList) : [])){
+      nameById.set(a.id, a.name || null);
+    }
+    const byPhone = new Map();
+    for(const n of numbers){
+      byPhone.set(n.phone_number, {
+        connection_id: n.connection_id || null,
+        connection_name: nameById.get(n.connection_id) || null,
+        status: n.status || null
+      });
+    }
+    return { numbers, byPhone, nameById, error: null };
+  }catch(e){
+    return { numbers: [], byPhone: new Map(), nameById: new Map(), error: String(e?.message || e) };
+  }
 }
 
 async function reassign(c, body){
@@ -113,11 +160,63 @@ async function setStatus(c, body, status){
   return { phone_number: phone, status, message: phone + ' is now ' + status + '.' };
 }
 
+// Write Telnyx's LIVE attachment back into the routing table, so recorded
+// ids match reality and the panel stops showing stale 'mismatch' rows.
+// Read-only against Telnyx; only tenant_numbers rows are mutated.
+async function syncConnections(c, body){
+  const live = await liveTelnyxSnapshot();
+  if(live.error) throw err(502, 'Telnyx unreachable: ' + live.error);
+  const routes = await listTenantNumberRoutes(500);
+  const updated = [];
+  const unchanged = [];
+  const notFound = [];
+  for(const r of (routes || [])){
+    const liveRow = live.byPhone.get(r.phone_number);
+    if(!liveRow){
+      notFound.push(r.phone_number);
+      continue;
+    }
+    const liveId = liveRow.connection_id || null;
+    if(liveId && liveId !== r.connection_id){
+      const { error } = await c.from('tenant_numbers')
+        .update({ connection_id: liveId, updated_at: new Date().toISOString() })
+        .eq('phone_number', r.phone_number);
+      if(!error){
+        updated.push({
+          phone_number: r.phone_number,
+          from: r.connection_id || null,
+          to: liveId,
+          connection_name: liveRow.connection_name
+        });
+      }
+    } else if(!liveId && r.connection_id){
+      // Telnyx says unattached but the table records one — clear the stale id
+      // so the panel stops claiming a connection that isn't there.
+      const { error } = await c.from('tenant_numbers')
+        .update({ connection_id: null, updated_at: new Date().toISOString() })
+        .eq('phone_number', r.phone_number);
+      if(!error) updated.push({ phone_number: r.phone_number, from: r.connection_id, to: null, connection_name: null });
+    } else {
+      unchanged.push(r.phone_number);
+    }
+  }
+  const nameMap = {};
+  for(const [id, name] of live.nameById) nameMap[id] = name;
+  return {
+    updated,
+    unchanged,
+    not_found_on_telnyx: notFound,
+    connection_names: nameMap,
+    message: 'Synced ' + updated.length + ' routing row(s) to Telnyx live attachments' + (notFound.length ? '; ' + notFound.length + ' number(s) not found on Telnyx' : '') + '.'
+  };
+}
+
 const ACTIONS = {
   reassign,
   unassign,
   enable:  (c, b) => setStatus(c, b, 'active'),
-  disable: (c, b) => setStatus(c, b, 'disabled')
+  disable: (c, b) => setStatus(c, b, 'disabled'),
+  'sync-connections': syncConnections
 };
 
 export default async function handler(req, res){
@@ -151,9 +250,16 @@ export default async function handler(req, res){
       listTenantNumberRoutes(500),
       c.from('tenants').select('id,name,slug,phone_number,plan,billing_status').order('name').limit(500).then(r => r.data || []).catch(() => [])
     ]);
+    // ?live=1 enriches every row with Telnyx's REAL attachment + connection
+    // name, so the panel shows truth instead of a stale recorded id. Without
+    // the flag the endpoint stays cheap (DB only).
+    const live = req.query?.live === '1' ? await liveTelnyxSnapshot() : null;
+    const knownGood = knownGoodConnectionIds();
     const rows = (numbers || []).map(n => {
       const connection_id = n.connection_id || null;
-      return {
+      const liveRow = live?.byPhone.get(n.phone_number) || null;
+      const live_id = liveRow?.connection_id || null;
+      const row = {
         id: n.id,
         tenant_id: n.tenant_id,
         tenant_name: n.tenants?.name || null,
@@ -162,12 +268,25 @@ export default async function handler(req, res){
         kind: n.kind,
         status: n.status,
         connection_id,
-        connection_state: connectionState(connection_id),
+        connection_state: connectionState(connection_id, knownGood),
         notes: n.notes,
         updated_at: n.updated_at
       };
+      if(live){
+        row.live_connection_id = live_id;
+        row.connection_name = liveRow?.connection_name || null;
+        row.live_state = live_id ? connectionState(live_id, knownGood) : 'unattached';
+      }
+      return row;
     });
-    return res.status(200).json({ ok:true, numbers: rows, tenants });
+    return res.status(200).json({
+      ok:true,
+      numbers: rows,
+      tenants,
+      ...(live ? {
+        live: { available: !live.error, error: live.error || null, connection_names: Object.fromEntries(live.nameById) }
+      } : {})
+    });
   }
 
   if(req.method === 'POST'){
@@ -256,6 +375,10 @@ const DASHBOARD_HTML = `<!doctype html>
   </div>
 
   <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <h3 style="margin:0">Routing table</h3>
+      <button id="syncConn" class="secondary" style="margin-left:auto">Sync from Telnyx</button>
+    </div>
     <table>
       <thead><tr><th>Phone</th><th>Tenant</th><th>Kind</th><th>Status</th><th>Connection</th><th>Updated</th><th>Actions</th></tr></thead>
       <tbody id="tbody"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
@@ -289,10 +412,14 @@ function render(numbers){
     var actions =
       '<button class="secondary" data-act="' + toggleAct + '" data-phone="' + esc(n.phone_number) + '">' + toggleLabel + '</button>' +
       '<button class="danger" data-act="unassign" data-phone="' + esc(n.phone_number) + '">Unassign</button>';
-    var conn = n.connection_id
-      ? '<span class="muted" title="' + esc(n.connection_id) + '">' + esc(n.connection_id.slice(0, 13)) + '…</span>'
-      : '<span class="muted">none</span>';
-    var connState = n.connection_state || 'missing';
+    // Live data (when the panel loaded with ?live=1) is truth; fall back to
+    // the recorded id's state otherwise.
+    var connId = n.live_connection_id || n.connection_id || null;
+    var connState = n.live_state || n.connection_state || 'missing';
+    var connName = n.connection_name || null;
+    var conn = connId
+      ? '<span class="muted" title="' + esc(connId) + '">' + esc(connName || connId.slice(0, 13) + '…') + '</span>'
+      : '<span class="muted">unattached</span>';
     var connBadge = connState === 'expected'
       ? '<span class="badge active">on Lola</span>'
       : connState === 'other'
@@ -311,7 +438,7 @@ function render(numbers){
 }
 function load(){
   byId('msg').className = '';
-  api('/api/admin/numbers').then(function(res){
+  api('/api/admin/numbers?live=1').then(function(res){
     if(!res.ok){ msg((res.data && res.data.error) || ('HTTP ' + res.status), false); return; }
     render(res.data.numbers);
     var sel = byId('fTenant');
@@ -320,7 +447,18 @@ function load(){
       return '<option value="' + esc(t.id) + '">' + esc(t.name || t.slug || t.id) + '</option>';
     }).join('');
     if(current) sel.value = current;
-    msg('Loaded ' + (res.data.numbers || []).length + ' routing rows.', true);
+    var liveNote = res.data.live && !res.data.live.available
+      ? ' (' + esc(res.data.live.error) + ')'
+      : '';
+    msg('Loaded ' + (res.data.numbers || []).length + ' routing rows' + liveNote + '.', true);
+  });
+}
+function syncConn(){
+  msg('Syncing from Telnyx…', false);
+  api('/api/admin/numbers', { method:'POST', body: { action: 'sync-connections' } }).then(function(res){
+    if(!res.ok || res.data.ok === false){ msg((res.data && res.data.error) || ('HTTP ' + res.status), false); return; }
+    msg((res.data.message) || 'Synced.', true);
+    load();
   });
 }
 function post(action, body){
@@ -346,6 +484,7 @@ byId('tbody').addEventListener('click', function(ev){
 });
 byId('saveToken').onclick = function(){ localStorage.setItem(TOKEN_KEY, byId('token').value); msg('Token saved for this browser.', true); };
 byId('load').onclick = load;
+byId('syncConn').onclick = syncConn;
 byId('assign').onclick = function(){
   post('reassign', {
     phone_number: byId('fPhone').value,

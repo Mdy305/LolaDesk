@@ -70,7 +70,12 @@ function stubTelnyx(failPaths = []) {
     if (failPaths.includes(path)) return json({ errors: [{ detail: 'forbidden' }] }, 403);
 
     if (path === '/ai/assistants') return json({ data: [
-      { id: 'A1', name: 'Lola — Salon A', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'elevenlabs:lola-canonical' }, created_at: '2026-08-01T00:00:00Z' }
+      { id: 'A1', name: 'Lola — Salon A', model: 'meta-llama/Llama-3.3-70B-Instruct', voice_settings: { voice: 'elevenlabs:lola-canonical' }, created_at: '2026-08-01T00:00:00Z' },
+      { id: 'A2', name: 'LolaBrain', model: 'moonshotai/Kimi-K2.6', voice_settings: { voice: 'elevenlabs:lola-canonical' }, created_at: '2026-08-02T00:00:00Z' }
+    ] });
+    if (path === '/connections') return json({ data: [
+      { id: 'CONN-LOLA', connection_name: 'LolaDesk' },
+      { id: 'CONN-OTHER', connection_name: 'ai-assistant-a0d68' }
     ] });
     if (path === '/phone_numbers') return json({ data: [
       { id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: 'CONN-LOLA' },
@@ -125,19 +130,23 @@ test('reports agent attached, voice wiring, and active calls', async () => {
     assert.equal(j.ok, true);
     assert.ok(j.generated_at);
 
-    // Agent attached
+    // Agent attached (the stub lists Lola + the LolaBrain assistant)
     assert.equal(j.agent.exists, true);
-    assert.equal(j.agent.count, 1);
+    assert.equal(j.agent.count, 2);
     assert.equal(j.agent.assistants[0].name, 'Lola — Salon A');
     assert.equal(j.agent.assistants[0].voice, 'elevenlabs:lola-canonical');
     assert.equal(j.agent.error, null);
 
     // Voice connection: 2 numbers, 2 attached, 1 on Lola's connection
     assert.equal(j.voice.expected_connection_id, 'CONN-LOLA');
-    assert.deepEqual(j.voice.counts, { total: 2, attached: 2, matching: 1 });
+    assert.deepEqual(j.voice.counts, { total: 2, attached: 2, matching: 1, known_good: 1 });
     const byPhone = Object.fromEntries(j.voice.numbers.map(n => [n.phone_number, n]));
     assert.equal(byPhone['+13055550100'].matches_expected, true);
+    assert.equal(byPhone['+13055550100'].known_good, true);
+    assert.equal(byPhone['+13055550100'].connection_name, 'LolaDesk');
     assert.equal(byPhone['+13055550101'].matches_expected, false);
+    assert.equal(byPhone['+13055550101'].known_good, false);
+    assert.equal(byPhone['+13055550101'].connection_name, 'ai-assistant-a0d68');
 
     // Active calls
     assert.equal(j.calls.connection_id, 'CONN-LOLA');
@@ -165,6 +174,56 @@ test('degrades gracefully when a probe fails', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
+test('routing compares against LIVE Telnyx attachments, not a single constant', async () => {
+  seed();
+  fake.seed('tenant_numbers', [
+    // Recorded id matches live attachment → ok, even though it's NOT the
+    // voice app constant (it's the LolaBrain assistant — a known-good path).
+    { id: 'tn1', phone_number: '+13055550100', tenant_id: 't1', kind: 'primary', status: 'active', connection_id: 'A2', tenants: { name: 'Salon A', slug: 'salon-a' } },
+    // Recorded id differs from the live attachment → real drift, flagged.
+    { id: 'tn2', phone_number: '+13055550101', tenant_id: 't2', kind: 'primary', status: 'active', connection_id: 'CONN-LOLA', tenants: { name: 'Salon B', slug: 'salon-b' } },
+    // Recorded id matches live attachment (the ai-assistant connection) → ok.
+    { id: 'tn3', phone_number: '+13055550102', tenant_id: 't3', kind: 'forwarded', status: 'active', connection_id: 'CONN-OTHER', tenants: { name: 'Salon C', slug: 'salon-c' } }
+  ]);
+  const t = stubTelnyx();
+  // Make the live snapshot know +13055550102 is on CONN-OTHER.
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const path = u.replace('https://api.telnyx.com/v2', '').split('?')[0];
+    if (path === '/phone_numbers') return json({ data: [
+      { id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: 'A2' },
+      { id: 'PN2', phone_number: '+13055550101', status: 'active', connection_id: 'CONN-OTHER' },
+      { id: 'PN3', phone_number: '+13055550102', status: 'active', connection_id: 'CONN-OTHER' }
+    ] });
+    if (path === '/connections') return json({ data: [
+      { id: 'CONN-LOLA', connection_name: 'LolaDesk' },
+      { id: 'CONN-OTHER', connection_name: 'ai-assistant-a0d68' },
+      { id: 'A2', connection_name: 'LolaBrain' }
+    ] });
+    if (path === '/ai/assistants') return json({ data: [
+      { id: 'A1', name: 'Lola — Salon A' }, { id: 'A2', name: 'LolaBrain' }
+    ] });
+    if (path === '/connections/CONN-LOLA/active_calls') return json({ data: [] });
+    throw new Error('unmocked Telnyx path: ' + path);
+  };
+  try {
+    const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
+    assert.equal(status, 200);
+    const byPhone = Object.fromEntries(j.routing.numbers.map(n => [n.phone_number, n]));
+    // +13055550100: recorded 'A2' == live 'A2' → ok, name resolved.
+    assert.equal(byPhone['+13055550100'].flag, 'ok');
+    assert.equal(byPhone['+13055550100'].connection_name, 'LolaBrain');
+    // +13055550101: recorded 'CONN-LOLA' but live says 'CONN-OTHER' → mismatch.
+    assert.equal(byPhone['+13055550101'].flag, 'mismatch');
+    assert.equal(byPhone['+13055550101'].live_connection_id, 'CONN-OTHER');
+    // +13055550102: recorded 'CONN-OTHER' == live 'CONN-OTHER' → ok (NOT flagged
+    // just because it isn't the voice-app constant).
+    assert.equal(byPhone['+13055550102'].flag, 'ok');
+    assert.equal(j.routing.counts.ok, 2);
+    assert.equal(j.routing.counts.flagged, 1);
+  } finally { globalThis.fetch = t.realFetch; }
+});
+
 test('flags tenant_numbers with missing or rejected-legacy connection ids', async () => {
   seed();
   fake.seed('tenant_numbers', [
@@ -176,7 +235,7 @@ test('flags tenant_numbers with missing or rejected-legacy connection ids', asyn
   try {
     const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
     assert.equal(status, 200);
-    assert.deepEqual(j.routing.counts, { total: 3, ok: 1, flagged: 2 });
+    assert.deepEqual(j.routing.counts, { total: 3, ok: 1, flagged: 2, by_flag: { ok: 1, rejected_legacy: 1, missing: 1 } });
     const byPhone = Object.fromEntries(j.routing.numbers.map(n => [n.phone_number, n]));
     // Working connection → ok; the dead 'upgrade' target → rejected_legacy;
     // never-recorded → missing.
@@ -194,7 +253,7 @@ test('handles a missing tenant_numbers table gracefully', async () => {
     const { status, json: j } = await call({ method: 'GET', headers: { authorization: 'Bearer tok-admin' } });
     assert.equal(status, 200);
     // No routing rows seeded → empty report, not a 500.
-    assert.deepEqual(j.routing.counts, { total: 0, ok: 0, flagged: 0 });
+    assert.deepEqual(j.routing.counts, { total: 0, ok: 0, flagged: 0, by_flag: {} });
     assert.deepEqual(j.routing.numbers, []);
   } finally { globalThis.fetch = t.realFetch; }
 });
