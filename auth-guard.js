@@ -36,6 +36,11 @@
   function loadAppRuntime(){
     loadScript('/tenant-workspace.js','tenantWorkspace');
     loadScript('/tenant-notifications.js','tenantNotifications');
+    // The front-desk OS layer on EVERY authenticated page: the ONE unified
+    // notification (lola-notify.js) and the luxury design language
+    // (front-desk-os.js) — injected last so its styles win every tie.
+    loadScript('/lola-notify.js','lolaNotify');
+    loadScript('/front-desk-os.js','frontDeskOs');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');
     if(!isDashboard()) return;
@@ -43,8 +48,6 @@
     loadScript('/tenant-dashboard.js','tenantDashboard');
     loadScript('/tenant-opportunities.js','tenantOpportunities');
     loadScript('/tenant-action-center.js','tenantActionCenter');
-    // Luxury home surface — injected last so its styles win every tie.
-    loadScript('/front-desk-os.js','frontDeskOs');
   }
   function actionFor(){ return {label:'Open Activation Studio',href:'activation-studio.html'}; }
   async function loadReadiness(token){
