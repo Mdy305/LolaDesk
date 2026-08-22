@@ -111,7 +111,14 @@
     emit('lola:amplitude', { value: value || 0, turnId: state.turnId });
   }
 
-  function toast(text) {
+  function toast(text, tone) {
+    // ONE floating notification — every toast in the app routes through
+    // LolaNotify (lola-notify.js). Falls back to a plain DOM pill on
+    // pages that don't load it.
+    if (window.LolaNotify) {
+      window.LolaNotify.show({ title: text, tone: tone || 'plain' });
+      return;
+    }
     let el = document.getElementById('lolaResonanceToast');
     if (!el) {
       el = document.createElement('div');
@@ -350,7 +357,7 @@
       state.lastError = event.error;
       if (!['no-speech', 'aborted'].includes(event.error)) {
         setOrb('degraded', { label: 'Microphone needs attention' });
-        toast('Microphone: ' + event.error + ' — tap Lola to retry');
+        toast('Microphone: ' + event.error + ' — tap Lola to retry', 'error');
         metric('recognition_error', 0, { error: event.error });
       }
     };
@@ -414,7 +421,7 @@
     } catch (error) {
       state.enabled = false;
       setOrb('error', { label: 'Microphone permission required' });
-      toast('Allow microphone access, then tap Lola again.');
+      toast('Allow microphone access, then tap Lola again.', 'error');
       return;
     }
     if (!state.recognition && !initRecognition()) {
@@ -422,7 +429,7 @@
       setOrb('degraded', { label: 'Voice needs Chrome, Edge or Safari — use the command bar' });
       const input = document.getElementById('cmdInput');
       if (input) input.focus();
-      toast('Tap Lola to use chat instead.');
+      toast('Tap Lola to use chat instead.', 'plain');
       return;
     }
     state.ambientOn = true;

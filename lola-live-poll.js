@@ -18,7 +18,13 @@
   let seenBookings = null, seenCalls = null, seenInbox = null;
   let timer = null;
 
-  function toast(text){
+  function toast(text, tone){
+    // ONE floating notification — route through LolaNotify (queued, never
+    // stacked) when it's loaded; fall back to a corner stack elsewhere.
+    if(window.LolaNotify){
+      window.LolaNotify.show({ title: text, tone: tone || 'plain' });
+      return;
+    }
     let host = document.getElementById('lolaToastHost');
     if(!host){
       host = document.createElement('div');
@@ -69,14 +75,15 @@
       if(bkDiff.isFirstLoad) return;
 
       const events = [];
-      bkDiff.added.forEach(b => events.push(`New booking — ${b.client || 'Client'}: ${b.service || 'Appointment'}`));
-      callDiff.added.forEach(c => events.push(`New call from ${c.from || 'a client'}${c.booked ? ' (booked!)' : ''}`));
-      inboxDiff.added.forEach(t => events.push(`New message from ${t.who || 'a client'}`));
+      bkDiff.added.forEach(b => events.push({ text:`New booking — ${b.client || 'Client'}: ${b.service || 'Appointment'}`, tone:'booking' }));
+      callDiff.added.forEach(c => events.push({ text:`New call from ${c.from || 'a client'}${c.booked ? ' (booked!)' : ''}`, tone:'call' }));
+      inboxDiff.added.forEach(t => events.push({ text:`New message from ${t.who || 'a client'}`, tone:'message' }));
 
       if(!events.length) return;
 
-      if(typeof window.lolaPulse === 'function') window.lolaPulse(events[0]);
-      events.slice(0,3).forEach((msg,i)=> setTimeout(()=>toast(msg), i*350));
+      if(typeof window.lolaPulse === 'function') window.lolaPulse(events[0].text);
+      // The queue in LolaNotify shows one at a time, elegantly.
+      events.slice(0,3).forEach((ev,i)=> setTimeout(()=>toast(ev.text, ev.tone), i*900));
 
       // Refresh the visible panels so the new item actually shows up.
       if(typeof window.lolaRefreshPanels === 'function') window.lolaRefreshPanels();

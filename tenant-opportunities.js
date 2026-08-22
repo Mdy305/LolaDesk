@@ -21,8 +21,14 @@
     if(data?.dataUnavailable)panel.innerHTML=header+'<div style="padding:22px;color:#8a8a92">Revenue intelligence is temporarily unavailable. No sample data is shown.</div>';
     else if(!rows.length)panel.innerHTML=header+'<div style="padding:22px;color:#8a8a92">Connect your booking platform and client history. Lola will identify win-backs, VIP rebooking, schedule gaps, and tasteful upsells.</div>';
     else panel.innerHTML=header+'<div>'+rows.map((o,i)=>{const state=o.lifecycle?.event||'identified';return `<article style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:17px 20px;${i<rows.length-1?'border-bottom:1px solid rgba(255,255,255,.06)':''}"><div><div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;flex-wrap:wrap"><strong style="font-size:13px">${esc(o.title)}</strong><span style="font-size:9px;padding:3px 6px;border-radius:999px;background:${o.priority==='high'?'rgba(204,255,0,.12)':'rgba(255,255,255,.06)'};color:${o.priority==='high'?'#dcff66':'#9a9aa2'}">${esc((o.priority||'').toUpperCase())}</span><span style="font-size:9px;color:#777780;text-transform:uppercase">${esc(state)}</span></div><div style="font-size:12px;line-height:1.45;color:#8a8a92">${esc(o.detail)}</div></div><div style="display:flex;align-items:center;gap:12px"><div style="text-align:right"><div style="font-size:10px;color:#66666e">EST.</div><strong style="font-size:13px">${money(o.potentialRevenue)}</strong></div><button data-opp="${i}" style="border:0;border-radius:10px;padding:9px 11px;background:#ccff00;color:#070708;font-weight:700;white-space:nowrap">${esc(state==='executed'?'Run again':o.cta||'Act now')}</button></div></article>`}).join('')+'</div>';
-    const anchor=document.getElementById('launchReadinessBanner')||main.querySelector('.dash-header,.briefing-banner,.grid-main');
-    if(anchor?.nextSibling)main.insertBefore(panel,anchor.nextSibling);else main.prepend(panel);
+    // Lola first: land AFTER the orb hero grid so the owner meets her before
+    // the day's work (the hero spans the full grid on desktop).
+    // NOTE: never anchor on launchReadinessBanner — it lives in the topbar.
+    const anchor=main.querySelector('.grid-main')||main.querySelector('.lola-panel')||main.querySelector('.dash-header');
+    // Insert relative to the anchor's own parent — the anchor may be nested,
+    // so main.insertBefore(panel, anchor.nextSibling) throws NotFoundError.
+    const host=anchor&&anchor.parentNode?anchor.parentNode:main;
+    if(anchor?.nextSibling)host.insertBefore(panel,anchor.nextSibling);else host.prepend(panel);
     panel.querySelectorAll('[data-opp]').forEach(btn=>btn.onclick=async()=>{const o=rows[Number(btn.dataset.opp)];if(!o)return;btn.disabled=true;btn.textContent='Opening…';await track(auth,o,'executed');ask(o.prompt,o.targetPage);});
   }
   async function boot(){

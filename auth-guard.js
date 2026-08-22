@@ -43,6 +43,8 @@
     loadScript('/tenant-dashboard.js','tenantDashboard');
     loadScript('/tenant-opportunities.js','tenantOpportunities');
     loadScript('/tenant-action-center.js','tenantActionCenter');
+    // Luxury home surface — injected last so its styles win every tie.
+    loadScript('/front-desk-os.js','frontDeskOs');
   }
   function actionFor(){ return {label:'Open Activation Studio',href:'activation-studio.html'}; }
   async function loadReadiness(token){
