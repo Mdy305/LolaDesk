@@ -116,6 +116,15 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
     </div>
   </div>
 
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Lola Autopilot</h2>
+    <span id="apLive" class="pill trial">—</span>
+    <button class="btn" onclick="loadAutopilot()">Refresh</button>
+    <button class="btn" id="apRunBtn" onclick="runAutopilot(this)">Run now</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Four autonomous agents keep the platform running itself — routing heals against Telnyx, missed callers get a follow-up text, cancelled clients are invited to rebook, and broken booking syncs re-run themselves. Runs hourly; every run is recorded in the ledger.</p>
+  <div id="apWrap"><div class="state">Load to see what Lola's agents did.</div></div>
+
   <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
     <h2 style="font-size:15px;letter-spacing:-.01em">10DLC Onboarding</h2>
     <button class="btn" onclick="loadCompliance()">Refresh</button>
@@ -766,7 +775,74 @@ loadSync();
 loadAgents();
 loadCompliance();
 loadLolaHealth();
+loadAutopilot();
 startLolaPoll();
+
+// ── Lola Autopilot panel ───────────────────────────────────────────────
+const AP = { agents: ['routing-heal','missed-call-recovery','rebooking','sync-self-heal'] };
+const AP_LABEL = { 'routing-heal':'Routing heal', 'missed-call-recovery':'Missed-call recovery', rebooking:'Rebooking', 'sync-self-heal':'Sync self-heal' };
+
+async function loadAutopilot(){
+  const wrap = document.getElementById('apWrap');
+  try{
+    const r = await fetch('/api/admin/autopilot', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't load autopilot: ${esc(j.error||'unknown error')}</div>`; return; }
+    const live = document.getElementById('apLive');
+    live.textContent = j.enabled ? 'armed' : 'never run';
+    live.className = 'pill ' + (j.enabled ? 'active' : 'trial');
+    const rows = (j.last_runs || []).map(a => {
+      const pill = a.status === 'success' ? 'active' : (a.status === 'failed' ? 'suspended' : 'trial');
+      const ago = a.ran_at ? timeAgo(a.ran_at) : '—';
+      return `<tr><td><strong>${esc(AP_LABEL[a.agent] || a.agent)}</strong></td>
+        <td><span class="pill ${pill}">${esc(a.status)}</span></td>
+        <td class="hide-m">${esc(a.summary || '—')}</td>
+        <td>${ago}</td></tr>`;
+    }).join('');
+    wrap.innerHTML = `<table><thead><tr><th>Agent</th><th>Status</th><th class="hide-m">Last result</th><th>Ran</th></tr></thead><tbody>` +
+      rows + '</tbody></table>' +
+      `<div class="muted" style="margin-top:10px;font-size:12.5px">${esc(j.tenant_count)} tenant(s) · ${esc(j.paused_tenants)} paused by owner</div>`;
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the autopilot API.</div>'; }
+}
+
+async function runAutopilot(btn){
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Running…';
+  const wrap = document.getElementById('apWrap');
+  wrap.innerHTML = '<div class="state">Lola\'s agents are working…</div>';
+  try{
+    const r = await fetch('/api/admin/autopilot', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ action:'run', agents: AP.agents }) });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Run failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const rows = (j.runs || []).map(a => {
+      const pill = a.status === 'success' ? 'active' : (a.status === 'failed' ? 'suspended' : 'trial');
+      return `<tr><td><strong>${esc(AP_LABEL[a.agent] || a.agent)}</strong></td>
+        <td><span class="pill ${pill}">${esc(a.status)}</span></td>
+        <td class="hide-m">${esc(a.summary || '—')}</td>
+        <td>${esc(a.actions)} act</td></tr>`;
+    }).join('');
+    wrap.innerHTML = `<div style="margin-bottom:10px"><span class="pill active">run complete</span> <span class="muted" style="font-size:12.5px">in ${esc(((j.duration_ms||0)/1000).toFixed(1))}s</span></div>` +
+      `<table><thead><tr><th>Agent</th><th>Status</th><th class="hide-m">Result</th><th>Actions</th></tr></thead><tbody>` + rows + '</tbody></table>';
+    loadAutopilot();
+  }catch(e){
+    wrap.innerHTML = '<div class="state">Couldn\'t reach the autopilot API.</div>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+function timeAgo(iso){
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if(s < 60) return Math.round(s) + 's ago';
+  if(s < 3600) return Math.round(s/60) + 'm ago';
+  if(s < 86400) return Math.round(s/3600) + 'h ago';
+  return Math.round(s/86400) + 'd ago';
+}
 </script>
 </body>
 </html>

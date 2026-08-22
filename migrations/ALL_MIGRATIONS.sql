@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- LolaDesk — ALL MIGRATIONS (idempotent, ordered)
--- Generated from the 24 date-prefixed files in migrations/.
+-- Generated from the 25 date-prefixed files in migrations/.
 --
 -- PREREQUISITES (already applied on production — do NOT re-run schema.sql;
 -- its demo-tenant seed insert is not guarded):
@@ -15,7 +15,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PRODUCTION STATUS — verified 2026-08-18 via Supabase Management API
 -- (project cfowesxlebbtyioplijt, LolaDesk, us-west-2):
---   ALL 24 migrations below are APPLIED on production. Verified:
+--   ALL 24 migrations below are APPLIED on production (25 now on main,
+--   incl. 20260822_lola_autopilot.sql — apply via SQL editor to activate
+--   the Lola Autopilot ledger). Verified:
 --     * all 25 core tables present, incl. sync_alert_log, tenant_numbers,
 --       cached_availability, review_queue, tenant_sims, platform_config
 --     * tenants.voice_id column present
@@ -1349,3 +1351,39 @@ update tenants
 set phone_number = '+14104298256', updated_at = now()
 where id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
   and (phone_number is null or phone_number <> '+14104298256');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 25 · 20260822_lola_autopilot.sql — Lola Autopilot operations ledger
+--      (agent_runs, tenants.autopilot_enabled, tenants.recovery_sms_sent_at)
+-- ═══════════════════════════════════════════════════════════════════════════
+--   * tenants.recovery_sms_sent_at — cooldown stamp so missed-call recovery
+--                         doesn't text a salon's caller twice in one window.
+--
+-- RLS: tenants can read their own runs (auth_tenant()); writes are
+-- service-role only (deny by default).
+-- ============================================================================
+
+create table if not exists agent_runs (
+  id           uuid primary key default gen_random_uuid(),
+  agent        text not null check (agent in
+                 ('routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal')),
+  tenant_id    uuid references tenants(id) on delete cascade,
+  status       text not null default 'success' check (status in ('success', 'partial', 'failed', 'skipped')),
+  summary      text,
+  details      jsonb not null default '{}'::jsonb,
+  duration_ms  integer,
+  ran_at       timestamptz not null default now(),
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists idx_agent_runs_tenant on agent_runs (tenant_id, ran_at desc);
+create index if not exists idx_agent_runs_agent  on agent_runs (agent, ran_at desc);
+
+-- Per-tenant opt-out + recovery cooldown stamp.
+alter table tenants add column if not exists autopilot_enabled    boolean not null default true;
+alter table tenants add column if not exists recovery_sms_sent_at timestamptz;
+
+-- Service-role only; tenant-scoped reads for the panel (deny by default).
+alter table agent_runs enable row level security;
+drop policy if exists agent_runs_read on agent_runs;
+create policy agent_runs_read on agent_runs
