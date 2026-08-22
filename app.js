@@ -178,8 +178,11 @@ function renderTeam(){
    ───────────────────────────────────────────────────────────── */
 const orbCanvas = document.getElementById('orbCanvas');
 const orb = (window.LolaOrb && orbCanvas)
-  ? LolaOrb.mount(orbCanvas, { size: 240 })
+  ? LolaOrb.mount(orbCanvas, { size: 320 })
   : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
+// Expose the mounted orb so the resonance runtime (lola-resonance.js)
+// can drive its particle canvas live from Lola's real voice amplitude.
+window.__LOLA_ORB__ = orb;
 let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
 function setOrbState(s){
@@ -382,6 +385,8 @@ function fmt(t){
     .replace(/\n/g,'<br>');
 }
 
+window.addChatMsg = function(role, text){ addChatMsg(role, text); };
+window.setChatTyping = setChatTyping;
 function addChatMsg(role, text){
   const msgs = document.getElementById('chatMsgs');
   const row = document.createElement('div');
@@ -546,6 +551,10 @@ window.sendChat = function(){
 };
 
 window.askLola = function(prompt){
+  // Voice-first: when the resonance runtime is loaded, Lola answers by
+  // voice at the orb (with her reply rendered inline) instead of forcing
+  // the text-chat modal. The chat overlay stays for typed conversation.
+  if(window.LolaResonance) return window.LolaResonance.ask(prompt);
   openChat();
   setTimeout(()=> processMessage(prompt), chatOpened ? 100 : 1400);
 };
@@ -666,10 +675,12 @@ function stopListening(){
 }
 
 window.toggleVoice = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggle();
   voiceTarget = 'orb';
   listening ? stopListening() : startListening();
 };
 window.toggleChatVoice = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggle();
   voiceTarget = 'chat';
   listening ? stopListening() : startListening();
 };
@@ -774,6 +785,7 @@ function updateAmbientToggleUI(){
 }
 
 window.toggleAmbientListening = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggleAmbient();
   if(!ambientOn){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!SR){ alert('Always-listening needs Chrome, Edge, or Safari.'); return; }
@@ -805,7 +817,8 @@ window.toggleAmbientListening = function(){
 // Press-and-hold the toggle for ~800ms to fully turn ambient listening
 // off (not just mute) and forget the preference — for an owner who
 // decides this isn't for their salon, rather than a temporary mute.
-(function wireAmbientLongPress(){
+// (Skipped when the resonance runtime owns the voice layer.)
+if(!window.LolaResonance) (function wireAmbientLongPress(){
   let pressTimer = null;
   let longPressFired = false;
   const btn = document.getElementById('ambientToggle');
@@ -834,7 +847,8 @@ window.toggleAmbientListening = function(){
 
 // Restore the owner's last preference on page load — ambient listening
 // is opt-in (off by default for a brand-new salon) but persists once chosen.
-(function restoreAmbientPreference(){
+// (Skipped when the resonance runtime owns the voice layer.)
+if(!window.LolaResonance) (function restoreAmbientPreference(){
   // ALWAYS-ON BY DEFAULT: Lola is the owner's Jarvis — she should be
   // listening for her name without being asked to switch it on. The
   // first visit sets the preference; the owner can mute (tap the toggle)
@@ -917,6 +931,7 @@ function revokeUrlSafely(url){
 }
 
 function stopSpeaking(){
+  if(window.LolaResonance){ window.LolaResonance.cancel('stopped'); return; }
   if(voiceMeter){
     voiceMeter.stop();
     voiceMeter = null;
@@ -942,6 +957,9 @@ function stopSpeaking(){
 }
 
 async function speak(text){
+  // ONE voice engine: when the resonance runtime is loaded, all chat
+  // replies speak through Lola's canonical ElevenLabs voice there.
+  if(window.LolaResonance) return window.LolaResonance.speak(text);
   stopSpeaking();
   const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').trim().slice(0, 2500);
   if(!clean) return;

@@ -251,6 +251,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   align-items:center;
   justify-content:center;
   padding:24px 0 8px;
+  position:relative;
 }
 .lola-orb-stage{
   position:relative;
@@ -260,10 +261,40 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   align-items:center;
   justify-content:center;
   cursor:pointer;
+  transition:transform .12s ease-out,filter .12s ease-out;
 }
 .lola-orb-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+/* The orb IS her voice made visible — the whole stage breathes with
+   the real amplitude of her ElevenLabs audio while she speaks. */
+.lola-orb-stage[data-state="speaking"]{
+  transform:scale(calc(1 + var(--lola-amplitude,0)*.05));
+  filter:drop-shadow(0 0 calc(16px + var(--lola-amplitude,0)*46px) rgba(204,255,0,.4));
+}
+.lola-orb-stage[data-state="listening"]{
+  filter:drop-shadow(0 0 22px rgba(140,255,190,.28));
+}
 .lola-core{position:relative;z-index:2;pointer-events:none}
-.lola-name{font-size:34px;font-weight:550;letter-spacing:.3em;text-indent:.3em}
+.lola-name{font-size:34px;font-weight:550;letter-spacing:.3em;text-indent:.3em;transition:color .3s,text-shadow .3s}
+.lola-orb-stage[data-state="speaking"] .lola-name{color:#eaff8f;text-shadow:0 0 26px rgba(204,255,0,.6)}
+.lola-orb-stage[data-state="listening"] .lola-name{color:#c8ffe4;text-shadow:0 0 20px rgba(140,255,190,.45)}
+.lola-orb-stage[data-state="thinking"] .lola-name{color:#ffd9a8;text-shadow:0 0 18px rgba(255,196,64,.4)}
+/* Micro particle field — Lola's quiet presence around the orb. Tiny,
+   dim, drifting. When she listens or speaks they speed up and glow. */
+.lola-presence-field{position:absolute;inset:-22%;pointer-events:none;z-index:0;filter:blur(.2px)}
+.lola-presence-particle{
+  position:absolute;width:3px;height:3px;border-radius:50%;
+  background:#ccff00;box-shadow:0 0 8px rgba(204,255,0,.7);
+  opacity:.13;animation:lolaDrift var(--d,8s) ease-in-out infinite alternate;
+  animation-delay:var(--delay,0s);
+}
+@keyframes lolaDrift{
+  from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(var(--dx,14px),var(--dy,-18px),0) scale(.65)}
+}
+[data-lola-state="listening"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.6);opacity:.26}
+[data-lola-state="speaking"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.45);opacity:.34}
+[data-lola-state="thinking"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.5);opacity:.2}
+@media(prefers-reduced-motion:reduce){.lola-presence-particle,.lola-orb-stage{animation:none!important;transition:none!important}}
 .lola-prompt{text-align:center;margin-top:22px}
 .lola-prompt-title{font-size:25px;font-style:italic;font-weight:300;margin-bottom:4px}
 .lola-prompt-sub{font-size:12px;color:var(--text3)}
@@ -863,7 +894,8 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       <section class="lola-panel">
         <div id="usageBanner" style="display:none"></div>
         <div class="lola-orb-zone">
-          <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()">
+          <div class="lola-presence-field" id="orbField" aria-hidden="true"></div>
+          <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Talk to Lola">
             <canvas id="orbCanvas" width="300" height="300"></canvas>
             <div class="lola-core"><div class="lola-name">LOLA</div></div>
           </div>
@@ -1107,6 +1139,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 <script src="auth-guard.js"></script>
 <script src="lola-orb.js"></script>
 <script src="lola-wake-burst.js"></script>
+<script src="lola-resonance.js"></script>
 <script src="lola-data.js"></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
