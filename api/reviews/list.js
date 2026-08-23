@@ -43,7 +43,7 @@ export default async function handler(req, res){
       if(counts[r.status] !== undefined) counts[r.status]++;
     }
 
-    return res.status(200).json({ ok: true, tenant: { name: tenant.name }, counts, reviews: reviews || [] });
+    return res.status(200).json({ ok: true, tenant: { name: tenant.name, slug: tenant.slug }, counts, reviews: reviews || [] });
   }catch(e){
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

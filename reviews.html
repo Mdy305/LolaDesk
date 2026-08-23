@@ -10,6 +10,20 @@ body{background:#080909}.shell{max-width:1320px;margin:auto;padding:28px}.hero{d
     <div class="card"><div class="muted">FAILED</div><div class="metric" id="mFailed">—</div></div>
   </section>
 
+  <section class="card" style="margin-top:14px">
+    <div class="row">
+      <div>
+        <h2 style="margin:0">Google reviews — auto-import</h2>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Connect your Google Business Profile once, then pull your real Google reviews into the queue with one click — no CSV needed. They post to your Facebook &amp; Instagram as branded cards.</p>
+      </div>
+      <div id="gmbState" style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-g" id="gmbConnect" onclick="gmbConnect()">Connect Google</button>
+        <button class="btn btn-p" id="gmbImport" onclick="gmbImport()" disabled>Import Google reviews</button>
+      </div>
+    </div>
+    <div class="msg" id="gmbMsg"></div>
+  </section>
+
   <section class="grid">
     <div class="card">
       <h2>Import reviews</h2>
@@ -80,7 +94,42 @@ function render(){
   if(rows.length)preview(rows[0].author_name,rows[0].review_body,rows[0].author_name+' · '+(SOURCE_LABEL[rows[0].source]||rows[0].source));
 }
 
-async function load(){queue=await api('/api/reviews/list');render()}
+async function load(){queue=await api('/api/reviews/list');render();gmbState();}
+
+function gmbState(){
+  fetch('/api/settings',{headers:H()}).then(r=>r.json()).then(d=>{
+    const ints=d.integrations||[];
+    const g=ints.find(i=>i.provider==='google_gmb'||i.provider==='google');
+    if(g){
+      el('gmbConnect').textContent='Connected ✓';
+      el('gmbConnect').disabled=true;
+      el('gmbImport').disabled=false;
+      el('gmbMsg').innerHTML='<span class="good">Google connected'+(g.updated_at?' · '+fmt(g.updated_at):'')+'</span> — ready to import your reviews.';
+    }else{
+      el('gmbConnect').textContent='Connect Google';
+      el('gmbConnect').disabled=false;
+      el('gmbImport').disabled=true;
+      el('gmbMsg').innerHTML='<span class="muted">Connect Google to auto-import your Business Profile reviews.</span>';
+    }
+  }).catch(()=>{});
+}
+
+function gmbConnect(){
+  const slug=(queue&&queue.tenant&&queue.tenant.slug)||'';
+  location.href='/api/oauth/connect?provider=google_gmb&tenant='+encodeURIComponent(slug);
+}
+
+async function gmbImport(){
+  const result=await LolaUX.run(async()=>{
+    const d=await api('/api/reviews/import-google',{method:'POST',body:JSON.stringify({})});
+    if(!d.ok)throw new Error(d.error||'Import failed');
+    return d;
+  },{button:el('gmbImport'),success:'Google reviews imported.'});
+  if(!result)return;
+  const s=result.skipped||{};
+  el('gmbMsg').innerHTML=`<span class="good">${result.fetched} fetched</span> · <b>${result.scheduled} scheduled</b> · ${(s.not_five_star||0)} non-5-star · ${(s.too_short||0)} too short · ${(s.duplicate||0)} already queued`;
+  load();
+}
 
 async function importReviews(){
   if(!fileText)return;
