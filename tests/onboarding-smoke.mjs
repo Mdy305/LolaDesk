@@ -189,7 +189,16 @@ if (SEARCH_ONLY) {
   });
   const number = provision.body?.phoneNumber || provision.body?.phone_number;
   const e164 = typeof number === 'string' && /^\+1\d{10}$/.test(number);
-  check('provision buys + attaches the number', provision.status === 200 && provision.body?.ok === true && e164, `status=${provision.status} number=${number || provision.body?.error || '-'}`);
+  // The handler now fails gracefully when Telnyx credit is too low (402
+  // insufficient_credit) instead of a raw 500 — report that as a distinct
+  // "blocked by funding" outcome so the flow state is unambiguous.
+  const lowCredit = provision.status === 402 && (provision.body?.code === 'insufficient_credit' || /credit|top-up/i.test(String(provision.body?.error || '')));
+  if (lowCredit) {
+    const bal = provision.body?.balance;
+    check('provision buys + attaches the number', false, `status=402 BLOCKED BY TELNYX CREDIT — ${provision.body?.error} (credit ${bal?.available_credit ?? '?'} ${bal?.currency || 'USD'})`);
+  } else {
+    check('provision buys + attaches the number', provision.status === 200 && provision.body?.ok === true && e164, `status=${provision.status} number=${number || provision.body?.error || '-'}`);
+  }
   if (provision.body?.ok && e164) {
     check('provision links voice/sms brain', provision.body?.messagingProfileLinked !== undefined || provision.body?.lolaBrainLinked !== undefined, 'provisioning metadata present');
   }
