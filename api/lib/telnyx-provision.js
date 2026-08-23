@@ -22,6 +22,27 @@ export async function tFetch(path, opts = {}){
   return j;
 }
 
+/**
+ * GET /v2/balance — Telnyx account credit, used to warn owners before they
+ * hit "Not enough credit" mid-purchase. Advisory only: never blocks
+ * provisioning; returns null if Telnyx is unreachable.
+ */
+export async function getAccountBalance(){
+  try{
+    const j = await tFetch('/balance');
+    const d = j?.data || {};
+    const available = Number(d.available_credit ?? d.balance ?? 0);
+    return {
+      currency: d.currency || 'USD',
+      balance: Number(d.balance ?? 0),
+      available_credit: available,
+      credit_limit: Number(d.credit_limit ?? 0)
+    };
+  }catch(e){
+    return null;
+  }
+}
+
 export async function searchNumbers(areaCode, { limit = 10 } = {}){
   const p = new URLSearchParams();
   p.set('filter[country_code]', 'US');
@@ -158,6 +179,6 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
 }
 
 export default {
-  tFetch, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
+  tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
   linkMessagingProfile, linkLolaBrain, setDynamicVariablesWebhook, provisionNumberForTenant
 };

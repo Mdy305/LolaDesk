@@ -103,6 +103,7 @@
       <button class="btn-g" onclick="searchNumbers()">Search</button>
     </div>
     <div class="num-list" id="numList"></div>
+    <div class="balance-line" id="creditLine" style="display:none;margin-top:10px;padding:9px 12px;border-radius:10px;font-size:12px;background:rgba(204,255,0,.06);border:1px solid rgba(204,255,0,.16);color:#d9f5a8"></div>
     <div class="btn-row"><button class="btn-p" id="buyBtn" onclick="buyNumber()" disabled>Buy this number</button></div>
     <div class="msg" id="numMsg"></div>
   </div>
@@ -330,6 +331,7 @@ async function load(){
     renderIntegrations(d.integrations);
     setVal('forwardNumber',SETTINGS.forward_number||'');
   }catch(e){console.warn(e);}
+  loadCredit();
 
   try{
     const r=await fetch('/api/booking-settings',{headers:H()});
@@ -381,6 +383,27 @@ async function searchNumbers(){
 }
 function pickNum(n,el){selectedNumber=n;document.querySelectorAll('.num-item').forEach(x=>x.classList.remove('on'));el.classList.add('on');}
 
+async function loadCredit(){
+  // Advisory only: show Telnyx account credit so a low balance never surprises
+  // the owner mid-purchase.
+  const line=document.getElementById('creditLine');
+  try{
+    const r=await fetch('/api/provision-number',{headers:H()});
+    const d=await r.json();
+    if(!d.ok||!d.balance)return;
+    const credit=d.balance.available_credit;
+    const cur=d.balance.currency||'USD';
+    line.style.display='block';
+    if(credit<3){
+      line.style.background='rgba(255,179,64,.08)';line.style.borderColor='rgba(255,179,64,.3)';line.style.color='#ffd9a3';
+      line.innerHTML='<b style="color:#ffb340">Telnyx credit: '+cur+' $'+credit.toFixed(2)+'</b> — below the cost of a number. Top up to avoid a failed purchase.';
+    }else{
+      line.style.background='rgba(204,255,0,.06)';line.style.borderColor='rgba(204,255,0,.16)';line.style.color='#d9f5a8';
+      line.innerHTML='<b>Telnyx credit: '+cur+' $'+credit.toFixed(2)+'</b> — enough to buy numbers.';
+    }
+  }catch(e){/* silent — credit is advisory */}
+}
+
 async function buyNumber(){
   const b=document.getElementById('buyBtn');
   b.disabled=true;b.textContent='Setting up...';
@@ -392,6 +415,7 @@ async function buyNumber(){
     msg('numMsg','Done. '+d.phoneNumber+' is live — call it now.',true);
     setTimeout(load,1500);
   }catch(e){msg('numMsg',e.message,false);b.disabled=false;b.textContent='Buy this number';}
+  loadCredit();
 }
 
 async function startPort(){

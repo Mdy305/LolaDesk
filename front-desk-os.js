@@ -292,14 +292,22 @@ input:focus,select:focus,textarea:focus{
   function injectEyebrow() {
     if (isDashboard()) return;
     document.querySelectorAll('.page-head').forEach((head) => {
-      const title = head.querySelector('.page-title, h1');
-      if (!title || head.querySelector('.fdo-eyebrow')) return;
-      const raw = document.body.dataset.page || '';
-      const label = (raw.replace(/[-_]/g, ' ') || 'LolaDesk').toUpperCase();
-      const eyebrow = document.createElement('div');
-      eyebrow.className = 'fdo-eyebrow';
-      eyebrow.textContent = label + ' · TODAY WITH LOLA';
-      head.insertBefore(eyebrow, title);
+      try {
+        const title = head.querySelector('.page-title, h1');
+        if (!title || head.querySelector('.fdo-eyebrow')) return;
+        const raw = document.body.dataset.page || '';
+        const label = (raw.replace(/[-_]/g, ' ') || 'LolaDesk').toUpperCase();
+        const eyebrow = document.createElement('div');
+        eyebrow.className = 'fdo-eyebrow';
+        eyebrow.textContent = label + ' · TODAY WITH LOLA';
+        // The title may be nested inside a wrapper (not a direct child of
+        // .page-head) — insert before it in its OWN parent so insertBefore
+        // never throws NotFoundError and silently kills the OS boot.
+        const anchor = (title.parentNode && title.parentNode !== document.body) ? title.parentNode : head;
+        anchor.insertBefore(eyebrow, title);
+      } catch (e) {
+        console.warn('[front-desk-os] eyebrow skip:', e && e.message);
+      }
     });
   }
 
