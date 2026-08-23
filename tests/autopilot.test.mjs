@@ -64,18 +64,18 @@ function seed() {
     { id: 'c2', tenant_id: 't1', phone: '+13055550111', first_name: 'Marco', last_name: 'Rez' }
   ]);
   fake.seed('calls', [
-    // Missed inbound call ~3h ago — no duration, no outcome, no booking after it.
-    { id: 'call1', tenant_id: 't1', client_id: 'c1', from_number: '+13055550110', to_number: '+13055550100', direction: 'inbound', outcome: null, duration_sec: null, created_at: new Date(NOW - 3 * 3600 * 1000).toISOString() },
+    // Missed inbound call ~3h ago — no duration, no status, no booking after it.
+    { id: 'call1', tenant_id: 't1', client_id: 'c1', from_number: '+13055550110', to_number: '+13055550100', direction: 'inbound', status: null, duration_seconds: null, created_at: new Date(NOW - 3 * 3600 * 1000).toISOString() },
     // Answered call — must NOT be recovered.
-    { id: 'call2', tenant_id: 't1', client_id: 'c2', from_number: '+13055550111', to_number: '+13055550100', direction: 'inbound', outcome: 'completed', duration_sec: 180, created_at: new Date(NOW - 2 * 3600 * 1000).toISOString() },
+    { id: 'call2', tenant_id: 't1', client_id: 'c2', from_number: '+13055550111', to_number: '+13055550100', direction: 'inbound', status: 'completed', duration_seconds: 180, created_at: new Date(NOW - 2 * 3600 * 1000).toISOString() },
     // Missed call for the paused tenant — must NOT be recovered.
-    { id: 'call3', tenant_id: 't2', client_id: null, from_number: '+13055550120', to_number: '+13055550101', direction: 'inbound', outcome: null, duration_sec: null, created_at: new Date(NOW - 1 * 3600 * 1000).toISOString() }
+    { id: 'call3', tenant_id: 't2', client_id: null, from_number: '+13055550120', to_number: '+13055550101', direction: 'inbound', status: null, duration_seconds: null, created_at: new Date(NOW - 1 * 3600 * 1000).toISOString() }
   ]);
   fake.seed('bookings', [
     // Cancelled 2 days ago for c2 (answered call — not a recovery target, but rebooking applies).
-    { id: 'bk1', tenant_id: 't1', client_id: 'c2', service: 'Balayage', starts_at: new Date(NOW - 2 * 86400000).toISOString(), status: 'cancelled', created_at: new Date(NOW - 2 * 86400000).toISOString() },
+    { id: 'bk1', tenant_id: 't1', client_id: 'c2', start_time: new Date(NOW - 2 * 86400000).toISOString(), status: 'cancelled', service: 'Balayage', created_at: new Date(NOW - 2 * 86400000).toISOString() },
     // Confirmed future booking for c1 — they already have one, rebooking must not double-text.
-    { id: 'bk2', tenant_id: 't1', client_id: 'c1', service: 'Blowout', starts_at: new Date(NOW + 3 * 86400000).toISOString(), status: 'confirmed', created_at: new Date(NOW - 86400000).toISOString() }
+    { id: 'bk2', tenant_id: 't1', client_id: 'c1', start_time: new Date(NOW + 3 * 86400000).toISOString(), status: 'confirmed', created_at: new Date(NOW - 86400000).toISOString() }
   ]);
   fake.seed('booking_sync_log', [
     // t1's latest sync errored — sync-self-heal must re-run it.

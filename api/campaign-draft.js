@@ -21,12 +21,12 @@ export default async function handler(req, res) {
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
     // RAG: Fetch all knowledge base items for this tenant
-    const { data: knowledgeRows } = await c.from('knowledge_base').select('filename, content').eq('tenant_id', tenantRow.id);
+    const { data: knowledgeRows } = await c.from('knowledge_base').select('title, content').eq('tenant_id', tenantRow.id);
     let contextStr = "";
     if (knowledgeRows && knowledgeRows.length > 0) {
       contextStr = "KNOWLEDGE BASE CONTEXT:\n";
       for (const row of knowledgeRows) {
-        contextStr += `--- Source: ${row.filename} ---\n${row.content}\n\n`;
+        contextStr += `--- Source: ${row.title || 'Knowledge'} ---\n${row.content}\n\n`;
       }
     }
 

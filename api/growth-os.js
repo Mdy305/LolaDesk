@@ -72,11 +72,12 @@ export default async function handler(req,res){
     const since=new Date(Date.now()-365*DAY).toISOString();
     const [{data:clients,error:cErr},{data:bookings,error:bErr},{data:actions}]=await Promise.all([
       c.from('clients').select('id,name,email,phone,opted_out,created_at').eq('tenant_id',tenant.id).limit(1000),
-      c.from('bookings').select('id,client_id,status,service,starts_at,created_at,price').eq('tenant_id',tenant.id).gte('created_at',since).limit(3000),
+      c.from('bookings').select('id,client_id,status,service:services(name),starts_at:start_time,created_at,price:total_amount').eq('tenant_id',tenant.id).gte('created_at',since).limit(3000),
       c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id',tenant.id).eq('kind','growth_action').order('created_at',{ascending:false}).limit(100)
     ]);
     if(cErr) throw new Error(cErr.message); if(bErr) throw new Error(bErr.message);
-    const segments=buildSegments(clients||[],bookings||[]), campaignList=campaigns(segments);
+    const booked=(bookings||[]).map(b=>({...b,service:b.service?.name||null}));
+    const segments=buildSegments(clients||[],booked), campaignList=campaigns(segments);
     const totalOpportunity=campaignList.reduce((s,x)=>s+x.estimated_revenue,0);
     const optedOut=(clients||[]).filter(x=>x.opted_out).length;
     return res.status(200).json({ok:true,tenant:{name:tenant.name},summary:{active_clients:(clients||[]).length-optedOut,opted_out:optedOut,opportunity_count:Object.values(segments).reduce((s,x)=>s+x.length,0),estimated_recoverable_revenue:money(totalOpportunity)},segments,campaigns:campaignList,recent_actions:actions||[],generated_at:new Date().toISOString()});

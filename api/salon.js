@@ -106,8 +106,9 @@ export default async function handler(req,res){
 
       if(resource==='products'){
         const {data}=await c.from('products').select('*').eq('tenant_id',T).eq('is_active',true).order('name');
-        const low=(data||[]).filter(p=>p.stock<=p.low_stock_alert);
-        return res.json({ok:true,products:data||[],low_stock:low});
+        // products has no stock/low_stock_alert columns in the canonical schema;
+        // low-stock is derived from nothing until inventory tracking lands.
+        return res.json({ok:true,products:data||[],low_stock:[]});
       }
 
       if(resource==='catalog'){
@@ -170,13 +171,13 @@ export default async function handler(req,res){
           c.from('bookings').select('total_amount,status').eq('tenant_id',T),
           c.from('bookings').select('id').eq('tenant_id',T).gte('start_time',today+'T00:00:00').lte('start_time',today+'T23:59:59').neq('status','cancelled'),
           c.from('clients').select('id').eq('tenant_id',T),
-          c.from('products').select('stock,low_stock_alert').eq('tenant_id',T).eq('is_active',true)]);
+          c.from('products').select('id').eq('tenant_id',T).eq('is_active',true)]);
         return res.json({ok:true,
           total_appointments:(all.data||[]).length,
           today_appointments:(td.data||[]).length,
           revenue:(all.data||[]).filter(b=>b.status!=='cancelled').reduce((s,b)=>s+Number(b.total_amount||0),0),
           clients:(cli.data||[]).length,
-          low_stock:(pr.data||[]).filter(p=>p.stock<=p.low_stock_alert).length});
+          low_stock:0});
       }
 
       return res.status(400).json({ok:false,error:'Unknown resource: '+resource});

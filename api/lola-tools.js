@@ -233,17 +233,17 @@ async function confirm_booking(tenant, { client_phone, client_name }){
   if(!client) return { speak:'I could not find that booking yet. Share the phone number on the appointment.' };
   const { data: rows } = await c
     .from('bookings')
-    .select('*')
+    .select('id,tenant_id,client_id,service_id,staff_id,start_time,end_time,status,total_amount,created_at,updated_at,location_id,source,conversation_id,external_id,external_provider,hold_id,deposit_status,confirmation_code,starts_at:start_time,service:services(name)')
     .eq('tenant_id', tenant.id)
     .eq('client_id', client.id)
-    .gte('starts_at', new Date().toISOString())
+    .gte('start_time', new Date().toISOString())
     .neq('status', 'cancelled')
-    .order('starts_at', { ascending: true })
+    .order('start_time', { ascending: true })
     .limit(1);
   const next = rows?.[0];
   if(!next) return { speak:`I do not see an upcoming booking for ${client.name || 'that client'}. Want me to book one now?`, confirmed:false };
-  const when = new Date(next.starts_at).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  return { speak:`Yes - you are confirmed for ${next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
+  const when = new Date(next.starts_at || next.start_time).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  return { speak:`Yes - you are confirmed for ${next.service?.name || next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
 }
 
 async function reschedule_appointment(tenant, { booking_id, client_phone, new_date, new_time }){
@@ -254,12 +254,12 @@ async function reschedule_appointment(tenant, { booking_id, client_phone, new_da
     const client = await getClientByPhone(tenant.id, client_phone);
     if(client){
       const { data } = await c.from('bookings')
-        .select('id, starts_at')
+        .select('id')
         .eq('tenant_id', tenant.id)
         .eq('client_id', client.id)
-        .gte('starts_at', new Date().toISOString())
+        .gte('start_time', new Date().toISOString())
         .neq('status','cancelled')
-        .order('starts_at', { ascending: true })
+        .order('start_time', { ascending: true })
         .limit(1);
       bookingId = data?.[0]?.id;
     }
@@ -291,9 +291,9 @@ async function cancel_appointment(tenant, { booking_id, client_phone }){
         .select('id')
         .eq('tenant_id', tenant.id)
         .eq('client_id', client.id)
-        .gte('starts_at', new Date().toISOString())
+        .gte('start_time', new Date().toISOString())
         .neq('status','cancelled')
-        .order('starts_at', { ascending: true })
+        .order('start_time', { ascending: true })
         .limit(1);
       bookingId = data?.[0]?.id;
     }

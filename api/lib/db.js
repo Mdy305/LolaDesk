@@ -102,7 +102,7 @@ export async function getCallByTelnyxId(tenantId, telnyxCallId){
   const c = db();
   if(!c || !tenantId || !telnyxCallId) return null;
   const { data } = await c.from('calls').select('*')
-    .eq('tenant_id', tenantId).eq('telnyx_call_id', telnyxCallId)
+    .eq('tenant_id', tenantId).eq('telnyx_call_control_id', telnyxCallId)
     .limit(1);
   return data?.[0] || null;
 }
@@ -352,24 +352,35 @@ export async function getConversationHistory(conversationId, limit=12){
 }
 
 // ── CALLS ──
+// Writes to the canonical calls contract (see migrations/20260812_calendar_core.sql):
+//   telnyx_call_control_id, duration_seconds, status, recording_url.
+// The legacy columns (outcome, duration_sec, telnyx_call_id, transcript) do not
+// exist on the production table — outcome maps onto `status`, durationSec onto
+// `duration_seconds`, and transcript/recording_url live on the call row too.
 export async function logCall({ tenantId, conversationId, clientId, fromNumber, toNumber, direction, durationSec, outcome, transcript, telnyxCallId }){
   const c = db();
   if(!c) return null;
   const { data } = await c.from('calls').insert({
-    tenant_id: tenantId, conversation_id: conversationId, client_id: clientId,
+    tenant_id: tenantId, client_id: clientId,
     from_number: e164(fromNumber), to_number: e164(toNumber),
-    direction, duration_sec: durationSec, outcome, transcript, telnyx_call_id: telnyxCallId
+    direction, duration_seconds: durationSec, status: outcome || 'answered',
+    recording_url: transcript || null, telnyx_call_control_id: telnyxCallId || null
   }).select().maybeSingle();
   return data;
 }
 
 // ── BOOKINGS ──
+// Canonical bookings contract (migrations/20260812_calendar_core.sql):
+//   service_id, staff_id, start_time, end_time, total_amount, source.
 export async function createBooking(tenantId, { clientId, conversationId, service, stylist, startsAt, durationMin, price }){
   const c = db();
   if(!c) return null;
+  const end = new Date(new Date(startsAt).getTime() + (Number(durationMin) || 60) * 60000).toISOString();
   const { data } = await c.from('bookings').insert({
     tenant_id: tenantId, client_id: clientId, conversation_id: conversationId,
-    service, stylist, starts_at: startsAt, duration_min: durationMin, price
+    service_id: service?.id || null, staff_id: stylist?.id || null,
+    start_time: startsAt, end_time: end, total_amount: price || 0,
+    source: 'lola', status: 'confirmed'
   }).select().single();
   return data;
 }

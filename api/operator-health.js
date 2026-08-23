@@ -20,11 +20,11 @@ export default async function handler(req,res){
     if(!c) return res.status(503).json({error:'database not configured'});
     const since=new Date(Date.now()-24*60*60*1000).toISOString();
     const [callsR,msgsR,intsR]=await Promise.all([
-      c.from('calls').select('id,outcome,direction,created_at,duration_sec').eq('tenant_id',tenant.id).gte('created_at',since).order('created_at',{ascending:false}).limit(100),
+      c.from('calls').select('id,status,direction,created_at,duration_seconds').eq('tenant_id',tenant.id).gte('created_at',since).order('created_at',{ascending:false}).limit(100),
       c.from('messages').select('id,role,created_at').eq('tenant_id',tenant.id).gte('created_at',since).order('created_at',{ascending:false}).limit(200),
       c.from('integrations').select('provider,status,expires_at,updated_at').eq('tenant_id',tenant.id)
     ]);
-    const calls=callsR.data||[], messages=msgsR.data||[], integrations=intsR.data||[];
+    const calls=(callsR.data||[]).map(x=>({...x,outcome:x.status||null,duration_sec:x.duration_seconds||null})), messages=msgsR.data||[], integrations=intsR.data||[];
     const lastCall=calls[0]?.created_at||null, lastMessage=messages[0]?.created_at||null;
     const config=[envState('TELNYX_API_KEY'),envState('TELNYX_PUBLIC_KEY'),envState('ELEVENLABS_API_KEY'),envState('ELEVENLABS_VOICE_ID'),envState('APP_URL'),envState('SUPABASE_URL'),envState('SUPABASE_SERVICE_KEY')];
     const requiredConfigured=config.every(x=>x.configured);

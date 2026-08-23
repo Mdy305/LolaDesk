@@ -150,7 +150,7 @@ export async function handleServiceHistory(tenant, { clientPhone, clientId }) {
   try {
     const { data: history } = await db
       .from('bookings')
-      .select('service_name, created_at')
+      .select('service:services(name), created_at')
       .eq('tenant_id', tenant.id)
       .eq('client_id', clientId || '')
       .order('created_at', { ascending: false })
@@ -170,7 +170,7 @@ export async function handleServiceHistory(tenant, { clientPhone, clientId }) {
       : null;
     
     return {
-      speak: `Hi! I see you last had a ${lastService.service_name} about ${frequencyDays} days ago. Want to do that again, or try something new?`,
+      speak: `Hi! I see you last had a ${lastService.service_name || lastService.service?.name || 'visit'} about ${frequencyDays} days ago. Want to do that again, or try something new?`,
       data: { history: history.slice(0, 3), lastService, frequencyDays },
       action: 'service_history_retrieved'
     };

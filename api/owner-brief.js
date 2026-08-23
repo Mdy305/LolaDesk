@@ -20,13 +20,14 @@ export default async function handler(req,res){
     const endToday=new Date(startToday.getTime()+86400000);
     const start30=new Date(Date.now()-30*86400000).toISOString();
     const [todayR,monthR,callsR,msgsR]=await Promise.all([
-      c.from('bookings').select('id,service,stylist,starts_at,status,price').eq('tenant_id',tenant.id).gte('starts_at',startToday.toISOString()).lt('starts_at',endToday.toISOString()).order('starts_at',{ascending:true}),
-      c.from('bookings').select('id,status,price,starts_at').eq('tenant_id',tenant.id).gte('starts_at',start30),
-      c.from('calls').select('id,outcome,duration_sec,created_at').eq('tenant_id',tenant.id).gte('created_at',start30),
+      c.from('bookings').select('id,status,starts_at:start_time,price:total_amount,service:services(name),stylist:staff(name)').eq('tenant_id',tenant.id).gte('start_time',startToday.toISOString()).lt('start_time',endToday.toISOString()).order('start_time',{ascending:true}),
+      c.from('bookings').select('id,status,price:total_amount,starts_at:start_time').eq('tenant_id',tenant.id).gte('start_time',start30),
+      c.from('calls').select('id,status,duration_seconds,created_at').eq('tenant_id',tenant.id).gte('created_at',start30),
       c.from('messages').select('id,role,created_at').eq('tenant_id',tenant.id).gte('created_at',start30)
     ]);
     for(const r of [todayR,monthR,callsR,msgsR]) if(r.error) throw new Error(r.error.message);
-    const today=todayR.data||[], month=monthR.data||[], calls=callsR.data||[], messages=msgsR.data||[];
+    const today=(todayR.data||[]).map(b=>({...b,service:b.service?.name||null,stylist:b.stylist?.name||null})), month=monthR.data||[];
+    const calls=(callsR.data||[]).map(c=>({...c,outcome:c.status||null,duration_sec:c.duration_seconds||null})), messages=msgsR.data||[];
     const completed=month.filter(x=>String(x.status).toLowerCase()==='completed');
     const active=month.filter(x=>['pending','confirmed','scheduled','completed'].includes(String(x.status||'').toLowerCase()));
     const cancelled=month.filter(x=>['cancelled','no_show'].includes(String(x.status||'').toLowerCase()));

@@ -30,7 +30,7 @@ module.exports = async (req, res) => {
       
       // Fetch bookings from last 7 days
       const { data: bookings } = await c.from('bookings')
-        .select('price')
+        .select('price:total_amount')
         .eq('tenant_id', tenant.id)
         .gte('created_at', sevenDaysAgo);
         

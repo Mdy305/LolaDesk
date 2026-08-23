@@ -24,7 +24,7 @@ export default async function handler(req,res){
     const c=db(); if(!c) return res.status(503).json({error:'database not configured'});
     const [{data:integrations,error:iErr},{data:bookings,error:bErr}]=await Promise.all([
       c.from('integrations').select('provider,status,expires_at,metadata,updated_at').eq('tenant_id',tenant.id),
-      c.from('bookings').select('id,status,service,starts_at,created_at,price').eq('tenant_id',tenant.id).order('created_at',{ascending:false}).limit(100)
+      c.from('bookings').select('id,status,service:services(name),starts_at:start_time,created_at,price:total_amount').eq('tenant_id',tenant.id).order('created_at',{ascending:false}).limit(100)
     ]);
     if(iErr) throw new Error(iErr.message); if(bErr) throw new Error(bErr.message);
     const providers=(integrations||[]).map(row=>{
@@ -34,7 +34,7 @@ export default async function handler(req,res){
       const connected=row.status==='connected' && !expired;
       return {provider,status:connected?(productionReady?'ready':'connected_unsupported'):(expired?'expired':row.status||'disconnected'),production_ready:productionReady,capabilities:CAPABILITIES[provider]||[],expires_at:row.expires_at||null,updated_at:row.updated_at||null};
     });
-    const rows=bookings||[];
+    const rows=(bookings||[]).map(b=>({...b,service:b.service?.name||null}));
     const duplicates=[];
     const seen=new Map();
     for(const b of rows){

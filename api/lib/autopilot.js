@@ -139,13 +139,13 @@ async function missedCallRecovery({ client, now }){
     if (t.recovery_sms_sent_at && (now - new Date(t.recovery_sms_sent_at).getTime()) < RECOVERY_COOLDOWN_MS) continue;
 
     const { data: calls } = await client.from('calls')
-      .select('id,client_id,from_number,outcome,duration_sec,created_at')
+      .select('id,client_id,from_number,status,duration_seconds,created_at')
       .eq('tenant_id', t.id).eq('direction', 'inbound')
       .gte('created_at', since)
       .order('created_at', { ascending: false }).limit(200)
       .then(r => r).catch(() => ({ data: [] }));
 
-    const missed = (calls || []).filter(c => {
+    const missed = (calls || []).map(c => ({ ...c, outcome: c.status || null, duration_sec: c.duration_seconds || null })).filter(c => {
       if (c.duration_sec && c.duration_sec > 0) return false;
       const o = String(c.outcome || '').toLowerCase();
       return !o || ['missed', 'no_answer', 'failed', 'cancelled', 'busy'].includes(o);
@@ -217,13 +217,13 @@ async function rebooking({ client, now }){
   const actions = [];
   for (const t of tenants){
     const { data: bookings } = await client.from('bookings')
-      .select('id,client_id,service,starts_at,status,created_at')
+      .select('id,client_id,service:services(name),starts_at:start_time,status,created_at')
       .eq('tenant_id', t.id)
       .in('status', ['cancelled', 'no-show'])
       .gte('created_at', since)
       .order('created_at', { ascending: false }).limit(200)
       .then(r => r).catch(() => ({ data: [] }));
-    const cands = (bookings || []).filter(b => b.client_id);
+    const cands = (bookings || []).map(b => ({ ...b, service: b.service?.name || b.service || null })).filter(b => b.client_id);
     if (!cands.length) continue;
 
     const clientIds = [...new Set(cands.map(b => b.client_id))];
@@ -257,7 +257,7 @@ async function rebooking({ client, now }){
       // If they already rebooked into the future, skip.
       const { data: future } = await client.from('bookings').select('id')
         .eq('tenant_id', t.id).eq('client_id', b.client_id).eq('status', 'confirmed')
-        .gt('starts_at', new Date(now).toISOString()).limit(1)
+        .gt('start_time', new Date(now).toISOString()).limit(1)
         .then(r => r).catch(() => ({ data: [] }));
       if (future?.length){
         actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: 'already rebooked' });

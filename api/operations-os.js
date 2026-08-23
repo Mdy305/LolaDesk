@@ -43,13 +43,13 @@ export default async function handler(req,res){
     const since30d=new Date(Date.now()-30*86400000).toISOString();
     const next7d=new Date(Date.now()+7*86400000).toISOString();
     const [callsR,bookingsR,clientsR,usageR]=await Promise.all([
-      c.from('calls').select('id,client_id,from_number,outcome,direction,duration_sec,created_at').eq('tenant_id',tenant.id).gte('created_at',since7d).order('created_at',{ascending:false}).limit(200),
-      c.from('bookings').select('id,client_id,service,starts_at,status,price,created_at').eq('tenant_id',tenant.id).gte('starts_at',since30d).lte('starts_at',next7d).order('starts_at',{ascending:true}).limit(300),
+      c.from('calls').select('id,client_id,from_number,status,direction,duration_seconds,created_at').eq('tenant_id',tenant.id).gte('created_at',since7d).order('created_at',{ascending:false}).limit(200),
+      c.from('bookings').select('id,client_id,service:services(name),starts_at:start_time,status,price:total_amount,created_at').eq('tenant_id',tenant.id).gte('start_time',since30d).lte('start_time',next7d).order('start_time',{ascending:true}).limit(300),
       c.from('clients').select('id,first_name,last_name,phone,last_visit,status').eq('tenant_id',tenant.id).order('last_visit',{ascending:false}).limit(500),
       c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id',tenant.id).like('kind','operations_%').gte('created_at',since30d).order('created_at',{ascending:false}).limit(500)
     ]);
     for(const r of [callsR,bookingsR,clientsR,usageR]) if(r.error) throw new Error(r.error.message);
-    const calls=callsR.data||[], bookings=bookingsR.data||[], clients=(clientsR.data||[]).map(x=>({...x,name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Client',phone_number:x.phone||'',updated_at:x.last_visit||null})), events=usageR.data||[];
+    const calls=(callsR.data||[]).map(x=>({...x,outcome:x.status||null,duration_sec:x.duration_seconds||null})), bookings=(bookingsR.data||[]).map(x=>({...x,service:x.service?.name||null})), clients=(clientsR.data||[]).map(x=>({...x,name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Client',phone_number:x.phone||'',updated_at:x.last_visit||null})), events=usageR.data||[];
     const clientById=new Map(clients.map(x=>[x.id,x]));
     const handled=new Set(events.filter(e=>['operations_acknowledge','operations_dismiss'].includes(e.kind)).map(e=>`${e.metadata?.item_type}:${e.metadata?.item_id}`));
     const tasks=[];

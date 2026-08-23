@@ -40,11 +40,11 @@ export default async function handler(req,res){
     todayStart.setHours(0,0,0,0); const todayEnd=new Date(todayStart.getTime()+DAY);
     const [callsQ,bookingsQ,usageQ]=await Promise.all([
       c.from('calls').select('*').eq('tenant_id',tenant.id).gte('created_at',since48).order('created_at',{ascending:false}).limit(100),
-      c.from('bookings').select('*').eq('tenant_id',tenant.id).gte('starts_at',todayStart.toISOString()).lt('starts_at',todayEnd.toISOString()).order('starts_at',{ascending:true}).limit(150),
+      c.from('bookings').select('id,tenant_id,client_id,service_id,staff_id,start_time,end_time,status,total_amount,created_at,updated_at,location_id,source,conversation_id,external_id,external_provider,hold_id,deposit_status,confirmation_code,starts_at:start_time,service:services(name)').eq('tenant_id',tenant.id).gte('start_time',todayStart.toISOString()).lt('start_time',todayEnd.toISOString()).order('start_time',{ascending:true}).limit(150),
       c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id',tenant.id).gte('created_at',new Date(now-30*DAY).toISOString()).order('created_at',{ascending:false}).limit(1500)
     ]);
     if(callsQ.error||bookingsQ.error||usageQ.error)throw callsQ.error||bookingsQ.error||usageQ.error;
-    const calls=callsQ.data||[],bookings=bookingsQ.data||[],usage=usageQ.data||[];
+    const calls=callsQ.data||[],bookings=(bookingsQ.data||[]).map(b=>({...b,service:b.service?.name||null})),usage=usageQ.data||[];
     const state=new Map();
     for(const e of usage.filter(x=>x.kind==='action_state')){const id=e.metadata?.action_id;if(id&&!state.has(id))state.set(id,{...e.metadata,at:e.created_at});}
     const items=[];

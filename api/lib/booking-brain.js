@@ -190,21 +190,6 @@ async function getBookingRow(tenantId, bookingId){
   return data || null;
 }
 
-// Keep the legacy operator read path working: canonical rows also carry the
-// legacy text columns the older dashboards select.
-async function writeLegacyCompat(tenantId, bookingId, { serviceName, staffName, startsAt, durationMin, price }){
-  const c = db(); if(!c) return;
-  try{
-    await c.from('bookings').update({
-      service: serviceName || null,
-      stylist: staffName || null,
-      starts_at: startsAt,
-      duration_min: durationMin,
-      price
-    }).eq('tenant_id', tenantId).eq('id', bookingId);
-  }catch(e){ console.warn('[booking-brain] legacy compat write failed:', e.message); }
-}
-
 async function resolveClient(tenantId, params, create){
   const found = await crm.findClientByContact(tenantId, params.client_phone || params.phone || null, params.client_email || params.email || null);
   if(found || !create) return found;
@@ -288,7 +273,6 @@ export async function bookAppointment(tenant, params, opts = {}){
         totalAmount: Number(svc.price || 0), notes: params.notes || null,
         source: channel, conversationId, holdId: null
       });
-      await writeLegacyCompat(tenantId, booking.id, { serviceName: svc.name, staffName: resolved.staff?.name || null, startsAt, durationMin: duration, price: Number(svc.price || 0) });
       await logEvent(tenantId, 'booking_created', { booking_id: booking.id, client_id: client.id, service: svc.name, at: startsAt });
       const when = `${dayLabel(startsAt)} at ${timeLabel(startsAt)}`;
       const speak = `Perfect${client.name ? `, ${first(client.name)}` : ''}. You're booked for ${svc.name} on ${when}.`;
@@ -355,7 +339,6 @@ export async function bookAppointment(tenant, params, opts = {}){
       }catch{}
       await logEvent(tenantId, 'external_commit', { provider: externalRef.provider, external_id: externalRef.id });
     }
-    await writeLegacyCompat(tenantId, booking.id, { serviceName: svcRow.name || resolved.service.name, staffName: selected.name, startsAt: booking.start_time, durationMin: held.slot.duration_minutes, price: booking.total_amount });
 
     await logEvent(tenantId, 'booking_created', { booking_id: booking.id, client_id: client.id, service: svcRow.name, staff: selected.name, at: booking.start_time });
     try{ await crm.updateClientFromConversation(client.id, tenantId, { intent: 'booking_completed', channel, summary: `Booked ${svcRow.name} with ${selected.name}` }); }catch{}
@@ -393,7 +376,6 @@ export async function rescheduleAppointment(tenant, params, opts = {}){
         const booking = await repo.updateCanonicalBooking(tenantId, current.id, patch, { source: channel, reason: 'rescheduled' });
         await repo.appendBookingHistory({ tenantId, bookingId: current.id, fromStatus: current.status, toStatus: 'confirmed', source: channel, reason: 'rescheduled' });
         await repo.releaseHold(tenantId, held.hold.hold_token, 'converted');
-        await writeLegacyCompat(tenantId, current.id, { serviceName: current.service, staffName: current.stylist, startsAt: held.slot.starts_at, durationMin: held.slot.duration_minutes, price: current.total_amount ?? current.price });
         await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: current.start_time || current.starts_at, to: held.slot.starts_at });
         const speak = `Done — moved to ${dayLabel(held.slot.starts_at)} at ${timeLabel(held.slot.starts_at)}.`;
         return { ok: true, rescheduled: true, booking, speak, text: speak };

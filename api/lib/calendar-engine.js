@@ -72,13 +72,6 @@ export async function listAvailability({ tenant, date, durationMin = 60, stylist
   return { slots };
 }
 
-async function writeLegacy(tenantId, bookingId, { service, stylist, startsAt, durationMin, price }){
-  const c = db(); if(!c) return;
-  await c.from('bookings').update({
-    service: service || null, stylist: stylist || null,
-    starts_at: startsAt, duration_min: durationMin, price: Number(price || 0)
-  }).eq('tenant_id', tenantId).eq('id', bookingId);
-}
 
 export async function createBookingSafe({ tenant, clientId = null, service, stylist = null, startsAt, durationMin = 60, price = 0 }){
   try{
@@ -102,7 +95,6 @@ export async function createBookingSafe({ tenant, clientId = null, service, styl
       holdId: hold ? hold.hold.id : null
     });
     if(hold) await releaseHold(tenantId, hold.hold.hold_token, 'converted');
-    await writeLegacy(tenantId, booking.id, { service, stylist, startsAt: booking.start_time, durationMin, price });
     return { ok: true, booking };
   }catch(e){
     return { ok: false, error: String(e?.message || e) };
@@ -125,7 +117,7 @@ export async function rescheduleBookingSafe({ tenantId, bookingId, newStartsAt }
       return { ok: true, booking };
     }
 
-    const { data: booking, error } = await c.from('bookings').update({ starts_at: startIso }).eq('tenant_id', tenantId).eq('id', bookingId).select().single();
+    const { data: booking, error } = await c.from('bookings').update({ start_time: startIso }).eq('tenant_id', tenantId).eq('id', bookingId).select().single();
     if(error) throw error;
     return { ok: true, booking };
   }catch(e){

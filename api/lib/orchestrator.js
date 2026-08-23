@@ -41,9 +41,9 @@ export async function injectCallerMemory(tenantId, clientPhone) {
     // Fetch their last booking to give Lola context
     const { data: lastBooking } = await c
       .from('bookings')
-      .select('service, starts_at, stylist')
+      .select('service:services(name), starts_at:start_time, stylist:staff(name)')
       .eq('client_id', client.id)
-      .order('starts_at', { ascending: false })
+      .order('start_time', { ascending: false })
       .limit(1)
       .maybeSingle();
 

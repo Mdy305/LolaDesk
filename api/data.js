@@ -73,8 +73,8 @@ export default async function handler(req,res){
         const { data=[] } = await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
         return res.status(200).json({ tenant:tenant.name, calls:(data||[]).map(x=>({
           id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at), createdAt:x.created_at,
-          outcome:x.outcome||'handled', durationSec:x.duration_sec||x.duration_seconds||x.duration||0, // schema column is duration_sec — the old keys never matched, so every call showed 0:00
-          summary:x.summary||x.transcript?.slice(0,120)||'', booked:(x.outcome==='booked')||!!x.booked // no `booked` column exists — derive from outcome
+          outcome:x.status||x.outcome||'handled', durationSec:x.duration_seconds||x.duration_sec||x.duration||0, // canonical column is status/duration_seconds
+          summary:x.recording_url||'', booked:(x.status==='booked')||!!x.booked // no `booked` column exists — derive from status
         })) });
       }
       case 'inbox': {
@@ -85,15 +85,15 @@ export default async function handler(req,res){
         })) });
       }
       case 'bookings': {
-        const { data=[] } = await c.from('bookings').select('*').eq('tenant_id',tid).order('starts_at',{ascending:true}).limit(200);
+        const { data=[] } = await c.from('bookings').select('id,status,start_time,price:total_amount,service:services(name),stylist:staff(name),client:clients(name)').eq('tenant_id',tid).order('start_time',{ascending:true}).limit(200);
         return res.status(200).json({ tenant:tenant.name, bookings:(data||[]).map(x=>({
-          id:x.id, service:x.service||'Appointment', client:x.client_name||'Client',
-          stylist:x.stylist||'', startsAt:x.starts_at, price:Number(x.price||0), status:x.status||'confirmed'
+          id:x.id, service:x.service?.name||'Appointment', client:x.client?.name||'Client',
+          stylist:x.stylist?.name||'', startsAt:x.start_time, price:Number(x.price||0), status:x.status||'confirmed'
         })) });
       }
       case 'revenue': {
-        const { data=[] } = await c.from('bookings').select('price,starts_at,service,stylist').eq('tenant_id',tid).limit(1000);
-        const rows=data||[];
+        const { data=[] } = await c.from('bookings').select('price:total_amount,starts_at:start_time,service:services(name),stylist:staff(name)').eq('tenant_id',tid).limit(1000);
+        const rows=(data||[]).map(x=>({...x,service:x.service?.name||null,stylist:x.stylist?.name||null}));
         const total=rows.reduce((s,r)=>s+Number(r.price||0),0);
         // by month
         const byMonth={}; for(const r of rows){ const m=(r.starts_at||'').slice(0,7); if(!m)continue; byMonth[m]=(byMonth[m]||0)+Number(r.price||0); }
@@ -166,7 +166,7 @@ export default async function handler(req,res){
         const [cl,ca,bk,usage, upsellEvents]=await Promise.all([
           c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
-          c.from('bookings').select('price').eq('tenant_id',tid).gte('starts_at',since).then(r=>r.data||[]).catch(()=>[]),
+          c.from('bookings').select('price:total_amount').eq('tenant_id',tid).gte('start_time',since).then(r=>r.data||[]).catch(()=>[]),
           getUsageStatus(tid, tenant.plan).catch(()=>null),
           c.from('usage_events').select('units').eq('tenant_id',tid).eq('kind','upsell').gte('created_at',since).then(r=>r.data||[]).catch(()=>[])
         ]);

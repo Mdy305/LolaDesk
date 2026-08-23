@@ -105,8 +105,8 @@ test('bookAppointment books an available slot and remembers it', async () => {
   const booking = fake.all('bookings')[0];
   assert.equal(booking.tenant_id, tenantA.id);
   assert.equal(booking.start_time, new Date(startsAt).toISOString());
-  assert.equal(booking.service, 'Balayage'); // legacy compat columns written too
-  assert.equal(booking.stylist, 'Mia');
+  assert.ok(booking.service_id);  // canonical service_id resolved (legacy text columns don't exist on production)
+  assert.ok(booking.staff_id);
 
   // "Lola remembers": a tenant event_log entry was recorded for this salon.
   const mem = await getTenantMemory(tenantA.id);
