@@ -21,6 +21,9 @@
  *   4. sync-self-heal        (per tenant)    — a tenant's booking sync is
  *        erroring or stale for > 1h; Lola re-runs the sync and records the
  *        outcome, healing what sync-alerts only reports.
+ *   5. review-request         (per tenant)    — a client's appointment just
+ *        ended; Lola texts them the salon's Yelp/Google review link so real
+ *        customers drive the reputation. Dedup via client memory.
  *
  * Per-tenant agents respect tenants.autopilot_enabled (owners can pause
  * autonomy from Settings). Every SMS respects the client's 10DLC opt-out.
@@ -54,16 +57,22 @@ export const AUTOPILOT_AGENTS = {
     label: 'Sync self-heal',
     scope: 'tenant',
     description: 'Re-runs booking syncs that are erroring or stale for over an hour.'
+  },
+  'review-request': {
+    label: 'Review request',
+    scope: 'tenant',
+    description: 'Texts clients a link to the salon\'s Yelp/Google review page after their appointment ends.'
   }
 };
 
-export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal'];
+export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request'];
 
 const RECOVERY_COOLDOWN_MS = 6 * 3600 * 1000;   // one recovery burst per tenant per 6h
 const RECENT_WINDOW_MS = 24 * 3600 * 1000;      // look back 24h for missed calls
 const REBOOK_WINDOW_MS = 7 * 24 * 3600 * 1000;  // look back 7d for cancellations
 const STALE_AFTER_MS = 2 * 3600 * 1000;         // sync older than 2h is stale
 const RECENT_SYNC_MS = 7 * 24 * 3600 * 1000;    // sync log lookback
+const REVIEW_WINDOW_MS = 6 * 3600 * 1000;       // appointments that ended in the last 6h
 
 // ── shared helpers ────────────────────────────────────────────────────────
 
@@ -326,11 +335,91 @@ async function syncSelfHeal({ client, now }){
   };
 }
 
+// ── AGENT 5 · review-request (per tenant) ─────────────────────────────────
+// A client's appointment just ended; text them a direct link to the salon's
+// Yelp/Google review page so the reputation is driven by real customers.
+// Yelp has no write API — the compliant play is sending real clients to the
+// "Write a Review" page, exactly like Podium/Birdeye. Dedup via client memory
+// (one campaign per booking) and the client's 10DLC opt-out.
+async function reviewRequest({ client, now }){
+  const tenants = await enabledTenants(client, 'id,slug,name,phone_number,autopilot_enabled,yelp_review_url,google_review_url');
+  const windowStart = new Date(now - REVIEW_WINDOW_MS).toISOString();
+  const actions = [];
+  for (const t of tenants){
+    const yelp = String(t.yelp_review_url || '').trim();
+    const google = String(t.google_review_url || '').trim();
+    if (!yelp && !google) continue; // nothing to send until the owner sets links
+
+    const { data: bookings } = await client.from('bookings')
+      .select('id,client_id,end_time,status,created_at')
+      .eq('tenant_id', t.id).eq('status', 'confirmed')
+      .lte('end_time', new Date(now).toISOString())
+      .gte('end_time', windowStart)
+      .order('end_time', { ascending: false }).limit(200)
+      .then(r => r).catch(() => ({ data: [] }));
+    const cands = (bookings || []).filter(b => b.client_id);
+    if (!cands.length) continue;
+
+    const clientIds = [...new Set(cands.map(b => b.client_id))];
+    let clients = [];
+    if (clientIds.length){
+      const { data } = await client.from('clients').select('id,first_name,last_name,phone').in('id', clientIds)
+        .then(r => r).catch(() => ({ data: [] }));
+      clients = data || [];
+    }
+
+    const fromNumber = await primaryNumber(client, t);
+    if (!fromNumber){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no primary number' });
+      continue;
+    }
+
+    let sent = 0;
+    for (const b of cands){
+      const cl = clients.find(c => c.id === b.client_id);
+      if (!cl?.phone){
+        actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: 'no client phone' });
+        continue;
+      }
+      // Dedup: one campaign per booking.
+      const mem = await getClientMemory(t.id, 'autopilot:').catch(() => []);
+      const doneKey = `review-requested:${b.id}`;
+      if (mem.some(m => m.key === doneKey)){
+        actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: 'already contacted' });
+        continue;
+      }
+      const name = String(cl.first_name || 'there').split(' ')[0];
+      const links = [];
+      if (yelp) links.push(`Yelp: ${yelp}`);
+      if (google) links.push(`Google: ${google}`);
+      const text = `Hi ${name}, this is Lola at ${t.name}. Hope you loved your visit! If you have a moment, a review means the world to us — ${links.join(' · ')}. Thank you!`;
+      const r = await sendAutopilotSms({ from: fromNumber, to: cl.phone, text, tenantId: t.id });
+      if (r.sent){
+        sent++;
+        try{ await setClientMemory(t.id, 'autopilot:', doneKey, new Date(now).toISOString()); }catch{}
+        actions.push({ tenant_id: t.id, booking_id: b.id, to: cl.phone, status: 'sent' });
+      } else {
+        actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: r.reason });
+      }
+    }
+  }
+  const sentCount = actions.filter(a => a.status === 'sent').length;
+  return {
+    status: sentCount ? 'success' : (actions.length ? 'partial' : 'skipped'),
+    summary: sentCount
+      ? `Sent review requests to ${sentCount} client(s) whose appointment just ended`
+      : (actions.length ? 'No review requests sent (all skipped)' : 'No completed appointments in the window'),
+    details: { actions: actions.slice(0, 50) },
+    actions
+  };
+}
+
 const RUNNERS = {
   'routing-heal': routingHeal,
   'missed-call-recovery': missedCallRecovery,
   'rebooking': rebooking,
-  'sync-self-heal': syncSelfHeal
+  'sync-self-heal': syncSelfHeal,
+  'review-request': reviewRequest
 };
 
 // ── ledger ────────────────────────────────────────────────────────────────

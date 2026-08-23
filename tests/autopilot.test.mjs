@@ -51,9 +51,9 @@ const NOW = new Date('2026-08-22T10:00:00Z').getTime();
 function seed() {
   fake.reset();
   fake.seed('tenants', [
-    { id: 't1', slug: 'salon-a', name: 'Salon A', phone_number: '+13055550100', autopilot_enabled: true, recovery_sms_sent_at: null },
+    { id: 't1', slug: 'salon-a', name: 'Salon A', phone_number: '+13055550100', autopilot_enabled: true, recovery_sms_sent_at: null, yelp_review_url: 'https://www.yelp.com/biz/salon-a', google_review_url: 'https://g.page/r/salona/review' },
     // t2 has autopilot paused — per-tenant agents must leave it alone.
-    { id: 't2', slug: 'salon-b', name: 'Salon B', phone_number: '+13055550101', autopilot_enabled: false, recovery_sms_sent_at: null }
+    { id: 't2', slug: 'salon-b', name: 'Salon B', phone_number: '+13055550101', autopilot_enabled: false, recovery_sms_sent_at: null, yelp_review_url: null, google_review_url: null }
   ]);
   fake.seed('tenant_numbers', [
     // tn1 is stale — recorded the rejected legacy id, Telnyx says LolaBrain.
@@ -75,7 +75,9 @@ function seed() {
     // Cancelled 2 days ago for c2 (answered call — not a recovery target, but rebooking applies).
     { id: 'bk1', tenant_id: 't1', client_id: 'c2', start_time: new Date(NOW - 2 * 86400000).toISOString(), status: 'cancelled', service: 'Balayage', created_at: new Date(NOW - 2 * 86400000).toISOString() },
     // Confirmed future booking for c1 — they already have one, rebooking must not double-text.
-    { id: 'bk2', tenant_id: 't1', client_id: 'c1', start_time: new Date(NOW + 3 * 86400000).toISOString(), status: 'confirmed', created_at: new Date(NOW - 86400000).toISOString() }
+    { id: 'bk2', tenant_id: 't1', client_id: 'c1', start_time: new Date(NOW + 3 * 86400000).toISOString(), status: 'confirmed', created_at: new Date(NOW - 86400000).toISOString() },
+    // Completed appointment for c2 that ended 2h ago — review-request must text them.
+    { id: 'bk3', tenant_id: 't1', client_id: 'c2', start_time: new Date(NOW - 3 * 3600 * 1000).toISOString(), end_time: new Date(NOW - 2 * 3600 * 1000).toISOString(), status: 'confirmed', service: 'Balayage', created_at: new Date(NOW - 3 * 3600 * 1000).toISOString() }
   ]);
   fake.seed('booking_sync_log', [
     // t1's latest sync errored — sync-self-heal must re-run it.
@@ -155,7 +157,7 @@ test('full run: all four agents act, ledger rows written, opt-outs respected', a
     // 2 · missed-call-recovery texted the missed caller (c1) but NOT the
     // answered call (c2) and NOT the paused tenant's caller.
     assert.equal(byAgent['missed-call-recovery'].status, 'success');
-    const sms = t.sentSms.filter(m => !m.text.includes('didn\'t go through'));
+    const sms = t.sentSms.filter(m => !m.text.includes('didn\'t go through') && !m.text.includes('Yelp:'));
     assert.equal(sms.length, 1);
     assert.equal(sms[0].to, '+13055550110');
     assert.ok(sms[0].text.includes('missed your call'));
@@ -178,10 +180,18 @@ test('full run: all four agents act, ledger rows written, opt-outs respected', a
     const healLedger = fake.all('agent_runs').find(r => r.agent === 'sync-self-heal');
     assert.ok(healLedger.details.actions[0].tenant_id === 't1');
 
-    // Ledger: 4 rows, one per agent, none failed.
+    // 5 · review-request texted the client whose appointment just ended.
+    assert.equal(byAgent['review-request'].status, 'success');
+    const review = t.sentSms.filter(m => m.text.includes('Yelp:'));
+    assert.equal(review.length, 1);
+    assert.equal(review[0].to, '+13055550111');
+    assert.ok(review[0].text.includes('https://www.yelp.com/biz/salon-a'));
+    assert.ok(review[0].text.includes('https://g.page/r/salona/review'));
+
+    // Ledger: 5 rows, one per agent, none failed.
     const runs = fake.all('agent_runs');
-    assert.equal(runs.length, 4);
-    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal']) {
+    assert.equal(runs.length, 5);
+    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request']) {
       const row = runs.find(r => r.agent === a);
       assert.ok(row, `ledger row for ${a}`);
       assert.notEqual(row.status, 'failed');

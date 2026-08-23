@@ -23,7 +23,7 @@
 create table if not exists agent_runs (
   id           uuid primary key default gen_random_uuid(),
   agent        text not null check (agent in
-                 ('routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal')),
+                 ('routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request')),
   tenant_id    uuid references tenants(id) on delete cascade,
   status       text not null default 'success' check (status in ('success', 'partial', 'failed', 'skipped')),
   summary      text,

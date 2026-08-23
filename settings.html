@@ -260,6 +260,16 @@
   </div>
 
   <div class="card">
+    <h3>Reviews — get 5-star reviews on Yelp &amp; Google</h3>
+    <div class="desc">After every appointment ends, Lola texts the client a direct link to your review page — real customers write the reviews. Paste your two links below.</div>
+    <div class="fld"><label>Yelp review link</label><input class="sel" id="yelpReviewUrl" placeholder="https://www.yelp.com/biz/your-salon" value=""></div>
+    <div class="fld"><label>Google review link</label><input class="sel" id="googleReviewUrl" placeholder="https://g.page/r/xxxxx/review" value=""></div>
+    <div class="desc" style="margin-top:8px">How to find them: open your salon on Yelp and click <b>Write a Review</b>, copy the URL. For Google, use the <b>Share review form</b> in Google Business Profile.</div>
+    <div class="btn-row"><button class="btn-p" onclick="saveReviewLinks()">Save review links</button></div>
+    <div class="msg" id="revMsg"></div>
+  </div>
+
+  <div class="card">
     <h3>Danger zone</h3>
     <div class="desc">Permanent actions. Export your data first.</div>
     <div class="btn-row">
@@ -351,6 +361,10 @@ async function load(){
     setSw('swRemind',s.reminder_sms!==false);
   }catch(e){}
   setSw('swAutopilot',TENANT.autopilot_enabled!==false);
+  try{
+    if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);
+    if(TENANT.google_review_url) setVal('googleReviewUrl',TENANT.google_review_url);
+  }catch(e){}
 }
 
 async function saveSalon(){
@@ -512,6 +526,18 @@ async function saveAutopilot(){
       ?'Autopilot on. Lola keeps working while you sleep.'
       :'Autopilot paused. Lola waits for you.',true);
   }catch(e){msg('apMsg',e.message,false);}
+}
+
+async function saveReviewLinks(){
+  msg('revMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      yelp_review_url:val('yelpReviewUrl'),
+      google_review_url:val('googleReviewUrl')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('revMsg','Saved. Lola will text clients a review link after each appointment.',true);
+  }catch(e){msg('revMsg',e.message,false);}
 }
 
 function copyLink(){
