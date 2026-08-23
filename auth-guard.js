@@ -40,6 +40,10 @@
     // notification (lola-notify.js) and the luxury design language
     // (front-desk-os.js) — injected last so its styles win every tie.
     loadScript('/lola-notify.js','lolaNotify');
+    // Lola Autopilot announcements ride the ONE notification: poll recent
+    // agent_runs and announce new runs ("Lola recovered 3 missed calls")
+    // after each hourly autopilot run, wherever the operator is.
+    loadScript('/lola-autopilot-announce.js','lolaAutopilotAnnounce');
     loadScript('/front-desk-os.js','frontDeskOs');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');

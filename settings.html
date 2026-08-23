@@ -227,6 +227,14 @@
   </div>
 
   <div class="card">
+    <h3>Lola Autopilot</h3>
+    <div class="desc">Lola works while you sleep — recovers missed calls, invites rebookings, and heals syncs on her own.</div>
+    <div class="toggle-row"><div><div class="tl">Autonomous agents</div><div class="ts">Let Lola run recovery, rebooking, and sync-healing without asking</div></div><div class="sw on" id="swAutopilot" onclick="tog(this)"></div></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveAutopilot()">Save autopilot</button></div>
+    <div class="msg" id="apMsg"></div>
+  </div>
+
+  <div class="card">
     <h3>Connection status</h3>
     <div class="status" id="brainStatus"><span class="dot off"></span><div class="status-txt"><b>Checking...</b><small>Verifying Lola's connection</small></div></div>
   </div>
@@ -340,6 +348,7 @@ async function load(){
     setSw('swConfirm',s.confirmation_sms!==false);
     setSw('swRemind',s.reminder_sms!==false);
   }catch(e){}
+  setSw('swAutopilot',TENANT.autopilot_enabled!==false);
 }
 
 async function saveSalon(){
@@ -467,6 +476,18 @@ async function saveCapabilities(){
       can_recognize:on('swCanRecognize')})});
     msg('capMsg','Capabilities saved.',true);
   }catch(e){msg('capMsg',e.message,false);}
+}
+
+async function saveAutopilot(){
+  msg('apMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({autopilot_enabled:on('swAutopilot')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('apMsg',on('swAutopilot')
+      ?'Autopilot on. Lola keeps working while you sleep.'
+      :'Autopilot paused. Lola waits for you.',true);
+  }catch(e){msg('apMsg',e.message,false);}
 }
 
 function copyLink(){

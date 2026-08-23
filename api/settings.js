@@ -48,7 +48,7 @@ export default async function handler(req, res){
     const patch = {};
     // NOTE: voice_id is intentionally NOT in this list — Lola's voice is
     // canonical platform-wide and cannot be changed per tenant.
-    for(const k of ['name','owner_name','location','hours','booking_url','website_url','knowledge']){
+    for(const k of ['name','owner_name','location','hours','booking_url','website_url','knowledge','autopilot_enabled']){
       if(body[k] !== undefined) patch[k] = body[k];
     }
     if(Object.keys(patch).length === 0) return res.status(400).json({ error:'no fields to update' });
