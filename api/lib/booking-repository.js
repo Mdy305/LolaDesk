@@ -168,7 +168,7 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
     tenant_id: tenantId, client_id: clientId, service_id: serviceId, staff_id: staffId,
     location_id: locationId, start_time: startTime, end_time: endTime, status,
     total_amount: totalAmount || 0, notes, source, conversation_id: conversationId, hold_id: holdId,
-    external_id: externalId, external_source: externalSource,
+    external_id: externalId, external_provider: externalSource,
     confirmation_code: makeConfirmationCode()
   };
   const { data, error } = await c.from('bookings').insert(row).select().single();

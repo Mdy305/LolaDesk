@@ -208,7 +208,7 @@ test('bookAppointment commits to the connected provider and records the external
 
     const booking = fake.all('bookings')[0];
     assert.equal(booking.external_id, 'VAG-123');
-    assert.equal(booking.external_source, 'vagaro');
+    assert.equal(booking.external_provider, 'vagaro');
 
     const mapping = fake.all('provider_mappings').find(m => m.entity_type === 'booking');
     assert.ok(mapping, 'provider_mapping for the booking should be recorded');
