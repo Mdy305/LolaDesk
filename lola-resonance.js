@@ -39,7 +39,8 @@
     startedAt: 0, transcript: '', interim: '', lastError: null,
     audio: null, audioUrl: null, audioContext: null, analyser: null,
     amplitudeFrame: null, sourceNode: null, ambientOn: false, pendingArm: false,
-    ws: null, wsTurnId: 0
+    ws: null, wsTurnId: 0,
+    retryCount: 0, lastErrorAt: 0, fatalMic: false, inIframe: false
   };
 
   const STORAGE_KEY = 'loladesk_resonance';
@@ -526,8 +527,11 @@
   }
   function scheduleRestart(delay = 250) {
     clearTimeout(state.restartTimer);
-    if (!state.enabled || !state.recognition || state.busy || state.speaking) return;
-    state.restartTimer = setTimeout(() => { try { state.recognition.start(); } catch (e) {} }, delay);
+    if (!state.enabled || !state.recognition || state.busy || state.speaking || state.fatalMic) return;
+    // Capped exponential backoff — a flaky speech service must never turn
+    // into a toast-storm. Retry quietly, then rest in a re-armable state.
+    const backoff = Math.min(delay * Math.pow(2, Math.min(state.retryCount, 5)), 8000);
+    state.restartTimer = setTimeout(() => { try { state.recognition.start(); } catch (e) {} }, backoff);
   }
   function initRecognition() {
     if (!SpeechRecognition) return false;
@@ -539,13 +543,39 @@
       state.listening = true;
       setOrb(state.awake ? 'listening' : 'ambient', { label: state.awake ? 'I’m listening' : 'Listening for “Lola”…' });
     };
-    recognition.onend = () => { state.listening = false; scheduleRestart(200); };
+    recognition.onend = () => {
+      state.listening = false;
+      if (!state.fatalMic) scheduleRestart(200);
+    };
     recognition.onerror = (event) => {
       state.lastError = event.error;
-      if (!['no-speech', 'aborted'].includes(event.error)) {
+      state.lastErrorAt = Date.now();
+      // Permission problems are fatal to this page session: stop the restart
+      // loop, say exactly what to do, and re-arm on the next tap.
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        state.fatalMic = true;
+        state.retryCount = 0;
+        clearTimeout(state.restartTimer);
+        setOrb('degraded', { label: 'Microphone blocked — allow it, then tap Lola' });
+        toast('Microphone access is blocked. Allow it in your browser, then tap Lola.', 'error');
+        metric('recognition_error', 0, { error: event.error, fatal: true });
+        return;
+      }
+      if (event.error === 'no-speech' || event.error === 'aborted') return; // silence / intentional stop
+      // Retryable service hiccups (network, audio-capture, language…).
+      state.retryCount++;
+      if (state.retryCount === 1) {
         setOrb('degraded', { label: 'Microphone needs attention' });
-        toast('Microphone: ' + event.error + ' — tap Lola to retry', 'error');
-        metric('recognition_error', 0, { error: event.error });
+        toast(state.inIframe
+          ? 'Mic is blocked inside this preview — open loladesk.com to talk to Lola'
+          : 'Microphone: ' + event.error + ' — tap Lola to retry', 'error');
+        metric('recognition_error', 0, { error: event.error, iframe: state.inIframe });
+      }
+      if (state.retryCount >= 5) {
+        state.fatalMic = true;
+        clearTimeout(state.restartTimer);
+        setOrb('degraded', { label: 'Mic can’t reach the speech service — tap Lola to retry' });
+        metric('recognition_exhausted', 0, { error: event.error });
       }
     };
     recognition.onresult = (event) => {
@@ -607,10 +637,15 @@
     state.pendingArm = false;
     setOrb('waking', { label: 'Starting Lola…' });
     try {
+      state.inIframe = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
       stream.getTracks().forEach(track => track.stop());
+      // A fresh mic handshake clears any earlier exhaustion so she can
+      // recover the moment the environment allows it.
+      state.fatalMic = false;
+      state.retryCount = 0;
       if (state.audioContext && state.audioContext.state === 'suspended') await state.audioContext.resume();
     } catch (error) {
       state.enabled = false;
@@ -627,9 +662,13 @@
       return;
     }
     state.ambientOn = true;
+    // The arming gesture IS tap-to-talk: mark her awake so anything said
+    // right after the tap is treated as a command — no “Lola” prefix needed.
+    state.awake = true;
+    state.lastWakeAt = Date.now();
     setOrb('ambient', { label: 'Listening for “Lola”…' });
     scheduleRestart(0);
-    toast('Lola is with you. Say “Lola”, or tap the orb to talk.');
+    toast('Lola is with you — tap the orb and talk, or say “Lola” anytime.');
     try { localStorage.setItem(STORAGE_KEY, 'on'); } catch (e) {}
   }
 
@@ -648,14 +687,21 @@
   /* ── public toggles (installed as the page's voice control) ── */
   function toggle() {
     if (!state.enabled) { enable(); return; }
-    if (state.listening) {
+    // Re-arm after the mic gave up — one tap renegotiates everything.
+    if (state.fatalMic) { state.fatalMic = false; state.retryCount = 0; enable(); return; }
+    // Barge-in then listen: she was talking — cut her off and take the command.
+    if (state.speaking || state.busy) cancelActive('barge-in');
+    // Active exchange → tap stops listening (tap to talk, tap to stop).
+    if (state.listening && state.awake && state.mode === 'listening') {
       try { state.recognition && state.recognition.stop(); } catch (e) {}
       state.listening = false;
+      state.awake = false;
       setOrb(state.ambientOn ? 'ambient' : 'idle', { label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command' });
       return;
     }
-    // Barge-in then listen: she was talking — cut her off and take the command.
-    if (state.speaking || state.busy) cancelActive('barge-in');
+    // Wake + listen — from ambient, idle, or right after a barge-in. The tap
+    // means “talk to me NOW”: anything said right after is a command, no
+    // “Lola” prefix needed.
     state.awake = true;
     state.lastWakeAt = Date.now();
     triggerWakeBurst();
