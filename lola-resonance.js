@@ -216,29 +216,20 @@
     }
   }
 
-  /* ── SPEAK: Lola's canonical ElevenLabs voice ONLY ──
-     If her voice can't be produced, she stays silent but her reply
-     still renders — a silent Lola is honest, a fake voice is not her. */
-  async function speak(text, turnId) {
-    text = cleanSpeechText(text);
-    if (!text || turnId !== state.turnId) return;
+  /* ── audio playback (shared by /api/speak-lola and the direct voice
+     session, which returns Lola's canonical voice bytes in-band) ── */
+  function b64ToBlob(b64, mime) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime || 'audio/mpeg' });
+  }
+
+  async function playAudioBlob(blob, turnId) {
+    if (!blob || !blob.size || turnId !== state.turnId) return;
     state.speaking = true;
     setOrb('speaking', { label: 'Speaking…' });
     try {
-      const response = await fetch('/api/speak-lola', {
-        method: 'POST',
-        signal: state.controller && state.controller.signal,
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() },
-        body: JSON.stringify({ text, voiceType: 'lola' })
-      });
-      if (turnId !== state.turnId) return;
-      if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.error || ('Voice ' + response.status));
-      }
-      const blob = await response.blob();
-      if (turnId !== state.turnId) return;
-      if (!blob.size) throw new Error('Voice returned empty audio');
       state.audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(state.audioUrl);
       state.audio = audio; audio.preload = 'auto'; audio.playsInline = true;
@@ -265,7 +256,44 @@
     }
   }
 
-  /* ── THINK: the same brain as phone calls, with a live fallback ── */
+  /* ── SPEAK: Lola's canonical ElevenLabs voice ONLY ──
+     If her voice can't be produced, she stays silent but her reply
+     still renders — a silent Lola is honest, a fake voice is not her. */
+  async function speak(text, turnId) {
+    text = cleanSpeechText(text);
+    if (!text || turnId !== state.turnId) return;
+    try {
+      const response = await fetch('/api/speak-lola', {
+        method: 'POST',
+        signal: state.controller && state.controller.signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() },
+        body: JSON.stringify({ text, voiceType: 'lola' })
+      });
+      if (turnId !== state.turnId) return;
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error || ('Voice ' + response.status));
+      }
+      const blob = await response.blob();
+      if (turnId !== state.turnId) return;
+      if (!blob.size) throw new Error('Voice returned empty audio');
+      await playAudioBlob(blob, turnId);
+    } catch (error) {
+      if (error && (error.name === 'AbortError' || turnId !== state.turnId)) return;
+      metric('voice_provider_error', 0, { provider: 'elevenlabs', error: String(error && error.message || error) });
+      // ONE LOLA, ONE VOICE: no browser-TTS substitute — text already shows.
+      setOrb('degraded', { label: 'Voice unavailable — reply shown below' });
+    }
+  }
+
+  /* ── THINK: the same brain as phone calls, with a live fallback ──
+     TELEPHONY-INDEPENDENT BY DESIGN: this turn takes the transcript the
+     browser already heard and drives a DIRECT voice session
+     (/api/voice/session) — it never waits on an inbound phone call, never
+     reads the calls table, never needs a call_control_id. A salon with
+     zero calls today gets the same instant, fully capable Lola as one
+     with a ringing line; an empty call history is the normal state, not
+     a gate. */
   async function askLola(text) {
     text = String(text || '').trim();
     if (!text) return;
@@ -286,36 +314,68 @@
     const chatOpen = (() => { const c = document.getElementById('chatOverlay'); return c && c.classList.contains('show'); })();
     if (chatOpen && window.addChatMsg) { try { window.addChatMsg('user', text); } catch (e) {} }
 
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() };
+    const tenantSlug = (function () {
+      try { const s = sessionStorage.getItem('loladesk_tenant'); if (s) { const t = JSON.parse(s); return t.slug || t.id || ''; } } catch (e) {}
+      return '';
+    })();
+    if (tenantSlug) headers['x-tenant-id'] = tenantSlug;
+
     let reply = '';
+    let directSession = false;
+
+    // ── 1) DIRECT VOICE SESSION — one round trip: brain + canonical voice ──
     try {
-      const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() };
-      const tenantSlug = (function () {
-        try { const s = sessionStorage.getItem('loladesk_tenant'); if (s) { const t = JSON.parse(s); return t.slug || t.id || ''; } } catch (e) {}
-        return '';
-      })();
-      if (tenantSlug) headers['x-tenant-id'] = tenantSlug;
-      const response = await fetch('/api/lola', {
+      const response = await fetch('/api/voice/session', {
         method: 'POST',
         signal: state.controller && state.controller.signal,
         headers,
         body: JSON.stringify({
+          text,
           system: systemPrompt(),
-          messages: state.messages,
+          messages: state.messages.slice(0, -1), // history minus the just-pushed turn
           channel: 'dashboard_voice',
           assistant: 'LolaBrain',
           turnId
         })
       });
-      metric('time_to_response_headers', now() - state.startedAt, { status: response.status });
+      metric('time_to_direct_session', now() - state.startedAt, { status: response.status });
       const data = await response.json().catch(() => ({}));
       if (turnId !== state.turnId) return;
-      if (!response.ok) throw new Error(data.error || ('Lola ' + response.status));
-      reply = cleanText(data.content || data.reply || data.message);
-      if (!reply) throw new Error('Lola returned an empty response');
+      if (!response.ok || !data || !data.reply) throw new Error(data.error || ('Voice session ' + response.status));
+      reply = cleanText(data.reply);
+      directSession = true;
+      if (data.engine === 'elevenlabs' && data.audio) {
+        try { await playAudioBlob(b64ToBlob(data.audio, data.mime || 'audio/mpeg'), turnId); } catch (e) {}
+      }
     } catch (error) {
       if (error && (error.name === 'AbortError' || turnId !== state.turnId)) return;
       metric('brain_fallback', 0, { error: String(error && error.message || error) });
-      reply = localReply(text); // ALWAYS answer — instant, zero cost
+      // ── 2) TWO-STEP FALLBACK: /api/lola brain + /api/speak-lola voice ──
+      try {
+        const response = await fetch('/api/lola', {
+          method: 'POST',
+          signal: state.controller && state.controller.signal,
+          headers,
+          body: JSON.stringify({
+            system: systemPrompt(),
+            messages: state.messages,
+            channel: 'dashboard_voice',
+            assistant: 'LolaBrain',
+            turnId
+          })
+        });
+        metric('time_to_response_headers', now() - state.startedAt, { status: response.status });
+        const data = await response.json().catch(() => ({}));
+        if (turnId !== state.turnId) return;
+        if (!response.ok) throw new Error(data.error || ('Lola ' + response.status));
+        reply = cleanText(data.content || data.reply || data.message);
+        if (!reply) throw new Error('Lola returned an empty response');
+      } catch (error2) {
+        if (error2 && (error2.name === 'AbortError' || turnId !== state.turnId)) return;
+        metric('brain_fallback', 0, { error: String(error2 && error2.message || error2) });
+        reply = localReply(text); // ALWAYS answer — instant, zero cost
+      }
     }
 
     state.messages.push({ role: 'assistant', content: reply });
@@ -324,8 +384,19 @@
     if (chatOpen && window.addChatMsg) { try { window.addChatMsg('ai', reply); } catch (e) {} }
     toast(reply);
     state.busy = false;
-    await speak(reply, turnId);
-    if (turnId === state.turnId) metric('turn_complete', now() - state.startedAt, { ok: true });
+
+    // The direct session already played Lola's canonical voice in-band (or
+    // declared it unavailable — text stays rendered). The two-step path
+    // speaks via the classic endpoint.
+    if (!directSession) await speak(reply, turnId);
+    else if (turnId === state.turnId) {
+      releaseAudio();
+      state.speaking = false;
+      state.awake = true;
+      setOrb(state.ambientOn ? 'ambient' : 'idle', { label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command' });
+      scheduleRestart(180);
+    }
+    if (turnId === state.turnId) metric('turn_complete', now() - state.startedAt, { ok: true, channel: directSession ? 'direct-session' : 'two-step' });
   }
 
   function systemPrompt() {
@@ -407,6 +478,13 @@
     if (window.LolaWakeBurst) { try { window.LolaWakeBurst.trigger(target); } catch (e) {} }
   }
 
+  /* ── enable() ──────────────────────────────────────────────────
+     The ONLY prerequisites to wake Lola are a microphone and a browser
+     SpeechRecognition. Telephony state is never consulted: no /api/calls
+     fetch, no call_control_id, no "is a phone line ringing" check. If
+     the calls table is empty (a brand-new salon with zero history), the
+     orb still boots straight to Idle → Listening-for-her-name. An empty
+     call list is the normal state, not a gate. */
   async function enable() {
     if (state.enabled) return;
     state.enabled = true;
@@ -560,6 +638,11 @@
     // Jarvis default: she's listening for her name unless the owner
     // turned it off. Browsers need a gesture before the mic opens, so
     // arm her and wake on the first interaction.
+    //
+    // EMPTY-STATE CONTRACT: with zero telephony activity (calls: []),
+    // this still lands on "Idle → Listening for user input". Nothing
+    // here polls, waits on, or depends on the calls table — the orb
+    // arms regardless of how quiet the salon is.
     let stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === 'on' || stored === null) {
