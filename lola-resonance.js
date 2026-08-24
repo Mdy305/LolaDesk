@@ -38,7 +38,8 @@
     ownerName: 'there', mode: 'idle', turnId: 0, controller: null,
     startedAt: 0, transcript: '', interim: '', lastError: null,
     audio: null, audioUrl: null, audioContext: null, analyser: null,
-    amplitudeFrame: null, sourceNode: null, ambientOn: false, pendingArm: false
+    amplitudeFrame: null, sourceNode: null, ambientOn: false, pendingArm: false,
+    ws: null, wsTurnId: 0
   };
 
   const STORAGE_KEY = 'loladesk_resonance';
@@ -185,6 +186,13 @@
     state.turnId++;
     try { state.controller && state.controller.abort(reason); } catch (e) {}
     state.controller = null;
+    // Close any in-flight streaming session so the server stops mid-phrase
+    // (barge-in must reach the synthesizer, not just the local speaker).
+    if (state.ws) {
+      try { state.ws.close(); } catch (e) {}
+      state.ws = null;
+    }
+    state.wsTurnId = 0;
     releaseAudio();
     try { speechSynthesis.cancel(); } catch (e) {}
     state.speaking = false; state.busy = false;
@@ -225,7 +233,7 @@
     return new Blob([bytes], { type: mime || 'audio/mpeg' });
   }
 
-  async function playAudioBlob(blob, turnId) {
+  async function playAudioBlob(blob, turnId, opts = {}) {
     if (!blob || !blob.size || turnId !== state.turnId) return;
     state.speaking = true;
     setOrb('speaking', { label: 'Speaking…' });
@@ -251,8 +259,12 @@
       releaseAudio();
       state.speaking = false;
       state.awake = true;
-      setOrb(state.ambientOn ? 'ambient' : 'idle', { label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command' });
-      scheduleRestart(180);
+      // Streaming (multi-phrase) playback: keep the orb in its speaking/
+      // listening flow — the caller resets the state when the turn ends.
+      if (!opts.keepAwake) {
+        setOrb(state.ambientOn ? 'ambient' : 'idle', { label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command' });
+        scheduleRestart(180);
+      }
     }
   }
 
@@ -294,6 +306,93 @@
      zero calls today gets the same instant, fully capable Lola as one
      with a ringing line; an empty call history is the normal state, not
      a gate. */
+
+  /* ── STREAMING SESSION (WebSocket) — the orb's primary voice path ──
+     Opens wss://…/api/voice/session-ws, authenticates with the owner token,
+     and streams the turn: `text` deltas arrive as the reply is finalized and
+     `audio` chunks arrive per phrase as Lola's canonical voice finishes
+     synthesizing — the first phrase plays while later ones are still being
+     produced. Audio chunks queue and play sequentially so barge-in still
+     cuts her off instantly. Returns { handled, reply } — handled=false when
+     the stream was unavailable or failed before any reply, so the caller
+     falls back to the JSON session. Never a fake voice: if the engine is
+     'text' the reply still renders, she just stays silent. */
+  function askViaStreamSession(text, turnId, headers, systemPromptText) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws = null;
+      let timer = null;
+      let reply = '';
+      let gotDone = false;
+      const audioQueue = [];
+      let audioPlaying = false;
+
+      const finish = (handled) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { if (ws) ws.close(); } catch (e) {}
+        if (state.ws === ws) state.ws = null;
+        if (!handled) state.wsTurnId = 0;
+        resolve({ handled, reply });
+      };
+
+      const drainAudio = () => {
+        if (audioPlaying || !audioQueue.length || turnId !== state.turnId) return;
+        const item = audioQueue.shift();
+        audioPlaying = true;
+        playAudioBlob(b64ToBlob(item.chunk, item.mime || 'audio/mpeg'), turnId, { keepAwake: true })
+          .catch(() => {})
+          .finally(() => { audioPlaying = false; drainAudio(); });
+      };
+
+      try {
+        const proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        ws = new WebSocket(proto + window.location.host + '/api/voice/session-ws');
+        state.ws = ws;
+        state.wsTurnId = turnId;
+        timer = setTimeout(() => finish(reply.length > 0), 3000); // connect timeout → fallback
+        ws.onopen = () => {
+          clearTimeout(timer);
+          try { ws.send(JSON.stringify({ type: 'auth', token: token() })); } catch (e) {}
+        };
+        ws.onmessage = (ev) => {
+          let msg = null;
+          try { msg = JSON.parse(ev.data); } catch (e) { return; }
+          if (!msg || typeof msg !== 'object') return;
+          if (msg.type === 'ready' && msg.ok) {
+            try {
+              ws.send(JSON.stringify({
+                type: 'transcript', text,
+                system: systemPromptText,
+                messages: state.messages.slice(0, -1), // history minus the just-pushed turn
+                channel: 'dashboard_voice'
+              }));
+            } catch (e) {}
+          } else if (msg.type === 'state' && msg.state === 'speaking') {
+            setOrb('speaking', { label: 'Speaking…' });
+          } else if (msg.type === 'text') {
+            reply = (reply ? reply + ' ' : '') + String(msg.delta || '').trim();
+            setTranscript(reply);
+          } else if (msg.type === 'audio' && msg.chunk) {
+            audioQueue.push(msg);
+            drainAudio();
+          } else if (msg.type === 'done') {
+            if (msg.reply) reply = String(msg.reply);
+            gotDone = true;
+            finish(true);
+          } else if (msg.type === 'error') {
+            finish(reply.length > 0);
+          }
+        };
+        ws.onerror = () => finish(reply.length > 0);
+        ws.onclose = () => { if (!gotDone) finish(reply.length > 0); };
+      } catch (e) {
+        finish(false);
+      }
+    });
+  }
+
   async function askLola(text) {
     text = String(text || '').trim();
     if (!text) return;
@@ -324,57 +423,71 @@
     let reply = '';
     let directSession = false;
 
-    // ── 1) DIRECT VOICE SESSION — one round trip: brain + canonical voice ──
-    try {
-      const response = await fetch('/api/voice/session', {
-        method: 'POST',
-        signal: state.controller && state.controller.signal,
-        headers,
-        body: JSON.stringify({
-          text,
-          system: systemPrompt(),
-          messages: state.messages.slice(0, -1), // history minus the just-pushed turn
-          channel: 'dashboard_voice',
-          assistant: 'LolaBrain',
-          turnId
-        })
-      });
-      metric('time_to_direct_session', now() - state.startedAt, { status: response.status });
-      const data = await response.json().catch(() => ({}));
-      if (turnId !== state.turnId) return;
-      if (!response.ok || !data || !data.reply) throw new Error(data.error || ('Voice session ' + response.status));
-      reply = cleanText(data.reply);
+    // ── 1) STREAMING VOICE SESSION (WebSocket) — reply + voice incrementally ──
+    // Opens wss://…/api/voice/session-ws, authenticates, and streams: reply
+    // text phrase-by-phrase and each phrase's canonical voice audio as it
+    // finishes synthesizing — she starts speaking in ~1s while the rest of
+    // the turn is still being produced. Falls back to the JSON session below
+    // on any connect/auth/stream failure.
+    const streamed = await askViaStreamSession(text, turnId, headers, systemPrompt());
+    if (turnId !== state.turnId) return;
+    const streamedTurn = streamed.handled;
+    if (streamedTurn) {
+      reply = streamed.reply || '';
       directSession = true;
-      if (data.engine === 'elevenlabs' && data.audio) {
-        try { await playAudioBlob(b64ToBlob(data.audio, data.mime || 'audio/mpeg'), turnId); } catch (e) {}
-      }
-    } catch (error) {
-      if (error && (error.name === 'AbortError' || turnId !== state.turnId)) return;
-      metric('brain_fallback', 0, { error: String(error && error.message || error) });
-      // ── 2) TWO-STEP FALLBACK: /api/lola brain + /api/speak-lola voice ──
+    } else {
+      // ── 2) DIRECT VOICE SESSION (JSON) — one round trip: brain + canonical voice ──
       try {
-        const response = await fetch('/api/lola', {
+        const response = await fetch('/api/voice/session', {
           method: 'POST',
           signal: state.controller && state.controller.signal,
           headers,
           body: JSON.stringify({
+            text,
             system: systemPrompt(),
-            messages: state.messages,
+            messages: state.messages.slice(0, -1), // history minus the just-pushed turn
             channel: 'dashboard_voice',
             assistant: 'LolaBrain',
             turnId
           })
         });
-        metric('time_to_response_headers', now() - state.startedAt, { status: response.status });
+        metric('time_to_direct_session', now() - state.startedAt, { status: response.status });
         const data = await response.json().catch(() => ({}));
         if (turnId !== state.turnId) return;
-        if (!response.ok) throw new Error(data.error || ('Lola ' + response.status));
-        reply = cleanText(data.content || data.reply || data.message);
-        if (!reply) throw new Error('Lola returned an empty response');
-      } catch (error2) {
-        if (error2 && (error2.name === 'AbortError' || turnId !== state.turnId)) return;
-        metric('brain_fallback', 0, { error: String(error2 && error2.message || error2) });
-        reply = localReply(text); // ALWAYS answer — instant, zero cost
+        if (!response.ok || !data || !data.reply) throw new Error(data.error || ('Voice session ' + response.status));
+        reply = cleanText(data.reply);
+        directSession = true;
+        if (data.engine === 'elevenlabs' && data.audio) {
+          try { await playAudioBlob(b64ToBlob(data.audio, data.mime || 'audio/mpeg'), turnId); } catch (e) {}
+        }
+      } catch (error) {
+        if (error && (error.name === 'AbortError' || turnId !== state.turnId)) return;
+        metric('brain_fallback', 0, { error: String(error && error.message || error) });
+        // ── 3) TWO-STEP FALLBACK: /api/lola brain + /api/speak-lola voice ──
+        try {
+          const response = await fetch('/api/lola', {
+            method: 'POST',
+            signal: state.controller && state.controller.signal,
+            headers,
+            body: JSON.stringify({
+              system: systemPrompt(),
+              messages: state.messages,
+              channel: 'dashboard_voice',
+              assistant: 'LolaBrain',
+              turnId
+            })
+          });
+          metric('time_to_response_headers', now() - state.startedAt, { status: response.status });
+          const data = await response.json().catch(() => ({}));
+          if (turnId !== state.turnId) return;
+          if (!response.ok) throw new Error(data.error || ('Lola ' + response.status));
+          reply = cleanText(data.content || data.reply || data.message);
+          if (!reply) throw new Error('Lola returned an empty response');
+        } catch (error2) {
+          if (error2 && (error2.name === 'AbortError' || turnId !== state.turnId)) return;
+          metric('brain_fallback', 0, { error: String(error2 && error2.message || error2) });
+          reply = localReply(text); // ALWAYS answer — instant, zero cost
+        }
       }
     }
 
@@ -396,7 +509,10 @@
       setOrb(state.ambientOn ? 'ambient' : 'idle', { label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command' });
       scheduleRestart(180);
     }
-    if (turnId === state.turnId) metric('turn_complete', now() - state.startedAt, { ok: true, channel: directSession ? 'direct-session' : 'two-step' });
+    if (turnId === state.turnId) metric('turn_complete', now() - state.startedAt, {
+      ok: true,
+      channel: streamedTurn ? 'stream-session' : (directSession ? 'direct-session' : 'two-step')
+    });
   }
 
   function systemPrompt() {

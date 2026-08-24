@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
   "outputDirectory": ".",
+  "fluid": true,
   "functions": {"api/**/*.js":{"maxDuration":60}},
   "redirects":[
     {"source":"/landing","destination":"/","permanent":false},
