@@ -159,3 +159,31 @@ test('POST use_existing with a malformed number is rejected before any Telnyx ca
   assert.match(String(out.body.error), /valid phone number/i);
   assert.equal(numberOrdersCalls, 0);
 });
+
+test('persist fails LOUDLY when the tenants update is rejected (the schema-drift defect)', async () => {
+  seed();
+  fake.failWrite('tenants', 'column tenants.provisioning_status does not exist');
+  const [res, out] = makeRes();
+  await handler(req('POST', { phone_number: OWNED, use_existing: true }), res);
+  // A 500 with the failing step + column — never a silent ok:true.
+  assert.equal(out.code, 500);
+  assert.equal(out.body.ok, false);
+  assert.match(String(out.body.error), /persist failed updating tenants/i);
+  assert.match(String(out.body.error), /provisioning_status does not exist/);
+  assert.equal(numberOrdersCalls, 0);
+  assert.equal(fake.all('tenants')[0].phone_number, null);
+});
+
+test('persist fails LOUDLY when the routing-row upsert is rejected', async () => {
+  seed();
+  fake.failWrite('tenant_numbers', 'permission denied for table tenant_numbers');
+  const [res, out] = makeRes();
+  await handler(req('POST', { phone_number: OWNED, use_existing: true }), res);
+  assert.equal(out.code, 500);
+  assert.equal(out.body.ok, false);
+  assert.match(String(out.body.error), /persist failed upserting tenant_numbers routing row/);
+  assert.equal(numberOrdersCalls, 0);
+  // Fail-loud means the caller sees a 500, not a silent ok:true. The tenants
+  // write precedes the routing upsert in the persist sequence, so phone_number
+  // may already be set — rollback is out of scope (no cross-table transaction).
+});

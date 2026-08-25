@@ -176,25 +176,44 @@ export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist 
   const brainLinked = await linkLolaBrain(rec.id);
   await setDynamicVariablesWebhook();
 
-  if(persist && tenant?.id){
-    const c = db();
-    if(c){
-      await c.from('tenants').update({
-        phone_number: e164,
-        telnyx_phone_id: rec.id || null,
-        texml_app_id: process.env.TELNYX_VOICE_APP_ID || null,
-        provisioning_status: 'active',
-        provisioned_at: new Date().toISOString(),
-        booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
-      }).eq('id', tenant.id);
-      await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
-        .eq('tenant_id', tenant.id).maybeSingle().then(() => {}).catch(() => {});
-      await upsertTenantNumber(tenant.id, e164, { kind: 'primary', connectionId: process.env.TELNYX_VOICE_APP_ID || null, status: 'active' });
-      invalidateRouting(e164);
-    }
-  }
+  if(persist) await persistProvisioning(tenant, { phoneNumber: e164, phoneNumberId: rec.id, texmlAppId: process.env.TELNYX_VOICE_APP_ID || null });
 
   return { ok: true, phoneNumber: e164, phoneNumberId: rec.id, voiceLinked, smsLinked, brainLinked };
+}
+
+/**
+ * Fail-loud persist shared by BOTH provisioning paths (attach an owned
+ * number, buy a new one). supabase-js returns DB errors as an `error` object
+ * instead of throwing, so an ignored result makes provisioning look
+ * successful while tenants.phone_number stays null (e.g. a missing column
+ * from an unapplied migration). Every write here checks its result and
+ * throws a message naming the failing step — a 500 beats a silent lie.
+ */
+async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId }){
+  const c = db();
+  if(!c || !tenant?.id) return;
+
+  const { error: tenantErr } = await c.from('tenants').update({
+    phone_number: phoneNumber,
+    telnyx_phone_id: phoneNumberId || null,
+    texml_app_id: texmlAppId || null,
+    provisioning_status: 'active',
+    provisioned_at: new Date().toISOString(),
+    booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
+  }).eq('id', tenant.id);
+  if(tenantErr) throw new Error('Provisioning persist failed updating tenants (' + tenant.id + '): ' + tenantErr.message);
+
+  // PostgrestBuilder is only PromiseLike (.then) — never .catch on the chain,
+  // so the error check lives inside .then and .catch re-throws it.
+  await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenant.id).maybeSingle()
+    .then(({ error }) => { if(error) throw new Error('Provisioning persist failed updating tenant_onboarding (' + tenant.id + '): ' + error.message); })
+    .catch(e => { throw e; });
+
+  const route = await upsertTenantNumber(tenant.id, phoneNumber, { kind: 'primary', connectionId: texmlAppId || null, status: 'active' });
+  if(!route) throw new Error('Provisioning persist failed upserting tenant_numbers routing row for ' + phoneNumber);
+
+  invalidateRouting(phoneNumber);
 }
 
 export async function linkLolaBrain(phoneNumberId){
@@ -237,24 +256,7 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
   const brainLinked = phoneNumberId ? await linkLolaBrain(phoneNumberId) : false;
   await setDynamicVariablesWebhook();
 
-  if(persist){
-    const c = db();
-    if(c && tenant?.id){
-      await c.from('tenants').update({
-        phone_number: phoneNumber,
-        telnyx_phone_id: phoneNumberId || null,
-        texml_app_id: texmlAppId || null,
-        provisioning_status: 'active',
-        provisioned_at: new Date().toISOString(),
-        booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
-      }).eq('id', tenant.id);
-      // PostgrestBuilder is only PromiseLike (.then) — never .catch on the chain.
-      await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
-        .eq('tenant_id', tenant.id).maybeSingle().then(() => {}).catch(() => {});
-      await upsertTenantNumber(tenant.id, phoneNumber, { kind: 'primary', connectionId: texmlAppId || null, status: 'active' });
-      invalidateRouting(phoneNumber);
-    }
-  }
+  if(persist) await persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId });
 
   return { ok: true, phoneNumber, texmlAppId, phoneNumberId, smsLinked, brainLinked };
 }

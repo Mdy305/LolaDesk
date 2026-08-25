@@ -93,6 +93,13 @@ export class FakeSupabase {
   reset() {
     this.tables.clear();
     this._seq = 0;
+    this._failWrites = new Map();
+  }
+  // Test hook: make the next write (update/upsert) to a table return an error
+  // instead of applying — simulates a DB rejection like a missing column.
+  failWrite(table, message) {
+    this._failWrites = this._failWrites || new Map();
+    this._failWrites.set(table, message);
   }
   nextId(table) {
     this._seq += 1;
@@ -239,12 +246,16 @@ class FakeQueryBuilder {
         break;
       }
       case 'update': {
+        const failUpdate = this.client._failWrites?.get(this.table);
+        if (failUpdate) { result = { data: null, error: { message: failUpdate } }; break; }
         const matched = this.rows.filter(r => this._match(r));
         for (const r of matched) Object.assign(r, this._patch);
         result = { data: this._selectCols ? matched : null, error: null };
         break;
       }
       case 'upsert': {
+        const failUpsert = this.client._failWrites?.get(this.table);
+        if (failUpsert) { result = { data: null, error: { message: failUpsert } }; break; }
         const conflictCols = this._onConflict ? String(this._onConflict).split(',').map(s => s.trim()) : [];
         const out = [];
         for (const v of this._values) {
