@@ -129,6 +129,7 @@ export async function listReviews(integration){
   if(!r.ok) throw new Error(data?.error?.message || 'Google reviews lookup failed');
 
   return (data.reviews || []).map(rev => ({
+    reviewId: rev.name || null,
     rating: ratingToNumber(rev.starRating),
     author: rev.reviewer?.displayName || 'Google reviewer',
     body: rev.comment || '',
@@ -137,9 +138,29 @@ export async function listReviews(integration){
   }));
 }
 
+/**
+ * Post a public reply to a Google review. `reviewId` is the review's full
+ * resource name (accounts/…/locations/…/reviews/…) as returned by
+ * listReviews. This is the ONLY remaining Google surface a business can
+ * automate — Google retired Business Messages (chat from Maps) on 2024-07-31,
+ * so replying to reviews is how Lola "answers" customers on Google.
+ */
+export async function replyToReview(integration, reviewId, comment){
+  const r = await fetch(`${API}/${reviewId}:updateReply`, {
+    method: 'POST',
+    headers: { ...authHeaders(integration), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: { comment } })
+  });
+  const data = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(data?.error?.message || 'Google review reply failed');
+  return data;
+}
+
 // Adapter-contract stubs so the aggregator registry never chokes if a tenant
 // has a google_gmb integration listed alongside booking providers. GMB is a
 // reviews-only connector: it never reads/writes appointments.
 export async function listAppointments(){ return []; }
 export async function createAppointment(){ throw new Error('google_gmb is a reviews connector — it does not manage appointments'); }
 export async function listClients(){ return []; }
+
+export default { META, getAuthUrl, exchangeCode, refreshToken, discoverLocation, listReviews, replyToReview };
