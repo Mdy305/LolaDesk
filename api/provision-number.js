@@ -1,6 +1,6 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { searchNumbers, getAccountBalance, provisionNumberForTenant } from './lib/telnyx-provision.js';
+import { searchNumbers, getAccountBalance, provisionNumberForTenant, listOwnedNumbers, attachOwnedNumberForTenant } from './lib/telnyx-provision.js';
 
 // Telnyx rejects an order when available credit < the number's cost. Detect
 // that specific failure and give the owner a clear next step instead of a 500.
@@ -19,7 +19,10 @@ export default async function handler(req,res){
       // Balance is advisory — the Settings page shows it so owners top up
       // BEFORE a purchase fails, instead of learning mid-checkout.
       const balance=await getAccountBalance().catch(()=>null);
-      return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:n.cost?.amount?'$'+Number(n.cost.amount).toFixed(2)+'/mo':''}))});
+      // Numbers the owner ALREADY has on Telnyx — attaching one costs nothing,
+      // so onboarding never has to stall on credit.
+      const owned=await listOwnedNumbers().catch(()=>[]);
+      return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:n.cost?.amount?'$'+Number(n.cost.amount).toFixed(2)+'/mo':''})),owned});
     }catch(e){return res.status(200).json({ok:false,error:e.message});}
   }
 
@@ -31,7 +34,14 @@ export default async function handler(req,res){
     const tenant=await resolveTenantForUser(user);
     if(!tenant?.id)return res.status(404).json({ok:false,error:'No tenant found'});
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const {areaCode,phone_number:requestedNumber}=body;
+    const {areaCode,phone_number:requestedNumber,use_existing:useExisting}=body;
+
+    // Zero-cost path: attach a number the owner already has on Telnyx instead
+    // of buying one. No purchase, no credit consumed — same activation result.
+    if(useExisting && requestedNumber){
+      const result=await attachOwnedNumberForTenant(tenant,requestedNumber);
+      return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.voiceLinked?process.env.TELNYX_VOICE_APP_ID:null,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,attachedExisting:true,message:'Your number is wired to Lola: '+result.phoneNumber});
+    }
 
     const result=await provisionNumberForTenant(tenant,{areaCode,requestedNumber});
     return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.texmlAppId,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,message:'Your Lola number is ready: '+result.phoneNumber});

@@ -109,11 +109,92 @@ export async function purchaseNumber(phoneNumber, texmlAppId){
 }
 
 export async function linkMessagingProfile(phoneNumberId){
-  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID;
+  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE;
   if(!profileId) return false;
   await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) })
     .catch(e => console.warn('[PROVISION] SMS profile:', e.message));
   return true;
+}
+
+/**
+ * Attach the number to the platform's voice connection (TeXML app). Uses
+ * TELNYX_VOICE_APP_ID VERBATIM — the app with our inbound webhook. Returns
+ * false when no connection is configured.
+ */
+export async function linkVoiceConnection(phoneNumberId){
+  const connectionId = process.env.TELNYX_VOICE_APP_ID;
+  if(!connectionId) return false;
+  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: connectionId }) })
+    .catch(e => console.warn('[PROVISION] Voice connection:', e.message));
+  return true;
+}
+
+/**
+ * List numbers already owned on the Telnyx account. This powers the
+ * onboarding "use a number I already own" path: attaching an owned number
+ * costs nothing, so the flow never stalls on credit. Fail soft → [] so a
+ * Telnyx outage never blocks the purchase path.
+ */
+export async function listOwnedNumbers(){
+  try{
+    const j = await tFetch('/phone_numbers?page[size]=100');
+    return (j?.data || []).filter(n => n?.phone_number).map(n => ({
+      phone_number: n.phone_number,
+      id: n.id,
+      status: n.status || null,
+      connection_id: n.connection_id || null,
+      voice_enabled: n.voice_enabled ?? null,
+      sms_enabled: n.messaging_profile_id ? true : null
+    }));
+  }catch(e){
+    return [];
+  }
+}
+
+/**
+ * Attach an ALREADY-OWNED Telnyx number to a tenant — voice connection +
+ * SMS profile + LolaBrain — and persist the routing row. No purchase, so no
+ * credit is consumed. This is the zero-cost sibling of
+ * provisionNumberForTenant (which buys a new number).
+ *
+ * @returns {Promise<{ok:boolean, phoneNumber, phoneNumberId, voiceLinked:boolean,
+ *                    smsLinked:boolean, brainLinked:boolean}>}
+ * @throws when the number is not on this Telnyx account.
+ */
+export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist = true } = {}){
+  const e164 = String(phoneNumber || '').trim().replace(/[^+\d]/g, '');
+  if(!/^\+\d{10,15}$/.test(e164)) throw new Error('Enter a valid phone number, e.g. +13055550100');
+
+  // 1. Verify the number is on THIS Telnyx account (never attach a stranger's line).
+  const found = await tFetch('/phone_numbers?filter[phone_number]=' + encodeURIComponent(e164));
+  const rec = (found?.data || []).find(n => n?.phone_number === e164);
+  if(!rec?.id) throw new Error(e164 + ' is not on this Telnyx account — first buy or port it into Telnyx, then come back.');
+
+  // 2. Attach voice connection + SMS profile + LolaBrain (all idempotent PATCHes).
+  const voiceLinked = await linkVoiceConnection(rec.id);
+  const smsLinked = await linkMessagingProfile(rec.id);
+  const brainLinked = await linkLolaBrain(rec.id);
+  await setDynamicVariablesWebhook();
+
+  if(persist && tenant?.id){
+    const c = db();
+    if(c){
+      await c.from('tenants').update({
+        phone_number: e164,
+        telnyx_phone_id: rec.id || null,
+        texml_app_id: process.env.TELNYX_VOICE_APP_ID || null,
+        provisioning_status: 'active',
+        provisioned_at: new Date().toISOString(),
+        booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
+      }).eq('id', tenant.id);
+      await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenant.id).maybeSingle().then(() => {}).catch(() => {});
+      await upsertTenantNumber(tenant.id, e164, { kind: 'primary', connectionId: process.env.TELNYX_VOICE_APP_ID || null, status: 'active' });
+      invalidateRouting(e164);
+    }
+  }
+
+  return { ok: true, phoneNumber: e164, phoneNumberId: rec.id, voiceLinked, smsLinked, brainLinked };
 }
 
 export async function linkLolaBrain(phoneNumberId){
@@ -180,5 +261,6 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
 
 export default {
   tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
-  linkMessagingProfile, linkLolaBrain, setDynamicVariablesWebhook, provisionNumberForTenant
+  linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
+  listOwnedNumbers, attachOwnedNumberForTenant, provisionNumberForTenant
 };

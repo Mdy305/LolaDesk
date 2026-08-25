@@ -42,6 +42,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .num-search button{padding:0 18px;border-radius:13px;background:var(--surface2);border:1px solid var(--line);color:var(--text);font-size:13px;cursor:pointer;white-space:nowrap}
 .num-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;max-height:280px;overflow-y:auto}
 .num-card{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--surface);cursor:pointer;transition:.15s}
+.owned-divider{display:flex;align-items:center;gap:12px;margin:16px 0 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
+.owned-divider::before,.owned-divider::after{content:'';flex:1;height:1px;background:var(--line)}
+.num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 9px;border-radius:999px;background:rgba(112,255,0,.12);color:#70FF00;border:1px solid rgba(112,255,0,.3);white-space:nowrap}
 .num-card:hover,.num-card.on{border-color:var(--text);background:rgba(255,255,255,.04)}
 .num-card.on{box-shadow:0 0 0 1px var(--text)}
 .num-number{font-size:16px;font-weight:500;letter-spacing:.02em}
@@ -171,9 +174,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <button onclick="searchNums()">Browse</button>
       </div>
       <div class="num-grid" id="numGrid" style="display:none"><div style="color:var(--muted);font-size:13px;padding:12px 0">Choose one, or just auto-pick below.</div></div>
-      <div class="actions"><button class="btn-p" onclick="provisionNum()">Give Lola her number</button></div>
+      <div class="owned-divider"><span>or</span></div>
+      <button class="btn-g" id="ownedToggle" onclick="loadOwned()" style="width:100%">Use a number I already own</button>
+      <div class="num-grid" id="ownedGrid" style="display:none"></div>
+      <div class="actions"><button class="btn-p" onclick="provisionNum()" id="provisionBtn">Give Lola her number</button></div>
       <div class="error" id="err3"></div>
-      <div class="fine">Auto-picks the best available local number in your area code. Keep it forever — it's yours.</div>
+      <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
     </div>
 
     <!-- STEP 4 · LIVE IN 60 — the meter -->
@@ -333,7 +339,31 @@ async function searchNums(){
     grid.innerHTML=d.numbers.slice(0,6).map(n=>'<div class="num-card'+(n.phone_number===S.selectedNumber?' on':'')+'" onclick="selNum(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+'</div><div class="num-meta">'+(n.region||'United States')+'</div></div><div class="num-price">'+(n.monthly_cost||'~$2/mo')+'</div></div>').join('');
   }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
 }
-function selNum(num,el){S.selectedNumber=num;document.querySelectorAll('.num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');}
+function selNum(num,el){S.useExisting=false;S.selectedNumber=num;document.querySelectorAll('.num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');document.getElementById('provisionBtn').textContent='Give Lola her number';}
+
+// ── USE A NUMBER THE OWNER ALREADY HAS ON TELNYX ────────────────
+async function loadOwned(){
+  const grid=document.getElementById('ownedGrid');
+  const btn=document.getElementById('ownedToggle');
+  const showing=grid.style.display==='block';
+  if(showing){grid.style.display='none';btn.textContent='Use a number I already own';return;}
+  grid.style.display='block';
+  btn.textContent='Hide my numbers';
+  grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Loading your Telnyx numbers…</div>';
+  try{
+    const r=await fetch('/api/provision-number',{headers:{Authorization:'Bearer '+S.token}});
+    const d=await r.json();
+    const owned=(d.owned||[]).filter(n=>n.phone_number);
+    if(!owned.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">No numbers on this Telnyx account yet — buy one below.</div>';return;}
+    const order=owned.sort((a,b)=>(a.status==='active'?0:1)-(b.status==='active'?0:1));
+    grid.innerHTML=order.map(n=>{
+      const on=n.phone_number===S.selectedNumber&&S.useExisting?' on':'';
+      const sms=n.sms_enabled===false?' <span style="color:#ffb020;font-size:11px">SMS off</span>':'';
+      return '<div class="num-card'+on+'" onclick="selOwned(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+sms+'</div><div class="num-meta">'+(n.status||'active')+'</div></div><div class="num-badge">YOURS</div></div>';
+    }).join('');
+  }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
+}
+function selOwned(num,el){S.useExisting=true;S.selectedNumber=num;document.querySelectorAll('#ownedGrid .num-card').forEach(c=>c.classList.remove('on'));document.querySelectorAll('#numGrid .num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');document.getElementById('provisionBtn').textContent='Attach my number to Lola';}
 
 async function provisionNum(){
   const err=document.getElementById('err3');
@@ -381,10 +411,11 @@ function mark(id,state,detail){
 async function runActivation(){
   try{
     mark('s-num','running');
-    const r=await fetch('/api/provision-number',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({phone_number:S.selectedNumber})});
+    const r=await fetch('/api/provision-number',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({phone_number:S.selectedNumber,use_existing:!!S.useExisting})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Provisioning failed');
-    mark('s-num','done',fmtPhone(d.phoneNumber)+' — purchased');
+    if(S.useExisting){const row=document.getElementById('s-num');if(row){row.querySelector('b').textContent='Attaching your number';row.querySelector('small').textContent='Linking your existing number to LolaDesk — no purchase';}}
+    mark('s-num','done',fmtPhone(d.phoneNumber)+(d.attachedExisting?' — linked, already yours':' — purchased'));
     mark('s-voice','done','Voice webhook connected');
     mark('s-sms',d.messagingProfileLinked?'done':'fail',d.messagingProfileLinked?'10DLC messaging profile linked':'Set TELNYX_MESSAGING_PROFILE_ID in Vercel');
     mark('s-brain',d.lolaBrainLinked?'done':'fail',d.lolaBrainLinked?'LolaBrain connected':'Set TELNYX_LOLA_BRAIN_ID in Vercel');
