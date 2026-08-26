@@ -16,7 +16,20 @@ export default async function handler(req,res){
     const tenant=await resolveTenantForUser(user);
     if(!tenant?.id) return res.status(403).json({error:'No tenant mapped to this account'});
     if(req.method==='POST'){
-      const result=await saveContacts(tenant.id,[body(req)]);
+      const input=body(req);
+      // Dedicated client WhatsApp opt-in toggle (booking reminders prefer
+      // WhatsApp when a salon has it connected AND the client is enabled).
+      if(typeof input.whatsapp_enabled === 'boolean' && input.id){
+        const client=db(); if(!client) return res.status(503).json({error:'Database not configured'});
+        const { data, error }=await client.from('clients')
+          .update({ whatsapp_enabled: input.whatsapp_enabled, updated_at: new Date().toISOString() })
+          .eq('tenant_id', tenant.id).eq('id', input.id)
+          .select('id,first_name,last_name,name,phone,whatsapp_enabled').maybeSingle();
+        if(error) throw error;
+        if(!data) return res.status(404).json({error:'Client not found'});
+        return res.status(200).json({ok:true,client:data});
+      }
+      const result=await saveContacts(tenant.id,[input]);
       return res.status(201).json({ok:true,...result,client:result.clients[0]||null});
     }
     if(req.method!=='GET') return res.status(405).json({error:'GET or POST only'});

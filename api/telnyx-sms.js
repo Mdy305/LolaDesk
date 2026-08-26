@@ -151,7 +151,7 @@ export default async function handler(req,res){
 
   let client=null,conv=null,hist=[{role:'user',content:text}],clientProfile=null;
   try{
-    if(fromN) client=await upsertClient(row.id,{phone:fromN});
+    if(fromN) client=await upsertClient(row.id,{phone:fromN,whatsappEnabled:isWhatsApp});
     conv=await getOrStartConversation(row.id,{clientId:client?.id,channel,agent:'lola'});
     if(conv?.id){ const p=await getConversationHistory(conv.id,10); hist=[...p,{role:'user',content:text}]; }
     if(fromN){

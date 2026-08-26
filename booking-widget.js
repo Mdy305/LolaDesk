@@ -76,6 +76,10 @@
     '.lw-code b{color:var(--accent2);font-weight:600;letter-spacing:.08em}',
     '.lw-link{display:block;margin:16px auto 0;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}',
     '.lw-link:hover{color:var(--accent2)}',
+    '.lw-note{color:var(--muted);font-size:13px;line-height:1.6;margin:-6px 0 16px}',
+    '.lw-card{background:var(--surface);border:.5px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}',
+    '.lw-card-when{font-size:16px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}',
+    '.lw-card-meta{font-size:12.5px;color:var(--muted);margin-top:2px}',
     /* modal chrome */
     '.lw-fab{position:fixed;right:22px;bottom:22px;z-index:2147483000;background:var(--accent);color:#080809;border:none;border-radius:999px;padding:15px 22px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 8px 28px rgba(0,0,0,.5)}',
     '.lw-fab:hover{background:var(--accent2)}',
@@ -148,7 +152,7 @@
           (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min</div>' : '') +
           '</span>' + (s.price != null ? '<span class="lw-price">' + money(s.price) + '</span>' : '') + '</button>';
       }).join('') + '</div>' +
-      '<button class="lw-link" data-cancel>Cancel an appointment</button></div>'
+      '<button class="lw-link" data-cancel>Manage or cancel an appointment</button></div>'
     );
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -157,20 +161,25 @@
         else { w.staff = null; stepTime(w, catalog); }
       });
     });
-    w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepCancel(w); });
+    w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w); });
   }
 
   function stepStaff(w, catalog) {
-    var opts = ['<button class="lw-opt" data-i="-1"><span><b>Any available</b></span></button>'];
+    var anyLabel = (w.managing && w.staff) ? 'Keep my current team member' : 'Any available';
+    var opts = ['<button class="lw-opt" data-i="-1"><span><b>' + anyLabel + '</b></span></button>'];
     catalog.staff.forEach(function (s, i) {
-      opts.push('<button class="lw-opt" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
+      var sel = w.staff && w.staff.id === s.id ? ' sel' : '';
+      opts.push('<button class="lw-opt' + sel + '" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
         (s.role ? '<div class="meta">' + esc(s.role) + '</div>' : '') + '</span></button>');
     });
     w.render(
       '<div class="lw-step on" data-step="staff"><button class="lw-back" data-back="service">← Back</button>' +
       '<div class="lw-label">2 · Choose a team member</div><div class="lw-opts">' + opts.join('') + '</div></div>'
     );
-    w.host.querySelector('[data-back]').addEventListener('click', function () { w.go('service'); });
+    w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (w.managing) { renderManageCard(w, w.managing.booking); return; }
+      stepService(w, catalog);
+    });
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
         var i = Number(b.getAttribute('data-i'));
@@ -192,7 +201,9 @@
     var input = w.host.querySelector('#lwDate');
     input.addEventListener('change', function () { w.date = input.value; loadSlots(w, catalog, input.value); });
     w.host.querySelector('[data-back]').addEventListener('click', function () {
-      w.go(catalog.staff && catalog.staff.length ? 'staff' : 'service');
+      if (w.managing) { stepStaff(w, catalog); return; }
+      if (catalog.staff && catalog.staff.length) { stepStaff(w, catalog); }
+      else { stepService(w, catalog); }
     });
     loadSlots(w, catalog, date);
   }
@@ -214,6 +225,7 @@
           host.querySelectorAll('.lw-slot').forEach(function (x) { x.classList.remove('sel'); });
           b.classList.add('sel');
           w.time = b.getAttribute('data-iso');
+          if (w.managing) { stepRescheduleConfirm(w); return; }
           stepDetails(w, catalog);
         });
       });
@@ -262,21 +274,165 @@
         '<div class="lw-done-sub">' + esc(w.service.name) + ' on ' + whenLabel(w.time) +
         '.<br>We texted your confirmation — keep the code below to cancel or change online.</div>' +
         (code ? '<div class="lw-code">Your code: <b>' + esc(code) + '</b></div>' : '') +
-        '<button class="lw-link" data-cancel>Cancel this appointment</button></div>'
+        '<button class="lw-link" data-cancel>Manage or cancel this appointment</button></div>'
       );
-      w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepCancel(w); });
+      w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w, { code: code }); });
     }).catch(function (e) {
       err.textContent = e.message || 'Something went wrong.';
       btn.disabled = false; btn.textContent = 'Confirm booking';
     });
   }
 
-  function stepCancel(w) {
+  // ── self-service manage: look up by code + phone, then reschedule/cancel ──
+  function stepManage(w, prefill) {
+    prefill = prefill || {};
+    var code = (prefill.code || (w.managing && w.managing.code) || '').trim();
+    var phone = prefill.phone || (w.managing && w.managing.phone) || '';
+    w.render(
+      '<div class="lw-step on" data-step="manage"><button class="lw-back" data-back>← Back</button>' +
+      '<div class="lw-label">Manage an appointment</div>' +
+      '<p class="lw-note">Find your booking with the code from your confirmation text.</p>' +
+      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwMCode" value="' + esc(code) + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
+      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwMPhone" type="tel" value="' + esc(phone) + '" placeholder="(555) 555-5555"/></div>' +
+      '<button class="lw-btn" id="lwLookup">Find my appointment</button><div class="lw-err"></div></div>'
+    );
+    w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (w.catalog) stepService(w, w.catalog);
+    });
+    w.host.querySelector('#lwLookup').addEventListener('click', function () { doLookup(w); });
+  }
+
+  function doLookup(w) {
+    var code = w.host.querySelector('#lwMCode').value.trim().toUpperCase();
+    var phone = w.host.querySelector('#lwMPhone').value.trim();
+    var err = w.host.querySelector('.lw-err');
+    var btn = w.host.querySelector('#lwLookup');
+    if (!code || !phone) { err.textContent = 'Enter your code and the phone you booked with.'; return; }
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Finding…';
+    apiPost({ action: 'lookup', channel: 'public_widget', code: code, client_phone: phone })
+      .then(function (result) {
+        if (!result.ok) {
+          var msg = result.error === 'code_not_found' ? 'No booking matches that code.' :
+            result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
+            (result.error || 'Could not find that booking.');
+          err.textContent = msg;
+          btn.disabled = false; btn.textContent = 'Find my appointment';
+          return;
+        }
+        w.managing = { code: code, phone: phone, booking: result.booking };
+        renderManageCard(w, result.booking);
+      })
+      .catch(function (e) {
+        err.textContent = e.message || 'Something went wrong.';
+        btn.disabled = false; btn.textContent = 'Find my appointment';
+      });
+  }
+
+  function renderManageCard(w, b) {
+    var cancelled = b.status === 'cancelled' || b.status === 'canceled';
+    var staffName = (b.staff && b.staff.name) || '';
+    w.render(
+      '<div class="lw-step on" data-step="manage-card">' +
+      '<div class="lw-label">' + esc((b.service && b.service.name) || 'Appointment') + (staffName ? ' · ' + esc(staffName) : '') + '</div>' +
+      '<div class="lw-card">' +
+      '<div class="lw-card-when">' + esc(whenLabel(b.start_time)) + '</div>' +
+      (b.service && b.service.price != null ? '<div class="lw-card-meta">' + money(b.service.price) + (b.service.duration_minutes ? ' · ' + b.service.duration_minutes + ' min' : '') + '</div>' : '') +
+      (cancelled ? '<div class="lw-card-meta" style="color:#ff7a7a">This appointment is cancelled.</div>' : '') +
+      '</div>' +
+      (cancelled ? '<button class="lw-btn" id="lwNewBook">Book a new appointment</button>' :
+        '<button class="lw-btn" id="lwResched">Pick a new time</button>' +
+        '<button class="lw-link" data-cancel>Cancel this appointment instead</button>') +
+      '<div class="lw-err"></div></div>'
+    );
+    if (cancelled) {
+      w.host.querySelector('#lwNewBook').addEventListener('click', function () {
+        w.managing = null;
+        if (w.catalog) stepService(w, w.catalog);
+      });
+      return;
+    }
+    w.host.querySelector('#lwResched').addEventListener('click', function () { startReschedule(w); });
+    w.host.querySelector('[data-cancel]').addEventListener('click', function () {
+      stepCancel(w, { code: w.managing.code, phone: w.managing.phone });
+    });
+  }
+
+  function startReschedule(w) {
+    var b = w.managing && w.managing.booking;
+    if (!b || !b.service) { stepManage(w); return; }
+    var cat = w.catalog;
+    var svc = (cat.services || []).filter(function (s) { return s.id === b.service.id; })[0] || null;
+    if (!svc) {
+      w.msg('warn', 'That service is no longer offered — please book a new appointment instead.');
+      return;
+    }
+    w.service = svc;
+    w.staff = null;
+    if (b.staff && b.staff.id) {
+      var cur = (cat.staff || []).filter(function (s) { return s.id === b.staff.id; })[0];
+      if (cur) w.staff = cur;
+    }
+    if (cat.staff && cat.staff.length) { stepStaff(w, cat); }
+    else { stepTime(w, cat); }
+  }
+
+  function stepRescheduleConfirm(w) {
+    w.render(
+      '<div class="lw-step on" data-step="rconfirm"><button class="lw-back" data-back>← Back</button>' +
+      '<div class="lw-label">Move your appointment</div>' +
+      '<div class="lw-summary"><b>' + esc(w.service.name) + '</b>' +
+      (w.staff ? ' with <b>' + esc(w.staff.name) + '</b>' : '') +
+      '<br>New time: <b>' + esc(whenLabel(w.time)) + '</b></div>' +
+      '<button class="lw-btn" id="lwReschedBtn">Confirm new time</button><div class="lw-err"></div></div>'
+    );
+    w.host.querySelector('[data-back]').addEventListener('click', function () { stepTime(w, w.catalog); });
+    w.host.querySelector('#lwReschedBtn').addEventListener('click', function () { doReschedule(w); });
+  }
+
+  function doReschedule(w) {
+    var m = w.managing;
+    var err = w.host.querySelector('.lw-err');
+    var btn = w.host.querySelector('#lwReschedBtn');
+    btn.disabled = true; btn.textContent = 'Moving your appointment…';
+    apiPost({
+      action: 'reschedule', channel: 'public_widget',
+      code: m.code, client_phone: m.phone,
+      starts_at: w.time, staff_id: w.staff ? w.staff.id : null
+    }).then(function (result) {
+      if (!result.ok) {
+        var msg = result.conflict ? 'That time was just taken — pick another.' :
+          result.error === 'code_not_found' ? 'No booking matches that code.' :
+          result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
+          result.error === 'appointment_passed' ? 'That appointment has already passed.' :
+          result.error === 'not_reschedulable' ? 'That booking can no longer be changed.' :
+          (result.error || 'Could not reschedule.');
+        err.textContent = msg;
+        btn.disabled = false; btn.textContent = 'Confirm new time';
+        return;
+      }
+      var when = whenLabel(w.time);
+      w.managing = null;
+      w.render(
+        '<div class="lw-step on" data-step="rescheduled"><div class="lw-orb"></div>' +
+        '<div class="lw-done-title">You\'re all set</div>' +
+        '<div class="lw-done-sub">Your appointment is now <b>' + esc(when) + '</b>.<br>We texted your confirmation.<br>' +
+        '<button class="lw-link" data-more>Manage another appointment</button></div></div>'
+      );
+      w.host.querySelector('[data-more]').addEventListener('click', function () { stepManage(w); });
+    }).catch(function (e) {
+      err.textContent = e.message || 'Something went wrong.';
+      btn.disabled = false; btn.textContent = 'Confirm new time';
+    });
+  }
+
+  function stepCancel(w, prefill) {
+    prefill = prefill || {};
     w.render(
       '<div class="lw-step on" data-step="cancel"><button class="lw-back" data-back>← Back</button>' +
       '<div class="lw-label">Cancel an appointment</div>' +
-      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwCode" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
-      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwCancelPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
+      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwCode" value="' + esc(prefill.code || '') + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
+      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwCancelPhone" type="tel" value="' + esc(prefill.phone || '') + '" placeholder="(555) 555-5555"/></div>' +
       '<button class="lw-btn" id="lwCancelBtn">Cancel appointment</button><div class="lw-err"></div></div>'
     );
     w.host.querySelector('[data-back]').addEventListener('click', function () {

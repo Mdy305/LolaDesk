@@ -218,12 +218,15 @@ function demoTenant(){
 }
 
 // ── CLIENTS ──
-export async function upsertClient(tenantId, { phone, name, email }){
+export async function upsertClient(tenantId, { phone, name, email, whatsappEnabled }){
   const c = db();
   if(!c || !tenantId) return null;
   const phoneE = e164(phone);
   const parts=String(name||'Client').trim().split(/\s+/).filter(Boolean);
   const row={tenant_id:tenantId,first_name:parts.shift()||'Client',last_name:parts.join(' ')||null,phone:phoneE,email:email||null,updated_at:new Date().toISOString()};
+  // A client messaging the salon over WhatsApp has explicitly opted in to the
+  // WhatsApp channel — persist the opt-in so booking reminders can use it.
+  if(whatsappEnabled) row.whatsapp_enabled = true;
   let existing=null;
   if(phoneE){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('phone',phoneE).maybeSingle(); existing=data; }
   if(!existing&&email){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('email',String(email).toLowerCase()).maybeSingle(); existing=data; }

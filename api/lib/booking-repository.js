@@ -11,7 +11,7 @@ export function makeConfirmationCode(){
   return out;
 }
 
-async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode=null}){
+export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode=null,verb='Booked'}){
   try{
     const db2 = db();
     if(!db2) return;
@@ -20,12 +20,13 @@ async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confir
       db2.from('clients').select('name,phone').eq('id',clientId).maybeSingle(),
       db2.from('services').select('name').eq('id',serviceId).maybeSingle()
     ]);
-    if(!client || !client.phone || !tenant || !tenant.phone_number) return;
+    if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
     const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     const code = confirmationCode ? ' Your code: ' + confirmationCode + ' — use it to cancel or reschedule online.' : '';
-    const text = 'Booked at ' + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
-    sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
-  }catch(e){ console.warn('[repo] SMS:', e.message); }
+    const text = (verb==='Rescheduled'?'Rescheduled at ':verb+' at ') + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
+    const r = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
+    return { sent: true, text };
+  }catch(e){ console.warn('[repo] SMS:', e.message); return { skipped: true, reason: String(e?.message||e) }; }
 }
 
 const CANCELED = new Set(['cancelled','canceled']);
@@ -187,6 +188,20 @@ export async function updateCanonicalBooking(tenantId, bookingId, patch, { sourc
   if(error) throw error;
   if(patch.status && patch.status !== before.status){
     await appendBookingHistory({ tenantId, bookingId, fromStatus:before.status, toStatus:patch.status, source, reason });
+  }
+  // When a confirmed booking's start time changes (reschedule from the widget
+  // OR the dashboard) and the client stayed confirmed, re-text them the new
+  // time — honoring the same confirmation text pattern. Never fires when only
+  // status or another field changed.
+  const isReschedule = patch.start_time && before.start_time && patch.start_time !== before.start_time;
+  if(isReschedule && (patch.status === 'confirmed' || (before.status === 'confirmed' && !patch.status))){
+    try{
+      await sendConfirmationSMS({
+        tenantId, clientId: before.client_id, serviceId: before.service_id,
+        startTime: data.start_time || patch.start_time, confirmationCode: data.confirmation_code || before.confirmation_code,
+        verb: 'Rescheduled'
+      });
+    }catch(e){ /* a failed confirmation text must never fail a reschedule */ }
   }
   return data;
 }

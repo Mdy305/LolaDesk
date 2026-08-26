@@ -49,23 +49,32 @@ async function enrich(client, bookings) {
   const tenantIds = [...new Set(bookings.map((b) => b.tenant_id))];
   const clientIds = [...new Set(bookings.map((b) => b.client_id).filter(Boolean))];
   const serviceIds = [...new Set(bookings.map((b) => b.service_id).filter(Boolean))];
-  const [tenants, clients, services, settings] = await Promise.all([
+  const [tenants, clients, services, settings, integrations] = await Promise.all([
     tenantIds.length ? client.from('tenants').select('id,name,phone_number').in('id', tenantIds) : { data: [] },
-    clientIds.length ? client.from('clients').select('id,name,phone').in('id', clientIds) : { data: [] },
+    clientIds.length ? client.from('clients').select('id,name,phone,whatsapp_enabled').in('id', clientIds) : { data: [] },
     serviceIds.length ? client.from('services').select('id,name').in('id', serviceIds) : { data: [] },
-    tenantIds.length ? client.from('booking_settings').select('tenant_id,reminder_sms').in('tenant_id', tenantIds) : { data: [] }
+    tenantIds.length ? client.from('booking_settings').select('tenant_id,reminder_sms').in('tenant_id', tenantIds) : { data: [] },
+    tenantIds.length ? client.from('integrations').select('tenant_id,provider,status').in('tenant_id', tenantIds) : { data: [] }
   ]);
   const by = (rows, key) => Object.fromEntries((rows || []).map((r) => [r[key], r]));
   const tMap = by(tenants.data, 'id');
   const clMap = by(clients.data, 'id');
   const svMap = by(services.data, 'id');
   const sMap = by(settings.data, 'tenant_id');
+  // A salon's WhatsApp is connected when it has a connected integrations row
+  // (the same signal the health screen reads).
+  const waTenantIds = new Set(
+    (integrations.data || [])
+      .filter((r) => r.provider === 'whatsapp' && r.status === 'connected')
+      .map((r) => r.tenant_id)
+  );
   return bookings.map((b) => ({
     ...b,
     tenant: tMap[b.tenant_id] || null,
     client: clMap[b.client_id] || null,
     service: svMap[b.service_id] || null,
-    settings: sMap[b.tenant_id] || null
+    settings: sMap[b.tenant_id] || null,
+    tenant_whatsapp: waTenantIds.has(b.tenant_id)
   }));
 }
 
@@ -81,7 +90,7 @@ export function buildReminderText(b) {
 // Claim the reminder row BEFORE sending. Returns the row, or null when this
 // appointment time was already claimed (check-then-insert; in production the
 // unique constraint turns a concurrent double-claim into an error we swallow).
-async function claim(client, b) {
+async function claim(client, b, channel) {
   const { data: existing } = await client.from('booking_reminders')
     .select('id')
     .eq('booking_id', b.id)
@@ -94,7 +103,7 @@ async function claim(client, b) {
     client_id: b.client_id || null,
     reminder_for: b.start_time,
     status: 'pending',
-    channel: 'sms'
+    channel: channel || 'sms'
   }).select().maybeSingle();
   if (error || !data) return null; // race — the DB constraint won; someone else claimed it
   return data;
@@ -111,7 +120,7 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
   if (!client) throw new Error('database not configured');
   const bookings = await findDueBookings(now, client);
   const enriched = await enrich(client, bookings);
-  const result = { due: bookings.length, sent: 0, failed: 0, skipped: 0, gate_off: 0 };
+  const result = { due: bookings.length, sent: 0, whatsapp: 0, sms: 0, failed: 0, skipped: 0, gate_off: 0 };
 
   for (const b of enriched) {
     // Salon gate: booking_settings.reminder_sms defaults to ON; a missing
@@ -120,7 +129,14 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
     if (!b.client || !b.client.phone) { result.skipped++; continue; }
     if (!b.tenant || !b.tenant.phone_number) { result.skipped++; continue; }
 
-    const row = await claim(client, b);
+    // Channel choice: prefer WhatsApp when the salon has it connected AND the
+    // client has opted in (clients.whatsapp_enabled, set automatically from a
+    // prior WhatsApp conversation or flipped by the owner). Otherwise SMS.
+    // This respects WhatsApp's explicit-opt-in rule — a salon can never cold-
+    // WhatsApp a client who only ever texted.
+    const channel = b.tenant_whatsapp && b.client.whatsapp_enabled ? 'whatsapp' : 'sms';
+
+    const row = await claim(client, b, channel);
     if (!row) { result.skipped++; continue; }
 
     try {
@@ -128,10 +144,12 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
         from: b.tenant.phone_number,
         to: b.client.phone,
         text: buildReminderText(b),
-        tenantId: b.tenant_id
+        tenantId: b.tenant_id,
+        type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS'
       });
       await mark(client, row.id, 'sent');
       result.sent++;
+      result[channel]++;
     } catch (e) {
       await mark(client, row.id, 'failed', String(e?.message || e));
       result.failed++;

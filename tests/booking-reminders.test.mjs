@@ -56,7 +56,7 @@ function isoHoursFromNow(h) {
   return new Date(Date.now() + h * 3600e3).toISOString();
 }
 
-function seed({ reminderSms = true, bookingStart = isoHoursFromNow(24), client = CLIENT, status = 'confirmed' } = {}) {
+function seed({ reminderSms = true, bookingStart = isoHoursFromNow(24), client = CLIENT, status = 'confirmed', whatsappConnected = false, integrations = [], conversations = [] } = {}) {
   fake.reset();
   fake.seed('tenants', [TENANT]);
   fake.seed('clients', [client]);
@@ -68,6 +68,12 @@ function seed({ reminderSms = true, bookingStart = isoHoursFromNow(24), client =
     status, total_amount: 180, source: 'public_web'
   }]);
   fake.seed('booking_reminders', []);
+  if (whatsappConnected) {
+    fake.seed('integrations', [{ tenant_id: T1, provider: 'whatsapp', status: 'connected' }, ...integrations]);
+  } else {
+    fake.seed('integrations', integrations);
+  }
+  fake.seed('conversations', conversations);
 }
 
 function makeSpy() {
@@ -172,3 +178,44 @@ test('cancelled bookings are never reminded', async () => {
   assert.equal(result.due, 0);
   assert.equal(calls.length, 0);
 });
+
+test('sends WhatsApp when the salon has WhatsApp connected and the client opted in', async () => {
+  const waClient = { ...CLIENT, whatsapp_enabled: true };
+  seed({ client: waClient, whatsappConnected: true });
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result.due, 1);
+  assert.equal(result.sent, 1);
+  assert.equal(result.whatsapp, 1, 'counted as whatsapp');
+  assert.equal(result.sms, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].type, 'WHATSAPP', 'sendSMS receives the WHATSAPP type');
+  const rows = fake.all('booking_reminders');
+  assert.equal(rows[0].channel, 'whatsapp', 'log records the whatsapp channel');
+  assert.equal(rows[0].status, 'sent');
+});
+
+test('falls back to SMS when the client has NOT opted into WhatsApp even if the salon has it', async () => {
+  const waClient = { ...CLIENT, whatsapp_enabled: false };
+  seed({ client: waClient, whatsappConnected: true });
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result.sent, 1);
+  assert.equal(result.whatsapp, 0);
+  assert.equal(result.sms, 1);
+  assert.equal(calls[0].type, 'SMS');
+  assert.equal(fake.all('booking_reminders')[0].channel, 'sms');
+});
+
+test('falls back to SMS when the client opted in but the salon has no WhatsApp connection', async () => {
+  const waClient = { ...CLIENT, whatsapp_enabled: true };
+  seed({ client: waClient, whatsappConnected: false });
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result.sent, 1);
+  assert.equal(result.whatsapp, 0);
+  assert.equal(result.sms, 1);
+  assert.equal(calls[0].type, 'SMS');
+  assert.equal(fake.all('booking_reminders')[0].channel, 'sms');
+});
+

@@ -127,7 +127,55 @@ export default async function handler(req,res){
       return res.json({ok:true,status:'confirmed',booking_id:booking.id,booking});
     }
 
+    if(action==='lookup'){
+      // Public self-service: confirmation code + phone → the client's own
+      // booking (never by booking_id, which would leak other people's rows).
+      const code=String(body.code||'').trim().toUpperCase();
+      const phone=String(body.client_phone||'').trim();
+      if(!code || !phone) return res.status(200).json({ok:false,error:'code_and_phone_required'});
+      const c=db();
+      const { data: booking }=await c.from('bookings').select('*')
+        .eq('tenant_id',tenant.id).eq('confirmation_code',code).maybeSingle();
+      if(!booking) return res.status(200).json({ok:false,error:'code_not_found'});
+      const { data: client }=await c.from('clients').select('phone').eq('id',booking.client_id).maybeSingle();
+      if(!client || normPhone(client.phone)!==normPhone(phone)){
+        return res.status(200).json({ok:false,error:'code_phone_mismatch'});
+      }
+      const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
+      const enriched=await enrichBookings(tenant.id,[booking],services,staff);
+      const b=enriched[0]||booking;
+      return res.json({ ok:true, booking:{
+        confirmation_code:b.confirmation_code,
+        start_time:b.start_time, end_time:b.end_time, status:b.status,
+        service:b.service ? { id:b.service.id, name:b.service.name, price:b.service.price, duration_minutes:b.service.duration_minutes } : null,
+        staff:b.staff ? { id:b.staff.id, name:b.staff.name } : null
+      }});
+    }
+
     if(action==='reschedule'){
+      // Public self-service: code + phone + new time (never booking_id).
+      if(req.__publicBooking){
+        const code=String(body.code||'').trim().toUpperCase();
+        const phone=String(body.client_phone||'').trim();
+        const startsAt=body.starts_at;
+        if(!code || !phone || !startsAt) return res.status(200).json({ok:false,error:'code_phone_and_starts_at_required'});
+        const c=db();
+        const { data: current }=await c.from('bookings').select('*')
+          .eq('tenant_id',tenant.id).eq('confirmation_code',code).maybeSingle();
+        if(!current) return res.status(200).json({ok:false,error:'code_not_found'});
+        if(current.status!=='confirmed') return res.status(200).json({ok:false,error:'not_reschedulable'});
+        if(new Date(current.start_time)<=new Date()) return res.status(200).json({ok:false,error:'appointment_passed'});
+        const { data: client }=await c.from('clients').select('phone').eq('id',current.client_id).maybeSingle();
+        if(!client || normPhone(client.phone)!==normPhone(phone)){
+          return res.status(200).json({ok:false,error:'code_phone_mismatch'});
+        }
+        if(new Date(startsAt)<=new Date()) return res.status(200).json({ok:false,error:'time_in_past'});
+        const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt,channel:'public_widget',ttlSeconds:120});
+        if(!held.ok) return res.status(200).json(held);
+        const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
+        await releaseHold(tenant.id,held.hold.hold_token,'converted');
+        return res.json({ok:!!updated,rescheduled:!!updated,booking:updated});
+      }
       if(!body.booking_id || !body.starts_at) return res.status(400).json({ok:false,error:'booking_id_and_starts_at_required'});
       const c=db();
       const { data: current }=await c.from('bookings').select('*').eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
