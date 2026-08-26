@@ -1,4 +1,6 @@
 (function(){
+  'use strict';
+  if (window.LolaUX) return; // auth-guard injects this on every authenticated page — never double-boot
   const state={busy:0};
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   function ensure(){
@@ -14,6 +16,9 @@
   function skeleton(root,rows=3){root.innerHTML=Array.from({length:rows},()=>'<div class="lola-skeleton"><i></i><span></span><em></em></div>').join('')}
   function connectivity(){ensure();const sync=()=>document.getElementById('lola-offline').classList.toggle('show',!navigator.onLine);addEventListener('online',()=>{sync();toast('Connection restored.')});addEventListener('offline',sync);sync()}
   function commandPalette(){const actions=[['Open Home','dashboard.html'],['Open Operations','operations-os.html'],['Open Growth','growth-os.html'],['Open Reviews','reviews.html'],['Open Calendar','bookings.html'],['Open Inbox','inbox.html'],['Open Clients','clients.html'],['Open Revenue','revenue.html'],['Open Lola','lola-live.html'],['Open Settings','settings.html']];let layer=null;function close(){layer?.remove();layer=null}function open(){if(layer)return;layer=document.createElement('div');layer.className='lola-command-layer show';layer.innerHTML=`<div class="lola-command"><div class="lola-command-input"><span>⌘</span><input autofocus placeholder="Go anywhere in LolaDesk…"></div><div class="lola-command-list"></div><div class="lola-command-foot">↑↓ navigate · Enter open · Esc close</div></div>`;document.body.appendChild(layer);const input=layer.querySelector('input'),list=layer.querySelector('.lola-command-list');let index=0,filtered=actions;function render(){list.innerHTML=filtered.map((a,i)=>`<button class="${i===index?'active':''}" data-i="${i}"><span>${escapeHtml(a[0])}</span><small>Open</small></button>`).join('');list.querySelectorAll('button').forEach(b=>b.onclick=()=>location.href=filtered[+b.dataset.i][1])}input.oninput=()=>{filtered=actions.filter(a=>a[0].toLowerCase().includes(input.value.toLowerCase()));index=0;render()};input.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();index=Math.min(filtered.length-1,index+1);render()}if(e.key==='ArrowUp'){e.preventDefault();index=Math.max(0,index-1);render()}if(e.key==='Enter'&&filtered[index])location.href=filtered[index][1];if(e.key==='Escape')close()};layer.onclick=e=>{if(e.target===layer)close()};render();input.focus()}addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();open()}})}
-  document.addEventListener('DOMContentLoaded',()=>{ensure();connectivity();commandPalette();document.querySelectorAll('button,[role="button"],.btn').forEach(el=>el.addEventListener('pointerdown',()=>navigator.vibrate?.(8),{passive:true}))});
+  function boot(){ensure();connectivity();commandPalette();document.querySelectorAll('button,[role="button"],.btn').forEach(el=>el.addEventListener('pointerdown',()=>navigator.vibrate?.(8),{passive:true}))}
+  // auth-guard injects this script AFTER session fetch — DOMContentLoaded may
+  // already have fired, so boot immediately when the document is ready.
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
   window.LolaUX={toast,busy,run,confirm,skeleton,escapeHtml};
 })();

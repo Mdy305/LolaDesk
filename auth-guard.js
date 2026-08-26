@@ -33,9 +33,19 @@
     if(document.querySelector(`script[data-${key}]`)) return;
     const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
   }
+  function loadStyle(href,key){
+    if(document.querySelector(`link[data-${key}]`)) return;
+    const link=document.createElement('link'); link.rel='stylesheet'; link.href=href; link.dataset[key]='true'; document.head.appendChild(link);
+  }
   function loadAppRuntime(){
     loadScript('/tenant-workspace.js','tenantWorkspace');
     loadScript('/tenant-notifications.js','tenantNotifications');
+    // The Apple-grade interaction runtime on EVERY authenticated page:
+    // toasts, dialogs, ⌘K command palette, skeletons, offline banner,
+    // busy progress. Idempotent — pages that link ux-runtime directly
+    // (reviews, growth-os, …) never double-boot.
+    loadStyle('/ux-runtime.css','uxRuntime');
+    loadScript('/ux-runtime.js','uxRuntime');
     // The front-desk OS layer on EVERY authenticated page: the ONE unified
     // notification (lola-notify.js) and the luxury design language
     // (front-desk-os.js) — injected last so its styles win every tie.
