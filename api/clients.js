@@ -34,7 +34,7 @@ export default async function handler(req,res){
     }
     if(req.method!=='GET') return res.status(405).json({error:'GET or POST only'});
     const c=db(); if(!c) return res.status(503).json({error:'Database not configured'});
-    const {data,error}=await c.from('clients').select('id,first_name,last_name,phone,email,profile_picture_url,notes,preferred_service,lifetime_value,last_visit,status,created_at,updated_at').eq('tenant_id',tenant.id).order('updated_at',{ascending:false}).limit(2000);
+    const {data,error}=await c.from('clients').select('id,first_name,last_name,phone,email,profile_picture_url,notes,preferred_service,lifetime_value,last_visit,status,whatsapp_enabled,created_at,updated_at').eq('tenant_id',tenant.id).order('updated_at',{ascending:false}).limit(2000);
     if(error) throw error;
     const clients=await signClientPhotos(data||[]);
     return res.status(200).json({ok:true,tenant:tenant.name,clients});
