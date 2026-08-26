@@ -162,6 +162,38 @@ test('Telnyx failure falls back to provisioning_pending without losing the payme
   assert.ok(tenant.provisioning_error);
 });
 
+test('no STRIPE_WEBHOOK_SECRET -> fail closed: forged checkout can never activate a tenant', async () => {
+  fake.reset();
+  fake.seed('tenants', [{ ...TENANT }]);
+  stubTelnyx();
+
+  delete process.env.STRIPE_WEBHOOK_SECRET;
+  // Raw unsigned request — with no secret deployed, the handler must reject
+  // it outright instead of trusting it (the fail-closed contract).
+  const rawBody = JSON.stringify(event('evt-8', 'checkout.session.completed', {
+    metadata: { tenant_id: 'tenant-1' }, customer: 'cus_8', subscription: 'sub_8'
+  }));
+  let rawSent = false;
+  const rawReq = {
+    method: 'POST',
+    headers: {},
+    [Symbol.asyncIterator]() { return { next: () => rawSent ? Promise.resolve({ done: true }) : (rawSent = true, Promise.resolve({ value: rawBody, done: false })) }; }
+  };
+  try{
+    const res = makeRes();
+    await handler(rawReq, res);
+    assert.equal(res.statusCode, 503);
+    assert.match(res.body.error, /not configured/i);
+
+    const tenant = fake.all('tenants')[0];
+    assert.equal(tenant.subscription_status, 'trial');          // NOT activated
+    assert.equal(tenant.stripe_subscription_id, null);          // NOT written
+    assert.equal(fake.all('billing_events').length, 0);         // nothing logged
+  } finally {
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+  }
+});
+
 test('invalid signature is rejected with 400', async () => {
   fake.reset();
   const body = JSON.stringify(event('evt-9', 'invoice.payment_failed', { customer: 'cus_1' }));

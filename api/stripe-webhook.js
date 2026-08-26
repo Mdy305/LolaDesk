@@ -30,7 +30,7 @@ async function rawBody(req){
 }
 
 function verify(payload, sig, secret){
-  if(!secret) return true;
+  if(!secret) return null; // not configured — never accept unsigned events
   try{
     const parts=Object.fromEntries(String(sig).split(',').map(p=>p.split('=')));
     const expected=crypto.createHmac('sha256',secret).update(parts.t+'.'+payload).digest('hex');
@@ -88,7 +88,18 @@ export default async function handler(req,res){
   try{
     const payload=await rawBody(req);
     const sig=req.headers['stripe-signature'];
-    if(!verify(payload,sig,process.env.STRIPE_WEBHOOK_SECRET)){
+    const webhookSecret=process.env.STRIPE_WEBHOOK_SECRET;
+    // Fail closed: without the signing secret there is no way to trust a
+    // webhook, and accepting unsigned events would let anyone forge a
+    // checkout.session.completed and unlock free subscriptions. Set
+    // STRIPE_WEBHOOK_SECRET (whsec_...) from the Stripe dashboard before
+    // pointing Stripe at this endpoint.
+    if(!webhookSecret){
+      return res.status(503).json({error:'Stripe webhook not configured — set STRIPE_WEBHOOK_SECRET'});
+    }
+    const verified=verify(payload,sig,webhookSecret);
+    if(verified===null) return res.status(503).json({error:'Stripe webhook not configured — set STRIPE_WEBHOOK_SECRET'});
+    if(!verified){
       return res.status(400).json({error:'Invalid signature'});
     }
 
