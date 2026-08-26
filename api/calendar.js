@@ -43,16 +43,20 @@ export default async function handler(req,res){
       return res.json({ ok:true,services,staff });
     }
 
-    if(action==='day'){
-      const [svcs,stff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
+    if(action==='day' || action==='week'){
+      const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();
       const start=new Date(date); start.setUTCHours(0,0,0,0);
-      const end=new Date(start.getTime()+86400000);
-      const [bookings,services,staff,settings]=await Promise.all([
+      const days=action==='week' ? Math.max(1,Math.min(14,Number(body.days||7))) : 1;
+      const end=new Date(start.getTime()+days*86400000);
+      const [bookings,settings]=await Promise.all([
         listBookings(tenant.id,start.toISOString(),end.toISOString()),
-        listServices(tenant.id),listStaff(tenant.id),getBookingSettings(tenant.id)
+        action==='day' ? getBookingSettings(tenant.id) : Promise.resolve(null)
       ]);
-      return res.json({ ok:true, services:svcs||[], staff:stff||[],date:start.toISOString().slice(0,10),bookings,services,staff,settings });
+      const enriched=await enrichBookings(tenant.id,bookings,services,staff);
+      const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched };
+      if(action==='day'){ out.date=start.toISOString().slice(0,10); out.settings=settings; }
+      return res.json(out);
     }
 
     if(action==='availability'){
@@ -166,4 +170,23 @@ export default async function handler(req,res){
     console.error('[calendar]',e);
     return res.status(500).json({ok:false,error:'calendar_error',detail:String(e?.message||e)});
   }
+}
+
+// Attach service / staff / client objects to raw booking rows so the calendar
+// UI renders real names instead of "Appointment"/"Client" fallbacks.
+async function enrichBookings(tenantId, bookings, services, staff){
+  if(!Array.isArray(bookings) || !bookings.length) return bookings || [];
+  const clientIds=[...new Set(bookings.map(b=>b.client_id).filter(Boolean))];
+  let clients=[];
+  if(clientIds.length){
+    const c=db();
+    const { data }=await c.from('clients').select('id,first_name,last_name,name,phone,email,is_vip,profile_picture_url').in('id',clientIds);
+    clients=data||[];
+  }
+  return bookings.map(b=>({
+    ...b,
+    service:(services||[]).find(s=>s.id===b.service_id)||null,
+    staff:(staff||[]).find(s=>s.id===b.staff_id)||null,
+    client:clients.find(cl=>cl.id===b.client_id)||null
+  }));
 }

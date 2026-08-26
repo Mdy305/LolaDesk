@@ -1,60 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>Calendar — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
-.cal-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.cal-date{font-size:26px;font-weight:560;letter-spacing:-.02em}
-.cal-nav{display:flex;gap:6px}
-.cal-nav button{height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer}
-.cal-nav button:hover{background:var(--surface2)}
-.cal-links{display:flex;gap:8px}
-.cal-links a,.cal-links button{padding:9px 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none}
-.cal-links .primary{background:var(--text);color:#080809;border-color:transparent;font-weight:560}
-.cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:20px;overflow:auto;min-height:520px}
+/* ═══════════════════════════════════════════════════════════════
+   Calendar OS — Apple-grade schedule surface
+   Week strip · Week / Day / Agenda views · service-colored cards
+   with client avatars and status pills · Apple sheet modal
+   ═══════════════════════════════════════════════════════════════ */
+:root{--spring:cubic-bezier(.22,1,.36,1);--spring-snap:cubic-bezier(.3,1.4,.5,1)}
+
+/* ── Week strip (date rail) ── */
+.week-strip{display:flex;gap:8px;margin:0 0 18px}
+.wday{flex:1;min-width:0;text-align:center;padding:12px 4px 10px;border:.5px solid var(--border);border-radius:16px;background:var(--surface);backdrop-filter:blur(20px);cursor:pointer;transition:all .25s var(--spring);position:relative;overflow:hidden}
+.wday:hover{border-color:var(--border2);transform:translateY(-1px)}
+.wday .wd{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:5px}
+.wday .wn{font-size:21px;font-weight:300;letter-spacing:-.02em;color:var(--text)}
+.wday .wc{font-size:10px;color:var(--text3);margin-top:3px;height:12px}
+.wday.today{border-color:rgba(204,255,0,.45);background:linear-gradient(180deg,rgba(204,255,0,.08),rgba(204,255,0,.02))}
+.wday.today .wn{color:#ccff00;text-shadow:0 0 18px rgba(204,255,0,.35)}
+.wday.today::after{content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;border-radius:2px;background:#ccff00;box-shadow:0 0 10px rgba(204,255,0,.6)}
+.wday.sel{border-color:var(--border2)}
+.wday .wd-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#ccff00;box-shadow:0 0 8px rgba(204,255,0,.7);margin-left:4px;vertical-align:middle}
+@media(max-width:760px){.wday{padding:9px 2px 8px}.wday .wn{font-size:17px}.wday .wc{display:none}}
+
+/* ── View switcher ── */
+.view-switch{display:inline-flex;gap:2px;background:var(--surface);border:.5px solid var(--border);border-radius:999px;padding:3px;backdrop-filter:blur(20px)}
+.view-switch button{border:0;background:transparent;color:var(--text2);font-size:12.5px;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer;transition:all .2s var(--spring)}
+.view-switch button.on{background:#ccff00;color:#10140a;box-shadow:0 4px 14px rgba(204,255,0,.25)}
+
+/* ── Calendar grid ── */
+.cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:20px;overflow:auto;min-height:520px;box-shadow:0 22px 60px rgba(0,0,0,.3)}
 .cal-grid{display:grid;min-width:700px}
 .cal-corner{position:sticky;top:0;left:0;z-index:20;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px}
 .cal-head{position:sticky;top:0;z-index:10;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:14px 12px}
 .cal-head .nm{font-weight:600;font-size:13px}
 .cal-head .ro{font-size:11px;color:var(--text3);margin-top:2px}
 .cal-time{position:sticky;left:0;z-index:5;background:var(--surface);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:6px 8px;text-align:right;font-size:10.5px;color:var(--text3)}
-.cal-slot{border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;position:relative;cursor:pointer}
+.cal-slot{border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;position:relative;cursor:pointer;transition:background .15s}
 .cal-slot:hover{background:rgba(204,255,0,.04)}
-.cal-slot:hover::after{content:"+ book";position:absolute;top:6px;left:8px;font-size:10px;color:var(--accent);font-weight:500}
-.appt{position:absolute;left:4px;right:4px;border-radius:8px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;overflow:hidden;border-left:3px solid var(--accent);background:rgba(204,255,0,.08);z-index:4}
-.appt:hover{box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:10}
-.appt .at{font-size:9.5px;color:var(--text3)}
-.appt .svc{font-weight:600;color:var(--text)}
-.appt .cli{font-size:10.5px;color:var(--text2)}
+.cal-slot:hover::after{content:"+ book";position:absolute;top:6px;left:8px;font-size:10px;color:var(--accent);font-weight:500;letter-spacing:.04em}
+
+/* ── Appointment card ── */
+.appt{position:absolute;left:5px;right:5px;border-radius:12px;padding:7px 9px;font-size:11px;line-height:1.35;cursor:pointer;overflow:hidden;border-left:3px solid var(--svc,#ccff00);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));backdrop-filter:blur(10px);z-index:4;transition:transform .18s var(--spring),box-shadow .18s var(--spring);animation:apptIn .35s var(--spring-snap) both}
+@keyframes apptIn{from{opacity:0;transform:scale(.96) translateY(3px)}to{opacity:1;transform:none}}
+.appt:hover{box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:10;transform:translateY(-1px)}
+.appt .at{font-size:9.5px;color:var(--text3);display:flex;align-items:center;gap:5px}
+.appt .svc{font-weight:600;color:var(--text);font-size:11.5px;margin:2px 0 1px;display:flex;align-items:center;gap:6px}
+.appt .cli{font-size:10.5px;color:var(--text2);display:flex;align-items:center;gap:6px}
+.appt .ca{width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,var(--svc,#ccff00),#1a1a1a);display:inline-flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:700;color:#080808;flex-shrink:0}
+.appt .st{margin-left:auto;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:999px}
+.appt .st.confirmed{background:rgba(204,255,0,.14);color:#ccff00}
+.appt .st.completed{background:rgba(255,255,255,.1);color:var(--text2)}
+.appt .st.pending{background:rgba(255,179,64,.14);color:#ffb340}
+.appt .st.cancelled{background:rgba(255,115,105,.14);color:#ff7369}
+.appt.cancelled{opacity:.45;border-left-color:#ff7369}
+.appt.completed{opacity:.6}
+
+/* ── Now line ── */
 .now-line{position:absolute;left:0;right:0;height:2px;background:var(--pink,#ff6b81);z-index:8;pointer-events:none}
-.mw{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
-.mw.open{display:flex}
-.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;padding:26px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto}
-.modal h3{font-size:19px;font-weight:600;margin-bottom:18px}
+.now-line::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--pink,#ff6b81)}
+
+/* ── Week view ── */
+.week-grid{display:grid;min-width:760px}
+.wk-day{border-right:.5px solid var(--border);min-height:440px;position:relative}
+.wk-day-head{position:sticky;top:0;z-index:6;background:var(--bg2);border-bottom:.5px solid var(--border);padding:12px 10px;display:flex;align-items:baseline;gap:7px;backdrop-filter:blur(20px)}
+.wk-day-head .wn{font-size:17px;font-weight:300}
+.wk-day-head .wd{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
+.wk-day.today .wk-day-head{border-bottom-color:rgba(204,255,0,.4)}
+.wk-day.today .wk-day-head .wn{color:#ccff00}
+.wk-appt{margin:8px 8px 6px;padding:8px 10px;border-radius:12px;border-left:3px solid var(--svc,#ccff00);background:rgba(255,255,255,.045);cursor:pointer;transition:transform .18s var(--spring);animation:apptIn .35s var(--spring-snap) both}
+.wk-appt:hover{transform:translateY(-1px);background:rgba(255,255,255,.07)}
+.wk-appt .t{font-size:10px;color:var(--text3)}
+.wk-appt .n{font-size:12px;font-weight:600;margin:1px 0}
+.wk-appt .c{font-size:10.5px;color:var(--text2)}
+.wk-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text3);font-size:11.5px;pointer-events:none}
+
+/* ── Agenda view ── */
+.agenda{display:flex;flex-direction:column}
+.ag-item{display:flex;align-items:center;gap:16px;padding:16px 22px;border-bottom:.5px solid var(--border);cursor:pointer;transition:background .15s;animation:apptIn .4s var(--spring) both}
+.ag-item:hover{background:rgba(255,255,255,.03)}
+.ag-item .ag-t{width:64px;font-size:12.5px;font-weight:600;color:var(--text);flex-shrink:0}
+.ag-item .ag-t small{display:block;font-size:10px;color:var(--text3);font-weight:400}
+.ag-item .ag-cli{display:flex;align-items:center;gap:11px;flex:1;min-width:0}
+.ag-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--svc,#ccff00),#2a2a2a);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#080808;flex-shrink:0}
+.ag-item .ag-name{font-size:14px;font-weight:600;color:var(--text)}
+.ag-item .ag-meta{font-size:12px;color:var(--text2);margin-top:1px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ag-item .ag-amt{margin-left:auto;font-size:14px;font-weight:600;color:var(--text);flex-shrink:0}
+.ag-item .ag-amt small{display:block;font-size:9.5px;color:var(--text3);font-weight:400;text-align:right}
+
+/* ── Modal / Apple sheet ── */
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(18px);display:grid;align-items:end;justify-items:center;z-index:100;padding:0;opacity:0;transition:opacity .22s ease;pointer-events:none}
+@media(min-width:640px){.mw{align-items:center;padding:20px}}
+.mw.open{opacity:1;pointer-events:auto}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-top-left-radius:28px;border-top-right-radius:28px;padding:14px 24px calc(20px + env(safe-area-inset-bottom));max-width:480px;width:100%;max-height:88vh;overflow-y:auto;transform:translateY(40px) scale(.98);transition:transform .3s var(--spring)}
+@media(min-width:640px){.modal{border-radius:24px;padding:26px;max-height:90vh;transform:translateY(14px) scale(.98)}}
+.mw.open .modal{transform:none}
+.modal .grab{width:38px;height:4px;border-radius:4px;background:rgba(255,255,255,.18);margin:2px auto 16px}
+@media(min-width:640px){.modal .grab{display:none}}
+.modal-kicker{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,255,0,.75);margin-bottom:6px;font-weight:600}
+.modal h3{font-size:22px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px}
+.modal .msub{font-size:12.5px;color:var(--text3);margin-bottom:18px}
 .fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
-.fld input,.fld select,.fld textarea{background:var(--surface);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%}
-.fld input:focus,.fld select:focus{border-color:var(--accent)}
+.fld label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+.fld input,.fld select,.fld textarea{background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%;transition:border-color .15s}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:rgba(204,255,0,.5);box-shadow:0 0 0 3px rgba(204,255,0,.07)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.macts{display:flex;gap:10px;margin-top:6px}
-.macts button{flex:1;padding:12px;border-radius:11px;font-size:14px;font-weight:560;cursor:pointer;border:none}
+.macts{display:flex;gap:10px;margin-top:8px}
+.macts button{flex:1;padding:13px;border-radius:12px;font-size:14px;font-weight:650;cursor:pointer;border:none;transition:transform .12s var(--spring)}
+.macts button:active{transform:scale(.97)}
 .macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
-.macts .primary{background:var(--text);color:#080809}
-.macts .danger{background:transparent;border:.5px solid #ff6b6b44;color:#ff8a8a}
+.macts .primary{background:#ccff00;color:#10140a;box-shadow:0 4px 16px rgba(204,255,0,.25)}
+.macts .primary:hover{background:#dcff66}
+.macts .danger{background:transparent;border:.5px solid rgba(255,115,105,.35);color:#ff8a8a}
 .mstatus{font-size:12px;color:var(--text3);margin-top:10px;min-height:16px}
+.mstatus.err{color:#ff8a8a}
+.detail-row{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:.5px solid rgba(255,255,255,.05);font-size:13.5px}
+.detail-row .dr-l{width:86px;color:var(--text3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;flex-shrink:0}
+.detail-row .dr-v{color:var(--text);font-weight:500}
+.detail-av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,#ccff00,#3a5a00);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#080808}
+
+/* Empty */
 .empty-cal{padding:80px 20px;text-align:center;color:var(--text3);font-size:14px;line-height:2}
-.empty-cal a{color:var(--accent2);text-decoration:none}
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
-@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.empty-cal a{color:#dcff66;text-decoration:none}
+.empty-cal a:hover{text-decoration:underline}
 </style>
 </head>
 <body data-page="bookings"><div class="app"><main class="main">
-<div class="cal-bar">
-  <div><div class="cal-date" id="calDate">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div>
-  <div class="cal-nav"><button onclick="nav(-1)">&#8249;</button><button onclick="goToday()">Today</button><button onclick="nav(1)">&#8250;</button></div>
-  <div class="cal-links"><a href="services.html">Services</a><a href="team.html">Team</a><a href="booking-settings.html">Settings</a><button class="primary" onclick="openNew()">+ New booking</button></div>
+<div class="cal-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+  <div><div class="cal-date" id="calDate" style="font-size:26px;font-weight:560;letter-spacing:-.02em">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div>
+  <div class="cal-nav" style="display:flex;gap:6px;align-items:center">
+    <div class="view-switch" id="viewSwitch">
+      <button data-v="week" class="on">Week</button>
+      <button data-v="day">Day</button>
+      <button data-v="agenda">Agenda</button>
+    </div>
+    <span style="width:1px;height:22px;background:var(--border);margin:0 6px"></span>
+    <button onclick="nav(-1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8249;</button>
+    <button onclick="goToday()" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">Today</button>
+    <button onclick="nav(1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8250;</button>
+  </div>
+  <div class="cal-links" style="display:flex;gap:8px;align-items:center">
+    <a href="services.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Services</a>
+    <a href="team.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Team</a>
+    <a href="booking-settings.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Settings</a>
+    <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:#ccff00;color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(204,255,0,.25)">+ New booking</button>
+  </div>
 </div>
+<div class="week-strip" id="weekStrip" style="display:none"></div>
 <div class="kpis">
   <div class="kpi"><div class="kpi-val" id="kCount">0</div><div class="kpi-label">Appointments</div></div>
   <div class="kpi"><div class="kpi-val" id="kRev">$0</div><div class="kpi-label">Revenue</div></div>
@@ -63,30 +157,94 @@
 </div>
 <div class="cal-wrap"><div class="cal-grid" id="calGrid"><div class="empty-cal">Loading calendar...</div></div></div>
 </main></div>
-<div class="mw" id="modal"><div class="modal"><h3 id="mTitle">New booking</h3><div id="mBody"></div></div></div>
+<div class="mw" id="modal"><div class="modal"><div class="grab"></div><div id="mHead"></div><div id="mBody"></div></div></div>
 <script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
 const START=8,END=21,SLOT_H=64;
 let cursor=new Date();cursor.setHours(0,0,0,0);
-let STATE={bookings:[],services:[],staff:[]};
+let VIEW=localStorage.getItem('lola_cal_view')||'week';
+let STATE={bookings:[],services:[],staff:[],start:null,days:7};
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function hdr(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+function fmtT(d){const h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM',hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;}
+function fmtDur(mins){if(!mins)return '60 min';if(mins>=60)return (mins/60>=10?Math.round(mins/60):(mins/60).toFixed(1).replace(/\.0$/,''))+'h';return mins+'m';}
+function initials(name){return String(name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();}
+function svcColor(id){if(!id)return '#ccff00';const pal=['#ccff00','#5ac8fa','#ff9f0a','#bf5af2','#ff375f','#30d158','#64d2ff','#ffd60a'];let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return pal[h%pal.length];}
+function toast(msg,type){if(window.LolaUX)window.LolaUX.toast(msg,{type:type||'success'});}
+function clientName(c){if(!c)return 'Client';return c.name||[c.first_name,c.last_name].filter(Boolean).join(' ')||'Client';}
+function clientPhone(c){if(!c)return '';return c.phone||c.phone_number||'';}
+
 async function load(){
   document.getElementById('calDate').textContent=cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
-  document.getElementById('calSub').textContent='Loading...';
-  try{
-    const r=await fetch('/api/calendar?action=day&date='+isoDay(cursor),{headers:hdr()});
-    const d=await r.json();
-    if(!d.ok)throw new Error(d.error||'Failed');
-    STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[]};render();
-  }catch(e){
-    document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';
-    document.getElementById('calSub').textContent='Error';
+  const sub=document.getElementById('calSub');
+  if(VIEW==='week'){
+    sub.textContent='Loading week...';
+    const start=new Date(cursor);start.setDate(start.getDate()-((start.getDay()+6)%7));start.setHours(0,0,0,0);
+    try{
+      const r=await fetch('/api/calendar?action=week&date='+isoDay(start)+'&days=7',{headers:hdr()});
+      const d=await r.json();
+      if(!d.ok)throw new Error(d.error||'Failed');
+      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.start),days:d.days||7};
+      render();
+    }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
+  }else{
+    sub.textContent='Loading...';
+    try{
+      const r=await fetch('/api/calendar?action=day&date='+isoDay(cursor),{headers:hdr()});
+      const d=await r.json();
+      if(!d.ok)throw new Error(d.error||'Failed');
+      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.date+'T00:00:00'),days:1};
+      render();
+    }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
   }
 }
 function render(){
+  const {bookings,services,staff,start,days}=STATE;
+  const g=document.getElementById('calGrid');
+  const sub=document.getElementById('calSub');
+  renderWeekStrip();
+  const active=bookings.filter(b=>b.status!=='cancelled');
+  const rev=active.reduce((s,b)=>s+Number(b.total_amount||0),0);
+  const mins=active.reduce((s,b)=>s+Number(b.service?.duration_minutes||60),0);
+  const util=staff.length?(Math.round(mins/(staff.length*(END-START)*60)*100))+'%':'—';
+  document.getElementById('kCount').textContent=active.length;
+  document.getElementById('kRev').textContent='$'+rev.toLocaleString();
+  document.getElementById('kStaff').textContent=staff.length;
+  document.getElementById('kUtil').textContent=util;
+  sub.textContent=active.length+' booking'+(active.length===1?'':'s')+' · '+staff.length+' staff';
+
+  if(VIEW==='agenda')return renderAgenda();
+  if(VIEW==='day')return renderDay();
+  return renderWeek();
+}
+function renderWeekStrip(){
+  const strip=document.getElementById('weekStrip');
+  const base=new Date(STATE.start||cursor);
+  const start=new Date(base);start.setDate(start.getDate()-((start.getDay()+6)%7));
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(start);d.setDate(start.getDate()+i);
+    const today=d.toDateString()===new Date().toDateString();
+    const sel=isoDay(d)===isoDay(cursor);
+    const count=STATE.bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===isoDay(d)).length;
+    html+='<div class="wday'+(today?' today':'')+(sel?' sel':'')+'" onclick="pickDay(\''+isoDay(d)+'\')">'
+      +'<div class="wd">'+d.toLocaleDateString([],{weekday:'short'})+(today?'<span class="wd-dot"></span>':'')+'</div>'
+      +'<div class="wn">'+d.getDate()+'</div><div class="wc">'+d.toLocaleDateString([],{month:'short'})+(count?' · '+count:'')+'</div></div>';
+  }
+  strip.innerHTML=html;
+  strip.style.display='flex';
+}
+function pickDay(iso){cursor=new Date(iso+'T00:00:00');if(VIEW==='week'){VIEW='day';setView('day');}load();}
+function setView(v){
+  VIEW=v;localStorage.setItem('lola_cal_view',v);
+  document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  load();
+}
+document.querySelectorAll('#viewSwitch button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+
+function renderDay(){
   const {bookings,services,staff}=STATE;
   const g=document.getElementById('calGrid');
   if(!staff.length){g.innerHTML='<div class="empty-cal">No active team members yet.<br><a href="team.html">Add your team</a> to start booking.</div>';document.getElementById('calSub').textContent='No staff';return;}
@@ -102,19 +260,23 @@ function render(){
     staff.forEach(s=>{html+='<div class="cal-slot" data-staff="'+s.id+'" data-hour="'+hr+'" onclick="quickBook(\''+s.id+'\','+hr+')"></div>';});
   }
   g.innerHTML=html;
-  bookings.forEach(b=>{
+  const dayBookings=bookings.filter(b=>isoDay(new Date(b.start_time))===isoDay(cursor));
+  dayBookings.forEach(b=>{
     if(!b.staff_id)return;
     const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
     if(!cell)return;
     const start=new Date(b.start_time);
     const mins=(start.getHours()-START)*60+start.getMinutes();
     const dur=b.service?.duration_minutes||60;
-    const top=(mins/60)*SLOT_H,height=Math.max(28,(dur/60)*SLOT_H-4);
-    const endTotal=mins+dur,endH=START+Math.floor(endTotal/60),endM=endTotal%60;
-    const fmt=(h,m)=>{const ap=h>=12?'PM':'AM';const hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;};
-    const el=document.createElement('div');el.className='appt';
-    el.style.cssText='top:'+top+'px;height:'+height+'px';
-    el.innerHTML='<div class="at">'+fmt(start.getHours(),start.getMinutes())+' - '+fmt(endH,endM)+'</div><div class="svc">'+esc(b.service?.name||'Appointment')+'</div><div class="cli">'+esc(b.client?.name||'Client')+'</div>';
+    const top=(mins/60)*SLOT_H,height=Math.max(30,(dur/60)*SLOT_H-5);
+    const el=document.createElement('div');
+    const color=svcColor(b.service_id);
+    el.className='appt '+(b.status||'confirmed');
+    el.style.cssText='top:'+top+'px;height:'+height+'px;--svc:'+color;
+    const st=(b.status==='completed')?'completed':(b.status==='cancelled'?'cancelled':(b.status==='pending'?'pending':'confirmed'));
+    el.innerHTML='<div class="at">'+fmtT(start)+' · '+fmtDur(dur)+'<span class="st '+st+'">'+st+'</span></div>'
+      +'<div class="svc"><span class="ca" style="background:'+color+'">'+esc(initials(clientName(b.client)))+'</span>'+esc(b.service?.name||'Appointment')+'</div>'
+      +'<div class="cli">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:#ccff00">★</span>':'')+'</div>';
     el.onclick=ev=>{ev.stopPropagation();showDetail(b);};
     cell.appendChild(el);
   });
@@ -125,16 +287,67 @@ function render(){
       staff.forEach(s=>{const cell=g.querySelector('.cal-slot[data-staff="'+s.id+'"][data-hour="'+START+'"]');if(cell){const nl=document.createElement('div');nl.className='now-line';nl.style.top=(mins/60*SLOT_H)+'px';cell.appendChild(nl);}});
     }
   }
-  const rev=bookings.reduce((s,b)=>s+Number(b.total_amount||0),0);
-  const util=staff.length?(Math.round(bookings.reduce((s,b)=>s+(b.service?.duration_minutes||60),0)/(staff.length*(END-START)*60)*100))+'%':'—';
-  document.getElementById('kCount').textContent=bookings.length;
-  document.getElementById('kRev').textContent='$'+rev.toLocaleString();
-  document.getElementById('kStaff').textContent=staff.length;
-  document.getElementById('kUtil').textContent=util;
-  document.getElementById('calSub').textContent=bookings.length+' booking'+(bookings.length===1?'':'s')+' · '+staff.length+' staff';
 }
+function renderWeek(){
+  const {bookings,staff,start}=STATE;
+  const g=document.getElementById('calGrid');
+  const base=new Date(start);base.setDate(base.getDate()-((base.getDay()+6)%7));
+  const labels=['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  g.style.gridTemplateColumns='repeat(7,1fr)';
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(base);d.setDate(base.getDate()+i);
+    const iso=isoDay(d);
+    const today=d.toDateString()===new Date().toDateString();
+    const dayBk=bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===iso);
+    html+='<div class="wk-day'+(today?' today':'')+'">'
+      +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+d.getDate()+'</div></div>'
+      +'<div class="wk-empty">'+(dayBk.length?'':'No bookings')+'</div>';
+    dayBk.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time)).forEach(b=>{
+      const color=svcColor(b.service_id);
+      const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':'confirmed');
+      html+='<div class="wk-appt" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
+        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(b.service?.duration_minutes)+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</span></div>'
+        +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
+        +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'—')+'</div></div>';
+    });
+    html+='</div>';
+  }
+  g.innerHTML=html;
+}
+function renderAgenda(){
+  const {bookings}=STATE;
+  const g=document.getElementById('calGrid');
+  g.style.gridTemplateColumns='1fr';
+  const dayBk=bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===isoDay(cursor)).sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+  if(!dayBk.length){
+    g.innerHTML='<div class="empty-cal">Nothing on the books for '+cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'})+'.<br><a href="javascript:openNew()">Book a new appointment</a></div>';
+    return;
+  }
+  let html='<div class="agenda">';
+  dayBk.forEach(b=>{
+    const color=svcColor(b.service_id);
+    const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':'confirmed');
+    html+='<div class="ag-item" onclick="showDetail(\''+b.id+'\')">'
+      +'<div class="ag-t">'+fmtT(new Date(b.start_time))+'<small>'+fmtDur(b.service?.duration_minutes)+'</small></div>'
+      +'<div class="ag-cli"><div class="ag-av" style="--svc:'+color+'">'+esc(initials(clientName(b.client)))+'</div>'
+      +'<div><div class="ag-name">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:#ccff00">★</span>':'')+'</div>'
+      +'<div class="ag-meta"><span style="color:var(--text)">'+esc(b.service?.name||'Appointment')+'</span> · '+esc(b.staff?.name||'—')+' <span class="st '+st+'" style="font-size:8.5px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</span></div></div></div>'
+      +'<div class="ag-amt">$'+Number(b.total_amount||0).toLocaleString()+'<small>'+(b.source||'dashboard')+'</small></div></div>';
+  });
+  html+='</div>';
+  g.innerHTML=html;
+}
+
+/* ── Modal ── */
+function openModal(title,sub,body){
+  document.getElementById('mHead').innerHTML='<div class="modal-kicker">LOLA DESK</div><h3>'+esc(title)+'</h3>'+(sub?'<div class="msub">'+esc(sub)+'</div>':'');
+  document.getElementById('mBody').innerHTML=body;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
 function bookForm(staffId='',hour=10){
-  const svcOpts=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+s.duration_minutes+'min)</option>').join('');
+  const svcOpts=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');
   const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===staffId?' selected':'')+'>'+esc(s.name)+'</option>').join('');
   return '<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div>'
     +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
@@ -145,47 +358,103 @@ function bookForm(staffId='',hour=10){
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
     +'<div class="mstatus" id="mstatus"></div>';
 }
-function openNew(){document.getElementById('mTitle').textContent='New booking';document.getElementById('mBody').innerHTML=bookForm();document.getElementById('modal').classList.add('open');}
-function quickBook(staffId,hour){document.getElementById('mTitle').textContent='New booking';document.getElementById('mBody').innerHTML=bookForm(staffId,hour);document.getElementById('modal').classList.add('open');}
-function closeModal(){document.getElementById('modal').classList.remove('open');}
+function openNew(){openModal('New booking','Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();}
+function hydrateForm(){
+  const svc=document.getElementById('bkSvc');if(svc){svc.innerHTML=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');}
+  const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');}
+}
+function quickBook(staffId,hour){openModal('New booking','Book '+esc(STATE.staff.find(s=>s.id===staffId)?.name||'')+' at '+String(hour).padStart(2,'0')+':00.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();if(staffId)document.getElementById('bkStaff').value=staffId;}
 async function saveBooking(){
-  const st=document.getElementById('mstatus');st.textContent='Saving...';
+  const st=document.getElementById('mstatus');st.textContent='Saving...';st.className='mstatus';
   const name=document.getElementById('bkClient').value.trim();
   const phone=document.getElementById('bkPhone').value.trim();
   const svcId=document.getElementById('bkSvc').value;
   const staffId=document.getElementById('bkStaff').value;
   const time=document.getElementById('bkTime').value||'10:00';
   const notes=document.getElementById('bkNotes').value.trim();
-  if(!name&&!phone){st.textContent='Please enter client name or phone.';return;}
+  if(!name&&!phone){st.textContent='Please enter client name or phone.';st.className='mstatus err';return;}
   const starts=new Date(isoDay(cursor)+'T'+time+':00');
   try{
     const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'book',service_id:svcId,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'})});
     const d=await r.json();
-    if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');return;}
-    closeModal();await load();
-  }catch(e){st.textContent=e.message||'Something went wrong.';}
+    if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');st.className='mstatus err';return;}
+    closeModal();toast('Booking confirmed — Lola will text the client.');await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
 }
-function showDetail(b){
-  const start=new Date(b.start_time);
-  const when=start.toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-  document.getElementById('mTitle').textContent=b.service?.name||'Appointment';
-  document.getElementById('mBody').innerHTML='<div style="font-size:13.5px;line-height:1.8;color:var(--text2)">'
-    +'<strong style="color:var(--text)">Client:</strong> '+esc(b.client?.name||'Unknown')+(b.client?.phone?'<br><strong style="color:var(--text)">Phone:</strong> '+esc(b.client.phone):'')+'<br>'
-    +'<strong style="color:var(--text)">Time:</strong> '+when+'<br>'
-    +'<strong style="color:var(--text)">Staff:</strong> '+esc(b.staff?.name||'—')+'<br>'
-    +'<strong style="color:var(--text)">Revenue:</strong> $'+Number(b.total_amount||0).toLocaleString()
-    +(b.notes?'<br><strong style="color:var(--text)">Notes:</strong> '+esc(b.notes):'')
-    +'</div>'
-    +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button><button class="danger" onclick="cancelBooking(\''+b.id+'\')">Cancel booking</button></div>'
-    +'<div class="mstatus" id="mstatus"></div>';
-  document.getElementById('modal').classList.add('open');
+function findBooking(id){return STATE.bookings.find(b=>b.id===id)||null;}
+function showDetail(idOrBk){
+  const b=typeof idOrBk==='string'?findBooking(idOrBk):idOrBk;
+  if(!b)return;
+  const color=svcColor(b.service_id);
+  const st=(b.status||'confirmed');
+  const when=new Date(b.start_time).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  openModal(st==='cancelled'?'Cancelled appointment':(b.service?.name||'Appointment'),
+    when+' · '+fmtDur(b.service?.duration_minutes),
+    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">'
+    +'<div class="detail-av" style="background:linear-gradient(135deg,'+color+',#2a2a2a)">'+esc(initials(clientName(b.client)))+'</div>'
+    +'<div><div style="font-size:16px;font-weight:650">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:#ccff00">★ VIP</span>':'')+'</div>'
+    +'<div style="font-size:12px;color:var(--text3)">'+esc(clientPhone(b.client)||'no phone on file')+'</div></div>'
+    +'<div class="st '+st+'" style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Service</div><div class="dr-v">'+esc(b.service?.name||'—')+(b.service?.price?' · $'+Number(b.service.price).toLocaleString():'')+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'—')+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Time</div><div class="dr-v">'+when+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(b.service?.duration_minutes)+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||0).toLocaleString()+'</div></div>'
+    +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
+    +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
+    +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
+    +(st!=='cancelled'?'<button class="ghost" onclick="openReschedule(\''+b.id+'\')">Reschedule</button>':'')
+    +(st!=='cancelled'?'<button class="danger" onclick="cancelBooking(\''+b.id+'\')">Cancel</button>':'')+'</div>'
+    +'<div class="mstatus" id="mstatus"></div>');
 }
-async function cancelBooking(id){
-  if(!confirm('Cancel this booking?'))return;
-  try{await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:id})});closeModal();await load();}catch(e){alert(e.message);}
+function openReschedule(id){
+  const b=findBooking(id);if(!b)return;
+  const color=svcColor(b.service_id);
+  openModal('Reschedule','Move '+esc(clientName(b.client))+' to a new time. Lola checks availability before saving.',
+    '<div class="fld"><label>New date</label><input id="rsDate" type="date" value="'+isoDay(new Date(b.start_time))+'"/></div>'
+    +'<div class="fld"><label>New time</label><input id="rsTime" type="time" value="'+new Date(b.start_time).toTimeString().slice(0,5)+'"/></div>'
+    +'<div class="fld"><label>Staff</label><select id="rsStaff"></select></div>'
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveReschedule(\''+id+'\')">Move appointment</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>');
+  const sel=document.getElementById('rsStaff');
+  sel.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===b.staff_id?' selected':'')+'>'+esc(s.name)+'</option>').join('');
 }
-function nav(dir){cursor.setDate(cursor.getDate()+dir);load();}
+async function saveReschedule(id){
+  const st=document.getElementById('mstatus');st.textContent='Moving...';st.className='mstatus';
+  const date=document.getElementById('rsDate').value,time=document.getElementById('rsTime').value;
+  const staffId=document.getElementById('rsStaff').value;
+  if(!date||!time){st.textContent='Pick a date and time.';st.className='mstatus err';return;}
+  const starts=new Date(date+'T'+time+':00');
+  try{
+    const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'reschedule',booking_id:id,starts_at:starts.toISOString(),staff_id:staffId,channel:'dashboard'})});
+    const d=await r.json();
+    if(!d.ok){st.textContent=d.conflict?'That time just filled — pick another.':(d.error||'Failed');st.className='mstatus err';return;}
+    closeModal();toast('Appointment moved.');await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+}
+function cancelBooking(id){
+  const b=findBooking(id);if(!b)return;
+  const doCancel=()=>{
+    const st=document.getElementById('mstatus');
+    fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:id,channel:'dashboard',reason:'client_request'})})
+      .then(r=>r.json()).then(d=>{
+        if(!d.ok)throw new Error(d.error||'Failed');
+        closeModal();toast('Booking cancelled — client notified.','success');load();
+      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+  };
+  if(window.LolaUX){window.LolaUX.confirm({title:'Cancel this booking?',message:esc(clientName(b.client))+' · '+esc(b.service?.name||'Appointment')+' — this frees the slot and texts the client.',confirmLabel:'Cancel booking',danger:true}).then(ok=>{if(ok)doCancel();});}
+  else if(confirm('Cancel this booking?'))doCancel();
+}
+function nav(dir){
+  if(VIEW==='week'){const d=new Date(cursor);d.setDate(d.getDate()+dir*7);cursor=d;}
+  else{cursor.setDate(cursor.getDate()+dir);}
+  load();
+}
 function goToday(){cursor=new Date();cursor.setHours(0,0,0,0);load();}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeModal();
+  if(e.key==='ArrowRight'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(1);}
+  if(e.key==='ArrowLeft'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(-1);}
+});
 (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script></body></html>
