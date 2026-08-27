@@ -13,18 +13,24 @@ function check(name, ready, detail){ return { name, ready:Boolean(ready), ...(de
 // key present → profile reachable → enabled. Never crashes, never green
 // when SMS is down, and never leaks the API key (it only lives in the
 // Authorization header inside telnyx-client.js).
-export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileId = process.env.TELNYX_MESSAGING_PROFILE, timeoutMs = 4000 } = {}){
+export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileIds = [process.env.TELNYX_MESSAGING_PROFILE_ID, process.env.TELNYX_MESSAGING_PROFILE].filter(Boolean), timeoutMs = 4000 } = {}){
   if(!key) return { ready:false, detail:'Missing TELNYX_API_KEY — SMS cannot send' };
-  if(!profileId) return { ready:false, detail:'Missing TELNYX_MESSAGING_PROFILE — SMS cannot send' };
-  let payload = null;
-  try{
-    payload = await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profileId), { timeoutMs });
-  }catch(error){
-    const reason = String(error?.message || error);
-    return { ready:false, detail:`SMS status unknown — could not verify messaging profile (${reason})` };
+  if(!profileIds || !profileIds.length) return { ready:false, detail:'Missing TELNYX_MESSAGING_PROFILE — SMS cannot send' };
+  // The app reads messaging profiles from both env names across its code
+  // (telnyx-provision prefers _ID, legacy paths use _PROFILE). Try each until
+  // one resolves; a 404 on a stale value must not hide the real profile.
+  let lastError = null;
+  for(const profileId of profileIds){
+    try{
+      const payload = await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profileId), { timeoutMs });
+      if(payload?.data?.enabled === true) return { ready:true, detail:'Messaging profile enabled' };
+      return { ready:false, detail:'SMS degraded — messaging profile disabled (confirmations, reminders, and waitlist offers will not send)' };
+    }catch(error){
+      lastError = error;
+    }
   }
-  if(payload?.data?.enabled === true) return { ready:true, detail:'Messaging profile enabled' };
-  return { ready:false, detail:'SMS degraded — messaging profile disabled (confirmations, reminders, and waitlist offers will not send)' };
+  const reason = String(lastError?.message || lastError);
+  return { ready:false, detail:`SMS status unknown — could not verify messaging profile (${reason})` };
 }
 
 export default async function handler(req, res){
