@@ -2,8 +2,30 @@ import { getUserFromToken, bearer } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { verifyTenantRouting } from './lib/tenant-resolver.js';
+import { telnyxRequest } from './lib/telnyx-client.js';
 
 function check(name, ready, detail){ return { name, ready:Boolean(ready), ...(detail ? { detail } : {}) }; }
+
+// The SMS health gate. A disabled Telnyx messaging profile silently kills
+// booking confirmations, the reminder engine, and waitlist offers while
+// `Boolean(env)` still says "Configured" — the exact outage class we hit.
+// So this check verifies the profile is actually ENABLED via the Telnyx API:
+// key present → profile reachable → enabled. Never crashes, never green
+// when SMS is down, and never leaks the API key (it only lives in the
+// Authorization header inside telnyx-client.js).
+export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileId = process.env.TELNYX_MESSAGING_PROFILE, timeoutMs = 4000 } = {}){
+  if(!key) return { ready:false, detail:'Missing TELNYX_API_KEY — SMS cannot send' };
+  if(!profileId) return { ready:false, detail:'Missing TELNYX_MESSAGING_PROFILE — SMS cannot send' };
+  let payload = null;
+  try{
+    payload = await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profileId), { timeoutMs });
+  }catch(error){
+    const reason = String(error?.message || error);
+    return { ready:false, detail:`SMS status unknown — could not verify messaging profile (${reason})` };
+  }
+  if(payload?.data?.enabled === true) return { ready:true, detail:'Messaging profile enabled' };
+  return { ready:false, detail:'SMS degraded — messaging profile disabled (confirmations, reminders, and waitlist offers will not send)' };
+}
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -37,7 +59,7 @@ export default async function handler(req, res){
       check('booking', hasBooking, hasBooking ? 'Booking destination connected' : 'Add a booking URL or integration'),
       check('telnyx_api', Boolean(process.env.TELNYX_API_KEY), process.env.TELNYX_API_KEY ? 'Configured' : 'Missing TELNYX_API_KEY'),
       check('telnyx_voice', Boolean(process.env.TELNYX_VOICE_APP_ID), process.env.TELNYX_VOICE_APP_ID ? 'Configured' : 'Missing TELNYX_VOICE_APP_ID'),
-      check('telnyx_messaging', Boolean(process.env.TELNYX_MESSAGING_PROFILE), process.env.TELNYX_MESSAGING_PROFILE ? 'Configured' : 'Missing TELNYX_MESSAGING_PROFILE'),
+      await smsMessagingCheck().then(s => check('telnyx_messaging', s.ready, s.detail)),
       check('phone_number', Boolean(tenant.phone_number), tenant.phone_number || 'No tenant number assigned'),
       check('phone_routing', routing.ready, routing.ready ? `Number routes to this tenant (${routing.source || 'routing table'})` : (routing.reason || 'Number does not resolve back to this tenant')),
       check('onboarding', onboarding?.status === 'complete', onboarding?.status || 'not_started')
