@@ -3,6 +3,7 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertTenantNumber } from './lib/db.js';
 import { invalidateRouting } from './lib/tenant-resolver.js';
 import { appUrl, normalizeE164, telnyxData, telnyxRequest, TelnyxApiError } from './lib/telnyx-client.js';
+import { getCanonicalVoiceConnectionId } from './lib/telnyx-provision.js';
 
 function jsonBody(req) {
   if (!req.body) return {};
@@ -121,9 +122,9 @@ async function provisionNumber(body, tenant) {
   }));
   const item = ordered?.phone_numbers?.[0] || {};
   const phoneNumberId = item.id || item.phone_number_id || null;
-  // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
-  // the old 'legacy upgrade' to 2991758319724529273 is rejected by Telnyx.
-  const voiceConnectionId = body.voice_connection_id || process.env.TELNYX_VOICE_APP_ID;
+  // Prefer the LolaBrain assistant's own TeXML app (the AI voice path),
+  // falling back to TELNYX_VOICE_APP_ID.
+  const voiceConnectionId = body.voice_connection_id || await getCanonicalVoiceConnectionId();
   const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
   if (phoneNumberId && voiceConnectionId) {
     await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });

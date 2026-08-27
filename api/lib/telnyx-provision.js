@@ -116,13 +116,53 @@ export async function linkMessagingProfile(phoneNumberId){
   return true;
 }
 
+// ── Canonical voice connection ────────────────────────────────────
+// The platform's voice lines answer via the LolaBrain AI assistant: Telnyx
+// routes a number into the assistant by pointing its connection at the
+// assistant's OWN TeXML app (telephony_settings.default_texml_app_id). That
+// id is resolved live from the assistant (with a short cache) rather than
+// hardcoded, so provisioning, health, and the numbers panel all agree with
+// Telnyx truth. TELNYX_VOICE_APP_ID stays as the fallback when the
+// assistant id can't be resolved.
+let _brainAppId = null;
+let _brainAppAt = 0;
+const BRAIN_APP_TTL_MS = 60_000;
+
+// The LolaBrain assistant's own TeXML app — the connection inbound calls on a
+// number must point at for Telnyx to route them into the assistant. Resolved
+// live from the assistant; this constant is the current production value used
+// as a known-good fallback by health/panel checks before the first resolve.
+export const LOLA_BRAIN_TEXML_APP_ID = '2958004434761680608';
+
+export async function getLolaBrainConnectionId(){
+  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
+  if(!assistantId) return null;
+  if(_brainAppId && Date.now() - _brainAppAt < BRAIN_APP_TTL_MS) return _brainAppId;
+  try{
+    const a = await tFetch('/ai/assistants/' + assistantId);
+    const appId = a?.telephony_settings?.default_texml_app_id || null;
+    if(appId){ _brainAppId = appId; _brainAppAt = Date.now(); return appId; }
+  }catch(e){ console.warn('[PROVISION] LolaBrain app resolve:', e.message); }
+  return null;
+}
+
+// Sync read of the cached value (never resolves) — for sync call sites
+// (e.g. the connection-sync known-good set). Returns null on first call.
+export function getLolaBrainConnectionIdSync(){
+  return _brainAppId || LOLA_BRAIN_TEXML_APP_ID;
+}
+
+export async function getCanonicalVoiceConnectionId(){
+  return (await getLolaBrainConnectionId()) || process.env.TELNYX_VOICE_APP_ID || null;
+}
+
 /**
- * Attach the number to the platform's voice connection (TeXML app). Uses
- * TELNYX_VOICE_APP_ID VERBATIM — the app with our inbound webhook. Returns
- * false when no connection is configured.
+ * Attach the number to the platform's voice connection. Prefers the
+ * LolaBrain assistant's own TeXML app (the ultra-smart AI path); falls back
+ * to TELNYX_VOICE_APP_ID. Returns false when no connection is configured.
  */
 export async function linkVoiceConnection(phoneNumberId){
-  const connectionId = process.env.TELNYX_VOICE_APP_ID;
+  const connectionId = await getCanonicalVoiceConnectionId();
   if(!connectionId) return false;
   await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: connectionId }) })
     .catch(e => console.warn('[PROVISION] Voice connection:', e.message));
@@ -181,7 +221,7 @@ export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist 
     setDynamicVariablesWebhook()
   ]);
 
-  if(persist) await persistProvisioning(tenant, { phoneNumber: e164, phoneNumberId: rec.id, texmlAppId: process.env.TELNYX_VOICE_APP_ID || null });
+  if(persist) await persistProvisioning(tenant, { phoneNumber: e164, phoneNumberId: rec.id, texmlAppId: await getCanonicalVoiceConnectionId() });
 
   return { ok: true, phoneNumber: e164, phoneNumberId: rec.id, voiceLinked, smsLinked, brainLinked };
 }
@@ -266,9 +306,14 @@ async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAp
 }
 
 export async function linkLolaBrain(phoneNumberId){
-  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
-  if(!assistantId) return false;
-  await tFetch('/ai/assistants/' + assistantId + '/phone_numbers', { method: 'POST', body: JSON.stringify({ phone_number_id: phoneNumberId }) })
+  // The real attachment: point the number's voice connection at the
+  // assistant's own TeXML app so Telnyx routes inbound calls into the
+  // assistant. (The old POST /ai/assistants/{id}/phone_numbers endpoint 404s
+  // — it silently failed, leaving numbers off the assistant while the
+  // connection looked healthy.)
+  const appId = await getLolaBrainConnectionId();
+  if(!appId) return false;
+  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: appId }) })
     .catch(e => console.warn('[PROVISION] LolaBrain:', e.message));
   return true;
 }
@@ -291,8 +336,11 @@ export async function setDynamicVariablesWebhook(){
  */
 export async function provisionNumberForTenant(tenant, { areaCode, requestedNumber, persist = true } = {}){
   const phoneNumber = requestedNumber || (await searchNumbers(areaCode || ''))[0].phone_number;
+  const canonicalAppId = await getCanonicalVoiceConnectionId();
   const texmlApp = await getOrCreateTexmlApp();
-  const texmlAppId = texmlApp?.id || texmlApp?.data?.id;
+  // Prefer the LolaBrain assistant's app (ultra-smart AI path); the legacy
+  // TeXML app (getOrCreateTexmlApp) remains the fallback connection.
+  const texmlAppId = canonicalAppId || texmlApp?.id || texmlApp?.data?.id;
   await purchaseNumber(phoneNumber, texmlAppId);
   // Telnyx needs a beat for the order to land before we can address the
   // number. Overridable via env so tests don't sleep.
@@ -305,13 +353,15 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
   const brainLinked = phoneNumberId ? await linkLolaBrain(phoneNumberId) : false;
   await setDynamicVariablesWebhook();
 
-  if(persist) await persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId });
+  if(persist) await persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId: canonicalAppId });
 
-  return { ok: true, phoneNumber, texmlAppId, phoneNumberId, smsLinked, brainLinked };
+  return { ok: true, phoneNumber, texmlAppId: canonicalAppId, phoneNumberId, smsLinked, brainLinked };
 }
 
 export default {
   tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
   linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
+  getLolaBrainConnectionId, getLolaBrainConnectionIdSync, getCanonicalVoiceConnectionId,
+  LOLA_BRAIN_TEXML_APP_ID,
   listOwnedNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant
 };

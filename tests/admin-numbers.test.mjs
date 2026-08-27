@@ -102,12 +102,17 @@ function stubTelnyx() {
     const path = u.replace('https://api.telnyx.com/v2', '').split('?')[0];
     if (path === '/phone_numbers') return json({ data: [
       { id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: '2982432232334951429' },
-      { id: 'PN2', phone_number: '+13055550101', status: 'active', connection_id: 'ASSIST-BRAIN' },
+      // a number attached to the LolaBrain assistant reports the assistant's
+      // own TeXML app as its connection id
+      { id: 'PN2', phone_number: '+13055550101', status: 'active', connection_id: '2958004434761680608' },
       { id: 'PN3', phone_number: '+13055550103', status: 'active', connection_id: 'AI-12345' }
     ] });
     if (path === '/connections') return json({ data: [
       { id: '2982432232334951429', connection_name: 'LolaDesk' },
       { id: 'AI-12345', connection_name: 'ai-assistant-a0d68' }
+    ] });
+    if (path === '/texml_applications') return json({ data: [
+      { id: '2958004434761680608', friendly_name: 'ai-assistant-57f2d23e-48b1-4107-9811-c40b296f15b6' }
     ] });
     if (path === '/ai/assistants') return json({ data: [
       { id: 'ASSIST-BRAIN', name: 'LolaBrain' },
@@ -130,10 +135,11 @@ test('?live=1 enriches rows with Telnyx truth + connection names', async () => {
     assert.equal(byPhone['+13055550100'].live_connection_id, '2982432232334951429');
     assert.equal(byPhone['+13055550100'].live_state, 'expected');
     assert.equal(byPhone['+13055550100'].connection_name, 'LolaDesk');
-    // +13055550101: live says LolaBrain assistant → expected via known-good set.
-    assert.equal(byPhone['+13055550101'].live_connection_id, 'ASSIST-BRAIN');
+    // +13055550101: live says the LolaBrain assistant's TeXML app → expected
+    // via the known-good set (the AI voice path).
+    assert.equal(byPhone['+13055550101'].live_connection_id, '2958004434761680608');
     assert.equal(byPhone['+13055550101'].live_state, 'expected');
-    assert.equal(byPhone['+13055550101'].connection_name, 'LolaBrain');
+    assert.equal(byPhone['+13055550101'].connection_name, 'ai-assistant-57f2d23e-48b1-4107-9811-c40b296f15b6');
     // +13055550103: live says an ai-assistant connection → still 'other' until
     // the operator syncs (it's a real attachment, just not yet recorded).
     assert.equal(byPhone['+13055550103'].live_connection_id, 'AI-12345');
@@ -154,17 +160,18 @@ test('sync-connections writes live Telnyx attachments into tenant_numbers', asyn
     assert.equal(j.ok, true);
     assert.ok(j.updated.length >= 2, 'rows with drift should be updated');
     const updatedByPhone = Object.fromEntries(j.updated.map(u => [u.phone_number, u]));
-    // tn2 recorded the rejected legacy id; live says the LolaBrain assistant.
-    assert.equal(updatedByPhone['+13055550101'].to, 'ASSIST-BRAIN');
-    assert.equal(updatedByPhone['+13055550101'].connection_name, 'LolaBrain');
+    // tn2 recorded the rejected legacy id; live says the LolaBrain assistant's
+    // TeXML app.
+    assert.equal(updatedByPhone['+13055550101'].to, '2958004434761680608');
+    assert.equal(updatedByPhone['+13055550101'].connection_name, 'ai-assistant-57f2d23e-48b1-4107-9811-c40b296f15b6');
     // tn5 recorded CONN-OTHER; live says an ai-assistant connection.
     assert.equal(updatedByPhone['+13055550103'].to, 'AI-12345');
-    assert.equal(j.connection_names['ASSIST-BRAIN'], 'LolaBrain');
+    assert.equal(j.connection_names['2958004434761680608'], 'ai-assistant-57f2d23e-48b1-4107-9811-c40b296f15b6');
     assert.equal(j.connection_names['2982432232334951429'], 'LolaDesk');
 
     // The DB now carries the live ids.
     const rows = fake.all('tenant_numbers');
-    assert.equal(rows.find(r => r.phone_number === '+13055550101').connection_id, 'ASSIST-BRAIN');
+    assert.equal(rows.find(r => r.phone_number === '+13055550101').connection_id, '2958004434761680608');
     assert.equal(rows.find(r => r.phone_number === '+13055550103').connection_id, 'AI-12345');
   } finally { globalThis.fetch = t.realFetch; }
 });

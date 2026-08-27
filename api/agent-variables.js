@@ -61,6 +61,7 @@ export default async function handler(req, res){
         dynamic_variables: {
           tenant_id: '',
           to: toNumber || '',
+          from: fromNumber || '',
           company_name: 'our salon',
           business_type: 'salon',
           location: '', hours: '', services: '', staff: '', marketing_context: '',
@@ -108,6 +109,7 @@ export default async function handler(req, res){
     const dynamic_variables = {
       tenant_id: tenant.id || '',
       to: toNumber || '',
+      from: fromNumber || '',
       company_name: tenant.name || 'our salon',
       business_type: tenant.business_mode || 'salon',
       location: tenant.location || '',

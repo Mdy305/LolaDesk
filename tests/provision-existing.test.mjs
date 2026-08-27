@@ -76,7 +76,11 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   if (path.includes('/phone_numbers/pn-1/voice') && method === 'PATCH') return json({ data: { id: 'pn-1' } });
   if (path.includes('/phone_numbers/pn-1/messaging') && method === 'PATCH') return json({ data: { id: 'pn-1' } });
-  if (path.includes('/ai/assistants/asst-lolabrain/phone_numbers') && method === 'POST') return json({ data: {} });
+  if (path.includes('/ai/assistants/asst-lolabrain') && method === 'GET') {
+    // The LolaBrain attach resolves the assistant's own TeXML app and points
+    // the number's voice connection at it — the real routing into the AI.
+    return json({ id: 'asst-lolabrain', telephony_settings: { default_texml_app_id: '2958004434761680608' } });
+  }
   if (path.includes('/ai/assistants/asst-lolabrain') && method === 'PATCH') return json({ data: {} });
   return json({ data: [] });
 };
@@ -135,7 +139,8 @@ test('POST use_existing attaches an owned number with NO purchase and persists r
   assert.equal(tenant.provisioning_status, 'active');
   const route = fake.all('tenant_numbers')[0];
   assert.equal(route.phone_number, OWNED);
-  assert.equal(route.connection_id, '2982432232334951429');
+  // the canonical voice connection is now the LolaBrain assistant's TeXML app
+  assert.equal(route.connection_id, '2958004434761680608');
   assert.equal(route.status, 'active');
 });
 

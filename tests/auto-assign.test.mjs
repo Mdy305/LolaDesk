@@ -86,6 +86,10 @@ function telnyxStub(owned = OWNED){
       return { ok: true, status: 200, json: async () => ({ data: {} }) };
     }
     if(path.startsWith('/ai/assistants/')){
+      if(!opts.method){
+        // GET the assistant — resolve its own TeXML app (the real attach).
+        return { ok: true, status: 200, json: async () => ({ id: 'lola-brain-1', telephony_settings: { default_texml_app_id: 'brain-app-1' } }) };
+      }
       return { ok: true, status: 200, json: async () => ({ data: {} }) };
     }
     return { ok: false, status: 404, json: async () => ({ errors: [{ detail: 'unhandled ' + path }] }) };
@@ -108,10 +112,11 @@ test('assigns a free owned number end to end: routing row + tenant column + resu
     assert.equal(row.status, 'active');
     const saved = fake.all('tenants').find(t => t.id === 'tenant-new');
     assert.equal(saved.phone_number, '+15550000002');
-    // every link path actually hit Telnyx
-    assert.ok(spy.calls.some(c => c.method === 'PATCH' && c.url.includes('/phone_numbers/n2/voice')));
+    // every link path actually hit Telnyx; the LolaBrain attach re-points the
+    // voice connection to the assistant's own TeXML app (no dead endpoint)
+    assert.ok(spy.calls.some(c => c.method === 'PATCH' && c.url.includes('/phone_numbers/n2/voice') && c.body?.connection_id === 'brain-app-1'));
     assert.ok(spy.calls.some(c => c.method === 'PATCH' && c.url.includes('/phone_numbers/n2/messaging')));
-    assert.ok(spy.calls.some(c => c.method === 'POST' && c.url.includes('/ai/assistants/lola-brain-1/phone_numbers')));
+    assert.equal(spy.calls.some(c => c.url.includes('/ai/assistants/lola-brain-1/phone_numbers')), false);
   }finally{ spy.restore(); }
 });
 

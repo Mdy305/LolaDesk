@@ -333,6 +333,17 @@ async function escalate(tenant, { message, client_phone, client_name }){
   return { speak: `I've made a note for the team and they'll follow up with you personally. Is there anything else I can help with right now?` };
 }
 
+// Telnyx's LolaBrain tool is named "take-message" (its schema sends
+// message_summary / caller_name / callback_number) — map it onto the escalate
+// skill so a message left in voice lands in the same escalation log.
+async function takeMessage(tenant, args){
+  return escalate(tenant, {
+    message: args?.message_summary || args?.message || '',
+    client_name: args?.caller_name || args?.client_name || '',
+    client_phone: args?.callback_number || args?.client_phone || ''
+  });
+}
+
 function to24(t){
   // accepts "2:00 PM" or "14:00" -> "14:00:00"
   if(/^\d{1,2}:\d{2}$/.test(t)) return t+':00';
@@ -346,7 +357,9 @@ function to24(t){
 export const SKILLS = {
   list_services, get_pricing, recommend_service,
   check_availability, book_appointment, capture_lead,
-  handle_recovery, escalate,
+  handle_recovery, escalate, takeMessage,
+  'take-message': takeMessage, // Telnyx's LolaBrain tool name
+  'take_message': takeMessage, // older alias seen on some shared tools
   confirm_booking, reschedule_appointment, cancel_appointment
 };
 
@@ -359,10 +372,11 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
-    // Tool name may arrive in the body (legacy) OR as ?tool=… on the URL —
-    // Telnyx configures each webhook tool with its own URL, so pointing them
-    // all at this endpoint with ?tool=<name> keeps one dispatched handler.
-    const tool = req.query?.tool || body.tool || body.function || body.skill;
+    // Tool name may arrive as ?tool=… on the URL (Telnyx configures each
+    // webhook tool with its own URL — pointing them all at this endpoint with
+    // ?tool=<name> keeps one dispatched handler) OR in the body (function,
+    // function_name, skill) for callers that send it that way.
+    const tool = req.query?.tool || body.tool || body.function || body.function_name || body.skill;
     
     // Special Memory Injection Skill requested by Telnyx to start a call
     if (tool === 'inject_memory') {

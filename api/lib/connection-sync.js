@@ -17,15 +17,18 @@
 
 import { listTenantNumberRoutes } from './db.js';
 import { telnyxData, telnyxRequest } from './telnyx-client.js';
+import { getLolaBrainConnectionIdSync } from './telnyx-provision.js';
 
-// Known-good connections: the working voice app + the LolaBrain assistant.
-// Any connection Telnyx reports as attached to an account number is added at
+// Known-good connections: the working voice app + the LolaBrain assistant's
+// own TeXML app (the AI voice path every number now points at). Any
+// connection Telnyx reports as attached to an account number is added at
 // compare time by the live snapshot, because a number on an AI-assistant
 // connection is on the native LolaBrain path, not drift.
 export function knownGoodConnectionIds() {
   const ids = new Set();
   if (process.env.TELNYX_VOICE_APP_ID) ids.add(process.env.TELNYX_VOICE_APP_ID);
-  if (process.env.TELNYX_LOLA_BRAIN_ID) ids.add(process.env.TELNYX_LOLA_BRAIN_ID);
+  const brain = getLolaBrainConnectionIdSync();
+  if (brain) ids.add(brain);
   return ids;
 }
 
@@ -34,15 +37,21 @@ export function knownGoodConnectionIds() {
 // "LolaDesk" instead of raw ids. Fails soft with a single `error` string.
 export async function liveTelnyxSnapshot() {
   try {
-    const [numbersList, connsList, asstsList] = await Promise.all([
+    const [numbersList, connsList, texmlList, asstsList] = await Promise.all([
       telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 }),
       telnyxRequest('/connections', { query: { 'page[size]': 100 }, timeoutMs: 8000 }).catch(() => ({ data: [] })),
+      telnyxRequest('/texml_applications', { query: { 'page[size]': 100 }, timeoutMs: 8000 }).catch(() => ({ data: [] })),
       telnyxRequest('/ai/assistants', { query: { 'page[size]': 50 }, timeoutMs: 8000 }).catch(() => ({ data: [] }))
     ]);
     const numbers = (Array.isArray(telnyxData(numbersList)) ? telnyxData(numbersList) : []);
     const nameById = new Map();
     for (const c of (Array.isArray(telnyxData(connsList)) ? telnyxData(connsList) : [])) {
       nameById.set(c.id, c.connection_name || c.friendly_name || c.name || null);
+    }
+    // TeXML applications carry the assistant's app id → friendly_name, so the
+    // panel can name the LolaBrain voice path instead of showing a raw id.
+    for (const t of (Array.isArray(telnyxData(texmlList)) ? telnyxData(texmlList) : [])) {
+      nameById.set(t.id, t.friendly_name || t.name || null);
     }
     for (const a of (Array.isArray(telnyxData(asstsList)) ? telnyxData(asstsList) : [])) {
       nameById.set(a.id, a.name || null);
