@@ -149,8 +149,16 @@ export async function offerFreedSlot({ tenantId, serviceId = null, serviceName =
   try { await markWaitlistOffered(tenantId, entry.id); }
   catch { return { skipped: true, reason: 'claim_failed' }; }
   try {
-    await send({ from: tenant.phone_number, to: entry.client_phone, text, tenantId, type: 'SMS' });
-    return { ok: true, sent: true, entry, text };
+    const result = await send({ from: tenant.phone_number, to: entry.client_phone, text, tenantId, type: 'SMS' });
+    // Telnyx success returns { data: { id } }; a rejection (422 messaging not
+    // enabled, 401 bad key, …) returns { errors: [...] } with a non-2xx status
+    // that sendSMS does NOT throw on — treat it as a failed send, revert the
+    // claim, and surface the exact reason instead of claiming success.
+    if (!result || (result.errors && !result.data)){
+      try { await removeFromWaitlist(tenantId, entry.id, 'active'); } catch {}
+      return { failed: true, reason: result?.errors?.[0]?.detail || result?.errors?.[0]?.title || 'telnyx_rejected', telnyx: result || null };
+    }
+    return { ok: true, sent: true, entry, text, message_id: result?.data?.id || null };
   } catch (e) {
     try { await removeFromWaitlist(tenantId, entry.id, 'active'); } catch {}
     return { failed: true, reason: String(e?.message || e) };

@@ -243,6 +243,27 @@ test('offerFreedSlot no-ops when the tenant has no from-number (SMS unconfigured
   }finally{ spy.restore(); }
 });
 
+test('offerFreedSlot reverts the claim when Telnyx rejects the send', async () => {
+  fresh();
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).includes('/v2/messages')){
+      return { ok: false, status: 422, json: async () => ({ errors: [{ title: 'Invalid Messaging Profile', detail: 'Number not enabled for messaging' }] }) };
+    }
+    return realFetch(url, opts);
+  };
+  try{
+    const r = await offerFreedSlot({ tenantId: T1, serviceId: SERVICE.id, serviceName: 'Balayage', freedAt: new Date(Date.now() + 86400000).toISOString() });
+    assert.equal(r.ok, undefined);
+    assert.equal(r.failed, true);
+    assert.match(r.reason, /messaging/i);
+    // claim reverted so the client can be offered again later
+    const rows = fake.tables.get('booking_waitlist') || [];
+    assert.equal(rows[0].status, 'active');
+  }finally{ globalThis.fetch = realFetch; }
+});
+
 test('offerFreedSlot no-ops on a slot that already passed and on no matches', async () => {
   fresh();
   await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
