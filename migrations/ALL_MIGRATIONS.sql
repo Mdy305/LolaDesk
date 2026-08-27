@@ -1544,10 +1544,13 @@ create table if not exists public.booking_waitlist (
   notes text,
   status text not null default 'active'
     check (status in ('active','offered','fulfilled','expired','removed')),
+  sms_consent boolean not null default false,
   source text not null default 'voice',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- For tables created by the first version of this migration (pre-consent).
+alter table public.booking_waitlist add column if not exists sms_consent boolean not null default false;
 create index if not exists idx_booking_waitlist_tenant_status
   on public.booking_waitlist(tenant_id, status, created_at desc);
 create index if not exists idx_booking_waitlist_service

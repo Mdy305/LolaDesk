@@ -44,9 +44,10 @@ globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) 
 
 const repo = await import('../api/lib/booking-repository.js');
 const { runBookingAction } = await import('../api/lib/booking-brain.js');
+const { offerFreedSlot } = await import('../api/lib/booking-reminders.js');
 
 const T1 = 'tenant-one', T2 = 'tenant-two';
-const TENANT = { id: T1, name: 'Salon One', subscription_status: 'trial', trial_ends_at: new Date(Date.now() - 86400000).toISOString() };
+const TENANT = { id: T1, name: 'Salon One', phone_number: '+15551234567', subscription_status: 'trial', trial_ends_at: new Date(Date.now() - 86400000).toISOString() };
 const SERVICE = { id: 'svc-1', tenant_id: T1, name: 'Balayage', price: 180, duration_minutes: 120, is_active: true };
 
 function fresh(){
@@ -56,6 +57,20 @@ function fresh(){
   fake.seed('clients', []);
   fake.seed('bookings', []);
   fake.seed('booking_status_history', []);
+}
+
+// Intercept the Telnyx /v2/messages POST (what sendSMS uses) and record it.
+function telnyxSpy(overrides = {}){
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).includes('/v2/messages')){
+      calls.push({ url: String(url), body: JSON.parse(opts.body || '{}') });
+      return { ok: true, status: 200, json: async () => ({ data: { id: 'msg-1' } }) };
+    }
+    return realFetch(url, opts);
+  };
+  return { calls, restore: () => { globalThis.fetch = realFetch; } };
 }
 
 // ── repository ─────────────────────────────────────────────────────
@@ -151,4 +166,113 @@ test('cancel with nobody waiting returns zero matches and no waitlist chatter', 
   assert.equal(r.ok, true);
   assert.equal(r.waitlist_matches.count, 0);
   assert.doesNotMatch(r.speak, /waitlist/i);
+});
+
+// ── the demand-conversion SMS (offerFreedSlot) ─────────────────────
+test('waitlist_add records explicit sms_consent and confirms the text promise', async () => {
+  fresh();
+  const r = await runBookingAction('waitlist_add', TENANT, { client_name: 'Maya', client_phone: '5551234', service: 'Balayage', sms_consent: true }, { channel: 'voice' });
+  assert.equal(r.ok, true);
+  assert.equal(r.sms_consent, true);
+  assert.match(r.speak, /text you the moment a slot opens/i);
+  const rows = fake.tables.get('booking_waitlist') || [];
+  assert.equal(rows[0].sms_consent, true);
+});
+
+test('waitlist_add without consent never promises a text', async () => {
+  fresh();
+  const r = await runBookingAction('waitlist_add', TENANT, { client_name: 'Maya', client_phone: '5551234', service: 'Balayage' }, { channel: 'voice' });
+  assert.equal(r.ok, true);
+  assert.equal(r.sms_consent, false);
+  assert.doesNotMatch(r.speak, /text you the moment/i);
+  assert.match(r.speak, /check back/i);
+});
+
+test('offerFreedSlot texts the first consenting client and marks them offered', async () => {
+  fresh();
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'NoConsent', clientPhone: '5550000', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: false });
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
+  const spy = telnyxSpy();
+  try{
+    const r = await offerFreedSlot({ tenantId: T1, serviceId: SERVICE.id, serviceName: 'Balayage', freedAt: new Date(Date.now() + 86400000).toISOString() });
+    assert.equal(r.ok, true);
+    assert.equal(r.sent, true);
+    assert.equal(r.entry.client_name, 'Maya'); // first CONSENTING client, not the first entry
+    assert.equal(spy.calls.length, 1);
+    const body = spy.calls[0].body;
+    assert.equal(body.to, '5551234');
+    assert.equal(body.from, '+15551234567');
+    assert.match(body.text, /Balayage spot just opened/i);
+    assert.match(body.text, /STOP to opt out/i);
+    const rows = fake.tables.get('booking_waitlist') || [];
+    const maya = rows.find(x => x.client_name === 'Maya');
+    assert.equal(maya.status, 'offered');
+    const noConsent = rows.find(x => x.client_name === 'NoConsent');
+    assert.equal(noConsent.status, 'active'); // untouched
+  }finally{ spy.restore(); }
+});
+
+test('offerFreedSlot never sends without consent — skipped, no Telnyx call', async () => {
+  fresh();
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: false });
+  const spy = telnyxSpy();
+  try{
+    const r = await offerFreedSlot({ tenantId: T1, serviceId: SERVICE.id, serviceName: 'Balayage', freedAt: new Date(Date.now() + 86400000).toISOString() });
+    assert.equal(r.ok, undefined);
+    assert.equal(r.skipped, true);
+    assert.equal(r.reason, 'no_consent');
+    assert.equal(spy.calls.length, 0);
+    const rows = fake.tables.get('booking_waitlist') || [];
+    assert.equal(rows[0].status, 'active');
+  }finally{ spy.restore(); }
+});
+
+test('offerFreedSlot no-ops when the tenant has no from-number (SMS unconfigured)', async () => {
+  fresh();
+  fake.seed('tenants', [{ id: T2, name: 'No Phone Salon', phone_number: null }]);
+  await repo.addToWaitlist({ tenantId: T2, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
+  const spy = telnyxSpy();
+  try{
+    const r = await offerFreedSlot({ tenantId: T2, serviceId: SERVICE.id, serviceName: 'Balayage', freedAt: new Date(Date.now() + 86400000).toISOString() });
+    assert.equal(r.skipped, true);
+    assert.equal(r.reason, 'no_from_number');
+    assert.equal(spy.calls.length, 0);
+    // entry stays active so it can be offered once a number is attached
+    const rows = fake.tables.get('booking_waitlist') || [];
+    assert.equal(rows[0].status, 'active');
+  }finally{ spy.restore(); }
+});
+
+test('offerFreedSlot no-ops on a slot that already passed and on no matches', async () => {
+  fresh();
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
+  const spy = telnyxSpy();
+  try{
+    const past = await offerFreedSlot({ tenantId: T1, serviceId: SERVICE.id, serviceName: 'Balayage', freedAt: new Date(Date.now() - 86400000).toISOString() });
+    assert.equal(past.skipped, true);
+    assert.equal(past.reason, 'slot_passed');
+    const none = await offerFreedSlot({ tenantId: T1, serviceId: 'svc-999', serviceName: 'Nope', freedAt: new Date(Date.now() + 86400000).toISOString() });
+    assert.equal(none.skipped, true);
+    assert.equal(none.reason, 'no_matches');
+    assert.equal(spy.calls.length, 0);
+  }finally{ spy.restore(); }
+});
+
+test('cancelAppointment sends the offer SMS to a consenting waitlisted client', async () => {
+  fresh();
+  fake.seed('bookings', [{ id: 'bk-3', tenant_id: T1, client_id: 'cl-1', service_id: SERVICE.id, service_name: 'Balayage', service: 'Balayage', start_time: new Date(Date.now() + 86400000).toISOString(), starts_at: new Date(Date.now() + 86400000).toISOString(), status: 'confirmed', confirmation_code: 'ABC124' }]);
+  fake.seed('clients', [{ id: 'cl-1', tenant_id: T1, name: 'Maya', phone: '5551234' }]);
+  await repo.addToWaitlist({ tenantId: T1, clientName: 'Maya', clientPhone: '5551234', serviceId: SERVICE.id, serviceName: 'Balayage', source: 'voice', smsConsent: true });
+  const spy = telnyxSpy();
+  try{
+    const r = await runBookingAction('cancel_appointment', TENANT, { booking_id: 'bk-3', reason: 'client_request' }, { channel: 'voice' });
+    assert.equal(r.ok, true);
+    assert.equal(r.waitlist_matches.count, 1);
+    assert.equal(r.waitlist_offer.ok, true);
+    assert.equal(spy.calls.length, 1);
+    assert.match(spy.calls[0].body.text, /Balayage spot just opened/i);
+    assert.match(r.speak, /texted the first person/i);
+    const rows = fake.tables.get('booking_waitlist') || [];
+    assert.equal(rows[0].status, 'offered');
+  }finally{ spy.restore(); }
 });

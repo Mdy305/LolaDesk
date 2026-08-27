@@ -240,13 +240,13 @@ export async function upsertProviderMapping({ tenantId, provider, entityType, lo
 
 export async function addToWaitlist({ tenantId, clientId=null, clientName=null, clientPhone=null,
   serviceId=null, serviceName=null, staffId=null, preferredDate=null, preferredTime=null,
-  notes=null, source='voice' }){
+  notes=null, source='voice', smsConsent=false }){
   const c = db(); if(!c) throw new Error('database not configured');
   const { data, error } = await c.from('booking_waitlist').insert({
     tenant_id:tenantId, client_id:clientId, client_name:clientName || null,
     client_phone:clientPhone || null, service_id:serviceId || null, service_name:serviceName || null,
     staff_id:staffId || null, preferred_date:preferredDate || null, preferred_time:preferredTime || null,
-    notes:notes || null, status:'active', source
+    notes:notes || null, status:'active', sms_consent:!!smsConsent, source
   }).select().maybeSingle();
   if(error) throw error;
   return data || null;

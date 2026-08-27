@@ -28,6 +28,7 @@ import * as crm from './lola-crm.js';
 import { writeAppointment } from './aggregator.js';
 import { listBookings, enrichBookings, resolveDate, to24, moveBooking } from './operator-db.js';
 import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
+import { offerFreedSlot } from './booking-reminders.js';
 
 // Providers Lola can WRITE appointments to. boulevard (partner sandbox) and
 // shopify (retail only) deliberately excluded; google_calendar is a sync
@@ -377,8 +378,14 @@ export async function rescheduleAppointment(tenant, params, opts = {}){
         await repo.appendBookingHistory({ tenantId, bookingId: current.id, fromStatus: current.status, toStatus: 'confirmed', source: channel, reason: 'rescheduled' });
         await repo.releaseHold(tenantId, held.hold.hold_token, 'converted');
         await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: current.start_time || current.starts_at, to: held.slot.starts_at });
+        // The OLD slot just freed up — offer it to a consenting waitlisted client.
+        let offer = null;
+        try{
+          offer = await offerFreedSlot({ tenantId, serviceId: current.service_id || serviceId, serviceName: params.service || current.service || null, freedAt: current.start_time || current.starts_at });
+          if(offer && offer.ok) await logEvent(tenantId, 'waitlist_offered', { client: offer.entry?.client_name || offer.entry?.client_phone, freed_by: 'reschedule' });
+        }catch(e){ console.warn('[booking-brain] waitlist offer failed:', e.message); }
         const speak = `Done — moved to ${dayLabel(held.slot.starts_at)} at ${timeLabel(held.slot.starts_at)}.`;
-        return { ok: true, rescheduled: true, booking, speak, text: speak };
+        return { ok: true, rescheduled: true, booking, waitlist_offer: offer, speak, text: speak };
       }
       const alt = await getAvailability({ tenantId, serviceId, date: newStart, limit: 5 }).catch(() => ({ ok: false, slots: [] }));
       return { ok: false, conflict: true, needs: 'alternate_time', speak: `That time is taken — I could do ${alt.slots?.[0] ? timeLabel(alt.slots[0].starts_at) : 'a different time'}. Want me to?`, alternatives: alt.slots || [] };
@@ -408,8 +415,8 @@ export async function cancelAppointment(tenant, params, opts = {}){
     // salon can offer it instead of letting the opening walk. The canonical
     // bookings table stores service_id only, so resolve the name for matching.
     let waitlist = { count: 0, entries: [] };
+    let freedServiceName = current.service || current.service_name || null;
     try{
-      let freedServiceName = current.service || current.service_name || null;
       if(!freedServiceName && current.service_id){
         const services = await repo.listServices(tenantId);
         freedServiceName = services.find(s => s.id === current.service_id)?.name || null;
@@ -421,10 +428,19 @@ export async function cancelAppointment(tenant, params, opts = {}){
       if(waitlist.count) await logEvent(tenantId, 'waitlist_opportunity', { count: waitlist.count, freed: current.start_time || current.starts_at, service: freedServiceName });
     }catch(e){ console.warn('[booking-brain] waitlist check failed:', e.message); }
 
+    // Demand conversion: text the first consenting waitlisted client.
+    let offer = null;
+    try{
+      offer = await offerFreedSlot({ tenantId, serviceId: current.service_id || null, serviceName: freedServiceName, freedAt: current.start_time || current.starts_at });
+      if(offer && offer.ok) await logEvent(tenantId, 'waitlist_offered', { client: offer.entry?.client_name || offer.entry?.client_phone, at: current.start_time || current.starts_at });
+    }catch(e){ console.warn('[booking-brain] waitlist offer failed:', e.message); }
+
     const speak = waitlist.count
-      ? `Cancelled — I'll free up that slot. ${waitlist.count} client${waitlist.count === 1 ? ' is' : 's are'} on the waitlist for ${current.service || 'that service'} — want me to offer it?`
+      ? offer && offer.ok
+        ? `Cancelled — I'll free up that slot and I've texted the first person on the waitlist.`
+        : `Cancelled — I'll free up that slot. ${waitlist.count} client${waitlist.count === 1 ? ' is' : 's are'} on the waitlist for ${freedServiceName || 'that service'}.`
       : "Cancelled — I'll free up that slot.";
-    return { ok: true, cancelled: true, booking, waitlist_matches: waitlist, speak, text: 'Cancelled.' };
+    return { ok: true, cancelled: true, booking, waitlist_matches: waitlist, waitlist_offer: offer, speak, text: 'Cancelled.' };
   }catch(e){
     console.error('[booking-brain] cancel failed:', e);
     return { ok: false, error: 'cancel_failed', speak: "I hit a snag cancelling that — try again." };
@@ -446,6 +462,7 @@ export async function waitlistAdd(tenant, params, opts = {}){
       const resolved = await resolveServiceAndStaff(tenant, params).catch(() => ({ ok:false }));
       if(resolved && resolved.ok && resolved.service) serviceId = resolved.service.id;
     }
+    const consent = params.sms_consent === true || params.sms_consent === 'true';
     const entry = await repo.addToWaitlist({
       tenantId,
       clientId: client?.id || null,
@@ -456,15 +473,17 @@ export async function waitlistAdd(tenant, params, opts = {}){
       preferredDate: params.preferred_date || params.date || null,
       preferredTime: params.preferred_time || params.time || null,
       notes: params.notes || null,
-      source: channel
+      source: channel,
+      smsConsent: consent
     });
-    await logEvent(tenantId, 'waitlist_added', { client_id: client?.id || null, service: serviceName, date: params.date || null });
+    await logEvent(tenantId, 'waitlist_added', { client_id: client?.id || null, service: serviceName, date: params.date || null, sms_consent: consent });
     const who = client?.name || params.client_name || params.name;
     const svc = serviceName ? ` for ${serviceName}` : '';
+    const promise = consent ? " I'll text you the moment a slot opens." : " Check back with me for the earliest opening.";
     const speak = who
-      ? `Done${who ? `, ${first(who)}` : ''}. You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}. I'll text you the moment a slot opens.`
-      : `You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}. I'll text you the moment a slot opens.`;
-    return { ok: true, waitlisted: true, entry, speak, text: speak };
+      ? `Done${who ? `, ${first(who)}` : ''}. You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}.${promise}`
+      : `You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}.${promise}`;
+    return { ok: true, waitlisted: true, entry, sms_consent: consent, speak, text: speak };
   }catch(e){
     console.error('[booking-brain] waitlist failed:', e);
     return { ok: false, error: 'waitlist_failed', speak: "I couldn't add you to the waitlist just now — try again in a moment." };

@@ -20,6 +20,7 @@
 
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
+import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist } from './booking-repository.js';
 
 // Text when the appointment is 23–25h away. With an hourly cron a booking
 // lands in this band for exactly one tick (the 2h band is wider than the 1h
@@ -113,6 +114,47 @@ async function mark(client, id, status, errorText = null) {
   await client.from('booking_reminders')
     .update({ status, error: errorText, sent_at: status === 'sent' ? new Date().toISOString() : null, updated_at: new Date().toISOString() })
     .eq('id', id);
+}
+
+// ── waitlist offer ──────────────────────────────────────────────────
+// The demand-conversion loop: when a booking is cancelled or rescheduled,
+// the freed slot is offered by SMS to the FIRST consenting waitlisted
+// client — reusing the exact same Telnyx send path as reminders (sendSMS)
+// and the same claim-before-send pattern (mark 'offered' first, revert on
+// failure) so two racing hooks can never double-text a client.
+//
+// No-op safety: missing tenant from-number, a slot that already passed,
+// no matches, or no client who explicitly opted in (sms_consent) all skip
+// silently — and every failure is caught so a text can never break a
+// cancel/reschedule. Tenant-scoped throughout.
+
+export async function offerFreedSlot({ tenantId, serviceId = null, serviceName = null, staffId = null, freedAt = null, send = sendSMS } = {}) {
+  const client = db();
+  if (!client) return { skipped: true, reason: 'no_db' };
+  const { data: tenant } = await client.from('tenants').select('name,phone_number').eq('id', tenantId).maybeSingle();
+  if (!tenant || !tenant.phone_number) return { skipped: true, reason: 'no_from_number' };
+  if (!freedAt || new Date(freedAt) <= new Date()) return { skipped: true, reason: 'slot_passed' };
+  let matches;
+  try { matches = await findWaitlistMatches(tenantId, { serviceId, serviceName, staffId }); }
+  catch { return { skipped: true, reason: 'lookup_failed' }; }
+  if (!matches.count || !matches.entries.length) return { skipped: true, reason: 'no_matches' };
+  // Consent gate: only text clients who explicitly opted in when they joined.
+  const entry = matches.entries.find((e) => e.sms_consent === true);
+  if (!entry || !entry.client_phone) return { skipped: true, reason: 'no_consent' };
+  const when = new Date(freedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const what = serviceName || entry.service_name || 'a spot';
+  const salon = tenant.name || 'the salon';
+  const text = `${salon}: a ${what} spot just opened — ${when}. Reply to claim it, or reply STOP to opt out.`;
+  // Claim before sending: exactly-once, like booking_reminders.
+  try { await markWaitlistOffered(tenantId, entry.id); }
+  catch { return { skipped: true, reason: 'claim_failed' }; }
+  try {
+    await send({ from: tenant.phone_number, to: entry.client_phone, text, tenantId, type: 'SMS' });
+    return { ok: true, sent: true, entry, text };
+  } catch (e) {
+    try { await removeFromWaitlist(tenantId, entry.id, 'active'); } catch {}
+    return { failed: true, reason: String(e?.message || e) };
+  }
 }
 
 export async function runReminders(now = new Date(), { send = sendSMS } = {}) {

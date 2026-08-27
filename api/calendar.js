@@ -6,6 +6,7 @@ import {
   addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
   listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking
 } from './lib/booking-repository.js';
+import { offerFreedSlot } from './lib/booking-reminders.js';
 
 function jsonBody(req){
   if(typeof req.body==='string') { try{return JSON.parse(req.body||'{}')}catch{return {}} }
@@ -74,6 +75,7 @@ export default async function handler(req,res){
         const match=services.find(s=>s.name?.toLowerCase()===serviceName.toLowerCase());
         if(match) serviceId=match.id;
       }
+      const consent=body.sms_consent===true||body.sms_consent==='true';
       const entry=await addToWaitlist({
         tenantId:tenant.id, clientId,
         clientName:body.client_name||null, clientPhone:body.client_phone||null,
@@ -82,9 +84,10 @@ export default async function handler(req,res){
         preferredDate:body.preferred_date||body.date||null,
         preferredTime:body.preferred_time||body.time||null,
         notes:body.notes||null,
-        source:body.channel||body.source||'public_web'
+        source:body.channel||body.source||'public_web',
+        smsConsent:consent
       });
-      return res.json({ ok:true, waitlisted:true, entry });
+      return res.json({ ok:true, waitlisted:true, sms_consent:consent, entry });
     }
 
     if(action==='waitlist_list'){
@@ -211,20 +214,30 @@ export default async function handler(req,res){
         if(new Date(startsAt)<=new Date()) return res.status(200).json({ok:false,error:'time_in_past'});
         const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt,channel:'public_widget',ttlSeconds:120});
         if(!held.ok) return res.status(200).json(held);
-        const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
-        await releaseHold(tenant.id,held.hold.hold_token,'converted');
-        return res.json({ok:!!updated,rescheduled:!!updated,booking:updated});
-      }
-      if(!body.booking_id || !body.starts_at) return res.status(400).json({ok:false,error:'booking_id_and_starts_at_required'});
-      const c=db();
-      const { data: current }=await c.from('bookings').select('*').eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
-      if(!current) return res.status(404).json({ok:false,error:'booking_not_found'});
-      const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120});
-      if(!held.ok) return res.status(200).json(held);
-      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
+      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
       await releaseHold(tenant.id,held.hold.hold_token,'converted');
-      return res.json({ok:true,rescheduled:true,booking:updated});
+      let publicOffer=null;
+      if(updated){
+        try{ publicOffer=await offerFreedSlot({tenantId:tenant.id,serviceId:current.service_id||null,serviceName:current.service||current.service_name||null,freedAt:current.start_time||current.starts_at}); }
+        catch(e){ console.warn('[calendar] waitlist offer failed:',e.message); }
+      }
+      return res.json({ok:!!updated,rescheduled:!!updated,booking:updated,waitlist_offer:publicOffer});
     }
+    if(!body.booking_id || !body.starts_at) return res.status(400).json({ok:false,error:'booking_id_and_starts_at_required'});
+    const c=db();
+    const { data: current }=await c.from('bookings').select('*').eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
+    if(!current) return res.status(404).json({ok:false,error:'booking_not_found'});
+    const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120});
+    if(!held.ok) return res.status(200).json(held);
+    const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
+    await releaseHold(tenant.id,held.hold.hold_token,'converted');
+    let dashOffer=null;
+    if(updated){
+      try{ dashOffer=await offerFreedSlot({tenantId:tenant.id,serviceId:current.service_id||null,serviceName:current.service||current.service_name||null,freedAt:current.start_time||current.starts_at}); }
+      catch(e){ console.warn('[calendar] waitlist offer failed:',e.message); }
+    }
+    return res.json({ok:true,rescheduled:true,booking:updated,waitlist_offer:dashOffer});
+  }
 
     if(action==='cancel'){
       // Public self-cancel: confirmation code + phone (never booking_id, which
@@ -245,11 +258,17 @@ export default async function handler(req,res){
           return res.status(200).json({ok:false,error:'code_phone_mismatch'});
         }
         const updated=await updateCanonicalBooking(tenant.id,booking.id,{status:'cancelled'},{source:'public_widget',reason:'client_self_service'});
-        return res.json({ok:!!updated,cancelled:!!updated,booking:updated});
+        let publicOffer=null;
+        if(updated){
+          try{ publicOffer=await offerFreedSlot({tenantId:tenant.id,serviceId:booking.service_id||null,serviceName:booking.service||booking.service_name||null,freedAt:booking.start_time||booking.starts_at}); }
+          catch(e){ console.warn('[calendar] waitlist offer failed:',e.message); }
+        }
+        return res.json({ok:!!updated,cancelled:!!updated,booking:updated,waitlist_offer:publicOffer});
       }
       if(!body.booking_id) return res.status(400).json({ok:false,error:'booking_id_required'});
       const updated=await updateCanonicalBooking(tenant.id,body.booking_id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
       let waitlist_matches={count:0,entries:[]};
+      let waitlist_offer=null;
       if(updated){
         try{
           let freedName=updated.service||updated.service_name||null;
@@ -261,9 +280,10 @@ export default async function handler(req,res){
             serviceId:updated.service_id||null,
             serviceName:freedName
           });
+          waitlist_offer=await offerFreedSlot({tenantId:tenant.id,serviceId:updated.service_id||null,serviceName:freedName,freedAt:updated.start_time||updated.starts_at});
         }catch(e){ console.warn('[calendar] waitlist match failed:',e.message); }
       }
-      return res.json({ok:!!updated,cancelled:!!updated,booking:updated,waitlist_matches});
+      return res.json({ok:!!updated,cancelled:!!updated,booking:updated,waitlist_matches,waitlist_offer});
     }
 
     return res.status(400).json({ok:false,error:'unknown_action'});

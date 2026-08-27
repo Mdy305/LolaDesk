@@ -73,6 +73,9 @@
     '.lw-wl-t{font-size:13.5px;font-weight:650;color:var(--text);margin-bottom:3px}',
     '.lw-wl-s{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px}',
     '.lw-wl-fld{margin-bottom:8px}.lw-wl-fld input{width:100%;box-sizing:border-box;background:var(--surface2);border:.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none}',
+    '.lw-wl-consent{display:flex;gap:9px;align-items:flex-start;margin-bottom:10px;cursor:pointer}',
+    '.lw-wl-consent input{width:16px;height:16px;margin-top:1px;accent-color:#ccff00;cursor:pointer}',
+    '.lw-wl-consent span{font-size:11.5px;color:var(--muted);line-height:1.5}',
     '.lw-wl-fld input:focus{border-color:rgba(204,255,0,.5)}',
     '.lw-wl-btn{width:100%;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#080809;font-size:13px;font-weight:650;cursor:pointer;font-family:inherit}',
     '.lw-wl-btn:disabled{opacity:.5;cursor:wait}',
@@ -246,15 +249,18 @@
       '<div class="lw-wl-s">Leave your name and phone — ' + esc(catalog.tenant_name || 'we') + ' will text you the moment ' + esc(w.service.name) + ' has an opening.</div>' +
       '<div class="lw-wl-fld"><input id="lwWlName" placeholder="Your name"/></div>' +
       '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
+      '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes — text me at this number the moment a slot opens.</span></label>' +
       '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk"></div></div>';
     host.querySelector('#lwWlGo').addEventListener('click', function () {
       var name = host.querySelector('#lwWlName').value.trim();
       var phone = host.querySelector('#lwWlPhone').value.trim();
       var ok = host.querySelector('#lwWlOk');
+      var consent = host.querySelector('#lwWlConsent').checked;
       if (!name || !phone) { ok.textContent = 'Please add your name and phone.'; return; }
+      if (!consent) { ok.textContent = 'Please check the box so we can text you when a slot opens.'; return; }
       var btn = host.querySelector('#lwWlGo');
       btn.disabled = true; btn.textContent = 'Adding…';
-      apiPost({ action:'waitlist_add', channel:'public_widget', service_id: w.service.id, service_name: w.service.name, date: date, client_name: name, client_phone: phone })
+      apiPost({ action:'waitlist_add', channel:'public_widget', service_id: w.service.id, service_name: w.service.name, date: date, client_name: name, client_phone: phone, sms_consent: true })
         .then(function (result) {
           if (!result.ok) { ok.textContent = result.error || 'Could not join the waitlist.'; btn.disabled = false; btn.textContent = 'Join the waitlist'; return; }
           ok.textContent = 'You are on the waitlist — we will text you the moment a slot opens.';
