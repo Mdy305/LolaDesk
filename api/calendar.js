@@ -252,9 +252,14 @@ export default async function handler(req,res){
       let waitlist_matches={count:0,entries:[]};
       if(updated){
         try{
+          let freedName=updated.service||updated.service_name||null;
+          if(!freedName && updated.service_id){
+            const services=await listServices(tenant.id);
+            freedName=services.find(s=>s.id===updated.service_id)?.name||null;
+          }
           waitlist_matches=await findWaitlistMatches(tenant.id,{
             serviceId:updated.service_id||null,
-            serviceName:updated.service||updated.service_name||null
+            serviceName:freedName
           });
         }catch(e){ console.warn('[calendar] waitlist match failed:',e.message); }
       }

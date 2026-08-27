@@ -405,14 +405,20 @@ export async function cancelAppointment(tenant, params, opts = {}){
     await logEvent(tenantId, 'booking_cancelled', { booking_id: current.id, was: current.status, reason: params.reason || null, at: new Date().toISOString() });
 
     // Revenue recovery: a freed slot has a value. Surface the waitlist so the
-    // salon can offer it instead of letting the opening walk.
+    // salon can offer it instead of letting the opening walk. The canonical
+    // bookings table stores service_id only, so resolve the name for matching.
     let waitlist = { count: 0, entries: [] };
     try{
+      let freedServiceName = current.service || current.service_name || null;
+      if(!freedServiceName && current.service_id){
+        const services = await repo.listServices(tenantId);
+        freedServiceName = services.find(s => s.id === current.service_id)?.name || null;
+      }
       waitlist = await repo.findWaitlistMatches(tenantId, {
         serviceId: current.service_id || null,
-        serviceName: current.service || current.service_name || null
+        serviceName: freedServiceName
       });
-      if(waitlist.count) await logEvent(tenantId, 'waitlist_opportunity', { count: waitlist.count, freed: current.start_time || current.starts_at, service: current.service || null });
+      if(waitlist.count) await logEvent(tenantId, 'waitlist_opportunity', { count: waitlist.count, freed: current.start_time || current.starts_at, service: freedServiceName });
     }catch(e){ console.warn('[booking-brain] waitlist check failed:', e.message); }
 
     const speak = waitlist.count
