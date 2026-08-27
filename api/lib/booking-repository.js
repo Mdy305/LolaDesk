@@ -231,3 +231,67 @@ export async function upsertProviderMapping({ tenantId, provider, entityType, lo
   if(error) throw error;
   return data;
 }
+
+// ── booking waitlist ─────────────────────────────────────────────────
+// Makes Lola's "I'll add you to the priority waitlist" promise real. One
+// tenant-scoped table fed by voice (booking-brain), the web widget, and the
+// dashboard. When a slot frees up, findWaitlistMatches surfaces the people
+// to offer it to — the revenue-recovery moment.
+
+export async function addToWaitlist({ tenantId, clientId=null, clientName=null, clientPhone=null,
+  serviceId=null, serviceName=null, staffId=null, preferredDate=null, preferredTime=null,
+  notes=null, source='voice' }){
+  const c = db(); if(!c) throw new Error('database not configured');
+  const { data, error } = await c.from('booking_waitlist').insert({
+    tenant_id:tenantId, client_id:clientId, client_name:clientName || null,
+    client_phone:clientPhone || null, service_id:serviceId || null, service_name:serviceName || null,
+    staff_id:staffId || null, preferred_date:preferredDate || null, preferred_time:preferredTime || null,
+    notes:notes || null, status:'active', source
+  }).select().maybeSingle();
+  if(error) throw error;
+  return data || null;
+}
+
+export async function listWaitlist(tenantId, { status='active', limit=100 } = {}){
+  const c = db(); if(!c) return [];
+  let q = c.from('booking_waitlist').select('*').eq('tenant_id',tenantId).order('created_at',{ ascending:false });
+  if(status) q = q.eq('status',status);
+  if(limit) q = q.limit(limit);
+  const { data, error } = await q;
+  if(error) throw error;
+  return data || [];
+}
+
+export async function removeFromWaitlist(tenantId, id, status='removed'){
+  const c = db(); if(!c) return null;
+  const { data, error } = await c.from('booking_waitlist')
+    .update({ status })
+    .eq('tenant_id',tenantId).eq('id',id)
+    .select().maybeSingle();
+  if(error) throw error;
+  return data || null;
+}
+
+export async function markWaitlistOffered(tenantId, id){
+  return removeFromWaitlist(tenantId, id, 'offered');
+}
+
+// Who is waiting for a just-freed slot? Matches on service (an entry with no
+// specific service is a general standby and always matches), scoped to the
+// tenant, newest first. Returns a count plus the top entries for the UI.
+export async function findWaitlistMatches(tenantId, { serviceId=null, serviceName=null, staffId=null, limit=5 } = {}){
+  const c = db(); if(!c) return { count:0, entries:[] };
+  const { data, error } = await c.from('booking_waitlist').select('*')
+    .eq('tenant_id',tenantId).eq('status','active')
+    .order('created_at',{ ascending:true }).limit(limit);
+  if(error) throw error;
+  const rows = data || [];
+  const nameMatch = String(serviceName||'').trim().toLowerCase();
+  const entries = rows.filter(r => {
+    if(!r.service_id && !r.service_name) return true; // general standby
+    if(r.service_id && serviceId) return String(r.service_id) === String(serviceId);
+    if(r.service_name && nameMatch) return r.service_name.toLowerCase().includes(nameMatch) || nameMatch.includes(r.service_name.toLowerCase());
+    return false;
+  });
+  return { count: entries.length, entries };
+}

@@ -1525,3 +1525,41 @@ update public.clients c
           or (c.phone is not null and conv.client_phone = c.phone)
         )
     );
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 20260827_booking_waitlist.sql — booking waitlist (voice + web + dashboard)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.booking_waitlist (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  client_id uuid references public.clients(id) on delete set null,
+  client_name text,
+  client_phone text,
+  service_id uuid references public.services(id) on delete set null,
+  service_name text,
+  staff_id uuid references public.staff(id) on delete set null,
+  preferred_date text,
+  preferred_time text,
+  notes text,
+  status text not null default 'active'
+    check (status in ('active','offered','fulfilled','expired','removed')),
+  source text not null default 'voice',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_booking_waitlist_tenant_status
+  on public.booking_waitlist(tenant_id, status, created_at desc);
+create index if not exists idx_booking_waitlist_service
+  on public.booking_waitlist(tenant_id, status, service_id)
+  where status = 'active';
+
+alter table public.booking_waitlist enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'booking_waitlist' and policyname = 'tenant_booking_waitlist') then
+    create policy tenant_booking_waitlist on public.booking_waitlist
+      for all using (is_tenant_member(tenant_id));
+  end if;
+end $$;

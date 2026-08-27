@@ -3,8 +3,8 @@ import { tenantForRequest } from './lib/tenant-context.js';
 import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { getAvailability, holdAvailability } from './lib/availability-engine-v2.js';
 import {
-  addMinutes, createCanonicalBooking, getHold, getBookingSettings,
-  listBookings, listServices, listStaff, releaseHold, updateCanonicalBooking
+  addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
+  listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking
 } from './lib/booking-repository.js';
 
 function jsonBody(req){
@@ -57,6 +57,45 @@ export default async function handler(req,res){
       const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched };
       if(action==='day'){ out.date=start.toISOString().slice(0,10); out.settings=settings; }
       return res.json(out);
+    }
+
+    if(action==='waitlist_add'){
+      // All channels (voice via booking-brain, widget, dashboard, public web)
+      // land here. Public callers identify by phone/name; dashboard passes
+      // client_id. Service resolves by id or best-effort name.
+      let clientId=body.client_id||null;
+      if(!clientId && (body.client_phone||body.client_name)){
+        const client=await upsertClient(tenant.id,{phone:body.client_phone,name:body.client_name,email:body.client_email});
+        clientId=client?.id||null;
+      }
+      let serviceId=body.service_id||null, serviceName=body.service||body.service_name||null;
+      if(!serviceId && serviceName){
+        const services=await listServices(tenant.id);
+        const match=services.find(s=>s.name?.toLowerCase()===serviceName.toLowerCase());
+        if(match) serviceId=match.id;
+      }
+      const entry=await addToWaitlist({
+        tenantId:tenant.id, clientId,
+        clientName:body.client_name||null, clientPhone:body.client_phone||null,
+        serviceId, serviceName,
+        staffId:body.staff_id||null,
+        preferredDate:body.preferred_date||body.date||null,
+        preferredTime:body.preferred_time||body.time||null,
+        notes:body.notes||null,
+        source:body.channel||body.source||'public_web'
+      });
+      return res.json({ ok:true, waitlisted:true, entry });
+    }
+
+    if(action==='waitlist_list'){
+      const entries=await listWaitlist(tenant.id,{ status:body.status||'active', limit:Number(body.limit||100) });
+      return res.json({ ok:true, entries });
+    }
+
+    if(action==='waitlist_remove'){
+      if(!body.id) return res.status(400).json({ ok:false, error:'id_required' });
+      const removed=await removeFromWaitlist(tenant.id, body.id, body.status||'removed');
+      return res.json({ ok:!!removed, removed });
     }
 
     if(action==='availability'){
@@ -210,7 +249,16 @@ export default async function handler(req,res){
       }
       if(!body.booking_id) return res.status(400).json({ok:false,error:'booking_id_required'});
       const updated=await updateCanonicalBooking(tenant.id,body.booking_id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
-      return res.json({ok:!!updated,cancelled:!!updated,booking:updated});
+      let waitlist_matches={count:0,entries:[]};
+      if(updated){
+        try{
+          waitlist_matches=await findWaitlistMatches(tenant.id,{
+            serviceId:updated.service_id||null,
+            serviceName:updated.service||updated.service_name||null
+          });
+        }catch(e){ console.warn('[calendar] waitlist match failed:',e.message); }
+      }
+      return res.json({ok:!!updated,cancelled:!!updated,booking:updated,waitlist_matches});
     }
 
     return res.status(400).json({ok:false,error:'unknown_action'});

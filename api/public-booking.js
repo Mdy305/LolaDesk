@@ -2,7 +2,7 @@ import calendarHandler from './calendar.js';
 
 // Public booking uses the exact same calendar core as Lola/Telnyx.
 // Only a narrow set of actions is exposed so the website cannot mutate arbitrary state.
-const ALLOWED = new Set(['catalog','availability','hold','book','cancel','reschedule','lookup']);
+const ALLOWED = new Set(['catalog','availability','hold','book','cancel','reschedule','lookup','waitlist_add']);
 
 export default async function handler(req,res){
   if(req.method==='OPTIONS') return calendarHandler(req,res);

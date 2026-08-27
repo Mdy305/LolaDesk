@@ -69,6 +69,14 @@
     '.lw-btn:not(:disabled):hover{background:var(--accent2)}',
     '.lw-err{color:#ff8a8a;font-size:12.5px;margin-top:10px;min-height:16px}',
     '.lw-empty{color:var(--dim);font-size:13px;padding:18px 0;text-align:center}',
+    '.lw-wl{margin-top:6px;padding:14px;border:.5px solid rgba(204,255,0,.25);border-radius:14px;background:rgba(204,255,0,.04)}',
+    '.lw-wl-t{font-size:13.5px;font-weight:650;color:var(--text);margin-bottom:3px}',
+    '.lw-wl-s{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px}',
+    '.lw-wl-fld{margin-bottom:8px}.lw-wl-fld input{width:100%;box-sizing:border-box;background:var(--surface2);border:.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none}',
+    '.lw-wl-fld input:focus{border-color:rgba(204,255,0,.5)}',
+    '.lw-wl-btn{width:100%;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#080809;font-size:13px;font-weight:650;cursor:pointer;font-family:inherit}',
+    '.lw-wl-btn:disabled{opacity:.5;cursor:wait}',
+    '.lw-wl-ok{font-size:13px;color:var(--accent2);padding:6px 0;text-align:center}',
     '.lw-orb{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,var(--accent) 55%,#7a9e00);margin:0 auto 18px}',
     '.lw-done-title{font-size:22px;font-weight:600;text-align:center;margin-bottom:8px}',
     '.lw-done-sub{color:var(--muted);font-size:14px;text-align:center;line-height:1.7}',
@@ -215,7 +223,7 @@
     if (w.staff) p.staff_id = w.staff.id;
     apiGet('availability', p).then(function (data) {
       var slots = data.slots || [];
-      if (!slots.length) { host.innerHTML = '<div class="lw-empty">No open times that day — try another date.</div>'; return; }
+      if (!slots.length) { renderWaitlist(w, catalog, host, date); return; }
       host.innerHTML = slots.map(function (s) {
         var iso = s.starts_at || s;
         return '<button class="lw-slot" data-iso="' + esc(iso) + '">' + timeLabel(iso) + '</button>';
@@ -230,6 +238,30 @@
         });
       });
     }).catch(function (e) { host.innerHTML = '<div class="lw-empty">' + esc(e.message) + '</div>'; });
+  }
+
+  function renderWaitlist(w, catalog, host, date) {
+    host.innerHTML = '<div class="lw-empty">No open times on ' + esc(new Date(date + 'T12:00:00').toLocaleDateString([], { weekday:'long', month:'short', day:'numeric' })) + '.</div>' +
+      '<div class="lw-wl"><div class="lw-wl-t">Get first dibs when a slot opens</div>' +
+      '<div class="lw-wl-s">Leave your name and phone — ' + esc(catalog.tenant_name || 'we') + ' will text you the moment ' + esc(w.service.name) + ' has an opening.</div>' +
+      '<div class="lw-wl-fld"><input id="lwWlName" placeholder="Your name"/></div>' +
+      '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
+      '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk"></div></div>';
+    host.querySelector('#lwWlGo').addEventListener('click', function () {
+      var name = host.querySelector('#lwWlName').value.trim();
+      var phone = host.querySelector('#lwWlPhone').value.trim();
+      var ok = host.querySelector('#lwWlOk');
+      if (!name || !phone) { ok.textContent = 'Please add your name and phone.'; return; }
+      var btn = host.querySelector('#lwWlGo');
+      btn.disabled = true; btn.textContent = 'Adding…';
+      apiPost({ action:'waitlist_add', channel:'public_widget', service_id: w.service.id, service_name: w.service.name, date: date, client_name: name, client_phone: phone })
+        .then(function (result) {
+          if (!result.ok) { ok.textContent = result.error || 'Could not join the waitlist.'; btn.disabled = false; btn.textContent = 'Join the waitlist'; return; }
+          ok.textContent = 'You are on the waitlist — we will text you the moment a slot opens.';
+          btn.style.display = 'none';
+        })
+        .catch(function (e) { ok.textContent = e.message || 'Something went wrong.'; btn.disabled = false; btn.textContent = 'Join the waitlist'; });
+    });
   }
 
   function stepDetails(w, catalog) {

@@ -125,6 +125,23 @@
 .empty-cal{padding:80px 20px;text-align:center;color:var(--text3);font-size:14px;line-height:2}
 .empty-cal a{color:#dcff66;text-decoration:none}
 .empty-cal a:hover{text-decoration:underline}
+
+/* ── Waitlist ── */
+.wl-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
+.wl-btn:hover{border-color:rgba(204,255,0,.35);color:var(--text)}
+.wl-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ccff00;color:#10140a;font-size:10px;font-weight:750;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.wl-badge.zero{background:rgba(255,255,255,.1);color:var(--text3)}
+.wl-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto}
+.wl-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:.5px solid var(--border);border-radius:14px;background:var(--surface);animation:apptIn .3s var(--spring-snap) both}
+.wl-av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#5ac8fa,#1a1a1a);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#080808;flex-shrink:0}
+.wl-info{flex:1;min-width:0}
+.wl-name{font-size:13.5px;font-weight:650;color:var(--text)}
+.wl-meta{font-size:11.5px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wl-acts{display:flex;gap:8px;flex-shrink:0}
+.wl-offer{padding:8px 13px;border-radius:10px;border:none;background:#ccff00;color:#10140a;font-size:12px;font-weight:650;cursor:pointer;font-family:inherit;transition:transform .12s var(--spring)}
+.wl-offer:hover{transform:translateY(-1px)}
+.wl-rm{width:28px;height:28px;border-radius:9px;border:none;background:rgba(255,255,255,.06);color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit}
+.wl-rm:hover{color:#ff8a8a;background:rgba(255,115,105,.12)}
 </style>
 </head>
 <body data-page="bookings"><div class="app"><main class="main">
@@ -145,6 +162,7 @@
     <a href="services.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Services</a>
     <a href="team.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Team</a>
     <a href="booking-settings.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Settings</a>
+    <button class="wl-btn" onclick="openWaitlist()" title="Clients waiting for a slot to open">Waitlist <span class="wl-badge zero" id="wlCount">0</span></button>
     <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:#ccff00;color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(204,255,0,.25)">+ New booking</button>
   </div>
 </div>
@@ -358,7 +376,55 @@ function bookForm(staffId='',hour=10){
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
     +'<div class="mstatus" id="mstatus"></div>';
 }
-function openNew(){openModal('New booking','Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();}
+let WL={entries:[],lastPrefill:null};
+async function loadWaitlist(){
+  try{
+    const r=await fetch('/api/calendar?action=waitlist_list',{headers:hdr()});
+    const d=await r.json();
+    if(!d.ok)return;
+    WL.entries=d.entries||[];
+    const badge=document.getElementById('wlCount');
+    if(badge){badge.textContent=WL.entries.length;badge.className='wl-badge'+(WL.entries.length?'':' zero');}
+  }catch(e){}
+}
+function openWaitlist(){
+  if(!WL.entries.length){
+    openModal('Waitlist','Nobody is waiting right now.','<div class="empty-cal" style="padding:40px 20px">No one on the waitlist yet — when a day is full, Lola adds callers here and you can offer them the next slot that opens.<br><a href="javascript:closeModal()">Close</a></div>');
+    return;
+  }
+  const rows=WL.entries.map(e=>{
+    const when=e.preferred_date?esc(e.preferred_date)+(e.preferred_time?' at '+esc(e.preferred_time):''):'Any day';
+    return '<div class="wl-item"><div class="wl-av">'+esc(initials(e.client_name||e.client_phone||'?'))+'</div>'
+      +'<div class="wl-info"><div class="wl-name">'+esc(e.client_name||e.client_phone||'Guest')+(e.client_name&&e.client_phone?' <span style="color:var(--text3);font-weight:400;font-size:11px">· '+esc(e.client_phone)+'</span>':'')+'</div>'
+      +'<div class="wl-meta">'+esc(e.service_name||'Any service')+' · '+when+(e.source?' · '+esc(e.source):'')+'</div></div>'
+      +'<div class="wl-acts"><button class="wl-offer" onclick="offerSlot(\''+e.id+'\')">Offer slot</button>'
+      +'<button class="wl-rm" onclick="removeWaitlist(\''+e.id+'\')" title="Remove">✕</button></div></div>';
+  }).join('');
+  openModal('Waitlist ('+WL.entries.length+')','Clients waiting for a slot to open — offer them the next free one.','<div class="wl-list">'+rows+'</div>');
+}
+function offerSlot(id){
+  const e=WL.entries.find(x=>x.id===id);if(!e)return;
+  closeModal();
+  WL.lastPrefill={id:e.id,client_name:e.client_name||'',client_phone:e.client_phone||'',service_id:e.service_id||''};
+  openNew(WL.lastPrefill);
+}
+async function removeWaitlist(id){
+  try{
+    const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id,status:'removed'})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    toast('Removed from waitlist.');await loadWaitlist();openWaitlist();
+  }catch(e){toast(e.message||'Failed','error');}
+}
+function openNew(prefill){
+  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
+  hydrateForm();
+  if(prefill){
+    if(prefill.client_name){const el=document.getElementById('bkClient');if(el)el.value=prefill.client_name;}
+    if(prefill.client_phone){const el=document.getElementById('bkPhone');if(el)el.value=prefill.client_phone;}
+    if(prefill.service_id){const el=document.getElementById('bkSvc');if(el&&[...el.options].some(o=>o.value===prefill.service_id))el.value=prefill.service_id;}
+  }
+}
 function hydrateForm(){
   const svc=document.getElementById('bkSvc');if(svc){svc.innerHTML=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');}
   const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');}
@@ -378,7 +444,9 @@ async function saveBooking(){
     const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'book',service_id:svcId,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'})});
     const d=await r.json();
     if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');st.className='mstatus err';return;}
-    closeModal();toast('Booking confirmed — Lola will text the client.');await load();
+    closeModal();toast('Booking confirmed — Lola will text the client.');
+    if(WL.lastPrefill){const pid=WL.lastPrefill.id;WL.lastPrefill=null;fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id:pid,status:'offered'})}).catch(()=>{});}
+    await load();loadWaitlist();
   }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
 }
 function findBooking(id){return STATE.bookings.find(b=>b.id===id)||null;}
@@ -439,7 +507,11 @@ function cancelBooking(id){
     fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:id,channel:'dashboard',reason:'client_request'})})
       .then(r=>r.json()).then(d=>{
         if(!d.ok)throw new Error(d.error||'Failed');
-        closeModal();toast('Booking cancelled — client notified.','success');load();
+        closeModal();
+        if(d.waitlist_matches&&d.waitlist_matches.count){
+          toast(d.waitlist_matches.count+' client'+(d.waitlist_matches.count===1?' is':'s are')+' on the waitlist for this service — offer the freed slot.','success');
+        }else{toast('Booking cancelled — client notified.','success');}
+        load();loadWaitlist();
       }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
   };
   if(window.LolaUX){window.LolaUX.confirm({title:'Cancel this booking?',message:esc(clientName(b.client))+' · '+esc(b.service?.name||'Appointment')+' — this frees the slot and texts the client.',confirmLabel:'Cancel booking',danger:true}).then(ok=>{if(ok)doCancel();});}
@@ -456,5 +528,5 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(1);}
   if(e.key==='ArrowLeft'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(-1);}
 });
-(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();loadWaitlist();})();
 </script></body></html>

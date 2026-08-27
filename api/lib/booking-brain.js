@@ -403,10 +403,65 @@ export async function cancelAppointment(tenant, params, opts = {}){
     const booking = await repo.updateCanonicalBooking(tenantId, current.id, { status: 'cancelled' }, { source: channel, reason: params.reason || 'client_request' });
     if(!booking) return { ok: false, error: 'cancel_failed', speak: "I couldn't cancel that appointment." };
     await logEvent(tenantId, 'booking_cancelled', { booking_id: current.id, was: current.status, reason: params.reason || null, at: new Date().toISOString() });
-    return { ok: true, cancelled: true, booking, speak: "Cancelled — I'll free up that slot.", text: 'Cancelled.' };
+
+    // Revenue recovery: a freed slot has a value. Surface the waitlist so the
+    // salon can offer it instead of letting the opening walk.
+    let waitlist = { count: 0, entries: [] };
+    try{
+      waitlist = await repo.findWaitlistMatches(tenantId, {
+        serviceId: current.service_id || null,
+        serviceName: current.service || current.service_name || null
+      });
+      if(waitlist.count) await logEvent(tenantId, 'waitlist_opportunity', { count: waitlist.count, freed: current.start_time || current.starts_at, service: current.service || null });
+    }catch(e){ console.warn('[booking-brain] waitlist check failed:', e.message); }
+
+    const speak = waitlist.count
+      ? `Cancelled — I'll free up that slot. ${waitlist.count} client${waitlist.count === 1 ? ' is' : 's are'} on the waitlist for ${current.service || 'that service'} — want me to offer it?`
+      : "Cancelled — I'll free up that slot.";
+    return { ok: true, cancelled: true, booking, waitlist_matches: waitlist, speak, text: 'Cancelled.' };
   }catch(e){
     console.error('[booking-brain] cancel failed:', e);
     return { ok: false, error: 'cancel_failed', speak: "I hit a snag cancelling that — try again." };
+  }
+}
+
+// Put a caller on the priority waitlist for real. This is the fulfillment of
+// the legacy skill-layer promise ("I'll add you to the priority waitlist") —
+// the row lands in booking_waitlist and the dashboard surfaces it.
+export async function waitlistAdd(tenant, params, opts = {}){
+  const tenantId = tenant.id, channel = opts.channel || 'lola';
+  try{
+    let client = null;
+    try{
+      client = await resolveClient(tenantId, params, true);
+    }catch{}
+    let serviceId = params.service_id || null, serviceName = params.service || params.service_name || null;
+    if(!serviceId && serviceName){
+      const resolved = await resolveServiceAndStaff(tenant, params).catch(() => ({ ok:false }));
+      if(resolved && resolved.ok && resolved.service) serviceId = resolved.service.id;
+    }
+    const entry = await repo.addToWaitlist({
+      tenantId,
+      clientId: client?.id || null,
+      clientName: client?.name || params.client_name || params.name || null,
+      clientPhone: client?.phone || params.client_phone || params.phone || null,
+      serviceId, serviceName,
+      staffId: params.staff_id || null,
+      preferredDate: params.preferred_date || params.date || null,
+      preferredTime: params.preferred_time || params.time || null,
+      notes: params.notes || null,
+      source: channel
+    });
+    await logEvent(tenantId, 'waitlist_added', { client_id: client?.id || null, service: serviceName, date: params.date || null });
+    const who = client?.name || params.client_name || params.name;
+    const svc = serviceName ? ` for ${serviceName}` : '';
+    const speak = who
+      ? `Done${who ? `, ${first(who)}` : ''}. You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}. I'll text you the moment a slot opens.`
+      : `You're on ${tenant.name || 'the salon'}'s priority waitlist${svc}. I'll text you the moment a slot opens.`;
+    return { ok: true, waitlisted: true, entry, speak, text: speak };
+  }catch(e){
+    console.error('[booking-brain] waitlist failed:', e);
+    return { ok: false, error: 'waitlist_failed', speak: "I couldn't add you to the waitlist just now — try again in a moment." };
   }
 }
 
@@ -425,6 +480,7 @@ export const BOOKING_ACTIONS = {
   book_appointment: bookAppointment,
   reschedule_appointment: rescheduleAppointment,
   cancel_appointment: cancelAppointment,
+  waitlist_add: waitlistAdd,
   get_day: getDay,
   remember,
   recall
@@ -449,6 +505,6 @@ export async function runBookingAction(action, tenant, params = {}, opts = {}){
 
 export default {
   runBookingAction, BOOKING_ACTIONS,
-  checkAvailability, bookAppointment, rescheduleAppointment, cancelAppointment, getDay,
+  checkAvailability, bookAppointment, rescheduleAppointment, cancelAppointment, waitlistAdd, getDay,
   remember, recall, tenantMemoryBlock
 };
