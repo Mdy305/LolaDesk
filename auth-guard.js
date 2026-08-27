@@ -54,6 +54,10 @@
     // agent_runs and announce new runs ("Lola recovered 3 missed calls")
     // after each hourly autopilot run, wherever the operator is.
     loadScript('/lola-autopilot-announce.js','lolaAutopilotAnnounce');
+    // Trial-to-paid paywall on EVERY authenticated page: days-left banner
+    // during the trial, hard paywall after it ends, upgrade CTA that
+    // deep-links into Stripe Checkout for the tenant's current plan.
+    loadScript('/trial-paywall.js','trialPaywall');
     loadScript('/front-desk-os.js','frontDeskOs');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');
