@@ -6,6 +6,17 @@
  */
 import { createUser, signIn } from '../lib/auth.js';
 import { provisionTenantForUser } from '../lib/db.js';
+import { autoAssignOwnedNumber } from '../lib/telnyx-provision.js';
+
+// Auto-assignment must never slow down or break signup. Cap it at 4s; on
+// timeout the tenant simply keeps no number and can wire one in the wizard.
+const AUTO_ASSIGN_CAP_MS = 4000;
+function withCap(promise){
+  return Promise.race([
+    promise,
+    new Promise(r => setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS))
+  ]);
+}
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -26,7 +37,17 @@ export default async function handler(req, res){
     if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
 
     const sess = await signIn({ email, password });
-    return res.status(200).json({ session: sess.session, user: sess.user, tenant });
+
+    // Instant Telnyx wiring: give this fresh tenant a live number from the
+    // owned pool (voice + SMS + LolaBrain + routing row) with zero friction.
+    // Best-effort only — the wizard remains the manual path.
+    const auto = await withCap(autoAssignOwnedNumber(tenant));
+
+    return res.status(200).json({
+      session: sess.session, user: sess.user,
+      tenant: { ...tenant, phone_number: auto?.assigned ? auto.phoneNumber : tenant.phone_number },
+      autoProvisioned: auto
+    });
   }catch(e){
     const msg = String(e&&e.message||e);
     const code = /already registered|exists/i.test(msg) ? 409 : 500;

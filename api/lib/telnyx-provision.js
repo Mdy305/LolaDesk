@@ -182,6 +182,50 @@ export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist 
 }
 
 /**
+ * Best-effort instant onboarding: give a brand-new tenant a live number the
+ * moment their workspace is created by attaching the first Telnyx number this
+ * account owns that isn't already tracked — no purchase, no credit, no wizard.
+ *
+ * Safety: the "tracked" set covers tenant_numbers routing rows AND the legacy
+ * tenants.phone_number column, so another salon's active line can never be
+ * grabbed. Fail-soft: signup must succeed even when Telnyx is down, the key is
+ * missing, or every owned number is in use — the owner can always pick or port
+ * a number in the wizard instead.
+ *
+ * @returns {Promise<{assigned:boolean, phoneNumber?:string, reason?:string}>}
+ */
+export async function autoAssignOwnedNumber(tenant){
+  if(!tenant?.id) return { assigned:false, reason:'no-tenant' };
+  if(!process.env.TELNYX_API_KEY) return { assigned:false, reason:'telnyx-not-configured' };
+  try{
+    const owned = await listOwnedNumbers();
+    if(!owned.length) return { assigned:false, reason:'no-owned-numbers' };
+
+    const c = db();
+    if(!c) return { assigned:false, reason:'database-not-configured' };
+
+    // Numbers already in use: tenant_numbers routing rows AND the legacy
+    // tenants.phone_number column (a tenant may predate the routing table).
+    const tracked = new Set();
+    const [routes, legacy] = await Promise.all([
+      c.from('tenant_numbers').select('phone_number'),
+      c.from('tenants').select('phone_number')
+    ]);
+    (routes?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+    (legacy?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+
+    const free = owned.find(n => !tracked.has(String(n.phone_number)));
+    if(!free) return { assigned:false, reason:'no-untracked-numbers' };
+
+    const result = await attachOwnedNumberForTenant(tenant, free.phone_number);
+    return { assigned:true, phoneNumber: result.phoneNumber };
+  }catch(e){
+    console.warn('[PROVISION] auto-assign skipped:', String(e?.message || e).slice(0, 200));
+    return { assigned:false, reason:'error' };
+  }
+}
+
+/**
  * Fail-loud persist shared by BOTH provisioning paths (attach an owned
  * number, buy a new one). supabase-js returns DB errors as an `error` object
  * instead of throwing, so an ignored result makes provisioning look
@@ -264,5 +308,5 @@ export async function provisionNumberForTenant(tenant, { areaCode, requestedNumb
 export default {
   tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
   linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
-  listOwnedNumbers, attachOwnedNumberForTenant, provisionNumberForTenant
+  listOwnedNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant
 };

@@ -77,6 +77,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .error{min-height:18px;margin-top:10px;color:var(--danger);font-size:12px;font-weight:550}
 .fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:12px}
 
+/* ── Auto-assigned live number ── */
+.auto-num{display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(112,255,0,.07),transparent);border:1px solid rgba(112,255,0,.32);border-radius:18px;padding:20px;margin-bottom:22px;box-shadow:0 0 40px rgba(112,255,0,.08)}
+.auto-num .num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:rgba(112,255,0,.14);color:#70FF00;border:1px solid rgba(112,255,0,.4);white-space:nowrap}
+.auto-num b{font-size:20px;letter-spacing:-.02em;display:block}
+.auto-num small{font-size:12px;color:var(--muted);line-height:1.6;margin-top:3px;display:block}
+.auto-live{font-size:10px;color:#70FF00;text-transform:uppercase;letter-spacing:.18em;margin-bottom:10px}
+
 /* ── Voice preview ── */
 .voice-preview{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:28px}
 .voice-btn{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 52px;transition:transform .2s}
@@ -166,10 +173,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 
     <!-- STEP 3 · NUMBER — one decision: give Lola her line -->
     <div class="step" data-step="3">
+      <div class="auto-num" id="autoNum" style="display:none">
+        <span class="num-badge">LIVE</span>
+        <div><b id="autoNumNumber"></b><small>Lola already has her line — voice, SMS, and brain wired the moment your workspace was created. Call it now.</small></div>
+      </div>
       <div class="step-label">Lola's phone number</div>
       <h2>Give Lola<br/>her number.</h2>
       <p class="sub">One tap. We pick the best local number in your area code and Lola is live on it — voice and SMS wired automatically.</p>
-      <div class="num-search">
+      <div class="num-search" id="numSearchRow">
         <input class="input" id="areaCode" placeholder="Area code (e.g. 305) — optional" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')"/>
         <button onclick="searchNums()">Browse</button>
       </div>
@@ -177,7 +188,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <div class="owned-divider"><span>or</span></div>
       <button class="btn-g" id="ownedToggle" onclick="loadOwned()" style="width:100%">Use a number I already own</button>
       <div class="num-grid" id="ownedGrid" style="display:none"></div>
-      <div class="actions"><button class="btn-p" onclick="provisionNum()" id="provisionBtn">Give Lola her number</button></div>
+      <div class="actions">
+        <button class="btn-p" onclick="provisionNum()" id="provisionBtn">Give Lola her number</button>
+        <button class="btn-g" id="autoContinue" style="display:none" onclick="autoContinue()">She's live — continue</button>
+      </div>
       <div class="error" id="err3"></div>
       <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
     </div>
@@ -269,7 +283,24 @@ function go(n){
   document.getElementById('presenceText').textContent=c[2];
   renderProgress();
   setOrb(n===4?'thinking':n===5?'speaking':'idle');
+  if(n===3)renderAutoState();
   window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderAutoState(){
+  const auto=document.getElementById('autoNum');
+  if(!S.autoAssigned){if(auto)auto.style.display='none';return;}
+  document.getElementById('autoNumNumber').textContent=fmtPhone(S.autoAssigned);
+  auto.style.display='flex';
+  document.getElementById('numSearchRow').style.display='none';
+  document.getElementById('ownedToggle').style.display='none';
+  document.getElementById('provisionBtn').style.display='none';
+  document.getElementById('autoContinue').style.display='block';
+}
+function autoContinue(){
+  document.getElementById('doneNum').textContent=fmtPhone(S.autoAssigned);
+  document.getElementById('doneCopy').textContent='Call '+fmtPhone(S.autoAssigned)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
+  renderEmbed();
+  go(5);setOrb('speaking');
 }
 function v(id){return(document.getElementById(id)||{}).value||'';}
 function fmtPhone(n){return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3')||n;}
@@ -320,6 +351,7 @@ async function createAccount(){
     S.slug=d.tenant?.slug||'';
     localStorage.setItem('loladesk_token',S.token);
     if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
+    if(d.autoProvisioned?.assigned&&d.autoProvisioned.phoneNumber){S.autoAssigned=d.autoProvisioned.phoneNumber;S.selectedNumber=S.autoAssigned;}
     go(3);
   }catch(e){err.textContent=e.message||'Something went wrong.';btn.disabled=false;btn.textContent='Create workspace';}
 }

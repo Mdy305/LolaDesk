@@ -10,6 +10,17 @@
 import { getUserFromToken, bearer } from '../../lib/auth.js';
 import { resolveTenantForUser } from '../../lib/tenant-access.js';
 import { provisionTenantForUser } from '../../lib/db.js';
+import { autoAssignOwnedNumber } from '../../lib/telnyx-provision.js';
+
+// Same hard cap as the email path: instant Telnyx wiring must never slow
+// down or break workspace creation.
+const AUTO_ASSIGN_CAP_MS = 4000;
+function withCap(promise){
+  return Promise.race([
+    promise,
+    new Promise(r => setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS))
+  ]);
+}
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,7 +39,13 @@ export default async function handler(req, res){
     const tenant = await provisionTenantForUser(user, {});
     if(!tenant) return res.status(500).json({ error: 'Could not provision workspace' });
 
-    return res.status(200).json({ tenant, created: true });
+    const auto = await withCap(autoAssignOwnedNumber(tenant));
+
+    return res.status(200).json({
+      tenant: { ...tenant, phone_number: auto?.assigned ? auto.phoneNumber : tenant.phone_number },
+      created: true,
+      autoProvisioned: auto
+    });
   }catch(e){
     return res.status(500).json({ error: String(e && e.message || e) });
   }
