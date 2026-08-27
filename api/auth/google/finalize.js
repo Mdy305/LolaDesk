@@ -14,12 +14,12 @@ import { autoAssignOwnedNumber } from '../../lib/telnyx-provision.js';
 
 // Same hard cap as the email path: instant Telnyx wiring must never slow
 // down or break workspace creation.
-const AUTO_ASSIGN_CAP_MS = 4000;
+const AUTO_ASSIGN_CAP_MS = 6000;
 function withCap(promise){
-  return Promise.race([
-    promise,
-    new Promise(r => setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS))
-  ]);
+  let timer;
+  const cap = new Promise(r => { timer = setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS); });
+  // clearTimeout on either outcome so a won race doesn't hold the event loop
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
 }
 
 export default async function handler(req, res){

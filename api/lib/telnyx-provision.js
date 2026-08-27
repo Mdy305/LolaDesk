@@ -170,11 +170,16 @@ export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist 
   const rec = (found?.data || []).find(n => n?.phone_number === e164);
   if(!rec?.id) throw new Error(e164 + ' is not on this Telnyx account — first buy or port it into Telnyx, then come back.');
 
-  // 2. Attach voice connection + SMS profile + LolaBrain (all idempotent PATCHes).
-  const voiceLinked = await linkVoiceConnection(rec.id);
-  const smsLinked = await linkMessagingProfile(rec.id);
-  const brainLinked = await linkLolaBrain(rec.id);
-  await setDynamicVariablesWebhook();
+  // 2. Attach voice connection + SMS profile + LolaBrain + dynvars webhook.
+  //    All are idempotent and none throw (they warn + return false on failure),
+  //    so run them in parallel — keeps signup-time auto-assignment inside its
+  //    latency budget instead of stacking five sequential Telnyx round trips.
+  const [voiceLinked, smsLinked, brainLinked] = await Promise.all([
+    linkVoiceConnection(rec.id),
+    linkMessagingProfile(rec.id),
+    linkLolaBrain(rec.id),
+    setDynamicVariablesWebhook()
+  ]);
 
   if(persist) await persistProvisioning(tenant, { phoneNumber: e164, phoneNumberId: rec.id, texmlAppId: process.env.TELNYX_VOICE_APP_ID || null });
 

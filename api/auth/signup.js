@@ -8,14 +8,15 @@ import { createUser, signIn } from '../lib/auth.js';
 import { provisionTenantForUser } from '../lib/db.js';
 import { autoAssignOwnedNumber } from '../lib/telnyx-provision.js';
 
-// Auto-assignment must never slow down or break signup. Cap it at 4s; on
-// timeout the tenant simply keeps no number and can wire one in the wizard.
-const AUTO_ASSIGN_CAP_MS = 4000;
+// Auto-assignment must never slow down or break signup. Cap it at 6s (the
+// parallel Telnyx links usually finish in ~2s, but cold starts need margin);
+// on timeout the tenant simply keeps no number and can wire one in the wizard.
+const AUTO_ASSIGN_CAP_MS = 6000;
 function withCap(promise){
-  return Promise.race([
-    promise,
-    new Promise(r => setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS))
-  ]);
+  let timer;
+  const cap = new Promise(r => { timer = setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS); });
+  // clearTimeout on either outcome so a won race doesn't hold the event loop
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
 }
 
 export default async function handler(req, res){
