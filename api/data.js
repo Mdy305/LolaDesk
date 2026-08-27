@@ -73,8 +73,11 @@ export default async function handler(req,res){
         const { data=[] } = await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
         return res.status(200).json({ tenant:tenant.name, calls:(data||[]).map(x=>({
           id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at), createdAt:x.created_at,
-          outcome:x.status||x.outcome||'handled', durationSec:x.duration_seconds||x.duration_sec||x.duration||0, // canonical column is status/duration_seconds
-          summary:x.recording_url||'', booked:(x.status==='booked')||!!x.booked // no `booked` column exists — derive from status
+          outcome:x.outcome||x.status||'handled', // insight outcome first, then call state
+          durationSec:x.duration_seconds||x.duration_sec||x.duration||0,
+          summary:x.summary||x.recording_url||'', // post-call insight summary, fallback recording_url
+          transcript:x.transcript||null,          // [{role,content}] from the transcript insight
+          booked:(x.outcome==='booked')||(x.status==='booked')||!!x.booked
         })) });
       }
       case 'inbox': {

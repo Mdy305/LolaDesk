@@ -1566,3 +1566,29 @@ begin
       for all using (is_tenant_member(tenant_id));
   end if;
 end $$;
+
+-- 20260827_call_insights.sql — post-call insights land on the Calls page
+alter table public.calls add column if not exists summary       text;
+alter table public.calls add column if not exists outcome       text;
+alter table public.calls add column if not exists transcript    jsonb;
+alter table public.calls add column if not exists call_session_id text;
+alter table public.calls add column if not exists call_leg_id   text;
+alter table public.calls add column if not exists insight_id    text;
+alter table public.calls add column if not exists insight_at    timestamptz;
+
+create unique index if not exists calls_insight_id_unique
+  on public.calls(insight_id) where insight_id is not null;
+
+create index if not exists idx_calls_call_session
+  on public.calls(call_session_id) where call_session_id is not null;
+
+create table if not exists public.call_sessions (
+  call_control_id text primary key,
+  tenant_id       uuid not null references public.tenants(id) on delete cascade,
+  from_number     text,
+  to_number       text,
+  created_at      timestamptz not null default now()
+);
+
+alter table public.call_sessions enable row level security;
+create index if not exists idx_call_sessions_tenant on public.call_sessions(tenant_id);

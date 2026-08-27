@@ -1,0 +1,246 @@
+/**
+ * tests/call-insights.test.mjs — Telnyx post-call insights → Calls page.
+ *
+ * Run: node tests/call-insights.test.mjs
+ *
+ * Exercises the real parse/classify/persist pipeline (api/lib/call-insights.js)
+ * and the signed webhook route (api/webhooks/telnyx-insights.js) against the
+ * in-memory FakeSupabase: extraction, shape-dispatch classification, updating
+ * an existing calls row, creating one via the call_sessions map, ignoring
+ * unresolvable calls, exactly-once dedupe by event id, and signature gating.
+ */
+
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { test } from 'node:test';
+import assert from 'node:assert';
+import { FakeSupabase } from './fake-supabase.js';
+
+const API_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const STUB_DIR = join(API_ROOT, 'node_modules', '@supabase', 'supabase-js');
+mkdirSync(STUB_DIR, { recursive: true });
+writeFileSync(join(STUB_DIR, 'package.json'), JSON.stringify({
+  name: '@supabase/supabase-js', version: '0.0.0-test', type: 'module',
+  main: 'index.js', exports: { '.': './index.js' }
+}, null, 2));
+writeFileSync(join(STUB_DIR, 'index.js'), [
+  '// Generated test double — see tests/call-insights.test.mjs',
+  'export function createClient() {',
+  '  const fake = globalThis.__LOLA_FAKE_SUPABASE__;',
+  '  if (!fake) throw new Error("No fake Supabase registered");',
+  '  return fake;',
+  '}', ''
+].join('\n'));
+
+const fake = new FakeSupabase();
+globalThis.__LOLA_FAKE_SUPABASE__ = fake;
+
+process.env.APP_URL = 'https://www.loladesk.com';
+process.env.SUPABASE_URL = 'https://fake.supabase.co';
+process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
+delete process.env.TELNYX_PUBLIC_KEY; // non-production: signature check skipped
+
+const { parseInsightsEvent, classifyResults, persistCallInsights } = await import('../api/lib/call-insights.js');
+const { default: handler } = await import('../api/webhooks/telnyx-insights.js');
+
+const TENANT = '11111111-1111-1111-1111-111111111111';
+
+function fresh(){
+  fake.reset();
+  fake.seed('tenants', [{ id: TENANT, name: 'MMΛ Salon', slug: 'mmsalon' }]);
+}
+
+function summaryResult(){
+  return { insight_id: 'ins-summary', result: JSON.stringify({
+    summary: 'Booked a balayage for Friday at 2pm.',
+    outcome: 'booked', booked: true, duration_seconds: 142
+  }) };
+}
+function transcriptResult(){
+  return { insight_id: 'ins-transcript', result: { transcript: [
+    { role: 'assistant', content: 'Hi, this is Lola. How can I help you?' },
+    { role: 'client', content: 'I want to book a balayage Friday.' }
+  ] } };
+}
+function eventBody(overrides = {}){
+  return {
+    data: {
+      event_type: 'call.conversation_insights.generated',
+      id: overrides.eventId || 'evt-1',
+      occurred_at: '2026-08-27T18:02:49.371Z',
+      payload: {
+        call_control_id: overrides.callControlId || 'v3:ctrl-1',
+        call_session_id: 'sess-1',
+        call_leg_id: 'leg-1',
+        results: overrides.results || [summaryResult(), transcriptResult()]
+      }
+    }
+  };
+}
+
+function resMock(){
+  const r = { statusCode: 200, headers: {}, body: null };
+  r.setHeader = (k, v) => { r.headers[k] = v; return r; };
+  r.status = (c) => { r.statusCode = c; return r; };
+  r.json = (j) => { r.body = j; return r; };
+  r.end = (b) => { if (b) r.body = b; return r; };
+  return r;
+}
+
+// ── parse ───────────────────────────────────────────────────────────────────
+test('parseInsightsEvent extracts ids, event id, and results', () => {
+  const p = parseInsightsEvent(eventBody());
+  assert.equal(p.eventType, 'call.conversation_insights.generated');
+  assert.equal(p.eventId, 'evt-1');
+  assert.equal(p.callControlId, 'v3:ctrl-1');
+  assert.equal(p.callSessionId, 'sess-1');
+  assert.equal(p.callLegId, 'leg-1');
+  assert.equal(p.results.length, 2);
+});
+
+test('parseInsightsEvent survives malformed envelopes', () => {
+  const p = parseInsightsEvent({});
+  assert.equal(p.callControlId, null);
+  assert.deepEqual(p.results, []);
+});
+
+// ── classify ────────────────────────────────────────────────────────────────
+test('classifyResults merges summary + transcript results by shape', () => {
+  const c = classifyResults([summaryResult(), transcriptResult()]);
+  assert.equal(c.summary, 'Booked a balayage for Friday at 2pm.');
+  assert.equal(c.outcome, 'booked');
+  assert.equal(c.booked, true);
+  assert.equal(c.durationSeconds, 142);
+  assert.equal(c.transcript.length, 2);
+  assert.equal(c.transcript[0].role, 'assistant');
+});
+
+test('classifyResults handles plain-string results and empty input', () => {
+  assert.equal(classifyResults([{ result: 'Caller asked about pricing' }]).summary, 'Caller asked about pricing');
+  const c = classifyResults([]);
+  assert.equal(c.summary, null);
+  assert.equal(c.transcript, null);
+});
+
+// ── persist ─────────────────────────────────────────────────────────────────
+test('persistCallInsights updates an existing calls row matched by control id', async () => {
+  fresh();
+  fake.seed('calls', [{ id: 'call-1', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-1', status: 'completed', duration_seconds: 60 }]);
+  const parsed = parseInsightsEvent(eventBody());
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'updated');
+  assert.equal(r.callId, 'call-1');
+  const row = fake.all('calls')[0];
+  assert.equal(row.summary, 'Booked a balayage for Friday at 2pm.');
+  assert.equal(row.outcome, 'booked');
+  assert.equal(row.insight_id, 'evt-1');
+  assert.equal(row.call_session_id, 'sess-1');
+  assert.deepEqual(row.transcript, transcriptResult().result.transcript);
+});
+
+test('persistCallInsights creates a row via the call_sessions map when no call row exists', async () => {
+  fresh();
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-9', tenant_id: TENANT, from_number: '+19294568227', to_number: '+14107848940' }]);
+  const parsed = parseInsightsEvent(eventBody({ callControlId: 'v3:ctrl-9', eventId: 'evt-9' }));
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'created');
+  const rows = fake.all('calls');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].tenant_id, TENANT);
+  assert.equal(rows[0].from_number, '+19294568227');
+  assert.equal(rows[0].to_number, '+14107848940');
+  assert.equal(rows[0].direction, 'inbound');
+  assert.equal(rows[0].status, 'completed');
+  assert.equal(rows[0].summary, 'Booked a balayage for Friday at 2pm.');
+});
+
+test('persistCallInsights ignores calls with no resolvable tenant', async () => {
+  fresh(); // no call_sessions, no calls rows
+  const parsed = parseInsightsEvent(eventBody());
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'ignored');
+  assert.ok(String(r.reason).includes('tenant'));
+  assert.equal(fake.all('calls').length, 0);
+});
+
+test('persistCallInsights skips a redelivered event id (exactly-once)', async () => {
+  fresh();
+  fake.seed('calls', [{ id: 'call-1', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-1', insight_id: 'evt-1' }]);
+  const parsed = parseInsightsEvent(eventBody());
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'duplicate');
+  assert.equal(r.callId, 'call-1');
+  assert.equal(fake.all('calls').length, 1); // no second row
+});
+
+test('persistCallInsights no-ops without a database', async () => {
+  const r = await persistCallInsights(null, parseInsightsEvent(eventBody()), {});
+  assert.equal(r.mode, 'ignored');
+});
+
+// ── route ───────────────────────────────────────────────────────────────────
+test('webhook returns 200 with created mode for a valid event', async () => {
+  fresh();
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-1', tenant_id: TENANT, from_number: '+19294568227', to_number: '+14107848940' }]);
+  const req = { method: 'POST', body: JSON.stringify(eventBody()) };
+  const res = resMock();
+  await handler(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.mode, 'created');
+});
+
+test('webhook acknowledges and ignores unknown calls without crashing', async () => {
+  fresh();
+  const req = { method: 'POST', body: JSON.stringify(eventBody()) };
+  const res = resMock();
+  await handler(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.mode, 'ignored');
+});
+
+test('webhook rejects garbage and non-POST', async () => {
+  fresh();
+  const bad = resMock();
+  await handler({ method: 'POST', body: 'not json{{{' }, bad);
+  assert.equal(bad.statusCode, 400);
+  const wrong = resMock();
+  await handler({ method: 'GET' }, wrong);
+  assert.equal(wrong.statusCode, 405);
+});
+
+test('webhook enforces the signature when TELNYX_PUBLIC_KEY is set', async () => {
+  fresh();
+  process.env.TELNYX_PUBLIC_KEY = 'test-public-key';
+  try{
+    const req = { method: 'POST', body: JSON.stringify(eventBody()) }; // no signature headers
+    const res = resMock();
+    await handler(req, res);
+    assert.equal(res.statusCode, 401);
+  }finally{
+    delete process.env.TELNYX_PUBLIC_KEY;
+  }
+});
+
+// ── agent-variables correlation ─────────────────────────────────────────────
+test('agent-variables records the call_sessions mapping for a resolved tenant', async () => {
+  fresh();
+  fake.seed('tenant_numbers', [{ tenant_id: TENANT, phone_number: '+14107848940', status: 'active' }]);
+  fake.seed('tenants', [{ id: TENANT, name: 'MMΛ Salon', slug: 'mmsalon', phone_number: '+14107848940' }]);
+  const { default: av } = await import('../api/agent-variables.js');
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({
+      data: { payload: { to: '+14107848940', from: '+19294568227', call_control_id: 'v3:ctrl-av' } }
+    })
+  };
+  const res = resMock();
+  await av(req, res);
+  assert.equal(res.statusCode, 200);
+  const sess = fake.all('call_sessions').find(s => s.call_control_id === 'v3:ctrl-av');
+  assert.ok(sess, 'session mapping recorded');
+  assert.equal(sess.tenant_id, TENANT);
+  assert.equal(sess.from_number, '+19294568227');
+});

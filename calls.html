@@ -82,6 +82,7 @@ function dirIcon(d){
   return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
 }
 function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function render(){
   if(!CALLS.length){ 
     document.getElementById('callList').innerHTML=`
@@ -115,6 +116,7 @@ function showDetail(i){
     <div class="detail-title">${c.name}</div>
     <div class="detail-sub">${c.num} · ${c.time}</div>
     ${c.summary?`<div class="transcript"><div class="t-line lola">${c.summary}</div></div>`:''}
+    ${Array.isArray(c.transcript)&&c.transcript.length?c.transcript.map(t=>`<div class="t-line ${t.role==='assistant'?'lola':'caller'}"><span class="who">${t.role==='assistant'?'Lola':'Caller'}</span> ${esc(t.content||'')}</div>`).join(''):''}
     <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${c.outcome}</span></div>
     <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${c.dur}</span></div>
     <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service||'—'}</span></div>`;
@@ -127,6 +129,7 @@ function showDetail(i){
     name: c.from || 'Caller', num: c.from || '', dir: c.booked?'in':'in',
     outcome: c.booked?'Booked':(c.outcome||'Handled'),
     service: c.summary ? '' : '', summary: c.summary||'',
+    transcript: c.transcript || null,
     time: c.when||'', dur: fmtDur(c.durationSec), durationSec: c.durationSec||0,
     createdAt: c.createdAt||null, booked: !!c.booked
   }));

@@ -56,6 +56,27 @@ export default async function handler(req, res){
     // salon's name/services, never another tenant's data.
     const routing = await resolveInboundTenant({ to: toNumber, from: fromNumber });
     const tenant = routing.status === 'resolved' ? routing.tenant : null;
+
+    // ── POST-CALL INSIGHTS CORRELATION ──
+    // The post-call insights webhook (call.conversation_insights.generated)
+    // arrives with only call ids — no dialed number — so record this
+    // conversation's call_control_id → tenant mapping now, while the dialed
+    // number is known. Best-effort: never let this break the 1s response.
+    if(tenant?.id){
+      const callControlId = body?.data?.payload?.call_control_id || body?.call_control_id || null;
+      if(callControlId){
+        try{
+          const c2 = db();
+          if(c2) await c2.from('call_sessions').upsert({
+            call_control_id: callControlId,
+            tenant_id: tenant.id,
+            from_number: fromNumber || null,
+            to_number: toNumber || null
+          }, { onConflict: 'call_control_id' });
+        }catch(e){ /* never block the variable fetch */ }
+      }
+    }
+
     if(!tenant){
       return res.status(200).json({
         dynamic_variables: {
