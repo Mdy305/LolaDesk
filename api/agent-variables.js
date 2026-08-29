@@ -4,7 +4,7 @@
  * speaking; we resolve which tenant owns the dialed number and return
  * that salon's real data from the database.
  */
-import { getClientByPhone, tenantKnowledgePrompt, db } from './lib/db.js';
+import { getClientByPhone, getClientMemory, tenantKnowledgePrompt, db } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 
 function pickToNumber(b){
@@ -105,6 +105,25 @@ export default async function handler(req, res){
           if(st?.name) client.preferred_stylist = st.name;
         }
         memory = callerMemory(client);
+        // ── LOLA REMEMBERS: fold the caller's LAST call memory (written by
+        // the post-call insights pipeline, keyed 'last_call') into the brief
+        // so the next call repeats what happened — "last call you booked a
+        // balayage". Best-effort; a memory read failure never blocks the
+        // 1s dynamic-variables response.
+        const mem = await getClientMemory(tenant.id, fromNumber);
+        const lastCall = mem.find(m => m.key === 'last_call');
+        if(lastCall?.value){
+          const v = typeof lastCall.value === 'string' ? JSON.parse(lastCall.value) : lastCall.value;
+          const outcome = String(v?.outcome || '').trim();
+          const summary = String(v?.summary || '').trim();
+          const booked = v?.booked ? 'booked' : null;
+          const tail = [booked, outcome, summary].filter(Boolean).join(' · ');
+          if(tail){
+            memory.caller_known = 'true';
+            memory.caller_brief = (memory.caller_brief ? memory.caller_brief + ' ' : '') +
+              'Last call: ' + tail + '.';
+          }
+        }
       }
     }catch(e){}
 

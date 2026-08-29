@@ -270,3 +270,54 @@ test('agent-variables records the call_sessions mapping for a resolved tenant', 
   assert.equal(sess.tenant_id, TENANT);
   assert.equal(sess.from_number, '+19294568227');
 });
+
+// ── Lola remembers: last_call memory → next call's caller_brief ─────────────
+test('agent-variables repeats the caller\u2019s last_call memory in the next caller_brief', async () => {
+  fresh();
+  fake.seed('tenant_numbers', [{ tenant_id: TENANT, phone_number: '+14107848940', status: 'active' }]);
+  fake.seed('tenants', [{ id: TENANT, name: 'MMΛ Salon', slug: 'mmsalon', phone_number: '+14107848940' }]);
+  // The client exists and has a last_call memory row (written by the
+  // post-call insights pipeline, keyed 'last_call' under the caller\u2019s E.164).
+  fake.seed('clients', [{ id: 'cli-mem', tenant_id: TENANT, phone: '+19294568227', first_name: 'Sarah', last_name: 'Kim', name: 'Sarah Kim' }]);
+  fake.seed('client_memories', [{
+    tenant_id: TENANT,
+    client_phone: '+19294568227',
+    key: 'last_call',
+    value: { outcome: 'booked', summary: 'Booked a balayage for Friday at 2pm.', booked: true },
+    created_at: new Date().toISOString()
+  }]);
+  const { default: av } = await import('../api/agent-variables.js');
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({
+      data: { payload: { to: '+14107848940', from: '+19294568227', call_control_id: 'v3:ctrl-mem' } }
+    })
+  };
+  const res = resMock();
+  await av(req, res);
+  assert.equal(res.statusCode, 200);
+  const vars = res.body.dynamic_variables;
+  assert.equal(vars.caller_known, 'true');
+  assert.equal(vars.caller_name, 'Sarah Kim');
+  assert.ok(vars.caller_brief.includes('Last call:'), 'brief repeats the last call');
+  assert.ok(vars.caller_brief.includes('Booked a balayage for Friday at 2pm.'), 'brief carries the summary');
+  assert.ok(vars.caller_brief.includes('booked'), 'brief carries the outcome');
+});
+
+test('agent-variables with no last_call memory stays neutral (no phantom brief)', async () => {
+  fresh();
+  fake.seed('tenant_numbers', [{ tenant_id: TENANT, phone_number: '+14107848940', status: 'active' }]);
+  fake.seed('tenants', [{ id: TENANT, name: 'MMΛ Salon', slug: 'mmsalon', phone_number: '+14107848940' }]);
+  fake.seed('clients', [{ id: 'cli-mem2', tenant_id: TENANT, phone: '+19294568227', first_name: 'Sarah', last_name: 'Kim', name: 'Sarah Kim' }]);
+  fake.seed('client_memories', []);
+  const { default: av } = await import('../api/agent-variables.js');
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({ data: { payload: { to: '+14107848940', from: '+19294568227' } } })
+  };
+  const res = resMock();
+  await av(req, res);
+  assert.equal(res.statusCode, 200);
+  const vars = res.body.dynamic_variables;
+  assert.ok(!String(vars.caller_brief || '').includes('Last call:'), 'no memory → no last-call tail');
+});
