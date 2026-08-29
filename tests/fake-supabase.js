@@ -240,6 +240,8 @@ class FakeQueryBuilder {
         break;
       }
       case 'insert': {
+        const failInsert = this.client._failWrites?.get(this.table);
+        if (failInsert) { result = { data: null, error: { message: failInsert } }; break; }
         const inserted = this._values.map(v => this._withDefaults(v));
         this.rows.push(...inserted);
         result = { data: this._selectCols ? inserted : null, error: null };

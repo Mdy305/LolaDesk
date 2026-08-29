@@ -89,7 +89,10 @@ export async function ensureBookingBaseline(tenantId){
       price: Number(s.price || 0),
       is_active: true
     }));
-    const { error: svcErr } = await c.from('services').upsert(rows, { onConflict: 'tenant_id,name' });
+    // Plain insert (like api/services.js): there is no unique (tenant_id,
+    // name) constraint on the live table, so upsert-onConflict would 42P10.
+    // Safe because this block only runs when the tenant has zero services.
+    const { error: svcErr } = await c.from('services').insert(rows);
     if(svcErr) reject(svcErr);
     seeded.push('services');
   }
