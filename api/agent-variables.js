@@ -116,7 +116,8 @@ export default async function handler(req, res){
           const v = typeof lastCall.value === 'string' ? JSON.parse(lastCall.value) : lastCall.value;
           const outcome = String(v?.outcome || '').trim();
           const summary = String(v?.summary || '').trim();
-          const booked = v?.booked ? 'booked' : null;
+          // 'booked' marker only when the outcome doesn't already say it.
+          const booked = (v?.booked && outcome.toLowerCase() !== 'booked') ? 'booked' : null;
           const tail = [booked, outcome, summary].filter(Boolean).join(' · ');
           if(tail){
             memory.caller_known = 'true';

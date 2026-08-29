@@ -302,6 +302,8 @@ test('agent-variables repeats the caller\u2019s last_call memory in the next cal
   assert.ok(vars.caller_brief.includes('Last call:'), 'brief repeats the last call');
   assert.ok(vars.caller_brief.includes('Booked a balayage for Friday at 2pm.'), 'brief carries the summary');
   assert.ok(vars.caller_brief.includes('booked'), 'brief carries the outcome');
+  // The 'booked' marker is not repeated when the outcome already says it.
+  assert.ok(!vars.caller_brief.includes('booked · booked'), 'booked marker deduped');
 });
 
 test('agent-variables with no last_call memory stays neutral (no phantom brief)', async () => {
