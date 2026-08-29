@@ -1592,3 +1592,13 @@ create table if not exists public.call_sessions (
 
 alter table public.call_sessions enable row level security;
 create index if not exists idx_call_sessions_tenant on public.call_sessions(tenant_id);
+
+-- 20260827_autopilot_callback_recovery.sql — Lola returns missed calls
+-- Cooldown stamp so the callback-recovery agent only originates one burst
+-- per salon per window, plus admit the new agent into the ledger check.
+alter table public.tenants add column if not exists callback_sent_at timestamptz;
+
+alter table public.agent_runs drop constraint if exists agent_runs_agent_check;
+alter table public.agent_runs add constraint agent_runs_agent_check check (
+  agent in ('routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery')
+);

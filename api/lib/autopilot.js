@@ -24,14 +24,19 @@
  *   5. review-request         (per tenant)    — a client's appointment just
  *        ended; Lola texts them the salon's Yelp/Google review link so real
  *        customers drive the reputation. Dedup via client memory.
+ *   6. callback-recovery      (per tenant)    — a caller rang and wasn't
+ *        served; Lola ORIGINATES a call back from the salon's line within the
+ *        window so nobody waits on Lola's voicemail. Cooldown via
+ *        tenants.callback_sent_at; reuses the shared originate core.
  *
  * Per-tenant agents respect tenants.autopilot_enabled (owners can pause
  * autonomy from Settings). Every SMS respects the client's 10DLC opt-out.
  */
 
-import { db, e164, isOptedOut, getClientMemory, setClientMemory, listTenantNumberRoutes } from './db.js';
+import { db, e164, isOptedOut, getClientMemory, setClientMemory, listTenantNumberRoutes, logUsage } from './db.js';
 import { syncTenantConnections } from './connection-sync.js';
 import { syncTenantAvailability } from './booking-sync.js';
+import { originateCallback } from './call-callback.js';
 
 // The dead 'upgrade' connection Telnyx rejects for origination. Kept in sync
 // with admin/numbers.js (REJECTED_LEGACY_CONNECTION_ID).
@@ -62,10 +67,15 @@ export const AUTOPILOT_AGENTS = {
     label: 'Review request',
     scope: 'tenant',
     description: 'Texts clients a link to the salon\'s Yelp/Google review page after their appointment ends.'
+  },
+  'callback-recovery': {
+    label: 'Missed-call callback',
+    scope: 'tenant',
+    description: 'Calls back callers who rang and weren\'t served, so nobody waits on Lola\'s voicemail.'
   }
 };
 
-export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request'];
+export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery'];
 
 const RECOVERY_COOLDOWN_MS = 6 * 3600 * 1000;   // one recovery burst per tenant per 6h
 const RECENT_WINDOW_MS = 24 * 3600 * 1000;      // look back 24h for missed calls
@@ -414,12 +424,93 @@ async function reviewRequest({ client, now }){
   };
 }
 
+// ── AGENT 6 · callback-recovery (per tenant) ──────────────────────────────
+// A caller rang and wasn't served — Lola ORIGINATES a call back from the
+// salon's own line (via the shared originate core) so nobody waits on the
+// voicemail. This complements missed-call-recovery (which texts); the two
+// can coexist because they use separate cooldown stamps. Dedup: one callback
+// per call id, recorded in client memory. Always respects the client's
+// 10DLC opt-out (call-backs are voice, but we honor a recorded opt-out).
+async function callbackRecovery({ client, now }){
+  const tenants = await enabledTenants(client, 'id,slug,name,phone_number,autopilot_enabled,callback_sent_at');
+  const since = new Date(now - RECENT_WINDOW_MS).toISOString();
+  const actions = [];
+  for (const t of tenants){
+    // Cooldown: only one callback burst per tenant per 6h.
+    if (t.callback_sent_at && (now - new Date(t.callback_sent_at).getTime()) < RECOVERY_COOLDOWN_MS) continue;
+
+    const { data: calls } = await client.from('calls')
+      .select('id,client_id,from_number,status,duration_seconds,created_at')
+      .eq('tenant_id', t.id).eq('direction', 'inbound')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false }).limit(200)
+      .then(r => r).catch(() => ({ data: [] }));
+
+    const served = (calls || []).filter(c =>
+      c.duration_seconds && c.duration_seconds > 0
+      && String(c.status || '').toLowerCase() !== 'missed'
+      && String(c.status || '').toLowerCase() !== 'no_answer');
+    if (served.length && served.length === (calls || []).length) continue; // everyone served
+
+    const unserved = (calls || []).filter(c => !served.includes(c));
+    if (!unserved.length) continue;
+
+    // Memory dedup: one callback per call id.
+    const mem = await getClientMemory(t.id, 'autopilot:').catch(() => []);
+    const already = new Set(mem.filter(m => String(m.key || '').startsWith('callback:')).map(m => String(m.key).slice('callback:'.length)));
+    const targets = unserved.filter(c => !already.has(c.id));
+    if (!targets.length) continue;
+
+    let sent = 0;
+    for (const call of targets){
+      const to = call.from_number || null;
+      if (!to){
+        actions.push({ tenant_id: t.id, call_id: call.id, status: 'skipped', reason: 'no caller number' });
+        continue;
+      }
+      try{
+        if (await isOptedOut(t.id, to)){
+          actions.push({ tenant_id: t.id, call_id: call.id, to, status: 'skipped', reason: 'opted_out' });
+          continue;
+        }
+      }catch{}
+
+      const r = await originateCallback(client, t, to);
+      if (r.error === 'no Lola line'){
+        actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no primary number' });
+        continue;
+      }
+      if (r.ok && r.call_control_id){
+        sent++;
+        try{ await setClientMemory(t.id, 'autopilot:', `callback:${call.id}`, new Date(now).toISOString()); }catch{}
+        try{ await logUsage(t.id, 'callback_recovered', 1, { call_id: call.id, to, from: r.from, connection_id: r.connection_id, call_control_id: r.call_control_id }); }catch{}
+        actions.push({ tenant_id: t.id, call_id: call.id, to, status: 'called_back' });
+      } else {
+        actions.push({ tenant_id: t.id, call_id: call.id, to, status: 'skipped', reason: r.error || 'originate failed' });
+      }
+    }
+    if (sent){
+      await client.from('tenants').update({ callback_sent_at: new Date(now).toISOString() }).eq('id', t.id).catch(() => {});
+    }
+  }
+  const calledBack = actions.filter(a => a.status === 'called_back').length;
+  return {
+    status: calledBack ? 'success' : (actions.length ? 'partial' : 'skipped'),
+    summary: calledBack
+      ? `Called back ${calledBack} missed caller(s) from their salon line across ${actions.filter(a => a.status === 'called_back').length} tenant(s)`
+      : (actions.length ? 'No callbacks placed (all skipped)' : 'No unserved calls in the window'),
+    details: { actions: actions.slice(0, 50) },
+    actions
+  };
+}
+
 const RUNNERS = {
   'routing-heal': routingHeal,
   'missed-call-recovery': missedCallRecovery,
   'rebooking': rebooking,
   'sync-self-heal': syncSelfHeal,
-  'review-request': reviewRequest
+  'review-request': reviewRequest,
+  'callback-recovery': callbackRecovery
 };
 
 // ── ledger ────────────────────────────────────────────────────────────────

@@ -109,6 +109,9 @@ function stubTelnyx() {
       sentSms.push(JSON.parse(opts.body));
       return json({ data: { id: 'msg-1' } }, 200);
     }
+    if (path === '/calls' && opts.method === 'POST') {
+      return json({ data: { call_control_id: 'v3:ap-cb1', id: 'v3:ap-cb1' } }, 200);
+    }
     throw new Error('unmocked Telnyx path: ' + path);
   };
   return { realFetch, sentSms };
@@ -138,7 +141,7 @@ test('disabled without CRON_SECRET, rejects wrong secret', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('full run: all four agents act, ledger rows written, opt-outs respected', async () => {
+test('full run: all six agents act, ledger rows written, opt-outs respected', async () => {
   seed();
   const t = stubTelnyx();
   try {
@@ -188,10 +191,15 @@ test('full run: all four agents act, ledger rows written, opt-outs respected', a
     assert.ok(review[0].text.includes('https://www.yelp.com/biz/salon-a'));
     assert.ok(review[0].text.includes('https://g.page/r/salona/review'));
 
-    // Ledger: 5 rows, one per agent, none failed.
+    // 6 · callback-recovery called back the missed caller (call1) from the
+    // salon line, but never the answered call (call2) or the paused tenant.
+    assert.equal(byAgent['callback-recovery'].status, 'success');
+    assert.equal(byAgent['callback-recovery'].actions, 1);
+
+    // Ledger: 6 rows, one per agent, none failed.
     const runs = fake.all('agent_runs');
-    assert.equal(runs.length, 5);
-    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request']) {
+    assert.equal(runs.length, 6);
+    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery']) {
       const row = runs.find(r => r.agent === a);
       assert.ok(row, `ledger row for ${a}`);
       assert.notEqual(row.status, 'failed');
