@@ -1605,3 +1605,7 @@ alter table public.agent_runs add constraint agent_runs_agent_check check (
 
 -- 20260829_tenant_instructions.sql — Lola's per-salon "special instructions"
 alter table public.tenants add column if not exists instructions text not null default '';
+
+-- 20260829_messaging_gates.sql — per-salon messaging toggles with real gates
+alter table public.tenants add column if not exists missed_call_textback boolean not null default true;
+alter table public.tenants add column if not exists review_requests      boolean not null default true;

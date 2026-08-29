@@ -91,6 +91,18 @@ test('POST persists instructions and reports nothing ignored', async () => {
   assert.equal(fake.all('tenants')[0].instructions, 'Always mention the 30% newcomer promotion.');
 });
 
+test('messaging toggles persist a real backend gate (no longer silently dropped)', async () => {
+  seed();
+  const { status, json } = await call(settingsHandler, 'POST', { missed_call_textback: false, review_requests: false });
+  assert.equal(status, 200);
+  assert.equal(json.ok, true);
+  assert.deepEqual(json.saved.sort(), ['missed_call_textback', 'review_requests'].sort());
+  assert.deepEqual(json.ignored, []);
+  const row = fake.all('tenants')[0];
+  assert.equal(row.missed_call_textback, false);
+  assert.equal(row.review_requests, false);
+});
+
 test('instructions are surfaced into Lola call prompt', async () => {
   seed('Never end a call without offering a next appointment.');
   const prompt = tenantKnowledgePrompt(fake.all('tenants')[0]);

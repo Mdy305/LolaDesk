@@ -352,10 +352,12 @@ async function syncSelfHeal({ client, now }){
 // "Write a Review" page, exactly like Podium/Birdeye. Dedup via client memory
 // (one campaign per booking) and the client's 10DLC opt-out.
 async function reviewRequest({ client, now }){
-  const tenants = await enabledTenants(client, 'id,slug,name,phone_number,autopilot_enabled,yelp_review_url,google_review_url');
+  const tenants = await enabledTenants(client, 'id,slug,name,phone_number,autopilot_enabled,yelp_review_url,google_review_url,review_requests');
   const windowStart = new Date(now - REVIEW_WINDOW_MS).toISOString();
   const actions = [];
   for (const t of tenants){
+    // Owner's Settings > Messaging gate: "Review requests" must be on.
+    if (t.review_requests === false) continue;
     const yelp = String(t.yelp_review_url || '').trim();
     const google = String(t.google_review_url || '').trim();
     if (!yelp && !google) continue; // nothing to send until the owner sets links

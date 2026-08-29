@@ -543,7 +543,7 @@ export async function updateTenantFields(tenantId, patch = {}){
   if(!c || !tenantId) return null;
   // voice_id is intentionally NOT in the allow-list — Lola's voice is
   // canonical platform-wide and cannot be changed per tenant.
-  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url','instructions'];
+  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url','instructions','missed_call_textback','review_requests'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   

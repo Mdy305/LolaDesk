@@ -48,7 +48,7 @@ export default async function handler(req, res){
     const patch = {};
     // NOTE: voice_id is intentionally NOT in this list — Lola's voice is
     // canonical platform-wide and cannot be changed per tenant.
-    const KNOWN = ['name','owner_name','location','hours','booking_url','website_url','knowledge','autopilot_enabled','yelp_review_url','google_review_url','instructions'];
+    const KNOWN = ['name','owner_name','location','hours','booking_url','website_url','knowledge','autopilot_enabled','yelp_review_url','google_review_url','instructions','missed_call_textback','review_requests'];
     for(const k of KNOWN){
       if(body[k] !== undefined) patch[k] = body[k];
     }

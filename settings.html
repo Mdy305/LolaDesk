@@ -360,6 +360,10 @@ async function load(){
     setSw('swConfirm',s.confirmation_sms!==false);
     setSw('swRemind',s.reminder_sms!==false);
   }catch(e){}
+  // Missed-call text-back + review requests are on by default; reflect the
+  // real per-salon state from the tenants row.
+  setSw('swMissed',TENANT.missed_call_textback!==false);
+  setSw('swReview',TENANT.review_requests!==false);
   setSw('swAutopilot',TENANT.autopilot_enabled!==false);
   try{
     if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);

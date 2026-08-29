@@ -254,9 +254,13 @@ export default async function handler(req, res){
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
     }
-    // Second silence: warm goodbye + missed-call text-back, then hang up.
-    const bye = `No worries — I'll text you so you can book whenever suits you. Bye for now!`;
-    if(fromN){
+    // Second silence: warm goodbye + missed-call text-back (gated by the
+    // owner's Settings > Messaging toggle), then hang up.
+    const textbackEnabled = tenant.missed_call_textback !== false;
+    const bye = textbackEnabled
+      ? `No worries — I'll text you so you can book whenever suits you. Bye for now!`
+      : `No worries — have a great day, and call us back any time. Bye for now!`;
+    if(fromN && textbackEnabled){
       try{
         const textback = `Hi, it's Lola from ${tenant.name} 💗 Sorry we got cut off! I can book you right here — just tell me the service and a day that works.`;
         const r = await sendSMS({ from: toN, to: fromN, text: textback, tenantId: tenant.id });
