@@ -115,23 +115,56 @@ export async function persistCallInsights(client, parsed, classified) {
   if (eventId) patch.insight_id = eventId;
   patch.insight_at = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
 
+  let callId = null;
   try {
     if (existing?.id) {
       const { error } = await client.from('calls').update(patch).eq('id', existing.id);
       if (error) return { mode: 'error', error: String(error.message || error) };
-      return { mode: 'updated', callId: existing.id };
+      callId = existing.id;
+    } else {
+      const { data, error } = await client.from('calls').insert({
+        tenant_id: tenantId,
+        from_number: fromNumber,
+        to_number: toNumber,
+        direction: 'inbound',
+        status: 'completed',
+        ...patch
+      }).select().maybeSingle();
+      if (error) return { mode: 'error', error: String(error.message || error) };
+      callId = data?.id || null;
     }
-    const { data, error } = await client.from('calls').insert({
-      tenant_id: tenantId,
-      from_number: fromNumber,
-      to_number: toNumber,
-      direction: 'inbound',
-      status: 'completed',
-      ...patch
-    }).select().maybeSingle();
-    if (error) return { mode: 'error', error: String(error.message || error) };
-    return { mode: 'created', callId: data?.id || null };
   } catch (e) {
     return { mode: 'error', error: String(e && e.message || e) };
   }
+
+  // ── LEARN: Lola remembers every call, per caller ──
+  // The insight (summary/outcome) is written to client_memories keyed by the
+  // caller's number, so the NEXT call's caller_brief (agent-variables) can
+  // say "last call was ..." — she literally gets better every day. Tenant-
+  // scoped, never touches another salon's memory. Best-effort: a memory
+  // write failure must never fail the insights webhook itself.
+  if (callId && fromNumber && (classified.summary != null || classified.outcome != null)) {
+    try {
+      const digits = String(fromNumber).replace(/\D/g, '');
+      const phoneE = digits ? '+' + digits : fromNumber;
+      const memory = {
+        tenant_id: tenantId,
+        client_phone: phoneE,
+        key: 'last_call',
+        value: {
+          outcome: classified.outcome || null,
+          summary: classified.summary || null,
+          booked: classified.booked ?? null,
+          duration_seconds: classified.durationSeconds || null,
+          at: new Date().toISOString()
+        }
+      };
+      await client.from('client_memories').upsert(memory, { onConflict: 'tenant_id,client_phone,key' })
+        .select().maybeSingle();
+    } catch (e) {
+      /* memory write is best-effort — never fail the webhook */
+    }
+  }
+
+  return { mode: existing?.id ? 'updated' : 'created', callId };
 }

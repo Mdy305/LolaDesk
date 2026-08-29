@@ -50,6 +50,18 @@
 .t-line.caller .who{color:var(--text2)}
 .cc-sub{font-size:12px;color:var(--text3);margin-top:4px}
 .empty-cta{margin-top:10px}
+.call-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.btn-xs{padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:650;letter-spacing:.02em}
+.memory-panel{background:var(--surface2);border:0.5px solid var(--border);border-radius:12px;padding:12px 14px;margin:2px 0 10px}
+.mem-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:12.5px}
+.mem-row:last-child{border-bottom:none}
+.mem-key{font-weight:650;color:var(--pink2);flex-shrink:0}
+.mem-val{color:var(--text2);word-break:break-word}
+.mem-add{display:flex;gap:8px;margin-top:10px}
+.mem-add input{flex:1;background:var(--surface);border:0.5px solid var(--border);border-radius:9px;color:var(--text);padding:8px 11px;font:inherit;font-size:12.5px}
+.mem-empty{font-size:12px;color:var(--text3);padding:4px 0}
+.cb-note{font-size:12px;color:var(--lime,#ccff00);margin-top:6px}
+.cb-err{font-size:12px;color:#ff5a4d;margin-top:6px}
 </style>
 </head>
 <body data-page="call-center">
@@ -88,6 +100,16 @@
           <div id="callList" style="min-height:120px">
             <div class="cc-sub" style="padding:10px 2px">Loading your calls…</div>
           </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-title"><span class="dot-live"></span>Call back a client</div>
+          <div class="cc-sub" style="margin-bottom:12px">Lola calls them back from your salon line — she answers with their full context.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <input id="cbPhone" type="tel" placeholder="+1 415 555 0123" style="flex:1;min-width:220px;background:var(--surface2);border:0.5px solid var(--border);border-radius:11px;color:var(--text);padding:11px 14px;font:inherit"/>
+            <button class="btn" id="btnCallback" onclick="callBackFromInput()">Call back</button>
+          </div>
+          <div class="test-result" id="cbResult"></div>
         </div>
       </div>
 
@@ -158,21 +180,31 @@ function callRow(c, i, list){
   // recent lists never collides (getElementById returns the first match).
   const rid = (list || 'rec') + '-' + i;
   const live = isLive(c);
+  const phone = esc(c.from || '');
+  const actions = phone
+    ? `<div class="call-actions">
+        <button class="btn btn-xs" onclick="event.stopPropagation();callBack('${phone}','${rid}')" id="cbbtn-${rid}">↩ Call back</button>
+        <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();toggleMemory('${phone}','${rid}')" id="membtn-${rid}">Lola remembers</button>
+      </div>`
+    : '';
   return `<div class="call-row" onclick="toggleTranscript('${rid}')">
     <div class="call-dir ${live?'live':''}">${live
       ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
       : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>'}
     </div>
     <div class="call-info">
-      <div class="call-name">${esc(c.from||'Caller')} ${live?'<span class="pill live">Live</span>':''}</div>
+      <div class="call-name">${phone||'Caller'} ${live?'<span class="pill live">Live</span>':''}</div>
       <div class="call-meta">${esc(c.when||'')} · ${fmtDur(c.durationSec)} ${c.summary?` · ${esc(String(c.summary).slice(0,70))}${c.summary.length>70?'…':''}`:''}</div>
+      ${actions}
+      <div class="call-actions" id="cbout-${rid}"></div>
     </div>
     <div style="text-align:right">
       ${outcomePill(c.outcome)}
       <div class="call-time" style="font-size:11px;color:var(--text3);margin-top:3px">${c.booked?'✓ booked':''}</div>
     </div>
   </div>
-  <div id="tr-${rid}" style="display:none">${transcriptBlock(c)}</div>`;
+  <div id="tr-${rid}" style="display:none">${transcriptBlock(c)}</div>
+  <div id="mem-${rid}" class="memory-panel" style="display:none"></div>`;
 }
 function transcriptBlock(c){
   if(!Array.isArray(c.transcript) || !c.transcript.length) return '';
@@ -184,6 +216,112 @@ function toggleTranscript(id){
 }
 
 let CALLS = [];
+let MEM_LOADED = {};
+
+// ── Call back (Lola calls the client) ────────────────────────────────────
+// Originates a REAL Telnyx call from the salon's own line to the client's
+// number (api/call-center/callback). When the client answers, LolaBrain
+// greets them — with the caller's context from the last call already loaded.
+async function callBack(phone, rid){
+  const out = document.getElementById('cbout-' + rid);
+  const btn = document.getElementById('cbbtn-' + rid);
+  if(!phone) return;
+  if(btn){ btn.disabled = true; btn.textContent = 'Ringing…'; }
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/call-center/callback',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ to: phone })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok || !j.ok){ if(out) out.innerHTML = '<div class="cb-err">'+esc(j.error||('Call failed '+r.status))+'</div>'; return; }
+    if(out) out.innerHTML = `<div class="cb-note">✓ Calling <strong>${esc(j.to)}</strong> from ${esc(j.from)} — Lola answers. call <code>${esc(j.call_control_id||'—')}</code></div>`;
+  }catch(e){
+    if(out) out.innerHTML = '<div class="cb-err">Couldn\'t place the callback.</div>';
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '↩ Call back'; }
+  }
+}
+
+async function callBackFromInput(){
+  const input = document.getElementById('cbPhone');
+  const out = document.getElementById('cbResult');
+  const btn = document.getElementById('btnCallback');
+  const phone = (input.value||'').trim();
+  if(!phone){ if(out) out.innerHTML = '<div class="cb-err">Enter a client number first.</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Calling…';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/call-center/callback',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ to: phone })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok || !j.ok){ if(out) out.innerHTML = '<div class="cb-err">'+esc(j.error||('Call failed '+r.status))+'</div>'; return; }
+    if(out) out.innerHTML = `<div class="cb-note">✓ Calling <strong>${esc(j.to)}</strong> from ${esc(j.from)} — Lola answers with the client's full context. call <code>${esc(j.call_control_id||'—')}</code></div>`;
+  }catch(e){
+    if(out) out.innerHTML = '<div class="cb-err">Couldn\'t place the callback.</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Call back';
+  }
+}
+
+// ── Lola remembers ───────────────────────────────────────────────────────
+// Pulls the caller's client_memories (the same table the Memory page and
+// the caller_brief read) so the operator sees what Lola knows about this
+// caller, and can add a note that Lola carries into the next call.
+async function toggleMemory(phone, rid){
+  const panel = document.getElementById('mem-' + rid);
+  if(!panel) return;
+  if(panel.style.display !== 'none'){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  if(MEM_LOADED[rid]) return;
+  MEM_LOADED[rid] = true;
+  panel.innerHTML = '<div class="mem-empty">Loading what Lola remembers…</div>';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/memory?identity=' + encodeURIComponent(phone),{ headers:{ Authorization:'Bearer '+t } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    const rows = (j && j.memories) || [];
+    const html = rows.length
+      ? rows.map(m=>`<div class="mem-row"><span class="mem-key">${esc(m.key)}</span><span class="mem-val">${esc(typeof m.value==='string'?m.value:JSON.stringify(m.value))}</span></div>`).join('')
+      : '<div class="mem-empty">Lola doesn\'t remember this caller yet — add the first note and she\'ll carry it into their next call.</div>';
+    panel.innerHTML = html + `<div class="mem-add"><input id="meminput-${rid}" placeholder="What should Lola remember? (preference, visit, detail)"/><button class="btn btn-xs" onclick="rememberNote('${phone}','${rid}')">Remember</button></div>`;
+  }catch(e){
+    panel.innerHTML = '<div class="cb-err">Couldn\'t load memory.</div>';
+  }
+}
+
+async function rememberNote(phone, rid){
+  const input = document.getElementById('meminput-' + rid);
+  if(!input || !input.value.trim()) return;
+  const value = input.value.trim();
+  const btn = input.nextElementSibling;
+  btn.disabled = true;
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/memory',{
+      method:'PATCH',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ scope:'client', identity: phone, key:'operator_note', value })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok){ /* surface below */ }
+    MEM_LOADED[rid] = false;
+    await toggleMemory(phone, rid); // re-render with the new note
+  }catch(e){
+    /* ignore */
+  }finally{
+    btn.disabled = false;
+  }
+}
+
 async function loadCalls(){
   try{
     const data = await LolaData.load('calls');

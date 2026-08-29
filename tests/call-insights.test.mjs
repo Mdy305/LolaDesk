@@ -155,6 +155,32 @@ test('persistCallInsights creates a row via the call_sessions map when no call r
   assert.equal(rows[0].summary, 'Booked a balayage for Friday at 2pm.');
 });
 
+test('persistCallInsights teaches Lola: writes a last_call memory per caller', async () => {
+  fresh();
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-11', tenant_id: TENANT, from_number: '+19294568227', to_number: '+14107848940' }]);
+  const parsed = parseInsightsEvent(eventBody({ callControlId: 'v3:ctrl-11', eventId: 'evt-11' }));
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'created');
+  const memories = fake.all('client_memories');
+  assert.equal(memories.length, 1);
+  const mem = memories[0];
+  assert.equal(mem.tenant_id, TENANT);
+  assert.equal(mem.client_phone, '+19294568227');   // the CALLER, tenant-scoped
+  assert.equal(mem.key, 'last_call');
+  assert.equal(mem.value.outcome, 'booked');
+  assert.equal(mem.value.summary, 'Booked a balayage for Friday at 2pm.');
+  assert.ok(mem.value.at);
+});
+
+test('persistCallInsights does not write memory without a caller number', async () => {
+  fresh();
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-12', tenant_id: TENANT, from_number: null, to_number: '+14107848940' }]);
+  const parsed = parseInsightsEvent(eventBody({ callControlId: 'v3:ctrl-12', eventId: 'evt-12' }));
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'created');
+  assert.equal(fake.all('client_memories').length, 0);
+});
+
 test('persistCallInsights ignores calls with no resolvable tenant', async () => {
   fresh(); // no call_sessions, no calls rows
   const parsed = parseInsightsEvent(eventBody());
