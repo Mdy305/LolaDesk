@@ -266,6 +266,17 @@ const COPY=[
   ['Ready','Call her<br/>right now.','Your salon AI is live.']
 ];
 let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
+// Never let this flow dead-stop: every proxied API call gets a hard timeout
+// so a slow/failing backend can't leave a button disabled or the orb stuck
+// speaking — the worst failure is "we hit a snag, try again", never a
+// frozen page.
+function fetchJson(url,opts,timeoutMs){
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),timeoutMs||15000);
+  const p=fetch(url,Object.assign({},opts,{signal:c.signal})).then(async r=>{let d=null;try{d=await r.json();}catch(e){}return {ok:r.ok,status:r.status,b:d};});
+  p.finally(()=>clearTimeout(t));
+  return p;
+}
 const Q=new URLSearchParams(location.search);
 S.plan=['starter','pro','medspa'].includes(Q.get('plan'))?Q.get('plan'):'starter';
 S.billing=Q.get('billing')==='annual'?'annual':'monthly';
@@ -310,16 +321,25 @@ let audioEl=null;
 async function playPreview(){
   const btn=document.getElementById('voiceBtn');
   const status=document.getElementById('voiceStatus');
+  const reset=()=>{btn.classList.remove('playing');status.textContent='Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.';setOrb('idle');};
   btn.classList.add('playing');status.textContent='Lola is speaking…';
   setOrb('speaking');
   // LolaAlive.speak() speaks ONLY in her official ElevenLabs voice (no
   // fake voice). In the preview, /api/speak-lola is proxied to the live
-  // deployment so this still plays the real Lola.
-  const s=await LolaAlive.speak(document.getElementById('voiceLine').textContent);
-  if(audioEl)audioEl.pause();
-  const done=()=>{btn.classList.remove('playing');status.textContent='Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.';setOrb('idle');};
-  status.textContent = s.engine==='elevenlabs' ? 'Lola is speaking…' : "Lola's voice is warming up — tap again in a moment";
-  if(s.engine==='elevenlabs') setTimeout(done, 9000); else { btn.classList.remove('playing'); setOrb('idle'); }
+  // deployment so this still plays the real Lola. Hard time-bound so a
+  // hung backend can never leave the orb frozen "speaking".
+  const s=await Promise.race([
+    LolaAlive.speak(document.getElementById('voiceLine').textContent),
+    new Promise(resolve=>setTimeout(()=>resolve({engine:'unavailable'}),8000))
+  ]);
+  if(s?.engine==='elevenlabs'){
+    if(audioEl)audioEl.pause();
+    status.textContent='Lola is speaking…';
+    setTimeout(reset,9000);
+  }else{
+    status.textContent="Lola's voice isn't reachable right now — it stays exactly the same brand voice everywhere.";
+    reset();
+  }
 }
 async function playDone(){
   const btn=document.getElementById('doneVoiceBtn');
@@ -344,16 +364,17 @@ async function createAccount(){
   if(password.length<8){err.textContent='Password must be at least 8 characters.';return;}
   err.textContent='';btn.disabled=true;btn.textContent='Creating…';
   try{
-    const r=await fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
-    const d=await r.json();
-    if(!d.ok&&!d.token&&!d.session)throw new Error(d.error||'Signup failed');
+    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
+    const d=r.b;
+    if(!r.ok&&!d?.token&&!d?.session)throw new Error(d?.error||'Signup failed');
     S.token=d.token||d.session?.access_token||'';
     S.slug=d.tenant?.slug||'';
     localStorage.setItem('loladesk_token',S.token);
     if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
     if(d.autoProvisioned?.assigned&&d.autoProvisioned.phoneNumber){S.autoAssigned=d.autoProvisioned.phoneNumber;S.selectedNumber=S.autoAssigned;}
     go(3);
-  }catch(e){err.textContent=e.message||'Something went wrong.';btn.disabled=false;btn.textContent='Create workspace';}
+  }catch(e){err.textContent=(e.name==='AbortError'?'The network timed out — check your connection and try again.':e.message)||'Something went wrong.';}
+  finally{btn.disabled=false;btn.textContent='Create workspace';}
 }
 
 // ── STEP 3 · NUMBER ──────────────────────────────────────────────
@@ -364,8 +385,8 @@ async function searchNums(){
   grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Searching…</div>';
   try{
     const url='/api/provision-number'+(areaCode?'?areaCode='+areaCode:'');
-    const r=await fetch(url,{headers:{Authorization:'Bearer '+S.token}});
-    const d=await r.json();
+    const r=await fetchJson(url,{headers:{Authorization:'Bearer '+S.token}});
+    const d=r.b||{};
     if(!d.ok||!d.numbers?.length)throw new Error(d.error||'No numbers found');
     S.selectedNumber=d.numbers[0].phone_number;
     grid.innerHTML=d.numbers.slice(0,6).map(n=>'<div class="num-card'+(n.phone_number===S.selectedNumber?' on':'')+'" onclick="selNum(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+'</div><div class="num-meta">'+(n.region||'United States')+'</div></div><div class="num-price">'+(n.monthly_cost||'~$2/mo')+'</div></div>').join('');
@@ -383,8 +404,8 @@ async function loadOwned(){
   btn.textContent='Hide my numbers';
   grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Loading your Telnyx numbers…</div>';
   try{
-    const r=await fetch('/api/provision-number',{headers:{Authorization:'Bearer '+S.token}});
-    const d=await r.json();
+    const r=await fetchJson('/api/provision-number',{headers:{Authorization:'Bearer '+S.token}});
+    const d=r.b;
     const owned=(d.owned||[]).filter(n=>n.phone_number);
     if(!owned.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">No numbers on this Telnyx account yet — buy one below.</div>';return;}
     const order=owned.sort((a,b)=>(a.status==='active'?0:1)-(b.status==='active'?0:1));
@@ -443,9 +464,9 @@ function mark(id,state,detail){
 async function runActivation(){
   try{
     mark('s-num','running');
-    const r=await fetch('/api/provision-number',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({phone_number:S.selectedNumber,use_existing:!!S.useExisting})});
-    const d=await r.json();
-    if(!d.ok)throw new Error(d.error||'Provisioning failed');
+    const r=await fetchJson('/api/provision-number',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({phone_number:S.selectedNumber,use_existing:!!S.useExisting})},25000);
+    const d=r.b||{};
+    if(!r.ok||!d.ok)throw new Error(d.error||(d.message||'Provisioning failed'));
     if(S.useExisting){const row=document.getElementById('s-num');if(row){row.querySelector('b').textContent='Attaching your number';row.querySelector('small').textContent='Linking your existing number to LolaDesk — no purchase';}}
     mark('s-num','done',fmtPhone(d.phoneNumber)+(d.attachedExisting?' — linked, already yours':' — purchased'));
     mark('s-voice','done','Voice webhook connected');
@@ -463,7 +484,7 @@ async function runActivation(){
     setTimeout(()=>{go(5);setOrb('speaking');},900);
   }catch(e){
     clearInterval(meterTimer);
-    document.getElementById('err4').textContent=e.message||'Activation failed.';
+    document.getElementById('err4').textContent=(e.name==='AbortError'?'Provisioning timed out — your number is still safe. Please try again.':e.message)||'Activation failed.';
     document.getElementById('meterCopy').textContent='We hit a snag — try again.';
     setOrb('idle');
   }
