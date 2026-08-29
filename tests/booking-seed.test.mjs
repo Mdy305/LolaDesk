@@ -79,7 +79,7 @@ test('seeds the full booking baseline for a bookless tenant from its menu', asyn
   assert.ok(fake.all('staff_schedules').every(r => r.staff_id === fake.all('staff')[0].id));
 });
 
-test('idempotent: a second run short-circuits on booking_settings presence', async () => {
+test('idempotent: a second run short-circuits once the full baseline is present', async () => {
   seedTenant();
   await ensureBookingBaseline(T1);
   const before = {
@@ -105,14 +105,57 @@ test('falls back to one default service when the owner has no menu', async () =>
   assert.equal(fake.all('staff').length, 1);
 });
 
-test('does not seed at all when the tenant is already bookable', async () => {
+test('does not seed at all when the tenant is fully bookable (all baseline pieces present)', async () => {
   seedTenant();
+  // A truly bookable tenant has every piece: settings, services, staff + schedules.
   fake.seed('booking_settings', [{ tenant_id: T1, timezone: 'America/New_York' }]);
+  fake.seed('services', [{ id: 'svc1', tenant_id: T1, name: 'Balayage', duration_minutes: 90, price: 180 }]);
+  const staffId = fake.nextId('staff');
+  fake.seed('staff', [{ id: staffId, tenant_id: T1, name: 'Jamie', role: 'Stylist' }]);
+  fake.seed('staff_schedules', [1,2,3,4,5,6,0].map(day => ({ staff_id: staffId, tenant_id: T1, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' })));
+
   const out = await ensureBookingBaseline(T1);
   assert.deepEqual(out.seeded, []);
   assert.equal(out.skipped, 'present');
-  assert.equal(fake.all('services').length, 0);
-  assert.equal(fake.all('staff').length, 0);
+  assert.equal(fake.all('services').length, 1);
+  assert.equal(fake.all('staff').length, 1);
+});
+
+test('heals a tenant that has settings + services + staff but is missing schedules', async () => {
+  seedTenant();
+  fake.seed('booking_settings', [{ tenant_id: T1, timezone: 'America/New_York' }]);
+  fake.seed('services', [{ id: 'svc1', tenant_id: T1, name: 'Balayage', duration_minutes: 90, price: 180 }]);
+  const staffId = fake.nextId('staff');
+  fake.seed('staff', [{ id: staffId, tenant_id: T1, name: 'Jamie', role: 'Stylist' }]);
+  fake.seed('staff_schedules', []); // the actual gap backfilled in production
+
+  const out = await ensureBookingBaseline(T1);
+  assert.deepEqual(out.seeded, ['staff_schedules']);
+  assert.equal(fake.all('staff_schedules').length, 7);
+  assert.ok(fake.all('staff_schedules').every(r => r.staff_id === staffId));
+  // Existing pieces are untouched — no duplicate staff or services.
+  assert.equal(fake.all('staff').length, 1);
+  assert.equal(fake.all('services').length, 1);
+  // Idempotent: the second call sees all pieces present.
+  const again = await ensureBookingBaseline(T1);
+  assert.deepEqual(again.seeded, []);
+  assert.equal(again.skipped, 'present');
+});
+
+test('heals a tenant that has services + staff schedules but is missing a default staff member', async () => {
+  seedTenant();
+  fake.seed('booking_settings', [{ tenant_id: T1, timezone: 'America/New_York' }]);
+  fake.seed('services', [{ id: 'svc1', tenant_id: T1, name: 'Balayage', duration_minutes: 90, price: 180 }]);
+  fake.seed('staff', []); // no staff at all
+  fake.seed('staff_schedules', []);
+
+  const out = await ensureBookingBaseline(T1);
+  assert.ok(out.seeded.includes('staff'), out.seeded.join(','));
+  assert.ok(out.seeded.includes('staff_schedules'), out.seeded.join(','));
+  assert.equal(fake.all('staff').length, 1);
+  assert.equal(fake.all('staff_schedules').length, 7);
+  // A default staff member would not duplicate existing services.
+  assert.equal(fake.all('services').length, 1);
 });
 
 test('fail-loud: a rejected write surfaces and stops instead of silently continuing', async () => {

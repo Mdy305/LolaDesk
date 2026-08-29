@@ -19,12 +19,15 @@
  * from `staff_schedules`, and `locations.organization_id` is an FK to
  * `organizations`, not tenants — seeding it would violate the constraint.)
  *
- * It is gated on a single cheap PK-equality read: if the tenant already has
- * a `booking_settings` row it is considered bookable and returns immediately
- * (no re-checking of every table on every request). Called at provisioning
- * time (both buy + attach) and lazily from the calendar handler, so existing
- * bookless tenants self-heal the first time anyone touches their calendar,
- * booking link, or Lola voice booking.
+ * Gate: a tenant is only considered already-bookable when ALL four baseline
+ * pieces are present (booking_settings + services + staff + staff_schedules
+ * for every staff member). A tenant missing even one piece — for example one
+ * that predates the seed and only has a booking_settings row, or one whose
+ * staff lost their schedules — is healed on this call rather than sailed past,
+ * which is what keeps "bookable-yet-unbookable" tenants from ever arising.
+ * Called at provisioning time (both buy + attach) and lazily from the calendar
+ * handler, so existing bookless tenants self-heal the first time anyone
+ * touches their calendar, booking link, or Lola voice booking.
  */
 
 import { db } from './db.js';
@@ -63,21 +66,22 @@ export async function ensureBookingBaseline(tenantId){
   const c = db();
   if(!c) return { seeded: [], skipped: 'no-db' };
 
-  // Cheap gate: a tenant with booking_settings is already bookable. This is
-  // the ONLY read on the hot path, so a healthy tenant pays one PK-equality
-  // select per request and returns immediately.
+  const seeded = [];
+  let hasAllPieces = true;
+
+  // Gate: every baseline piece must be present, or we seed the missing ones.
+  // booking_settings
   const { data: existingSettings } = await c.from('booking_settings')
     .select('tenant_id').eq('tenant_id', tenantId).maybeSingle();
-  if(existingSettings) return { seeded: [], skipped: 'present' };
+  if(!existingSettings){
+    const { error: settingsErr } = await c.from('booking_settings').insert({ tenant_id: tenantId });
+    if(settingsErr) reject(settingsErr);
+    seeded.push('booking_settings');
+    hasAllPieces = false;
+  }
 
-  const seeded = [];
-
-  // 1. booking_settings (schema defaults).
-  const { error: settingsErr } = await c.from('booking_settings').insert({ tenant_id: tenantId });
-  if(settingsErr) reject(settingsErr);
-  seeded.push('booking_settings');
-
-  // 2. Services from the owner's stored menu, else one default.
+  // services (the owner's stored menu, else one default so the catalog never
+  // hands a caller an empty menu).
   const { data: tenant } = await c.from('tenants').select('services,name').eq('id', tenantId).maybeSingle();
   const menu = Array.isArray(tenant?.services) ? tenant.services : [];
   const { count: serviceCount } = await c.from('services')
@@ -98,22 +102,51 @@ export async function ensureBookingBaseline(tenantId){
     const { error: svcErr } = await c.from('services').insert(rows);
     if(svcErr) reject(svcErr);
     seeded.push('services');
+    hasAllPieces = false;
   }
 
-  // 3. One default staff member + a Mon–Sun schedule (09:00–19:00) so the
-  //     availability engine has slots to offer.
-  const { count: staffCount } = await c.from('staff')
-    .select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
-  if(!staffCount){
+  // staff — create one default member if none exist, then ensure EVERY staff
+  // member has a full Mon–Sun (09:00–19:00) schedule. A staff member with no
+  // schedule (e.g. added after provisioning) would otherwise render the
+  // availability engine slotless, so this heals partial/missing schedules too.
+  const { data: staffRows } = await c.from('staff')
+    .select('id').eq('tenant_id', tenantId);
+  let staffIds = (staffRows || []).map(s => s.id);
+  if(!staffIds.length){
     const { data: staff, error: staffErr } = await c.from('staff').insert({
       tenant_id: tenantId, name: 'Any available team member', role: 'Stylist', is_active: true
     }).select().single();
     if(staffErr) reject(staffErr);
-    await c.from('staff_schedules').insert(WEEK.map(day => ({
-      tenant_id: tenantId, staff_id: staff.id, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00'
-    })));
-    seeded.push('staff', 'staff_schedules');
+    staffIds = [staff.id];
+    seeded.push('staff');
+    hasAllPieces = false;
   }
+
+  if(staffIds.length){
+    const { data: schedRows } = await c.from('staff_schedules')
+      .select('staff_id,day_of_week').in('staff_id', staffIds);
+    const have = new Map();
+    for(const r of (schedRows || [])){
+      if(!have.has(r.staff_id)) have.set(r.staff_id, new Set());
+      have.get(r.staff_id).add(r.day_of_week);
+    }
+    const rows = [];
+    for(const sid of staffIds){
+      const days = have.get(sid) || new Set();
+      for(const day of WEEK){
+        if(!days.has(day)) rows.push({ tenant_id: tenantId, staff_id: sid, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' });
+      }
+    }
+    if(rows.length){
+      const { error: schedErr } = await c.from('staff_schedules').insert(rows);
+      if(schedErr) reject(schedErr);
+      seeded.push('staff_schedules');
+    }
+  }
+
+  // A fully bookable tenant (all pieces present) still short-circuits cheaply:
+  // nothing was written, so report skipped:'present' for the caller's fast path.
+  if(!seeded.length) return { seeded: [], skipped: hasAllPieces ? 'present' : 'partial' };
 
   return { seeded };
 }
