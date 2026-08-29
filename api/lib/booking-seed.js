@@ -14,7 +14,10 @@
  *   2. `services` rows from the owner's stored menu (tenants.services), or a
  *      single default "Consultation" so the catalog is never empty
  *   3. one default `staff` member + a `staff_schedules` week
- *   4. a primary `location` + `business_hours` week
+ *
+ * (No `business_hours`/`locations`: availability-engine-v2 builds slots purely
+ * from `staff_schedules`, and `locations.organization_id` is an FK to
+ * `organizations`, not tenants — seeding it would violate the constraint.)
  *
  * It is gated on a single cheap PK-equality read: if the tenant already has
  * a `booking_settings` row it is considered bookable and returns immediately
@@ -26,7 +29,7 @@
 
 import { db } from './db.js';
 
-// Default open hours, Monday (1) .. Sunday (0). Sun=0, Mon=1, ... Sat=6.
+// Default availability week, Monday (1) .. Sunday (0). Sun=0, Mon=1, ... Sat=6.
 const WEEK = [1,2,3,4,5,6,0];
 
 // Supabase returns {message} error objects; normalize to a real Error so
@@ -97,7 +100,8 @@ export async function ensureBookingBaseline(tenantId){
     seeded.push('services');
   }
 
-  // 3. One default staff member + a Mon–Sun schedule (09:00–19:00).
+  // 3. One default staff member + a Mon–Sun schedule (09:00–19:00) so the
+  //     availability engine has slots to offer.
   const { count: staffCount } = await c.from('staff')
     .select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
   if(!staffCount){
@@ -109,20 +113,6 @@ export async function ensureBookingBaseline(tenantId){
       tenant_id: tenantId, staff_id: staff.id, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00'
     })));
     seeded.push('staff', 'staff_schedules');
-  }
-
-  // 4. Primary location + a business_hours week (availability needs a timezone + hours).
-  const { data: locs } = await c.from('locations').select('id,is_primary').eq('organization_id', tenantId);
-  const primary = (locs || []).find(l => l.is_primary) || (locs || [])[0];
-  if(!primary){
-    const { data: loc, error: locErr } = await c.from('locations').insert({
-      organization_id: tenantId, name: tenant?.name || 'Main location', timezone: 'America/New_York', is_primary: true
-    }).select().single();
-    if(locErr) reject(locErr);
-    await c.from('business_hours').insert(WEEK.map(day => ({
-      location_id: loc.id, day_of_week: day, open_time: '09:00:00', close_time: '19:00:00', is_closed: false
-    })));
-    seeded.push('location', 'business_hours');
   }
 
   return { seeded };

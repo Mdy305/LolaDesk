@@ -54,8 +54,6 @@ function seedTenant({ servicesMinus } = {}) {
   fake.seed('services', []);
   fake.seed('staff', []);
   fake.seed('staff_schedules', []);
-  fake.seed('locations', []);
-  fake.seed('business_hours', []);
 }
 
 test('seeds the full booking baseline for a bookless tenant from its menu', async () => {
@@ -66,8 +64,6 @@ test('seeds the full booking baseline for a bookless tenant from its menu', asyn
   assert.ok(out.seeded.includes('services'));
   assert.ok(out.seeded.includes('staff'));
   assert.ok(out.seeded.includes('staff_schedules'));
-  assert.ok(out.seeded.includes('location'));
-  assert.ok(out.seeded.includes('business_hours'));
 
   assert.equal(fake.all('booking_settings').length, 1);
   assert.equal(fake.all('booking_settings')[0].tenant_id, T1);
@@ -81,12 +77,6 @@ test('seeds the full booking baseline for a bookless tenant from its menu', asyn
   // Mon..Sun = 7 schedule rows for the default staff member.
   assert.equal(fake.all('staff_schedules').length, 7);
   assert.ok(fake.all('staff_schedules').every(r => r.staff_id === fake.all('staff')[0].id));
-
-  assert.equal(fake.all('locations').length, 1);
-  assert.equal(fake.all('locations')[0].organization_id, T1);
-  assert.equal(fake.all('locations')[0].is_primary, true);
-  assert.equal(fake.all('business_hours').length, 7);
-  assert.ok(fake.all('business_hours').every(r => r.location_id === fake.all('locations')[0].id));
 });
 
 test('idempotent: a second run short-circuits on booking_settings presence', async () => {
@@ -95,8 +85,7 @@ test('idempotent: a second run short-circuits on booking_settings presence', asy
   const before = {
     settings: fake.all('booking_settings').length,
     services: fake.all('services').length,
-    staff: fake.all('staff').length,
-    hours: fake.all('business_hours').length
+    staff: fake.all('staff').length
   };
   const out = await ensureBookingBaseline(T1);
   assert.deepEqual(out.seeded, []);
@@ -104,7 +93,6 @@ test('idempotent: a second run short-circuits on booking_settings presence', asy
   assert.equal(fake.all('booking_settings').length, before.settings);
   assert.equal(fake.all('services').length, before.services);
   assert.equal(fake.all('staff').length, before.staff);
-  assert.equal(fake.all('business_hours').length, before.hours);
 });
 
 test('falls back to one default service when the owner has no menu', async () => {
@@ -115,7 +103,6 @@ test('falls back to one default service when the owner has no menu', async () =>
   // But the rest of the baseline still lands.
   assert.equal(fake.all('booking_settings').length, 1);
   assert.equal(fake.all('staff').length, 1);
-  assert.equal(fake.all('locations').length, 1);
 });
 
 test('does not seed at all when the tenant is already bookable', async () => {
@@ -126,7 +113,6 @@ test('does not seed at all when the tenant is already bookable', async () => {
   assert.equal(out.skipped, 'present');
   assert.equal(fake.all('services').length, 0);
   assert.equal(fake.all('staff').length, 0);
-  assert.equal(fake.all('business_hours').length, 0);
 });
 
 test('fail-loud: a rejected write surfaces and stops instead of silently continuing', async () => {
@@ -136,5 +122,4 @@ test('fail-loud: a rejected write surfaces and stops instead of silently continu
   await assert.rejects(() => ensureBookingBaseline(T1), /does not exist/);
   // It stopped at services — no staff/step-3 rows got written behind the error.
   assert.equal(fake.all('staff').length, 0);
-  assert.equal(fake.all('locations').length, 0);
 });
