@@ -543,7 +543,7 @@ export async function updateTenantFields(tenantId, patch = {}){
   if(!c || !tenantId) return null;
   // voice_id is intentionally NOT in the allow-list — Lola's voice is
   // canonical platform-wide and cannot be changed per tenant.
-  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url'];
+  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url','instructions'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   
@@ -595,6 +595,9 @@ export function tenantKnowledgePrompt(tenant){
   if(k.tone) lines.push(`Brand voice: ${k.tone}`);
   if(k.summary) lines.push(`About: ${k.summary}`);
   if(k.audience) lines.push(`Typical clients: ${k.audience}`);
+  // Owner-written "special instructions" from Settings > Lola AI — she follows
+  // these verbatim on every call and text.
+  if(tenant.instructions) lines.push(`Owner instructions: ${tenant.instructions}`);
   if(k.upsells && k.upsells.length > 0) {
     const upsellText = k.upsells.map(u => `- When they ask for ${u.trigger}, suggest adding ${u.offer} for $${u.price} (Pitch: "${u.pitch}")`).join('\n');
     lines.push(`UPSELL PROTOCOL:\n${upsellText}`);

@@ -1602,3 +1602,6 @@ alter table public.agent_runs drop constraint if exists agent_runs_agent_check;
 alter table public.agent_runs add constraint agent_runs_agent_check check (
   agent in ('routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery')
 );
+
+-- 20260829_tenant_instructions.sql — Lola's per-salon "special instructions"
+alter table public.tenants add column if not exists instructions text not null default '';

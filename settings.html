@@ -337,7 +337,7 @@ async function load(){
       :'<span class="dot warn"></span><div class="status-txt"><b>Waiting for a phone number</b><small>Lola activates once a number is assigned</small></div>';
 
     setVal('lGreeting',SETTINGS.greeting||'Hi, thank you for calling '+(TENANT.name||'the salon')+'. This is Lola, how can I help you?');
-    setVal('lInstructions',SETTINGS.instructions||'');
+    setVal('lInstructions',TENANT.instructions||SETTINGS.instructions||'');
     renderIntegrations(d.integrations);
     setVal('forwardNumber',SETTINGS.forward_number||'');
   }catch(e){console.warn(e);}
@@ -458,9 +458,11 @@ async function saveOperator(){
 async function saveVoice(){
   msg('voiceMsg','Saving...',true);
   try{
-    await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       voice_enabled:on('swVoice'),record_calls:on('swRecord'),
       voicemail_enabled:on('swVoicemail'),forward_number:val('forwardNumber')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error((d.error||'These call settings are not supported yet')+(d.ignored?' — not wired: '+d.ignored.join(', '):''));
     msg('voiceMsg','Call settings saved.',true);
   }catch(e){msg('voiceMsg',e.message,false);}
 }
@@ -468,11 +470,18 @@ async function saveVoice(){
 async function saveMessaging(){
   msg('msgMsg','Saving...',true);
   try{
-    await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
+    const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
       confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind')})});
-    await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+    const s=await r.json();
+    const rs=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       missed_call_textback:on('swMissed'),review_requests:on('swReview')})});
-    msg('msgMsg','Messaging saved.',true);
+    const rd=await rs.json();
+    if((!r.ok||!s.ok))throw new Error('Booking message settings failed to save.');
+    if(rd.ignored&&rd.ignored.length){
+      msg('msgMsg',"Saved confirmations & reminders. Missed-call and review toggles aren't wired yet: "+rd.ignored.join(', '),false);
+    }else{
+      msg('msgMsg','Messaging saved.',true);
+    }
   }catch(e){msg('msgMsg',e.message,false);}
 }
 
@@ -499,8 +508,10 @@ async function saveBooking(){
 async function saveLola(){
   msg('lolaMsg','Saving...',true);
   try{
-    await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       instructions:val('lInstructions')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Save failed');
     msg('lolaMsg','Saved. Lola will follow these instructions on every call.',true);
   }catch(e){msg('lolaMsg',e.message,false);}
 }
@@ -508,10 +519,12 @@ async function saveLola(){
 async function saveCapabilities(){
   msg('capMsg','Saving...',true);
   try{
-    await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       can_book:on('swCanBook'),can_quote:on('swCanQuote'),
       can_recommend:on('swCanRecommend'),can_upsell:on('swCanUpsell'),
       can_recognize:on('swCanRecognize')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error((d.error||'These capability toggles are not supported yet')+(d.ignored?' — not wired: '+d.ignored.join(', '):''));
     msg('capMsg','Capabilities saved.',true);
   }catch(e){msg('capMsg',e.message,false);}
 }

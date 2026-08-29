@@ -48,13 +48,18 @@ export default async function handler(req, res){
     const patch = {};
     // NOTE: voice_id is intentionally NOT in this list — Lola's voice is
     // canonical platform-wide and cannot be changed per tenant.
-    for(const k of ['name','owner_name','location','hours','booking_url','website_url','knowledge','autopilot_enabled','yelp_review_url','google_review_url']){
+    const KNOWN = ['name','owner_name','location','hours','booking_url','website_url','knowledge','autopilot_enabled','yelp_review_url','google_review_url','instructions'];
+    for(const k of KNOWN){
       if(body[k] !== undefined) patch[k] = body[k];
     }
-    if(Object.keys(patch).length === 0) return res.status(400).json({ error:'no fields to update' });
+    // Report any posted fields we could not persist (e.g. the Settings page's
+    // voice/capabilities/messaging toggles that have no backend column yet) so
+    // the client NEVER tells the owner "Saved" for something that didn't land.
+    const ignored = Object.keys(body).filter(k => !KNOWN.includes(k));
+    if(Object.keys(patch).length === 0) return res.status(400).json({ ok:false, error:'no fields to update', ignored });
 
     const updated = await updateTenantFields(tenant.id, patch);
-    return res.status(200).json({ ok:true, tenant: updated });
+    return res.status(200).json({ ok:true, saved:Object.keys(patch), ignored, tenant: updated });
   }catch(e){
     return res.status(500).json({ error:String(e&&e.message||e) });
   }
