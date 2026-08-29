@@ -83,6 +83,12 @@ function stubTelnyx({ fail = false } = {}) {
       if (fail) return respond({ errors: [{ detail: 'Simulated Telnyx rejection' }] }, 422);
       return respond({ data: { call_control_id: 'v3:cb-1', id: 'v3:cb-1' } });
     }
+    if (u.includes('/v2/phone_numbers')) {
+      return respond({ data: [
+        { phone_number: '+13055550100', connection_id: 'CONN-OWNED' },
+        { phone_number: '+19294568227', connection_id: 'CONN-BRAIN' }
+      ] });
+    }
     // LolaBrain assistant lookup (canonical connection fallback path).
     // Telnyx returns the assistant object UNWRAPPED (no .data envelope), and
     // tFetch in telnyx-provision.js passes the raw body through.
@@ -130,16 +136,16 @@ test('rejects an invalid destination number', async () => {
   restoreFetch();
 });
 
-test('originates from the tenant OWN line with their connection', async () => {
+test('originates from the tenant OWN line on the FIRST connection Telnyx accepts', async () => {
   seed(); stubTelnyx();
   const [res, out] = makeRes();
   await handler(postReq('tok-owner-a', { to: '+14155550123' }), res);
   assert.equal(out.code, 200);
   assert.equal(out.body.ok, true);
   assert.equal(out.body.from, LINE_1);           // tenant's own primary line
-  assert.equal(out.body.connection_id, 'CONN-BRAIN');
+  assert.equal(out.body.connection_id, 'CONN-BRAIN'); // first candidate accepted
   assert.equal(out.body.call_control_id, 'v3:cb-1');
-  assert.equal(telnyxCalls.length, 1);
+  assert.equal(telnyxCalls.length, 1);           // first candidate wins — no fallback probes
   const call = telnyxCalls[0].body;
   assert.equal(call.from, LINE_1);
   assert.equal(call.to, '+14155550123');
@@ -149,6 +155,49 @@ test('originates from the tenant OWN line with their connection', async () => {
   assert.equal(usage.length, 1);
   assert.equal(usage[0].tenant_id, T1);
   assert.equal(usage[0].kind, 'callback_originated');
+  restoreFetch();
+});
+
+test('falls through rejected connections until Telnyx accepts one', async () => {
+  seed(); stubTelnyx();
+  // The tenant line's attachment is an AI-assistant app Telnyx REJECTS for
+  // outbound originate (real behavior: the LolaBrain TeXML app). The
+  // endpoint must advance to the next candidate instead of failing.
+  fake.seed('tenant_numbers', [
+    { tenant_id: T1, phone_number: LINE_1, kind: 'primary', status: 'active', connection_id: 'CONN-REJECTED' }
+  ]);
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const respond = (payload, status = 200) => ({
+      ok: status < 400, status,
+      text: async () => JSON.stringify(payload),
+      json: async () => JSON.parse(JSON.stringify(payload))
+    });
+    if (u.includes('/v2/calls') && (opts.method === 'POST')) {
+      telnyxCalls.push({ url: u, body: JSON.parse(opts.body || '{}') });
+      const body = JSON.parse(opts.body || '{}');
+      if (body.connection_id === 'CONN-REJECTED') {
+        return respond({ errors: [{ detail: 'connection invalid for outbound originate' }] }, 422);
+      }
+      return respond({ data: { call_control_id: 'v3:cb-2', id: 'v3:cb-2' } });
+    }
+    if (u.includes('/v2/phone_numbers')) {
+      return respond({ data: [{ phone_number: '+13055550100', connection_id: 'CONN-OWNED' }] });
+    }
+    if (u.includes('/v2/ai/assistants/')) {
+      return respond({ telephony_settings: { default_texml_app_id: 'CONN-CANON' } });
+    }
+    return realFetch(url, opts);
+  };
+  const [res, out] = makeRes();
+  await handler(postReq('tok-owner-a', { to: '+14155550123' }), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.ok, true);
+  assert.equal(out.body.connection_id, 'CONN-CANON'); // canonical beat the owned number
+  const accepted = telnyxCalls.filter(c => c.body.connection_id !== 'CONN-REJECTED');
+  assert.ok(accepted.length >= 1);
+  assert.equal(accepted[0].body.connection_id, 'CONN-CANON');
+  assert.equal(accepted[0].body.from, LINE_1);
   restoreFetch();
 });
 
@@ -195,11 +244,13 @@ test('falls back to the canonical voice connection when the line has none', asyn
   restoreFetch();
 });
 
-test('maps Telnyx rejection to the upstream error', async () => {
+test('maps a total Telnyx rejection to a clear error with the tried list', async () => {
   seed(); stubTelnyx({ fail: true });
   const [res, out] = makeRes();
   await handler(postReq('tok-owner-a', { to: '+14155550123' }), res);
-  assert.equal(out.code, 422);
+  assert.equal(out.code, 502);
+  assert.match(out.body.error, /Telnyx rejected every connection/);
   assert.match(out.body.error, /Simulated Telnyx rejection/);
+  assert.ok(Array.isArray(out.body.tried_connections) || typeof out.body.tried_connections === 'string');
   restoreFetch();
 });

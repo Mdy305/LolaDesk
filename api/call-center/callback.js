@@ -92,42 +92,68 @@ export default async function handler(req, res) {
   if (!from) return res.status(400).json({ ok: false, error: 'This salon has no Lola line yet — assign a number first' });
   if (from === to) return res.status(400).json({ ok: false, error: 'The callback number must differ from the salon\u2019s own line' });
 
-  // Connection: the tenant line's own attachment (the LolaBrain TeXML app)
-  // so the AI assistant answers the outbound leg; fall back to the
-  // canonical voice connection. Fail loudly if nothing resolves.
-  if (!connectionId) {
-    try {
-      connectionId = await getCanonicalVoiceConnectionId();
-      lineNote = (lineNote || '') + ' (canonical voice connection)';
-    } catch (e) {
-      return res.status(502).json({ ok: false, error: `No voice connection: ${String(e?.message || e).slice(0, 120)}` });
-    }
-  }
-  if (!connectionId) {
-    return res.status(502).json({ ok: false, error: 'No voice connection configured — set TELNYX_VOICE_APP_ID or TELNYX_LOLA_BRAIN_ID' });
+  // ── Connection candidates for the OUTBOUND leg, in order ──
+  // The tenant line's own attachment is tried first (usually the LolaBrain
+  // TeXML app — the AI assistant answers the outbound leg). But some line
+  // attachments are AI-assistant apps Telnyx rejects for outbound
+  // originate, so we keep a fallback chain exactly like /api/admin/test-call:
+  // line's connection → TELNYX_VOICE_APP_ID → canonical → any owned number's
+  // connection. The first candidate Telnyx ACCEPTS wins; a rejection just
+  // advances (we probe every candidate once per callback — a handful of
+  // extra HTTP calls, never a loop).
+  let ownedNumbers = [];
+  try {
+    ownedNumbers = telnyxData(await telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 })) || [];
+    if (!Array.isArray(ownedNumbers)) ownedNumbers = [];
+  } catch { /* discovery is best-effort */ }
+  const seen = new Set();
+  const candidates = [];
+  const push = (id, note) => { if (id && !seen.has(id)) { seen.add(id); candidates.push({ id, note }); } };
+  push(connectionId, lineNote || 'tenant line attachment');
+  if (process.env.TELNYX_VOICE_APP_ID) push(process.env.TELNYX_VOICE_APP_ID, 'TELNYX_VOICE_APP_ID');
+  try {
+    const canonical = await getCanonicalVoiceConnectionId();
+    push(canonical, 'canonical voice connection');
+  } catch {}
+  for (const n of ownedNumbers) push(n.connection_id, n.phone_number + '\'s connection');
+  if (candidates.length === 0) {
+    return res.status(502).json({ ok: false, error: 'No voice connection configured — set TELNYX_VOICE_APP_ID or TELNYX_LOLA_BRAIN_ID', to, from });
   }
 
   let data = null;
-  try {
-    data = telnyxData(await telnyxRequest('/calls', {
-      method: 'POST',
-      body: { connection_id: connectionId, from, to, if_machine: 'continue' },
-      timeoutMs: 15000
-    }));
-  } catch (e) {
-    const status = e instanceof TelnyxApiError ? e.status : 502;
-    return res.status(status).json({
-      ok: false, error: String(e?.message || e).slice(0, 200), to, from
+  let usedConnection = null;
+  let usedNote = null;
+  let firstError = null;
+  for (const cand of candidates) {
+    try {
+      data = telnyxData(await telnyxRequest('/calls', {
+        method: 'POST',
+        body: { connection_id: cand.id, from, to, if_machine: 'continue' },
+        timeoutMs: 15000
+      }));
+      usedConnection = cand.id;
+      usedNote = cand.note;
+      break;
+    } catch (e) {
+      if (!firstError) firstError = String(e?.message || e);
+    }
+  }
+  if (!data) {
+    const tried = candidates.map(c => c.note + ' (' + c.id + ')').join('; ');
+    return res.status(502).json({
+      ok: false,
+      error: firstError ? 'Telnyx rejected every connection: ' + firstError.slice(0, 140) : 'No connection could place the call',
+      to, from, tried_connections: tried
     });
   }
 
   const callControlId = data?.call_control_id || data?.id || null;
   try {
-    await logUsage(tenant.id, 'callback_originated', 1, { to, from, call_control_id: callControlId });
+    await logUsage(tenant.id, 'callback_originated', 1, { to, from, connection_id: usedConnection, call_control_id: callControlId });
   } catch {}
 
   return res.status(200).json({
-    ok: true, to, from, connection_id: connectionId,
-    connection_note: lineNote, call_control_id: callControlId
+    ok: true, to, from, connection_id: usedConnection,
+    connection_note: usedNote, call_control_id: callControlId
   });
 }
