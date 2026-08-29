@@ -1,6 +1,21 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { searchNumbers, getAccountBalance, provisionNumberForTenant, listOwnedNumbers, attachOwnedNumberForTenant } from './lib/telnyx-provision.js';
+import { ensureBookingBaseline } from './lib/booking-seed.js';
+
+// Wire the tenant's booking configuration (settings, services, staff+
+// schedule, hours) right after their number is live, so "She is ready"
+// actually means she can take the first booking. Best-effort: the number is
+// already wired, so a seed failure must surface in the response, not fail
+// the whole provision.
+async function seedBookability(tenant){
+  try{
+    return await ensureBookingBaseline(tenant.id);
+  }catch(e){
+    console.error('[PROVISION] booking-seed', e.message);
+    return { seeded: [], error: e.message };
+  }
+}
 
 // Telnyx rejects an order when available credit < the number's cost. Detect
 // that specific failure and give the owner a clear next step instead of a 500.
@@ -40,11 +55,13 @@ export default async function handler(req,res){
     // of buying one. No purchase, no credit consumed — same activation result.
     if(useExisting && requestedNumber){
       const result=await attachOwnedNumberForTenant(tenant,requestedNumber);
-      return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.voiceLinked?process.env.TELNYX_VOICE_APP_ID:null,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,attachedExisting:true,message:'Your number is wired to Lola: '+result.phoneNumber});
+      const bookingSeed=await seedBookability(tenant);
+      return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.voiceLinked?process.env.TELNYX_VOICE_APP_ID:null,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,attachedExisting:true,message:'Your number is wired to Lola: '+result.phoneNumber,bookingSeed});
     }
 
     const result=await provisionNumberForTenant(tenant,{areaCode,requestedNumber});
-    return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.texmlAppId,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,message:'Your Lola number is ready: '+result.phoneNumber});
+    const bookingSeed=await seedBookability(tenant);
+    return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.texmlAppId,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,message:'Your Lola number is ready: '+result.phoneNumber,bookingSeed});
   }catch(e){
     const msg=String(e?.message||e);
     if(INSUFFICIENT_CREDIT.test(msg)){

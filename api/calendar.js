@@ -6,6 +6,7 @@ import {
   addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
   listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking
 } from './lib/booking-repository.js';
+import { ensureBookingBaseline } from './lib/booking-seed.js';
 import { offerFreedSlot } from './lib/booking-reminders.js';
 
 function jsonBody(req){
@@ -35,6 +36,11 @@ export default async function handler(req,res){
     if(!tenant?.id){
       return res.status(req.__publicBooking===true?404:401).json({ ok:false,error:req.__publicBooking===true?'tenant_not_found':'not_authenticated' });
     }
+    // Self-heal: any touch of a not-yet-bookable tenant (settings, catalog,
+    // availability, Lola voice booking, the widget) seeds its missing booking
+    // baseline. ensureBookingBaseline short-circuits on a single PK read when
+    // the tenant is already bookable, so a healthy tenant pays one select.
+    try{ await ensureBookingBaseline(tenant.id); }catch(e){ console.warn('[calendar] booking-seed', e.message); }
     const action=body.action || req.query?.action || (req.method==='GET'?'day':'');
 
     if(action==='settings') return res.json({ ok:true, settings:await getBookingSettings(tenant.id) });
