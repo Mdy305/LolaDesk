@@ -61,6 +61,104 @@ function findService(tenant, query){
   );
 }
 
+// Resolve a service by its canonical services-table id (the blueprint's
+// detect_upsell_opportunity(serviceId, …) signature). Falls back to the
+// tenant.services jsonb when the services table has no row (legacy tenants).
+async function findServiceById(tenant, id){
+  const c = db();
+  if(!c || !tenant?.id || !id) return null;
+  const { data } = await c.from('services')
+    .select('id,name,price,duration_minutes').eq('tenant_id', tenant.id).eq('id', id)
+    .maybeSingle().then(r => r).catch(() => ({ data: null }));
+  if(data) return { id: data.id, name: data.name, price: data.price, duration: data.duration_minutes };
+  const tsvc = (tenant.services||[]).find(s => String(s.id||'') === String(id));
+  return tsvc || null;
+}
+
+// ── SKILL: detect_upsell_opportunity (the Yield Engine's call-time arm) ──
+// Deterministic, high-margin pairing: match the booked/known service to a
+// complementary add-on and gate it by the caller's spend tier, so Lola can
+// grow the ticket on every call — "Since you're coming in for a balayage,
+// I'd add our restorative gloss…". No client identity is fine (pairing is
+// service-driven); no base service is a clean no-op.
+const UPSELL_PAIRS = [
+  { match: /balayage|highlight|color|gloss|toner|root/i, addons: [
+    { name: 'Restorative Gloss', price: 60, vip: false, pitch: 'it makes the color pop and keeps the tone fresh twice as long' },
+    { name: 'Bond-Building Treatment', price: 45, vip: true, pitch: 'it protects your hair during the lightening process' }
+  ] },
+  { match: /cut|trim|shape/i, addons: [
+    { name: 'Signature Blowout', price: 40, vip: false, pitch: 'it finishes the cut with a bouncy, salon-perfect style' },
+    { name: 'Scalp Ritual', price: 35, vip: true, pitch: 'it relaxes the scalp and stimulates healthy growth' }
+  ] },
+  { match: /botox|keratin|smooth|relax/i, addons: [
+    { name: 'Maintenance Gloss', price: 45, vip: false, pitch: 'it stretches your smoothing results by weeks' },
+    { name: 'Leave-In Repair Serum', price: 28, vip: true, pitch: 'it defends the hair from heat and humidity daily' }
+  ] },
+  { match: /extension/i, addons: [
+    { name: 'Extension Care Kit', price: 55, vip: false, pitch: 'it keeps the bonds secure and the hair silky between visits' },
+    { name: 'Bond Touch-Up', price: 40, vip: true, pitch: 'it refreshes the attachment points so everything stays invisible' }
+  ] },
+  { match: /treatment|repair|condition|mask/i, addons: [
+    { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it doubles the repair power of the treatment' },
+    { name: 'Scalp Therapy', price: 45, vip: true, pitch: 'it targets the root cause of stress-related thinning' }
+  ] },
+  { match: /blowout|style|updo/i, addons: [
+    { name: 'Finishing Product Set', price: 30, vip: false, pitch: 'it recreates the look at home in minutes' },
+    { name: 'Luxury Shine Mist', price: 25, vip: true, pitch: 'it adds that red-carpet reflection' }
+  ] }
+];
+const DEFAULT_ADDONS = [
+  { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it leaves the hair feeling incredible' }
+];
+
+function spendTier(client, ltv){
+  if(client?.is_vip || String(client?.status||'').toLowerCase() === 'vip') return 'vip';
+  if(ltv != null && Number(ltv) >= 1000) return 'vip';
+  if(ltv != null && Number(ltv) > 0) return 'regular';
+  return 'new';
+}
+
+async function detect_upsell_opportunity(tenant, body){
+  const { service, service_id, client_phone, from, client_id, client_ltv } = body || {};
+  // 1. Resolve the booked/known base service (id first, then name).
+  let base = service_id ? await findServiceById(tenant, service_id) : null;
+  if(!base && service) base = findService(tenant, service);
+  if(!base){
+    return {
+      speak: 'I can pair the perfect add-on once I know which service you are booking. Which one were you thinking?',
+      base_service: null, recommended: [], reason: 'service_not_found'
+    };
+  }
+
+  // 2. Resolve the caller's spend tier (explicit LTV, else the client row).
+  let ltv = null;
+  if(client_ltv != null && !Number.isNaN(Number(client_ltv))) ltv = Number(client_ltv);
+  let client = null;
+  const phone = client_phone || from;
+  if(phone){
+    try{ client = await getClientByPhone(tenant.id, phone); }catch{}
+    if(client && ltv == null) ltv = Number(client.lifetime_value || 0);
+  }
+  const tier = spendTier(client, ltv);
+
+  // 3. Deterministic pairing, gated by tier.
+  const name = String(base.name || '').toLowerCase();
+  const pair = UPSELL_PAIRS.find(p => p.match.test(name)) || null;
+  const addons = (pair?.addons || DEFAULT_ADDONS);
+  const recommended = addons.filter(a => (a.vip ? tier === 'vip' : true)).slice(0, 2);
+
+  // 4. Speak it the way the blueprint's pitch example reads.
+  let speak;
+  if(recommended.length){
+    const top = recommended[0];
+    speak = `Since you're coming in for ${base.name}, I'd suggest adding our ${top.name} for $${top.price} — ${top.pitch}. Should I add that on?`;
+  } else {
+    speak = `I don't have an add-on pairing for ${base.name} yet, but I can recommend something the moment you pick your time.`;
+  }
+  try{ await logUsage(tenant.id, 'upsell_detected', 1, { service: base.name, tier, client_id: client?.id || null }); }catch{}
+  return { speak, base_service: base.name, tier, client_known: !!client, ltv: ltv ?? null, recommended };
+}
+
 // ── SKILL: list everything offered ──
 function list_services(tenant){
   const svc = (tenant.services||[]);
@@ -360,7 +458,8 @@ export const SKILLS = {
   handle_recovery, escalate, takeMessage,
   'take-message': takeMessage, // Telnyx's LolaBrain tool name
   'take_message': takeMessage, // older alias seen on some shared tools
-  confirm_booking, reschedule_appointment, cancel_appointment
+  confirm_booking, reschedule_appointment, cancel_appointment,
+  detect_upsell_opportunity // Yield Engine: pair add-ons to the booked service by spend tier
 };
 
 export default async function handler(req, res){

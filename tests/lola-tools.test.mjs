@@ -156,6 +156,81 @@ test('unroutable dialed number hard-gates to a graceful fallback — never anoth
   assert.notEqual(res.body.name, 'Balayage');
 });
 
+// ── detect_upsell_opportunity (Yield Engine call-time arm) ────────
+test('detect_upsell_opportunity pairs a high-margin add-on for a VIP caller', async () => {
+  fresh();
+  fake.seed('clients', [{ id: 'c1', tenant_id: TENANT.id, phone: '+15559876543', first_name: 'Maya', lifetime_value: 2500, is_vip: true }]);
+  const res = await call(lolaTools, {
+    query: 'tool=detect_upsell_opportunity',
+    body: { tenant: 'lola-live', service: 'Balayage', client_phone: '+15559876543' }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.base_service, 'Balayage');
+  assert.equal(res.body.tier, 'vip');
+  assert.equal(res.body.client_known, true);
+  // VIP tier unlocks the vip-gated add-on (Bond-Building Treatment).
+  assert.ok(res.body.recommended.length >= 2, 'VIP gets the premium pairing too');
+  assert.ok(res.body.recommended.some(r => r.name === 'Bond-Building Treatment'));
+  assert.ok(res.body.recommended.some(r => r.name === 'Restorative Gloss'));
+  assert.match(res.body.speak, /Restorative Gloss/); // speak leads with the top pairing
+  assert.match(res.body.speak, /Since you're coming in for Balayage/);
+  const usage = fake.all('usage_events').find(e => e.kind === 'upsell_detected');
+  assert.ok(usage, 'upsell detection is logged for the Command screen');
+  assert.equal(usage.metadata.tier, 'vip');
+});
+
+test('detect_upsell_opportunity gates the premium add-on away for a regular client', async () => {
+  fresh();
+  fake.seed('clients', [{ id: 'c2', tenant_id: TENANT.id, phone: '+15559876543', first_name: 'Maya', lifetime_value: 300, is_vip: false }]);
+  const res = await call(lolaTools, {
+    query: 'tool=detect_upsell_opportunity',
+    body: { tenant: 'lola-live', service: 'Balayage', client_phone: '+15559876543' }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.tier, 'regular');
+  assert.ok(res.body.recommended.some(r => r.name === 'Restorative Gloss'));
+  assert.ok(!res.body.recommended.some(r => r.name === 'Bond-Building Treatment'), 'vip add-on stays gated for regular spend');
+});
+
+test('detect_upsell_opportunity works with explicit clientLTV (blueprint signature)', async () => {
+  fresh();
+  const res = await call(lolaTools, {
+    query: 'tool=detect_upsell_opportunity',
+    body: { tenant: 'lola-live', service: 'Cut', client_ltv: 1500 }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.tier, 'vip');
+  assert.ok(res.body.recommended.some(r => r.name === 'Scalp Ritual'));
+});
+
+test('detect_upsell_opportunity still pairs without client data (tier new)', async () => {
+  fresh();
+  const res = await call(lolaTools, {
+    query: 'tool=detect_upsell_opportunity',
+    body: { tenant: 'lola-live', service: 'Balayage' }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.tier, 'new');
+  assert.equal(res.body.client_known, false);
+  // No client identity → only the non-gated add-on is offered.
+  assert.equal(res.body.recommended.length, 1);
+  assert.equal(res.body.recommended[0].name, 'Restorative Gloss');
+});
+
+test('detect_upsell_opportunity no-ops gracefully on an unknown service', async () => {
+  fresh();
+  const res = await call(lolaTools, {
+    query: 'tool=detect_upsell_opportunity',
+    body: { tenant: 'lola-live', service: 'Quantum Hair Sculpting' }
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.base_service, null);
+  assert.equal(res.body.reason, 'service_not_found');
+  assert.deepEqual(res.body.recommended, []);
+  assert.match(res.body.speak, /pair the perfect add-on/i);
+  assert.equal(fake.all('usage_events').length, 0, 'no usage logged for a no-op');
+});
+
 // ── agent-variables webhook ───────────────────────────────────────
 test('agent-variables resolves the tenant by dialed number and returns to + from', async () => {
   fresh();
