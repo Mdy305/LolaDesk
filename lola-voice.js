@@ -141,7 +141,7 @@
   async function ensureCapturePipeline() {
     if (state.audioCtx && state.worklet) return;
     state.audioCtx = new (global.AudioContext || global.webkitAudioContext)({ sampleRate: 16000 });
-    await state.audioCtx.audioWorklet.addModule('/lola-audio-worklet.js');
+    await state.audioCtx.audioWorklet.addModule('/public/lola-audio-worklet.js');
     state.worklet = new AudioWorkletNode(state.audioCtx, 'lola-mic-processor');
     state.worklet.port.onmessage = (ev) => {
       if (state.ws && state.ws.readyState === global.WebSocket.OPEN) {
