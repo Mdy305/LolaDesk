@@ -25,6 +25,7 @@ create table if not exists tenants (
   services        jsonb default '[]'::jsonb,            -- [{name, price, duration}]
   team            jsonb default '[]'::jsonb,            -- [{name, role}]
   persona         text default 'warm',                  -- Lola's voice style
+  voice_id        text,                                  -- per-tenant ElevenLabs voice (null = platform default)
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
 );
@@ -265,3 +266,43 @@ on conflict (slug) do update set
   services = excluded.services,
   team = excluded.team,
   updated_at = now();
+
+-- ─── exec_sql bootstrap: lets the app self-apply idempotent migrations ───
+-- PostgREST cannot run DDL, so api/lib/migrate.js calls this security-definer
+-- function (via supabase.rpc) to create the tenant_numbers table on cold start
+-- when it's missing. Revoked from anon/authenticated so a browser token can
+-- never execute arbitrary SQL; only the service_role key may call it.
+create or replace function public.exec_sql(p_sql text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  execute p_sql;
+end;
+$$;
+
+revoke all on function public.exec_sql(text) from public;
+
+-- Supabase grants EXECUTE on functions to anon + authenticated DIRECTLY (not
+-- via PUBLIC), so the revoke above alone does NOT stop a browser token there.
+-- Revoke from each role explicitly; skip roles that don't exist so this stays
+-- portable to plain Postgres / local e2e.
+do $$
+declare r text;
+begin
+  foreach r in array array['anon','authenticated']
+  loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('revoke execute on function public.exec_sql(text) from %I', r);
+    end if;
+  end loop;
+end $$;
+
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function public.exec_sql(text) to service_role';
+  end if;
+end $$;

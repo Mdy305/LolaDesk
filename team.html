@@ -1,75 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Team — LolaDesk</title>
-<link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Team — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
-.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
-.member{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:22px;transition:border-color .15s;cursor:pointer}
-.member:hover{border-color:var(--border2)}
-.member-top{display:flex;align-items:center;gap:13px;margin-bottom:18px}
-.member-name{font-size:16px;font-weight:600}
-.member-role{font-size:12px;color:var(--text3)}
-.member-rev{font-size:26px;font-weight:600;margin-bottom:4px}
-.member-change{font-size:12px;font-weight:500;margin-bottom:16px}
-.member-change.up{color:var(--text)}
-.member-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:14px}
-.member-bar-fill{height:100%;background:linear-gradient(90deg,#ccff00,#dcff66);border-radius:3px}
-.member-stats{display:flex;gap:18px}
-.member-stat-val{font-size:15px;font-weight:600}
-.member-stat-label{font-size:11px;color:var(--text3)}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:20px}
+.member{background:var(--surface);border:.5px solid var(--border);border-radius:16px;padding:18px 20px}
+.member-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#080809;flex:0 0 40px}
+.member-name{font-size:15px;font-weight:600}
+.member-role{font-size:12px;color:var(--text3);margin-top:2px}
+.member-acts{display:flex;gap:8px;margin-top:12px}
+.mbtn{padding:7px 14px;border-radius:9px;font-size:12px;cursor:pointer;border:.5px solid var(--border);background:transparent;color:var(--text2)}
+.mbtn.red{color:#ff8a8a;border-color:#ff6b6b33}
+.mw{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mw.open{display:flex}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;padding:26px;max-width:420px;width:100%}
+.modal h3{font-size:18px;font-weight:600;margin-bottom:18px}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fld input{background:var(--surface);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;width:100%}
+.fld input:focus{border-color:var(--accent)}
+.macts{display:flex;gap:10px;margin-top:6px}
+.macts button{flex:1;padding:12px;border-radius:11px;font-size:14px;font-weight:560;cursor:pointer;border:none}
+.macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
+.macts .save{background:var(--text);color:#080809}
+.err{color:#ff8a8a;font-size:12px;margin-top:8px;min-height:16px}
+.empty{color:var(--text3);padding:60px 0;text-align:center;font-size:14px;line-height:2}
 </style>
 </head>
-<body data-page="team">
-<div class="app">
-  <main class="main">
-    <div class="topbar">
-      <div class="page-head">
-        <h1 class="page-title">Team</h1>
-        <p class="page-sub">Your stylists — and how Lola keeps their chairs full.</p>
-      </div>
-      <div class="topbar-actions">
-        <button class="btn btn-primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>Add stylist</button>
-      </div>
-    </div>
-
-    <div class="kpis">
-      <div class="kpi"><div class="kpi-val">$53,200</div><div class="kpi-label">Team revenue</div><div class="kpi-sub green" style="color:var(--text)">↑ 15% this month</div></div>
-      <div class="kpi"><div class="kpi-val">4</div><div class="kpi-label">Stylists</div><div class="kpi-sub">All active</div></div>
-      <div class="kpi"><div class="kpi-val">87%</div><div class="kpi-label">Chair utilization</div><div class="kpi-sub">↑ 9%</div></div>
-      <div class="kpi"><div class="kpi-val pink">312</div><div class="kpi-label">Appointments</div><div class="kpi-sub">Lola booked 81%</div></div>
-    </div>
-
-    <div class="team-grid" id="teamGrid"></div>
-  </main>
+<body data-page="team"><div class="app"><main class="main">
+<div class="page-head">
+  <div><h1 class="page-title">Team</h1><p style="font-size:13px;color:var(--text3);margin-top:4px">Your staff — shown in the booking calendar and selectable by clients online.</p></div>
+  <button class="btn btn-primary" onclick="openForm()">+ Add staff</button>
 </div>
-
-<script src="auth-guard.js"></script>
-<script src="lola-data.js"></script>
-<script src="sidebar.js"></script>
+<div class="team-grid" id="teamGrid"><div class="empty">Loading...</div></div>
+</main></div>
+<div class="mw" id="modal"><div class="modal">
+  <h3 id="mTitle">Add staff</h3>
+  <div class="fld"><label>Name</label><input id="fName" placeholder="e.g. Sarah Johnson"/></div>
+  <div class="fld"><label>Role</label><input id="fRole" placeholder="e.g. Senior Stylist, Colorist"/></div>
+  <div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="save" onclick="save()">Save</button></div>
+  <div class="err" id="err"></div>
+</div></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-let TEAM = [];
-function initial(n){ return (n.match(/[A-Za-z]/)||['?'])[0].toUpperCase(); }
-function av(m){ return `<span class="av lg"><span class="av-initial">${initial(m.name)}</span>${m.img?`<img src="${m.img}" onerror="this.style.opacity=0">`:''}</span>`; }
-function renderTeam(){ document.getElementById('teamGrid').innerHTML = TEAM.map(m=>`
-  <div class="member">
-    <div class="member-top">${av(m)}<div><div class="member-name">${m.name}</div><div class="member-role">${m.role}</div></div></div>
-    <div class="member-rev">$${m.rev.toLocaleString()}</div>
-    <div class="member-change up">↑ ${m.change}% this month</div>
-    <div class="member-bar"><div class="member-bar-fill" style="width:${m.pct}%"></div></div>
-    <div class="member-stats">
-      <div><div class="member-stat-val">${m.clients}</div><div class="member-stat-label">Clients</div></div>
-      <div><div class="member-stat-val">★ ${m.rating}</div><div class="member-stat-label">Rating</div></div>
-    </div>
-  </div>`).join(''); }
-(async ()=>{
-  const data = await LolaData.load('team');
-  const list = (data && data.team) || [];
-  TEAM = list.map((m,i)=>({ name:m.name||'Team member', role:m.role||'Stylist', img:'', rev:m.rev||0, change:m.change||0, pct:m.pct||(100-i*20), clients:m.clients||0, rating:m.rating||4.8 }));
-  renderTeam();
-})();
-</script>
-</body>
-</html>
+const COLORS=['#ccff00','#5ac8fa','#ffc043','#34d171','#cc73e1','#ff9f43'];
+let STAFF=[],editId=null;
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function hdr(){return{Authorization:'Bearer '+token()};}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function load(){
+  try{const r=await fetch('/api/staff',{headers:hdr()});const d=await r.json();STAFF=d.ok?(d.staff||[]):[];}catch(e){STAFF=[];}
+  render();
+}
+function render(){
+  const g=document.getElementById('teamGrid');
+  if(!STAFF.length){g.innerHTML='<div class="empty">No staff yet.<br>Add your team so they appear in the booking calendar<br>and clients can choose them when booking online.</div>';return;}
+  g.innerHTML=STAFF.map((s,i)=>`<div class="member"><div class="member-top"><div class="av" style="background:${COLORS[i%COLORS.length]}">${(s.name||'?')[0].toUpperCase()}</div><div><div class="member-name">${esc(s.name)}</div><div class="member-role">${esc(s.role||'Stylist')}</div></div></div><div class="member-acts"><button class="mbtn" onclick="edit('${s.id}')">Edit</button><button class="mbtn red" onclick="del('${s.id}')">Remove</button></div></div>`).join('');
+}
+function openForm(){editId=null;document.getElementById('mTitle').textContent='Add staff';document.getElementById('fName').value='';document.getElementById('fRole').value='';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
+function edit(id){const s=STAFF.find(x=>x.id===id);if(!s)return;editId=id;document.getElementById('mTitle').textContent='Edit staff';document.getElementById('fName').value=s.name||'';document.getElementById('fRole').value=s.role||'';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+async function save(){
+  const name=document.getElementById('fName').value.trim();
+  const err=document.getElementById('err');
+  if(!name){err.textContent='Name is required.';return;}
+  err.textContent='';
+  try{
+    const r=await fetch('/api/staff',{method:'POST',headers:{...hdr(),'Content-Type':'application/json'},body:JSON.stringify({id:editId||undefined,name,role:document.getElementById('fRole').value.trim()||'Stylist'})});
+    const d=await r.json();if(!d.ok)throw new Error(d.error||'Failed');
+    closeModal();load();
+  }catch(e){err.textContent=e.message||'Something went wrong.';}
+}
+async function del(id){
+  if(!confirm('Remove this staff member?'))return;
+  try{await fetch('/api/staff?id='+id,{method:'DELETE',headers:hdr()});load();}catch(e){alert(e.message);}
+}
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+</script></body></html>

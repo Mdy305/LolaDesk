@@ -139,6 +139,9 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   padding:11px 16px;
   color:var(--text3);
 }
+.menu-btn{display:none}
+.live-ticker{display:none}
+.drawer-backdrop{display:none}
 .search input{
   flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;
 }
@@ -222,16 +225,25 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 }
 .col-stack{display:flex;flex-direction:column;gap:16px}
 .lola-panel{
-  min-height:470px;
+  order:-1;
+  grid-column:1/-1;
+  min-height:calc(100vh - 150px);
   background:radial-gradient(ellipse 80% 70% at 50% 62%,rgba(204,255,0,.06),var(--surface) 68%);
   border:.5px solid var(--border);
   border-radius:var(--r-lg);
   padding:26px 28px 30px;
   display:flex;
   flex-direction:column;
+  align-items:center;
+  justify-content:center;
   position:relative;
   overflow:hidden;
 }
+/* Home is Lola. One surface, nothing else competing for attention.
+   KPIs, revenue, schedule, and the command center all still exist —
+   Calendar, Revenue, and the sidebar links reach them directly. */
+.briefing-banner,.roi-panel,.away-panel,.dash-header,.desk-center,
+.grid-main>.col-stack,.res-panel,.quick-grid{display:none!important}
 .lola-orb-zone{
   flex:1;
   display:flex;
@@ -239,19 +251,50 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   align-items:center;
   justify-content:center;
   padding:24px 0 8px;
+  position:relative;
 }
 .lola-orb-stage{
   position:relative;
-  width:260px;
-  height:260px;
+  width:320px;
+  height:320px;
   display:flex;
   align-items:center;
   justify-content:center;
   cursor:pointer;
+  transition:transform .12s ease-out,filter .12s ease-out;
 }
 .lola-orb-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+/* The orb IS her voice made visible — the whole stage breathes with
+   the real amplitude of her ElevenLabs audio while she speaks. */
+.lola-orb-stage[data-state="speaking"]{
+  transform:scale(calc(1 + var(--lola-amplitude,0)*.05));
+  filter:drop-shadow(0 0 calc(16px + var(--lola-amplitude,0)*46px) rgba(204,255,0,.4));
+}
+.lola-orb-stage[data-state="listening"]{
+  filter:drop-shadow(0 0 22px rgba(140,255,190,.28));
+}
 .lola-core{position:relative;z-index:2;pointer-events:none}
-.lola-name{font-size:34px;font-weight:550;letter-spacing:.3em;text-indent:.3em}
+.lola-name{font-size:34px;font-weight:550;letter-spacing:.3em;text-indent:.3em;transition:color .3s,text-shadow .3s}
+.lola-orb-stage[data-state="speaking"] .lola-name{color:#eaff8f;text-shadow:0 0 26px rgba(204,255,0,.6)}
+.lola-orb-stage[data-state="listening"] .lola-name{color:#c8ffe4;text-shadow:0 0 20px rgba(140,255,190,.45)}
+.lola-orb-stage[data-state="thinking"] .lola-name{color:#ffd9a8;text-shadow:0 0 18px rgba(255,196,64,.4)}
+/* Micro particle field — Lola's quiet presence around the orb. Tiny,
+   dim, drifting. When she listens or speaks they speed up and glow. */
+.lola-presence-field{position:absolute;inset:-22%;pointer-events:none;z-index:0;filter:blur(.2px)}
+.lola-presence-particle{
+  position:absolute;width:3px;height:3px;border-radius:50%;
+  background:#ccff00;box-shadow:0 0 8px rgba(204,255,0,.7);
+  opacity:.13;animation:lolaDrift var(--d,8s) ease-in-out infinite alternate;
+  animation-delay:var(--delay,0s);
+}
+@keyframes lolaDrift{
+  from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(var(--dx,14px),var(--dy,-18px),0) scale(.65)}
+}
+[data-lola-state="listening"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.6);opacity:.26}
+[data-lola-state="speaking"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.45);opacity:.34}
+[data-lola-state="thinking"] .lola-presence-particle{animation-duration:calc(var(--d,8s)*.5);opacity:.2}
+@media(prefers-reduced-motion:reduce){.lola-presence-particle,.lola-orb-stage{animation:none!important;transition:none!important}}
 .lola-prompt{text-align:center;margin-top:22px}
 .lola-prompt-title{font-size:25px;font-style:italic;font-weight:300;margin-bottom:4px}
 .lola-prompt-sub{font-size:12px;color:var(--text3)}
@@ -264,6 +307,17 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   background:var(--accent-dim);border-color:var(--accent);color:var(--accent2);
   box-shadow:0 0 20px var(--accent-glow);
 }
+.ambient-toggle{
+  margin-top:16px;display:flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:999px;cursor:pointer;
+  background:var(--surface2);border:.5px solid var(--border2);color:var(--text3);
+  font-size:11.5px;letter-spacing:.02em;transition:.2s;
+}
+.ambient-toggle .ambient-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:.2s}
+.ambient-toggle.on{color:var(--accent2);border-color:var(--accent);background:var(--accent-dim)}
+.ambient-toggle.on .ambient-dot{background:var(--accent2);box-shadow:0 0 10px var(--accent-glow);animation:lola-pulse-dot 1.8s ease-in-out infinite}
+.ambient-toggle.muted{opacity:.55}
+@keyframes lola-pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(204,255,0,.4)}50%{box-shadow:0 0 0 6px rgba(204,255,0,0)}}
 .usage-banner{
   display:flex;align-items:center;gap:12px;
   padding:12px 16px;border-radius:var(--r-sm);margin-bottom:14px;font-size:13px;
@@ -562,17 +616,67 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 .btn-primary{background:var(--accent);color:#070708}
 .btn-ghost{background:var(--surface);border:.5px solid var(--border);color:var(--text2)}
 
+/* Operational home: one hierarchy, one metric source, one living Lola surface. */
+.cmd-dock{
+  background:rgba(18,18,21,.82);
+  border-color:rgba(204,255,0,.16);
+  box-shadow:0 14px 50px rgba(0,0,0,.55),0 0 30px rgba(204,255,0,.04);
+}
+
 @media(max-width:1400px){
   .grid-main{grid-template-columns:minmax(0,1fr) 340px}
-  .grid-main>.col-stack:last-child{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}
+  .grid-main>.col-stack:last-child{display:none}
   .dash-header{align-items:flex-start;flex-direction:column}
   .dash-header .kpi-row{width:100%;min-width:0}
 }
 @media(max-width:1100px){
   .app{grid-template-columns:1fr}
-  .sidebar{display:none}
+  .sidebar{
+    display:flex;
+    position:fixed;
+    top:0;left:0;bottom:0;
+    width:264px;
+    z-index:300;
+    transform:translateX(-100%);
+    transition:transform .28s cubic-bezier(.22,1,.36,1);
+    box-shadow:0 0 60px rgba(0,0,0,.5);
+  }
+  .sidebar.open{transform:translateX(0)}
+  .drawer-backdrop{
+    display:none;
+    position:fixed;inset:0;
+    background:rgba(0,0,0,.55);
+    z-index:290;
+  }
+  .drawer-backdrop.open{display:block}
+  .menu-btn{
+    display:flex;align-items:center;justify-content:center;
+    width:38px;height:38px;flex:0 0 38px;
+    border-radius:var(--r);
+    background:var(--surface);border:.5px solid var(--border);
+    color:var(--text2);
+  }
+  .live-ticker{
+    display:none;
+    flex:1;align-items:center;gap:8px;
+    font-size:12px;color:var(--text2);
+    padding:0 4px;overflow:hidden;
+    white-space:nowrap;text-overflow:ellipsis;
+  }
+  .live-ticker .dot{
+    width:6px;height:6px;border-radius:50%;flex:0 0 6px;
+    background:var(--accent2);box-shadow:0 0 8px var(--accent-glow);
+    animation:tickerPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes tickerPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .search{display:none}
+  .live-ticker{display:flex}
+  .menu-btn{display:flex}
   .main{padding:16px 16px 110px}
-  .grid-main{grid-template-columns:1fr}
+  .grid-main{
+    grid-template-columns:1fr;
+    grid-template-areas:"lola" "desk" "schedule";
+  }
   .grid-main>.col-stack:last-child{grid-template-columns:1fr}
   .cmd-dock{
     left:50%;
@@ -598,6 +702,9 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   .roi-stats,.kpi-row{grid-template-columns:repeat(2,1fr)}
   .res-grid{grid-template-columns:1fr}
   .cmd-chips{display:none}
+  .dash-header{align-items:flex-start;flex-direction:column}
+  .dash-header .kpi-row{width:100%;min-width:0}
+  .grid-main>.lola-panel{min-height:calc(100vh - 180px)}
 }
 @media(max-width:620px){
   .topbar{gap:10px}
@@ -664,13 +771,38 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       </div>
     </div>
   </aside>
+  <div class="drawer-backdrop" id="drawerBackdrop" onclick="toggleDrawer(false)"></div>
+  <script>
+    window.toggleDrawer = function(force){
+      const sidebar = document.querySelector('.sidebar');
+      const backdrop = document.getElementById('drawerBackdrop');
+      if(!sidebar || !backdrop) return;
+      const open = typeof force === 'boolean' ? force : !sidebar.classList.contains('open');
+      sidebar.classList.toggle('open', open);
+      backdrop.classList.toggle('open', open);
+    };
+    window.lolaSetTicker = function(text){
+      const el = document.getElementById('liveTickerText');
+      if(!el) return;
+      el.textContent = text;
+      clearTimeout(window.__tickerResetTimer);
+      window.__tickerResetTimer = setTimeout(()=>{ el.textContent = 'Lola is listening'; }, 6000);
+    };
+  </script>
 
   <main class="main">
     <div class="topbar">
+      <button class="menu-btn" aria-label="Open menu" onclick="toggleDrawer()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
       <div class="search">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
         <input id="topSearch" placeholder="Search clients, bookings, anything…"/>
         <span class="search-kbd">⌘K</span>
+      </div>
+      <div class="live-ticker" id="liveTicker">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="liveTickerText">Lola is listening</span>
       </div>
       <div class="topbar-actions">
         <button class="icon-btn" aria-label="Add" onclick="location.href='bookings.html'">
@@ -762,17 +894,30 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       <section class="lola-panel">
         <div id="usageBanner" style="display:none"></div>
         <div class="lola-orb-zone">
-          <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()">
+          <div class="lola-presence-field" id="orbField" aria-hidden="true"></div>
+          <div class="lola-orb-stage" id="orbStage" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Talk to Lola">
             <canvas id="orbCanvas" width="300" height="300"></canvas>
             <div class="lola-core"><div class="lola-name">LOLA</div></div>
           </div>
           <div class="lola-prompt">
             <div class="lola-prompt-title" id="orbTitle">Hey Lola…</div>
             <div class="lola-prompt-sub" id="orbSub">Tap to speak or type a command</div>
+            <div id="orbTranscript" aria-live="polite" style="min-height:18px;margin-top:8px;text-align:center;font-size:12px;color:var(--accent2)"></div>
+            <div id="orbWave" aria-hidden="true" style="display:none;align-items:center;justify-content:center;gap:4px;height:18px;margin-top:6px">
+              <i></i><i></i><i></i><i></i><i></i>
+            </div>
           </div>
           <button class="lola-mic" id="orbMic" onclick="toggleVoice()" aria-label="Talk to Lola">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8"/></svg>
           </button>
+          <button class="ambient-toggle" id="ambientToggle" onclick="toggleAmbientListening()" aria-pressed="false" aria-label="Always listening for Lola">
+            <span class="ambient-dot"></span><span id="ambientToggleLabel">Always listening for “Lola”</span>
+          </button>
+          <div class="lola-suggestions" aria-label="Suggested actions">
+            <button class="lola-suggestion" onclick="askLola('Find the best client to fill the next open appointment gap.')">Fill next gap</button>
+            <button class="lola-suggestion" onclick="askLola('Show me the clients who need a callback today.')">Callbacks due</button>
+            <button class="lola-suggestion" onclick="askLola('Give me today’s three most important front desk actions.')">Today’s priorities</button>
+          </div>
         </div>
       </section>
 
@@ -992,11 +1137,18 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 </div>
 
 <script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
 <script src="lola-orb.js"></script>
+<script src="lola-wake-burst.js"></script>
+<script src="lola-resonance.js"></script>
 <script src="lola-data.js"></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
 (async function(){
+  const operationsGrid = document.querySelector(".grid-main");
+  const commandCenter = document.getElementById("deskCenter");
+  if(operationsGrid && commandCenter) operationsGrid.prepend(commandCenter);
+
   const money = (value) => "$" + Math.max(0, Number(value || 0)).toLocaleString();
   const text = (id, value) => {
     const el = document.getElementById(id);
@@ -1032,11 +1184,12 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         name:tenant.name || tenant.business_name || "",
         owner:tenant.owner_name || "",
         location:tenant.location || "",
+        hours:tenant.hours || "",
         phone:tenant.phone_number || "",
         bookingUrl:tenant.booking_url || "",
         websiteUrl:tenant.website_url || "",
         googleBusinessUrl:tenant.google_business_url || "",
-        persona:{name:"Lola",voice:"Samantha"},
+        persona:{name:"Lola",voice:"lola"},  // Lola's ONE canonical voice — never a picker
         services:tenant.services || [],
         team:tenant.team || [],
         knowledge:tenant.knowledge || {}
@@ -1463,16 +1616,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
   window.playBriefing = function(){
     if(!window._briefingText) return;
+    // ONE LOLA, ONE VOICE — route through the canonical ElevenLabs speak
+    // when available; otherwise stay silent rather than use a browser TTS
+    // substitute.
     if(typeof window.speak === "function"){
       window.speak(window._briefingText);
-      return;
-    }
-    if(window.speechSynthesis){
-      const utterance = new SpeechSynthesisUtterance(window._briefingText);
-      utterance.rate = .94;
-      utterance.pitch = 1.04;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
     }
   };
 
@@ -1492,14 +1640,28 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     }
   });
 
-  await Promise.all([
+  const dashboardResults = await Promise.allSettled([
     renderSchedule(),
     renderAway(),
     renderDeskCenter()
   ]);
+  dashboardResults.filter(x=>x.status==='rejected').forEach(x=>console.warn('[dashboard] section unavailable',x.reason));
   renderInsights();
   renderResonance();
   drawCharts();
+
+  // app.js has its own demo-data fallback renderers for scheduleList/insightsList
+  // (used on pages with no real data wired yet) — this flag tells it real data
+  // is already on screen here, so it doesn't overwrite it.
+  window.__LOLA_REAL_DATA__ = true;
+
+  // Exposed so lola-live-poll.js can refresh visible panels when new
+  // bookings/calls/messages come in, without a full page reload.
+  window.lolaRefreshPanels = function(){
+    renderSchedule();
+    renderAway();
+    renderInsights();
+  };
 
   const appScript = document.createElement("script");
   appScript.src = "app.js";
@@ -1510,6 +1672,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         if(event.key==="Enter" && typeof window.sendCmd==="function") window.sendCmd();
       });
     }
+    // Live activity polling needs window.lolaPulse (app.js) to exist first.
+    const pollScript = document.createElement("script");
+    pollScript.src = "lola-live-poll.js";
+    document.body.appendChild(pollScript);
   };
   document.body.appendChild(appScript);
 })();

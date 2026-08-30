@@ -27,6 +27,8 @@ export default async function handler(req, res){
     const text = (body.text||'').toString().slice(0, 2500);
     if(!text) return res.status(400).json({ error:'text required' });
 
+    // No register, no voice_settings — Lola speaks in the voice exactly
+    // as the owner created it (see lib/elevenlabs.js).
     const buf = await synthesize(text);
     res.setHeader('Content-Type','audio/mpeg');
     res.setHeader('Content-Length', buf.length);

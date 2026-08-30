@@ -1,6 +1,6 @@
-import {
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
+import { db,
   e164,
-  getTenantByPhone,
   upsertClient,
   getClientMemory,
   setClientMemory,
@@ -13,8 +13,8 @@ import {
   updateCallByTelnyxId
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
-import { synthesize, isConfigured as elevenLabsConfigured, registerForText } from './lib/elevenlabs.js';
-import { putAudioKeyed, getKeyedAudioId } from './lib/tts-cache.js';
+import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
+// tts-cache.js is now a stub — Supabase Storage logic is inline below
 import { sendSMS } from './telnyx-sms.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -107,9 +107,12 @@ function buildHints(tenant){
 }
 
 function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter = false }){
-  const speakBlock = playUrl
-    ? `<Play>${escapeXml(playUrl)}</Play>`
-    : `<Say voice="Polly.Joanna-Neural">${escapeXml(say)}</Say>`;
+  // ONE LOLA, ONE VOICE — never a substitute. If Lola's canonical voice
+  // can't be produced, fail loudly instead of speaking in a Polly voice.
+  if(!playUrl){
+    throw new Error('[VOICE] Lola\'s canonical voice unavailable (ELEVENLABS_VOICE_ID missing or synthesis failed) — refusing a non-Lola fallback voice.');
+  }
+  const speakBlock = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangupAfter){
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -133,6 +136,9 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
+  // Top-level try-catch: any crash returns a loud 502 (never a substitute
+  // voice) so the failure is visible in Vercel logs and the Telnyx dashboard.
+  try{
   const incoming = await readBody(req);
   if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
     const sig = getTelnyxSignatureHeaders(req);
@@ -147,10 +153,32 @@ export default async function handler(req, res){
   const toN = e164(payload.to);
   const fromN = e164(payload.from);
 
-  let tenant = null;
-  try{ tenant = await getTenantByPhone(toN); }catch{}
-  if(!tenant?.id){
-    const xml = texmlSayAndGather({ say: 'Sorry, we cannot route this call yet. Please try again shortly.' });
+  // ── MULTI-TENANT ROUTING (before Lola's first syllable) ──
+  // Strictly resolve the DIALED number to one tenant. Any miss, disabled
+  // number, or ambiguous mapping is a hard refuse — never demo data, never
+  // another salon's book. Hang up (don't Gather) so an unroutable caller
+  // isn't left looping on the line.
+  const routing = await resolveInboundTenant({ to: toN });
+  if(routing.status !== 'resolved' || !routing.tenant){
+    const say = routing.status === 'disabled'
+      ? 'This number is not active yet. Please try again later.'
+      : 'Sorry, we cannot route this call yet. Please try again shortly.';
+    const xml = texmlSayAndGather({ say, hangupAfter: true });
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send(xml);
+  }
+  const tenant = routing.tenant;
+
+  // ── OWNER VOICE COMMAND ("Jarvis, but better") ────────────────
+  // If the CALLER is this salon's registered owner (tenants.operator_phone,
+  // set in Settings), the owner's OWN Lola number doubles as their private
+  // voice-command line — no second number to remember, no app to open.
+  // Hand off to /api/operator-voice, which re-resolves by caller ID and
+  // runs the privileged owner flow (schedule, revenue, rebooking radar;
+  // PIN-gated for anything destructive). Caller ID is a soft signal here —
+  // the PIN still guards every action that changes the book or texts clients.
+  if(fromN && tenant.operator_phone && e164(tenant.operator_phone) === fromN){
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Redirect method="POST">/api/operator-voice</Redirect>\n</Response>`;
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }
@@ -158,20 +186,55 @@ export default async function handler(req, res){
   // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
   // deterministic replies. First caller of the window pays ElevenLabs;
   // everyone after gets instant answer at zero tts_chars cost.
-  async function speakCached(text, register){
-    if(!elevenLabsConfigured() || !process.env.APP_URL) return '';
-    const reg = register || registerForText(text);
-    const base = process.env.APP_URL.replace(/\/+$/,'');
-    const key = crypto.createHash('sha1').update(`${process.env.ELEVENLABS_VOICE_ID||''}|${reg}|${text}`).digest('hex');
-    let id = getKeyedAudioId(key);
-    if(!id){
-      try{
-        const audio = await synthesize(text, { register: reg });
-        id = putAudioKeyed(key, audio);
-        await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
-      }catch(e){ console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100)); return ''; }
+  // ── Supabase Storage-backed ElevenLabs TTS cache ──
+  // Audio is uploaded to the 'voice-audio' Supabase bucket and served
+  // via its public CDN URL. This works across all Vercel instances —
+  // no in-memory state, no cross-instance 404s.
+  const VOICE_BUCKET = 'voice-audio';
+  const supabase = db(); // reuse the shared Supabase client
+
+  // Lola's one canonical voice — same for every salon, every call (like
+  // Siri on Apple). Included in the cache key so the audio cache stays
+  // consistent across the platform.
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
+
+  async function speakCached(text){
+    if(!elevenLabsConfigured() || !supabase) return '';
+    // Cache key is the canonical voice + text only — no register, no
+    // settings, because Lola's voice is never modified per message.
+    const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
+    const storagePath = `cached/${key}.mp3`;
+
+    // Check if already cached in Supabase Storage (HEAD request)
+    try{
+      const { data: pubData } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      if(pubData?.publicUrl){
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try{
+          const r = await fetch(pubData.publicUrl, { method: 'HEAD', signal: controller.signal });
+          clearTimeout(timer);
+          if(r.ok) return pubData.publicUrl; // cache hit!
+        }catch{ clearTimeout(timer); }
+      }
+    }catch{}
+
+    // Cache miss — synthesize via ElevenLabs and upload to Supabase
+    try{
+      const audio = await synthesize(text);
+      const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
+        .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
+      if(upErr){
+        console.error('[VOICE] Supabase upload error:', upErr?.message || upErr);
+        return '';
+      }
+      const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
+      return pubData2?.publicUrl || '';
+    }catch(e){
+      console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100));
+      return '';
     }
-    return `${base}/api/voice-audio?id=${encodeURIComponent(id)}`;
   }
 
   // ── Silence path: Gather timed out and <Redirect> brought us back ──
@@ -191,9 +254,13 @@ export default async function handler(req, res){
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
     }
-    // Second silence: warm goodbye + missed-call text-back, then hang up.
-    const bye = `No worries — I'll text you so you can book whenever suits you. Bye for now!`;
-    if(fromN){
+    // Second silence: warm goodbye + missed-call text-back (gated by the
+    // owner's Settings > Messaging toggle), then hang up.
+    const textbackEnabled = tenant.missed_call_textback !== false;
+    const bye = textbackEnabled
+      ? `No worries — I'll text you so you can book whenever suits you. Bye for now!`
+      : `No worries — have a great day, and call us back any time. Bye for now!`;
+    if(fromN && textbackEnabled){
       try{
         const textback = `Hi, it's Lola from ${tenant.name} 💗 Sorry we got cut off! I can book you right here — just tell me the service and a day that works.`;
         const r = await sendSMS({ from: toN, to: fromN, text: textback, tenantId: tenant.id });
@@ -281,8 +348,11 @@ export default async function handler(req, res){
       ];
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
       const state = Buffer.from(speech).toString('base64url');
-      const ackUrl = await speakCached(ack, 'warm');
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackUrl ? `<Play>${escapeXml(ackUrl)}</Play>` : `<Say voice="Polly.Joanna-Neural">${escapeXml(ack)}</Say>`}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
+      const ackUrl = await speakCached(ack);
+      // Lola only — if the ack can't be synthesized in her voice, fail loudly.
+      if(!ackUrl) throw new Error('[VOICE] Ack synthesis failed — refusing a non-Lola fallback voice.');
+      const ackBlock = `<Play>${escapeXml(ackUrl)}</Play>`;
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackBlock}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
       res.setHeader('Content-Type', 'application/xml');
       return res.status(200).send(xml);
     }
@@ -416,19 +486,27 @@ export default async function handler(req, res){
   // deterministic skill replies repeat constantly across calls — they
   // synthesize once per cache window and replay instantly (faster
   // answer, zero repeated ElevenLabs spend). Unique LLM replies simply
-  // pass through the same path. <Say> fallback preserved when empty.
-  if(!elevenLabsConfigured() || !process.env.APP_URL){
+  // pass through the same path. No <Say> fallback — Lola's voice or nothing.
+  if(!elevenLabsConfigured()){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
     if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
-    if(!process.env.APP_URL) missing.push('APP_URL');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
   // clean for the mouth: no markdown, no newlines, spoken-length cap
   reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
-  const playUrl = await speakCached(reply, registerForText(reply));
+  const playUrl = await speakCached(reply);
 
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');
   return res.status(200).send(xml);
+  }catch(handlerErr){
+    console.error('[VOICE] HANDLER CRASH:', String(handlerErr?.message||handlerErr).slice(0,500), handlerErr?.stack?.slice(0,500));
+    // Fail loudly, never substitute a voice. A 502 is visible in Vercel
+    // logs and the Telnyx dashboard — misconfig becomes unmissable.
+    return res.status(502).json({
+      error: 'Lola voice unavailable — call refused rather than speaking in a substitute voice',
+      detail: String(handlerErr?.message||handlerErr).slice(0,300)
+    });
+  }
 }

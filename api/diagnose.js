@@ -11,10 +11,20 @@
  * is done if you want to reduce surface area, but it's not a risk
  * to leave it.
  */
+// Supabase ships TWO generations of API keys:
+//   legacy   — JWT JWTs, `eyJ…` (anon = ~200 chars, service_role = ~220)
+//   new      — `sb_publishable_…` (anon-equivalent) and `sb_secret_…`
+//              (service_role-equivalent)
+// Either generation is valid for SUPABASE_SERVICE_KEY; the definitive test is
+// the live RLS-bypass query below, NOT the prefix. This only flags a value
+// that matches NONE of the known shapes (e.g. a stray clipboard paste).
 function shape(name, value, expectedPrefix){
   if(!value) return { name, present:false };
   const info = { name, present:true, length: value.length };
-  if(expectedPrefix) info.looksRight = value.startsWith(expectedPrefix);
+  if(expectedPrefix){
+    const prefixes = Array.isArray(expectedPrefix) ? expectedPrefix : [expectedPrefix];
+    info.looksRight = prefixes.some(p => value.startsWith(p));
+  }
   return info;
 }
 
@@ -24,8 +34,7 @@ export default async function handler(req, res){
 
   const checks = [
     shape('SUPABASE_URL', url, 'https://'),
-    shape('SUPABASE_SERVICE_KEY', key, 'eyJ'),
-    shape('ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY, 'sk-ant-'),
+    shape('SUPABASE_SERVICE_KEY', key, ['eyJ', 'sb_secret_', 'sb_publishable_']),
     shape('TELNYX_API_KEY', process.env.TELNYX_API_KEY, 'KEY'),
     shape('TELNYX_VOICE_APP_ID', process.env.TELNYX_VOICE_APP_ID),
     shape('ELEVENLABS_API_KEY', process.env.ELEVENLABS_API_KEY),
@@ -42,7 +51,7 @@ export default async function handler(req, res){
     try{
       const { createClient } = await import('@supabase/supabase-js');
       const client = createClient(url, key, { auth:{ persistSession:false } });
-      const { data, error, status } = await client.from('tenants').select('id', { count:'exact', head:true });
+      const { data, error, status, count } = await client.from('tenants').select('id', { count:'exact', head:true });
       if(error){
         liveConnection.ok = false;
         liveConnection.httpStatus = status;
@@ -55,6 +64,11 @@ export default async function handler(req, res){
       } else {
         liveConnection.ok = true;
         liveConnection.message = 'Successfully connected and queried the tenants table.';
+        // tenants has RLS with no public read policy, so a service-role key
+        // sees ALL rows (RLS bypass) while an anon-equivalent key sees none.
+        // This is the real "is it the service key" proof.
+        liveConnection.tenantsVisible = count ?? (Array.isArray(data) ? data.length : 0);
+        liveConnection.serviceRoleCapable = (count ?? 0) > 0;
       }
     }catch(e){
       liveConnection.ok = false;

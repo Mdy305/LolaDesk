@@ -1,845 +1,546 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Get Started — LolaDesk</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<meta name="description" content="Set up your AI front desk in minutes. Connect your booking system, customize Lola, and go live."/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LolaDesk — Start</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#070708;--bg2:#0c0c0e;--surface:#121214;--surface2:#16161a;
-  --border:#1e1e22;--border2:#28282e;
-  --text:#f2f2f5;--text2:#8a8a92;--text3:#52525a;
-  --pink:#ccff00;--pink2:#dcff66;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.4);
-  
-  --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-  --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-  --r:14px;--r-sm:10px;--r-lg:20px;
-}
-html,body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;min-height:100vh;letter-spacing:-0.015em}
-::-webkit-scrollbar{width:0}
-*{scrollbar-width:none}
-button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:inherit;letter-spacing:-0.01em}
-input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
+:root{--bg:#050506;--surface:#141416;--surface2:#19191d;--line:#25252b;--text:#f6f6f7;--muted:#92929b;--dim:#5c5c65;--accent:#ccff00;--accent2:#e4ff78;--glow:rgba(204,255,0,.18);--danger:#ff6b60;--font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+.presence{border-right:1px solid var(--line);padding:52px 56px;display:flex;flex-direction:column;justify-content:space-between;background:radial-gradient(ellipse at 30% 60%,rgba(204,255,0,.04),transparent 70%)}
+.brand{font-size:16px;font-weight:700;letter-spacing:.18em}
+.brand small{display:block;font-size:9px;color:var(--dim);letter-spacing:.45em;margin-top:2px}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 0}
+.orb-wrap{width:min(38vw,360px);height:min(38vw,360px);filter:drop-shadow(0 0 80px var(--glow))}
+.orb-wrap canvas{width:100%;height:100%}
+.presence-copy{max-width:480px}
+.eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.presence h1{font-size:clamp(32px,3.8vw,54px);line-height:.97;letter-spacing:-.05em;font-weight:530}
+.presence p{color:var(--muted);font-size:14px;line-height:1.75;margin-top:18px;max-width:440px}
+.trust{display:flex;gap:20px;flex-wrap:wrap;margin-top:24px;color:var(--dim);font-size:11px}
+.workspace{display:flex;flex-direction:column;padding:36px 52px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px}
+.progress{display:flex;gap:6px}
+.progress i{display:block;width:28px;height:2px;border-radius:8px;background:var(--line);transition:.35s}
+.progress i.on{background:var(--text)}
+.login{font-size:12px;color:var(--muted)}
+.login a{color:var(--text);text-decoration:none}
+.card{width:min(640px,100%);margin:auto;background:linear-gradient(180deg,rgba(255,255,255,.016),transparent);border:1px solid var(--line);border-radius:28px;padding:48px;box-shadow:0 24px 80px rgba(0,0,0,.38)}
+.step{display:none}.step.on{display:block;animation:enter .45s cubic-bezier(.22,1,.36,1)}
+@keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.step-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.18em;margin-bottom:14px}
+.step h2{font-size:38px;letter-spacing:-.04em;line-height:1.06;font-weight:520;margin-bottom:12px}
+.sub{color:var(--muted);font-size:14px;line-height:1.75;margin-bottom:32px;max-width:460px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:11px;color:var(--muted);margin:0 0 7px 1px;letter-spacing:.04em}
+.input{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:13px;padding:14px 15px;outline:none;font-size:14px;font-family:inherit;transition:.18s}
+.input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.07)}
+.input::placeholder{color:var(--dim)}
+.num-search{display:flex;gap:8px;margin-bottom:16px}
+.num-search .input{flex:1}
+.num-search button{padding:0 18px;border-radius:13px;background:var(--surface2);border:1px solid var(--line);color:var(--text);font-size:13px;cursor:pointer;white-space:nowrap}
+.num-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;max-height:280px;overflow-y:auto}
+.num-card{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--surface);cursor:pointer;transition:.15s}
+.owned-divider{display:flex;align-items:center;gap:12px;margin:16px 0 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
+.owned-divider::before,.owned-divider::after{content:'';flex:1;height:1px;background:var(--line)}
+.num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 9px;border-radius:999px;background:rgba(112,255,0,.12);color:#70FF00;border:1px solid rgba(112,255,0,.3);white-space:nowrap}
+.num-card:hover,.num-card.on{border-color:var(--text);background:rgba(255,255,255,.04)}
+.num-card.on{box-shadow:0 0 0 1px var(--text)}
+.num-number{font-size:16px;font-weight:500;letter-spacing:.02em}
+.num-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.num-price{font-size:12px;color:var(--muted)}
+.status{display:grid;gap:8px;margin:20px 0}
+.srow{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:0 0 9px;transition:.3s}
+.srow.running .dot{background:var(--accent);animation:pulse 1s ease-in-out infinite}
+.srow.done .dot{background:var(--accent)}
+.srow.fail .dot{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.scopy b{font-size:12.5px;display:block}
+.scopy small{font-size:11px;color:var(--muted);margin-top:2px;display:block}
+.actions{display:flex;align-items:center;gap:10px;margin-top:28px}
+.btn-p{background:var(--text);color:#080809;border:0;border-radius:13px;padding:14px 20px;font-weight:650;font-size:14px;flex:1;cursor:pointer;font-family:inherit;transition:transform .15s cubic-bezier(.22,1,.36,1),box-shadow .2s}
+.btn-p:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(246,246,247,.14)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.embed-box{margin:0 auto 26px;max-width:440px;background:var(--surface);border:.5px solid var(--line);border-radius:16px;padding:20px}
+.embed-eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.embed-title{font-size:15px;font-weight:600;margin-bottom:6px}
+.embed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px}
+.embed-snippet{background:#0a0a0c;border:.5px solid var(--line);border-radius:10px;padding:12px 14px;font-size:11.5px;line-height:1.6;color:var(--accent2);white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.embed-actions{display:flex;gap:10px;margin-top:14px;align-items:center}
+.embed-actions .btn-p{flex:1;padding:12px 14px;font-size:13px}
+.embed-link{font-size:12.5px;color:var(--muted);text-decoration:none;white-space:nowrap}
+.embed-link:hover{color:var(--accent2)}
+.embed-note{font-size:12px;color:var(--accent2);margin-top:10px;opacity:0;transition:opacity .3s;text-align:center}
+.btn-g{background:var(--surface2);color:var(--muted);border:1px solid var(--line);border-radius:13px;padding:14px 20px;font-size:13px;cursor:pointer;font-family:inherit}
+.error{min-height:18px;margin-top:10px;color:var(--danger);font-size:12px;font-weight:550}
+.fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:12px}
 
-.wrap{min-height:100vh;display:flex;flex-direction:column}
+/* ── Auto-assigned live number ── */
+.auto-num{display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(112,255,0,.07),transparent);border:1px solid rgba(112,255,0,.32);border-radius:18px;padding:20px;margin-bottom:22px;box-shadow:0 0 40px rgba(112,255,0,.08)}
+.auto-num .num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:rgba(112,255,0,.14);color:#70FF00;border:1px solid rgba(112,255,0,.4);white-space:nowrap}
+.auto-num b{font-size:20px;letter-spacing:-.02em;display:block}
+.auto-num small{font-size:12px;color:var(--muted);line-height:1.6;margin-top:3px;display:block}
+.auto-live{font-size:10px;color:#70FF00;text-transform:uppercase;letter-spacing:.18em;margin-bottom:10px}
 
-/* HEADER */
-.ob-head{display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:0.5px solid var(--border)}
-.ob-logo{font-size:18px;font-weight:600;letter-spacing:.16em}
-.ob-logo span{font-size:9px;font-weight:400;letter-spacing:.4em;color:var(--text3);display:block;margin-top:1px}
-.ob-help{font-size:12px;color:var(--text3)}
-.ob-help a{color:var(--pink2);text-decoration:none}
+/* ── Voice preview ── */
+.voice-preview{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:28px}
+.voice-btn{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 52px;transition:transform .2s}
+.voice-btn:hover{transform:scale(1.06)}
+.voice-btn.playing{animation:speak .9s ease-in-out infinite}
+@keyframes speak{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.voice-btn svg{width:20px;height:20px;color:#080809}
+.voice-copy b{font-size:14px;display:block}
+.voice-copy small{font-size:11.5px;color:var(--muted);margin-top:3px;display:block;line-height:1.5}
 
-/* PROGRESS */
-.ob-progress{display:flex;align-items:center;justify-content:center;gap:0;padding:28px 20px 8px}
-.ob-step-dot{display:flex;align-items:center}
-.ob-dot{width:30px;height:30px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--text3);transition:all .3s;flex-shrink:0}
-.ob-dot.active{border-color:var(--pink);background:var(--pink-dim);color:var(--pink2);box-shadow:0 0 16px var(--pink-glow)}
-.ob-dot.done{border-color:var(--text);background:var(--mono-dim);color:var(--text)}
-.ob-line{width:46px;height:1px;background:var(--border2);transition:background .3s}
-.ob-line.done{background:var(--text)}
-.ob-step-labels{display:flex;align-items:center;justify-content:center;gap:0;padding:0 20px 24px}
-.ob-step-label{font-size:10px;color:var(--text3);text-align:center;transition:color .3s}
-.ob-step-label.active{color:var(--text2)}
-.ob-step-label-spacer{width:46px}
+/* ── Live-in-60 meter ── */
+.live-meter{display:flex;flex-direction:column;align-items:center;gap:10px;margin:6px 0 26px}
+.meter-ring{position:relative;width:150px;height:150px}
+.meter-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.meter-ring .track{fill:none;stroke:var(--line);stroke-width:6}
+.meter-ring .fill{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .5s cubic-bezier(.22,1,.36,1);filter:drop-shadow(0 0 6px var(--glow))}
+.meter-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.meter-num b{font-size:40px;font-weight:300;letter-spacing:-.03em;line-height:1}
+.meter-num span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin-top:4px}
+.meter-num b.live{color:var(--accent);font-size:30px;font-weight:600;letter-spacing:.02em}
+.meter-copy{font-size:12.5px;color:var(--muted);text-align:center;max-width:400px;line-height:1.6}
 
-/* CARD */
-.ob-body{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:20px 20px 60px}
-.ob-card{width:100%;max-width:520px}
-.ob-step{display:none}
-/* ── Motion system — Apple-grade step choreography ──
-   One spring curve everywhere (the iOS sheet curve), direction-aware
-   entry (forward slides from the right, back from the left), and the
-   step's children cascade in with a 40ms stagger so each screen
-   *composes* rather than pops. Honors prefers-reduced-motion. */
-:root{ --ob-spring: cubic-bezier(.22,1,.36,1); }
-.ob-step.active{display:block;animation:obEnterFwd .55s var(--ob-spring) both}
-.ob-step.active.back{animation-name:obEnterBack}
-@keyframes obEnterFwd{from{opacity:0;transform:translateX(26px) scale(.985);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
-@keyframes obEnterBack{from{opacity:0;transform:translateX(-26px) scale(.985);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
-.ob-step.active > *{animation:obRise .5s var(--ob-spring) both}
-.ob-step.active > *:nth-child(1){animation-delay:.04s}
-.ob-step.active > *:nth-child(2){animation-delay:.08s}
-.ob-step.active > *:nth-child(3){animation-delay:.12s}
-.ob-step.active > *:nth-child(4){animation-delay:.16s}
-.ob-step.active > *:nth-child(5){animation-delay:.20s}
-.ob-step.active > *:nth-child(6){animation-delay:.24s}
-.ob-step.active > *:nth-child(7){animation-delay:.28s}
-.ob-step.active > *:nth-child(n+8){animation-delay:.32s}
-@keyframes obRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-/* progress dots get a spring pop when they become active/done */
-.ob-dot.active,.ob-dot.done{animation:obDotPop .45s var(--ob-spring)}
-@keyframes obDotPop{0%{transform:scale(.7)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
-/* selection cards lift like physical objects */
-.ob-platform:hover,.ob-persona-card:hover,.ob-plan:hover,.ob-number-card:hover{transform:translateY(-2px)}
-.ob-platform:active,.ob-persona-card:active,.ob-plan:active,.ob-number-card:active{transform:translateY(0) scale(.985);transition-duration:.06s}
-.ob-btn{transition:all .25s var(--ob-spring)}
-.ob-btn:active{transform:scale(.97)}
-@keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion: reduce){
-  .ob-step.active, .ob-step.active > *, .ob-dot.active, .ob-dot.done{animation:none !important}
-  .ob-platform:hover,.ob-persona-card:hover,.ob-plan:hover,.ob-number-card:hover{transform:none}
-}
-.ob-step-title{font-family:var(--ff-serif);font-size:34px;font-weight:300;font-style:italic;text-align:center;margin-bottom:8px;line-height:1.1}
-.ob-step-sub{font-size:14px;font-weight:300;color:var(--text2);text-align:center;margin-bottom:32px;line-height:1.6}
-
-/* FORM */
-.ob-field{margin-bottom:20px}
-.ob-label{font-size:13px;font-weight:500;color:var(--text2);margin-bottom:8px;display:block}
-.ob-input{width:100%;background:var(--surface);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:14px 18px;color:var(--text);font-size:15px;outline:none;transition:all .2s cubic-bezier(0.25,0.8,0.25,1)}
-.ob-input:focus{border-color:var(--pink);box-shadow:0 0 16px rgba(204,255,0,0.2)}
-.ob-input::placeholder{color:var(--text3)}
-.ob-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:480px){.ob-row{grid-template-columns:1fr}}
-
-/* PLATFORM CARDS */
-.ob-platforms{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
-@media(max-width:480px){.ob-platforms{grid-template-columns:1fr}}
-.ob-platform{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px 16px;cursor:pointer;transition:all .15s;position:relative}
-.ob-platform:hover{border-color:var(--border2)}
-.ob-platform.selected{border-color:var(--pink);background:var(--pink-dim)}
-.ob-platform.selected::after{content:'✓';position:absolute;top:12px;right:14px;color:var(--pink2);font-size:14px;font-weight:600}
-.ob-platform-name{font-size:15px;font-weight:600;margin-bottom:3px}
-.ob-platform-desc{font-size:11px;color:var(--text3);line-height:1.4}
-.ob-platform-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;margin-bottom:12px}
-
-/* NUMBER CHOICE */
-.ob-number-choice{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
-@media(max-width:480px){.ob-number-choice{grid-template-columns:1fr}}
-.ob-number-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s}
-.ob-number-card.selected{border-color:var(--pink);background:var(--pink-dim)}
-.ob-number-title{font-size:14px;font-weight:600;margin-bottom:4px}
-.ob-number-desc{font-size:12px;color:var(--text3);line-height:1.45}
-.ob-port-fields{display:none;gap:10px}
-.ob-port-fields.show{display:grid;grid-template-columns:1fr 1fr}
-@media(max-width:480px){.ob-port-fields.show{grid-template-columns:1fr}}
-
-/* PERSONA */
-.ob-persona{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
-.ob-persona-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;cursor:pointer;transition:all .15s}
-.ob-persona-card:hover{border-color:var(--border2)}
-.ob-persona-card.selected{border-color:var(--pink);background:var(--pink-dim)}
-.ob-persona-name{font-size:14px;font-weight:600;margin-bottom:4px}
-.ob-persona-desc{font-size:11px;color:var(--text3);line-height:1.5}
-.ob-persona-sample{font-size:12px;font-style:italic;color:var(--pink2);margin-top:8px;font-family:var(--ff-serif)}
-
-/* SERVICE ROWS */
-.ob-services{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.ob-service-row{display:grid;grid-template-columns:1fr 100px 90px 36px;gap:8px;align-items:center}
-@media(max-width:480px){.ob-service-row{grid-template-columns:1fr 70px 32px}.ob-service-dur{display:none}}
-.ob-service-row .ob-input{padding:10px 12px;font-size:13px}
-.ob-service-del{width:36px;height:40px;border-radius:var(--r-sm);background:var(--surface);border:0.5px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;transition:all .15s}
-.ob-service-del:hover{color:#ff5a4d;border-color:rgba(255,68,68,.3)}
-.ob-add-service{font-size:12px;color:var(--pink2);display:inline-flex;align-items:center;gap:6px;margin-top:4px}
-
-/* PRICING */
-.ob-plans{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
-.ob-plan{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:14px}
-.ob-plan:hover{border-color:var(--border2)}
-.ob-plan.selected{border-color:var(--pink);background:var(--pink-dim)}
-.ob-plan-radio{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border2);flex-shrink:0;transition:all .15s;position:relative}
-.ob-plan.selected .ob-plan-radio{border-color:var(--pink)}
-.ob-plan.selected .ob-plan-radio::after{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--pink)}
-.ob-plan-info{flex:1}
-.ob-plan-name{font-size:14px;font-weight:600}
-.ob-plan-desc{font-size:11px;color:var(--text3);margin-top:1px}
-.ob-plan-price{text-align:right}
-.ob-plan-price-val{font-size:18px;font-weight:600}
-.ob-plan-price-per{font-size:10px;color:var(--text3)}
-.ob-plan-badge{font-size:9px;font-weight:600;background:var(--pink);color:#fff;padding:2px 7px;border-radius:5px;margin-left:8px;letter-spacing:.06em}
-
-/* PREVIEW (final step) */
-.ob-preview{background:radial-gradient(ellipse 90% 80% at 50% 30%,rgba(204,255,0,.06),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;text-align:center;margin-bottom:20px}
-.ob-preview-orb{width:130px;height:130px;margin:0 auto 18px;position:relative;cursor:pointer}
-.ob-preview-orb canvas{position:absolute;inset:0}
-.ob-preview-name{font-size:24px;font-weight:600;letter-spacing:.24em;text-indent:.24em;margin-bottom:6px}
-.ob-preview-greeting{font-family:var(--ff-serif);font-size:17px;font-style:italic;color:var(--text2);line-height:1.5;max-width:380px;margin:0 auto}
-.ob-summary{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:20px}
-.ob-summary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:13px}
-.ob-summary-row:last-child{border-bottom:none}
-.ob-summary-label{color:var(--text3)}
-.ob-summary-val{color:var(--text);font-weight:500;text-align:right}
-
-/* NAV BUTTONS */
-.ob-nav{display:flex;gap:12px;margin-top:28px}
-.ob-btn{flex:1;padding:14px;border-radius:var(--r-sm);font-size:13px;font-weight:600;letter-spacing:.02em;transition:all .15s}
-.ob-btn-primary{background:var(--pink);color:#fff}
-.ob-btn-primary:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
-.ob-btn-ghost{background:var(--surface);color:var(--text2);border:0.5px solid var(--border);flex:0 0 auto;padding:14px 28px}
-.ob-btn-ghost:hover{color:var(--text);border-color:var(--border2)}
-.ob-btn-primary.full{flex:1}
-
-/* GO LIVE */
-.ob-live-check{width:64px;height:64px;border-radius:50%;background:var(--mono-dim);border:1px solid var(--text);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--text)}
-.ob-connecting{display:flex;flex-direction:column;gap:12px;margin:24px 0}
-.ob-connect-item{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--text2);padding:12px 16px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm)}
-.ob-connect-spinner{width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--pink);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
-@keyframes spin{to{transform:rotate(360deg)}}
-.ob-connect-check{color:var(--text);flex-shrink:0}
-</style>
-<style>
-/* ═══ VOLT CONTRAST — neon surfaces take dark ink, Apple-style ═══ */
-.btn-primary, .price-btn.primary, .pcta.primary, .buy-btn, .ob-btn,
-.connect-btn, .btn.btn-primary { color:#10140a !important; }
-
-.snd,.me{color:#10140a}</style>
-<style>
-/* ghost variants stay light-ink (they sit on dark, not on volt) */
-.btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
+.done-orb{width:90px;height:90px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);margin:0 auto 18px}
+.done-wrap{text-align:center;padding:20px 0}
+.done-num{font-size:24px;font-weight:300;color:var(--accent2);letter-spacing:.05em;margin:10px 0 18px}
+@media(max-width:900px){.shell{display:block}.presence{min-height:280px;border-right:0;border-bottom:1px solid var(--line);padding:28px;position:relative}.orb-wrap{width:160px;height:160px;position:absolute;right:-10px;top:30px;opacity:.4}.workspace{padding:24px 16px}.card{padding:24px;border-radius:20px}}
 </style>
 </head>
 <body>
-<div class="wrap">
-
-  <header class="ob-head">
-    <div class="ob-logo">LOLADESK<span>AI FRONT DESK</span></div>
-    <div class="ob-help">Already have an account? <a href="/login" style="color:var(--accent,#e879b9);font-weight:500">Sign in</a></div>
-  </header>
-
-  <!-- PROGRESS -->
-  <div class="ob-progress" id="progress">
-    <div class="ob-step-dot"><div class="ob-dot active" data-dot="0">1</div></div>
-    <div class="ob-line" data-line="0"></div>
-    <div class="ob-step-dot"><div class="ob-dot" data-dot="1">2</div></div>
-    <div class="ob-line" data-line="1"></div>
-    <div class="ob-step-dot"><div class="ob-dot" data-dot="2">3</div></div>
-    <div class="ob-line" data-line="2"></div>
-    <div class="ob-step-dot"><div class="ob-dot" data-dot="3">4</div></div>
-    
+<div class="shell">
+<div class="presence">
+  <div class="brand">LOLA<small>DESK</small></div>
+  <div class="stage"><div class="orb-wrap"><canvas id="orbCanvas"></canvas></div></div>
+  <div class="presence-copy">
+    <div class="eyebrow" id="presenceEyebrow">Meet Lola — she executes</div>
+    <h1 id="presenceTitle">Hear the voice<br/>that runs your salon.</h1>
+    <p id="presenceText">Jarvis talks. Alexa answers. Lola executes. Thirty seconds from now, she'll be answering your calls — and booking them.</p>
+    <div class="trust"><span>✦ Telnyx voice</span><span>✦ Real bookings</span><span>✦ 10DLC SMS</span><span>✦ Multi-tenant</span></div>
   </div>
+</div>
+<div class="workspace">
+  <div class="top">
+    <div class="progress" id="progress"></div>
+    <div class="login">Already have an account? <a href="login.html">Sign in</a></div>
+  </div>
+  <div class="card">
 
-  <div class="ob-body">
-    <div class="ob-card">
-
-      <!-- STEP 0: WORKSPACE TYPE -->
-      <div class="ob-step active" data-step="0">
-        <h1 class="ob-step-title">Welcome to LolaDesk</h1>
-        <p class="ob-step-sub">Are you setting up a single salon, or managing multiple locations?</p>
-        <div class="ob-platforms">
-          <div class="ob-platform selected" data-type="single" onclick="selectWorkspace(this)">
-            <div class="ob-platform-logo" style="background:var(--pink);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
-            <div class="ob-platform-name">Single Salon</div>
-            <div class="ob-platform-desc">I manage one primary business location.</div>
-          </div>
-          <div class="ob-platform" data-type="agency" onclick="selectWorkspace(this)">
-            <div class="ob-platform-logo" style="background:var(--surface2);color:var(--text)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/></svg></div>
-            <div class="ob-platform-name">Agency / Multi-Location</div>
-            <div class="ob-platform-desc">I manage multiple businesses or franchises.</div>
-          </div>
-        </div>
-        <div class="ob-nav">
-          <button class="ob-btn ob-btn-primary full" onclick="next()">Continue</button>
+    <!-- STEP 0 · MEET LOLA — one decision: does she sound right? -->
+    <div class="step on" data-step="0">
+      <div class="step-label">Meet Lola</div>
+      <h2>This is the voice<br/>your clients will hear.</h2>
+      <p class="sub">Press play. Jarvis talks, Alexa answers — Lola executes: she answers the call, locks the slot, and texts the confirmation. One voice, everywhere. One decision: is she right for you?</p>
+      <div class="voice-preview">
+        <button class="voice-btn" id="voiceBtn" onclick="playPreview()" aria-label="Play Lola's voice">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="voice-copy">
+          <b id="voiceLine">Hi, thank you for calling your salon. This is Lola — how can I help you today?</b>
+          <small id="voiceStatus">Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.</small>
         </div>
       </div>
-
-      <!-- STEP 1: SALON -->
-      <div class="ob-step" data-step="1">
-        <h1 class="ob-step-title">Tell us about your salon</h1>
-        <p class="ob-step-sub">This is how Lola introduces herself and where she sends bookings.</p>
-        <div class="ob-field">
-          <label class="ob-label">Salon name</label>
-          <input class="ob-input" id="f-name" placeholder="e.g. MMΛ Salon"/>
-        </div>
-        <div class="ob-field">
-          <label class="ob-label">Your name</label>
-          <input class="ob-input" id="f-owner" placeholder="e.g. Meddy"/>
-        </div>
-        <div class="ob-row">
-          <div class="ob-field">
-            <label class="ob-label">Phone number</label>
-            <input class="ob-input" id="f-phone" placeholder="+1 786 449 7058"/>
-          </div>
-          <div class="ob-field">
-            <label class="ob-label">Business type</label>
-            <select class="ob-input" id="f-type">
-              <option>Hair Salon</option>
-              <option>Med Spa</option>
-              <option>Day Spa</option>
-              <option>Barbershop</option>
-              <option>Nail Salon</option>
-              <option>Beauty / Aesthetics</option>
-            </select>
-          </div>
-        </div>
-        <div class="ob-field">
-          <label class="ob-label">Location</label>
-          <input class="ob-input" id="f-location" placeholder="1500 Alton Road, Miami Beach"/>
-        </div>
-        <div class="ob-row">
-          <div class="ob-field">
-            <label class="ob-label">Your email</label>
-            <input class="ob-input" id="f-email" type="email" placeholder="you@salon.com"/>
-          </div>
-          <div class="ob-field">
-            <label class="ob-label">Create a password</label>
-            <input class="ob-input" id="f-password" type="password" placeholder="At least 8 characters"/>
-          </div>
-        </div>
-        <div class="ob-err" id="ob-err0" style="color:#ff7a6d;font-size:12.5px;min-height:16px;margin-bottom:4px"></div>
-        <div class="ob-nav">
-          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary full" onclick="validateStep1()">Continue</button>
-        </div>
-      </div>
-
-      <!-- STEP 2: PLAN -->
-      <div class="ob-step" data-step="2">
-        <h1 class="ob-step-title">Meet your Lola</h1>
-        <p class="ob-step-sub">Here's how she'll greet your clients. Pick a plan and go live.</p>
-
-        <div class="ob-preview">
-          <div class="ob-preview-orb" id="previewOrb">
-            <canvas id="previewCanvas" width="130" height="130"></canvas>
-          </div>
-          <div class="ob-preview-name" id="previewName">LOLA</div>
-          <div class="ob-preview-greeting" id="previewGreeting">Hi! I'm Lola, your AI front desk…</div>
-        </div>
-
-        <div class="ob-plans" id="plans">
-          <div class="ob-plan" data-plan="starter" data-price="99" onclick="selectPlan(this)">
-            <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Solo</div><div class="ob-plan-desc">Chat + SMS · 1 platform</div></div>
-            <div class="ob-plan-price"><div class="ob-plan-price-val">$99</div><div class="ob-plan-price-per">/month</div></div>
-          </div>
-          <div class="ob-plan selected" data-plan="pro" data-price="399" onclick="selectPlan(this)">
-            <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Pro <span class="ob-plan-badge">POPULAR</span></div><div class="ob-plan-desc">+ Voice calls · ElevenLabs · Photo AI · CRM</div></div>
-            <div class="ob-plan-price"><div class="ob-plan-price-val">$399</div><div class="ob-plan-price-per">/month</div></div>
-          </div>
-          <div class="ob-plan" data-plan="medspa" data-price="599" onclick="selectPlan(this)">
-            <div class="ob-plan-radio"></div>
-            <div class="ob-plan-info"><div class="ob-plan-name">Med Spa</div><div class="ob-plan-desc">+ HIPAA-aware consultation flow</div></div>
-            <div class="ob-plan-price"><div class="ob-plan-price-val">$599</div><div class="ob-plan-price-per">/month</div></div>
-          </div>
-        </div>
-
-        <div class="ob-nav">
-          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary" onclick="next()">Continue</button>
-        </div>
-        <p style="font-size:11px;color:var(--text3);text-align:center;margin-top:12px">No charge today. Cancel anytime.</p>
-      </div>
-
-      <!-- STEP 3: PLATFORM -->
-      <div class="ob-step" data-step="3">
-        <h1 class="ob-step-title">Connect your booking system</h1>
-        <p class="ob-step-sub">Lola reads your calendar and books straight into the system you already use.</p>
-        <div class="ob-platforms" id="platforms">
-          <div class="ob-platform" data-platform="square" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#fff;color:#000">□</div>
-            <div class="ob-platform-name">Square</div>
-            <div class="ob-platform-desc">Appointments & payments. Most popular.</div>
-          </div>
-          <div class="ob-platform" data-platform="mindbody" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#e0f;color:#fff">M</div>
-            <div class="ob-platform-name">Mindbody</div>
-            <div class="ob-platform-desc">Wellness & spa scheduling.</div>
-          </div>
-          <div class="ob-platform" data-platform="vagaro" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#5b2a86;color:#fff">V</div>
-            <div class="ob-platform-name">Vagaro</div>
-            <div class="ob-platform-desc">Salon & beauty bookings.</div>
-          </div>
-          <div class="ob-platform" data-platform="fresha" onclick="selectPlatform(this)">
-            <div class="ob-platform-logo" style="background:#1a1a2e;color:#fff">F</div>
-            <div class="ob-platform-name">Fresha</div>
-            <div class="ob-platform-desc">Global beauty platform.</div>
-          </div>
-        </div>
-        <p style="font-size:12px;color:var(--text3);text-align:center;margin-top:14px">Don't use any of these? <a href="#" style="color:var(--pink2)" onclick="selectNone();return false">Use a booking link instead →</a></p>
-        
-        <div class="ob-field" style="margin-top:20px">
-          <label class="ob-label">Your Booking Link / Site URL</label>
-          <input class="ob-input" id="f-booking-url" placeholder="https://..." />
-        </div>
-        <div class="ob-field" style="margin-top:18px">
-          <label class="ob-label">Phone setup</label>
-          <div class="ob-number-choice">
-            <div class="ob-number-card selected" data-number-mode="new" onclick="selectNumberMode(this)">
-              <div class="ob-number-title">Get a new Lola number</div>
-              <div class="ob-number-desc">Fastest path. Lola goes live immediately on a fresh local line.</div>
-            </div>
-            <div class="ob-number-card" data-number-mode="port" onclick="selectNumberMode(this)">
-              <div class="ob-number-title">Keep my current number</div>
-              <div class="ob-number-desc">We handle the carrier transfer for you and keep you live on a temporary number until it completes.</div>
-            </div>
-          </div>
-        </div>
-        <div id="portFields" class="ob-port-fields">
-          <input class="ob-input" id="f-port-number" placeholder="Current business number (+1...)"/>
-          <input class="ob-input" id="f-port-carrier" placeholder="Current carrier (e.g. Verizon)"/>
-          <input class="ob-input" id="f-port-account" placeholder="Carrier account number"/>
-          <input class="ob-input" id="f-port-pin" placeholder="Carrier PIN / passcode"/>
-          <input class="ob-input" id="f-port-billing-name" placeholder="Billing name on account"/>
-          <input class="ob-input" id="f-port-billing-address" placeholder="Billing address on account"/>
-          <input class="ob-input" id="f-port-contact-name" placeholder="Authorized contact name"/>
-          <input class="ob-input" id="f-port-contact-email" placeholder="Authorized contact email"/>
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-loa"/> I have Letter of Authorization (LOA)</label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><input type="checkbox" id="f-port-bill"/> I have a recent bill copy</label>
-        </div>
-        <div class="ob-err" id="ob-err3" style="color:#ff7a6d;font-size:12.5px;min-height:16px;margin:8px 0 4px"></div>
-<div class="ob-nav">
-          <button class="ob-btn ob-btn-ghost" onclick="back()">Back</button>
-          <button class="ob-btn ob-btn-primary full" onclick="validateStep3AndGoLive()">Start 14-day free trial</button>
-        </div>
-      </div>
-
-      <!-- STEP 4: GO LIVE -->
-      <div class="ob-step" data-step="4">
-        <div class="ob-live-check" id="liveCheck" style="display:none">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
-        </div>
-        <h1 class="ob-step-title" id="liveTitle">Setting up your Lola…</h1>
-        <p class="ob-step-sub" id="liveSub">This takes about 30 seconds. Hang tight.</p>
-        <div class="ob-connecting" id="connecting"></div>
-        <div class="ob-nav" id="liveNav" style="display:none">
-          <button class="ob-btn ob-btn-primary full" onclick="enterDashboard()">Enter your dashboard →</button>
-        </div>
-      </div>
-
+      <div class="actions"><button class="btn-p" onclick="go(1)">She sounds great</button></div>
+      <div class="error" id="err0"></div>
     </div>
+
+    <!-- STEP 1 · NAME — one decision: what's it called? -->
+    <div class="step" data-step="1">
+      <div class="step-label">Your business</div>
+      <h2>What's your salon<br/>called?</h2>
+      <p class="sub">That's all we need right now. Lola learns the rest as you go.</p>
+      <div class="field"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon" autocomplete="organization"/></div>
+      <div class="actions"><button class="btn-p" onclick="next1()">Continue</button></div>
+      <div class="error" id="err1"></div>
+    </div>
+
+    <!-- STEP 2 · ACCOUNT — one decision: create the workspace -->
+    <div class="step" data-step="2">
+      <div class="step-label">Your account</div>
+      <h2>Create your<br/>workspace.</h2>
+      <p class="sub">A private, tenant-isolated workspace. Only you can see your clients, bookings, and calls.</p>
+      <div class="field"><label>Owner email</label><input class="input" id="email" type="email" placeholder="you@yoursalon.com" autocomplete="email"/></div>
+      <div class="field"><label>Password</label><input class="input" id="password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/></div>
+      <div class="actions"><button class="btn-p" id="createBtn" onclick="createAccount()">Create workspace</button></div>
+      <div class="error" id="err2"></div>
+      <div class="fine">14-day free trial. No credit card required. Cancel anytime.</div>
+    </div>
+
+    <!-- STEP 3 · NUMBER — one decision: give Lola her line -->
+    <div class="step" data-step="3">
+      <div class="auto-num" id="autoNum" style="display:none">
+        <span class="num-badge">LIVE</span>
+        <div><b id="autoNumNumber"></b><small>Lola already has her line — voice, SMS, and brain wired the moment your workspace was created. Call it now.</small></div>
+      </div>
+      <div class="step-label">Lola's phone number</div>
+      <h2>Give Lola<br/>her number.</h2>
+      <p class="sub">One tap. We pick the best local number in your area code and Lola is live on it — voice and SMS wired automatically.</p>
+      <div class="num-search" id="numSearchRow">
+        <input class="input" id="areaCode" placeholder="Area code (e.g. 305) — optional" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')"/>
+        <button onclick="searchNums()">Browse</button>
+      </div>
+      <div class="num-grid" id="numGrid" style="display:none"><div style="color:var(--muted);font-size:13px;padding:12px 0">Choose one, or just auto-pick below.</div></div>
+      <div class="owned-divider"><span>or</span></div>
+      <button class="btn-g" id="ownedToggle" onclick="loadOwned()" style="width:100%">Use a number I already own</button>
+      <div class="num-grid" id="ownedGrid" style="display:none"></div>
+      <div class="actions">
+        <button class="btn-p" onclick="provisionNum()" id="provisionBtn">Give Lola her number</button>
+        <button class="btn-g" id="autoContinue" style="display:none" onclick="autoContinue()">She's live — continue</button>
+      </div>
+      <div class="error" id="err3"></div>
+      <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
+    </div>
+
+    <!-- STEP 4 · LIVE IN 60 — the meter -->
+    <div class="step" data-step="4">
+      <div class="step-label">Activation</div>
+      <h2>Live in 60 seconds.</h2>
+      <p class="sub">Every step below is a real Telnyx operation. Nothing is marked done until it actually is.</p>
+      <div class="live-meter">
+        <div class="meter-ring">
+          <svg viewBox="0 0 150 150">
+            <circle class="track" cx="75" cy="75" r="66"/>
+            <circle class="fill" id="meterFill" cx="75" cy="75" r="66"/>
+          </svg>
+          <div class="meter-num"><b id="meterNum">60</b><span>seconds</span></div>
+        </div>
+        <div class="meter-copy" id="meterCopy">Wiring your number, voice, SMS, and brain. Don't go anywhere.</div>
+      </div>
+      <div class="status">
+        <div class="srow" id="s-num"><span class="dot"></span><div class="scopy"><b>Purchasing your Lola number</b><small>Buying and linking the number to LolaDesk</small></div></div>
+        <div class="srow" id="s-voice"><span class="dot"></span><div class="scopy"><b>Wiring voice</b><small>Connecting to Lola's voice webhook</small></div></div>
+        <div class="srow" id="s-sms"><span class="dot"></span><div class="scopy"><b>Enabling SMS</b><small>Linking 10DLC-registered messaging profile</small></div></div>
+        <div class="srow" id="s-brain"><span class="dot"></span><div class="scopy"><b>Connecting LolaBrain</b><small>Wiring AI assistant to your number</small></div></div>
+        <div class="srow" id="s-biz"><span class="dot"></span><div class="scopy"><b>Loading business profile</b><small>Feeding Lola your services, hours, and team</small></div></div>
+      </div>
+      <div class="error" id="err4"></div>
+    </div>
+
+    <!-- STEP 5 · LIVE -->
+    <div class="step" data-step="5">
+      <div class="done-wrap">
+        <div class="done-orb"></div>
+        <div class="step-label">Lola is live</div>
+        <h2>She is ready.</h2>
+        <div class="done-num" id="doneNum"></div>
+        <p id="doneCopy" style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:28px">Call that number right now. Lola will answer, know your salon, and can book appointments.</p>
+        <div class="voice-preview" style="margin:0 auto 26px;max-width:440px">
+          <button class="voice-btn" id="doneVoiceBtn" onclick="playDone()" aria-label="Hear Lola again">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="voice-copy"><b>Hear her again</b><small>Same voice on the phone, in texts, everywhere.</small></div>
+        </div>
+        <div class="embed-box" id="embedBox" style="display:none">
+          <div class="embed-eyebrow">Put her on your website</div>
+          <div class="embed-title">Your booking widget</div>
+          <div class="embed-sub">One script tag — the same engine Lola uses on the phone. Clients see live slots and can cancel later with their confirmation code.</div>
+          <div class="embed-snippet" id="embedCode"></div>
+          <div class="embed-actions">
+            <button class="btn-p" onclick="copyEmbed()">Copy embed code</button>
+            <a class="embed-link" id="embedLink" href="#" onclick="openBookingLink(event)">Preview booking page ↗</a>
+          </div>
+          <div class="embed-note" id="embedNote"></div>
+        </div>
+        <div class="actions" style="justify-content:center"><button class="btn-p" onclick="location.href='dashboard.html'">Open LolaDesk</button></div>
+      </div>
+    </div>
+
   </div>
+</div>
 </div>
 
 <script src="lola-orb.js"></script>
+<script src="lola-alive.js"></script>
 <script>
-const state = {
-  step: 0,
-  name:'', owner:'', phone:'', type:'Hair Salon', location:'', email:'', password:'',
-  platform:'square',
-  services:[
-    {name:'Balayage', price:'395', dur:'2h 30m'},
-    {name:'Haircut & Style', price:'95', dur:'1h'},
-    {name:'Color', price:'225', dur:'1h 30m'}
-  ],
-  bookingUrl:'',
-  plan:'pro', price:'399',
-  numberMode:'new',
-  port:{
-    requestedNumber:'',
-    currentCarrier:'',
-    accountNumber:'',
-    accountPin:'',
-    billingName:'',
-    billingAddress:'',
-    contactName:'',
-    contactEmail:'',
-    loaUploaded:false,
-    billUploaded:false
-  }
-};
-
-
-function renderServices(){
-  const el = document.getElementById('services');
-  if(!el) return;
-  el.innerHTML = state.services.map((s,i)=>`
-    <div class="ob-service-row">
-      <input class="ob-input" value="${s.name}" placeholder="Service name" onchange="updateService(${i},'name',this.value)"/>
-      <input class="ob-input" value="${s.price}" placeholder="Price" onchange="updateService(${i},'price',this.value)"/>
-      <input class="ob-input ob-service-dur" value="${s.dur}" placeholder="Duration" onchange="updateService(${i},'dur',this.value)"/>
-      <button class="ob-service-del" onclick="delService(${i})" aria-label="Remove">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-      </button>
-    </div>`).join('');
+const COPY=[
+  ['Meet Lola — she executes','Hear the voice<br/>that runs your salon.','Jarvis talks. Alexa answers. Lola executes. Thirty seconds from now, she\'ll be answering your calls — and booking them.'],
+  ['Your business','One name.<br/>She knows the rest.','Lola learns your services, hours, and team as you go.'],
+  ['Your account','Your private<br/>command center.','Every salon gets an isolated workspace. Your data is yours alone.'],
+  ['Her number','A dedicated line,<br/>just for Lola.','One tap and Lola is live on it — voice and SMS wired automatically.'],
+  ['Activation','Live in<br/>60 seconds.','Every step is a real Telnyx operation.'],
+  ['Ready','Call her<br/>right now.','Your salon AI is live.']
+];
+let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
+// Never let this flow dead-stop: every proxied API call gets a hard timeout
+// so a slow/failing backend can't leave a button disabled or the orb stuck
+// speaking — the worst failure is "we hit a snag, try again", never a
+// frozen page.
+function fetchJson(url,opts,timeoutMs){
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),timeoutMs||15000);
+  const p=fetch(url,Object.assign({},opts,{signal:c.signal})).then(async r=>{let d=null;try{d=await r.json();}catch(e){}return {ok:r.ok,status:r.status,b:d};});
+  p.finally(()=>clearTimeout(t));
+  return p;
 }
-window.updateService=(i,k,v)=>{state.services[i][k]=v;};
-window.delService=(i)=>{state.services.splice(i,1);renderServices();};
-window.addService=()=>{state.services.push({name:'',price:'',dur:'1h'});renderServices();};
+const Q=new URLSearchParams(location.search);
+S.plan=['starter','pro','medspa'].includes(Q.get('plan'))?Q.get('plan'):'starter';
+S.billing=Q.get('billing')==='annual'?'annual':'monthly';
+try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
+let orb;
+try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120});orb.setState('idle');}}catch(e){}
+function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
+function renderProgress(){document.getElementById('progress').innerHTML=[0,1,2,3,4,5].map((_,i)=>'<i class="'+(i<=S.step?'on':'')+'"></i>').join('');}
+function go(n){
+  S.step=n;
+  document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on',Number(s.dataset.step)===n));
+  const c=COPY[n]||COPY[0];
+  document.getElementById('presenceEyebrow').textContent=c[0];
+  document.getElementById('presenceTitle').innerHTML=c[1];
+  document.getElementById('presenceText').textContent=c[2];
+  renderProgress();
+  setOrb(n===4?'thinking':n===5?'speaking':'idle');
+  if(n===3)renderAutoState();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderAutoState(){
+  const auto=document.getElementById('autoNum');
+  if(!S.autoAssigned){if(auto)auto.style.display='none';return;}
+  document.getElementById('autoNumNumber').textContent=fmtPhone(S.autoAssigned);
+  auto.style.display='flex';
+  document.getElementById('numSearchRow').style.display='none';
+  document.getElementById('ownedToggle').style.display='none';
+  document.getElementById('provisionBtn').style.display='none';
+  document.getElementById('autoContinue').style.display='block';
+}
+function autoContinue(){
+  document.getElementById('doneNum').textContent=fmtPhone(S.autoAssigned);
+  document.getElementById('doneCopy').textContent='Call '+fmtPhone(S.autoAssigned)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
+  renderEmbed();
+  go(5);setOrb('speaking');
+}
+function v(id){return(document.getElementById(id)||{}).value||'';}
+function fmtPhone(n){return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3')||n;}
 
-window.selectPlatform=(el)=>{
-  document.querySelectorAll('.ob-platform').forEach(p=>p.classList.remove('selected'));
-  el.classList.add('selected');
-  state.platform=el.dataset.platform;
-};
-window.selectNumberMode=(el)=>{
-  document.querySelectorAll('.ob-number-card').forEach(x=>x.classList.remove('selected'));
-  el.classList.add('selected');
-  const mode = el.dataset.numberMode || 'new';
-  state.numberMode = mode;
-  const fields = document.getElementById('portFields');
-  if(fields) fields.classList.toggle('show', mode === 'port');
-};
-window.selectNone=()=>{
-  document.querySelectorAll('.ob-platform').forEach(p=>p.classList.remove('selected'));
-  state.platform='link';
-  next();
-};
-
-window.validateStep3AndGoLive=()=>{
-  saveStep();
-  const err = document.getElementById('ob-err3');
-  if(state.numberMode === 'port'){
-    const okEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(state.port.contactEmail || '');
-    if(!state.port.requestedNumber || !state.port.contactName || !okEmail){
-      err.textContent = 'For number transfer, add current number, authorized contact name, and valid email.';
-      return;
-    }
-  }
-  err.textContent = '';
-  goLive();
-};
-window.selectPlan=(el)=>{
-  document.querySelectorAll('.ob-plan').forEach(p=>p.classList.remove('selected'));
-  el.classList.add('selected');
-  state.plan=el.dataset.plan;
-  state.price=el.dataset.price;
-};
-
-function saveStep(){
-  if(state.step===1){
-    state.name=document.getElementById('f-name').value||'Your Salon';
-    state.owner=document.getElementById('f-owner').value||'there';
-    state.phone=document.getElementById('f-phone').value;
-    state.type=document.getElementById('f-type').value;
-    state.location=document.getElementById('f-location').value;
-    state.email=document.getElementById('f-email').value.trim();
-    state.password=document.getElementById('f-password').value;
-  }
-  if(state.step===3){
-    state.bookingUrl=document.getElementById('f-booking-url').value;
-    state.numberMode = document.querySelector('.ob-number-card.selected')?.dataset?.numberMode || 'new';
-    state.port.requestedNumber = document.getElementById('f-port-number')?.value || '';
-    state.port.currentCarrier = document.getElementById('f-port-carrier')?.value || '';
-    state.port.accountNumber = document.getElementById('f-port-account')?.value || '';
-    state.port.accountPin = document.getElementById('f-port-pin')?.value || '';
-    state.port.billingName = document.getElementById('f-port-billing-name')?.value || '';
-    state.port.billingAddress = document.getElementById('f-port-billing-address')?.value || '';
-    state.port.contactName = document.getElementById('f-port-contact-name')?.value || '';
-    state.port.contactEmail = document.getElementById('f-port-contact-email')?.value || '';
-    state.port.loaUploaded = !!document.getElementById('f-port-loa')?.checked;
-    state.port.billUploaded = !!document.getElementById('f-port-bill')?.checked;
+// ── VOICE PREVIEW ────────────────────────────────────────────────
+let audioEl=null;
+async function playPreview(){
+  const btn=document.getElementById('voiceBtn');
+  const status=document.getElementById('voiceStatus');
+  const reset=()=>{btn.classList.remove('playing');status.textContent='Tap to hear Lola speak. Her voice is the brand — one voice, everywhere.';setOrb('idle');};
+  btn.classList.add('playing');status.textContent='Lola is speaking…';
+  setOrb('speaking');
+  // LolaAlive.speak() speaks ONLY in her official ElevenLabs voice (no
+  // fake voice). In the preview, /api/speak-lola is proxied to the live
+  // deployment so this still plays the real Lola. Hard time-bound so a
+  // hung backend can never leave the orb frozen "speaking".
+  const s=await Promise.race([
+    LolaAlive.speak(document.getElementById('voiceLine').textContent),
+    new Promise(resolve=>setTimeout(()=>resolve({engine:'unavailable'}),8000))
+  ]);
+  if(s?.engine==='elevenlabs'){
+    if(audioEl)audioEl.pause();
+    status.textContent='Lola is speaking…';
+    setTimeout(reset,9000);
+  }else{
+    status.textContent="Lola's voice isn't reachable right now — it stays exactly the same brand voice everywhere.";
+    reset();
   }
 }
+async function playDone(){
+  const btn=document.getElementById('doneVoiceBtn');
+  btn.classList.add('playing');setOrb('speaking');
+  await LolaAlive.speak('Hi, this is Lola from '+S.salonName+'. I will answer every call, book every appointment, and text every client. Call me anytime.');
+  setTimeout(()=>{btn.classList.remove('playing');setOrb('speaking');},6000);
+}
 
-window.selectWorkspace=(el)=>{
-  document.querySelectorAll('.ob-step[data-step="0"] .ob-platform').forEach(p=>p.classList.remove('selected'));
-  el.classList.add('selected');
-  state.workspace=el.dataset.type;
-};
+// ── STEP 1 · NAME ────────────────────────────────────────────────
+function next1(){
+  const err=document.getElementById('err1');
+  if(!v('salonName').trim()){err.textContent='Please enter your salon name.';return;}
+  S.salonName=v('salonName').trim();
+  err.textContent='';go(2);
+}
 
-// validate the account fields before leaving step 1
-window.validateStep1=()=>{
-  const email=document.getElementById('f-email').value.trim();
-  const pw=document.getElementById('f-password').value;
-  const err=document.getElementById('ob-err0');
-  const okEmail=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
-  if(!okEmail){ err.textContent='Please enter a valid email.'; return; }
-  if(pw.length<8){ err.textContent='Password must be at least 8 characters.'; return; }
+// ── STEP 2 · ACCOUNT ─────────────────────────────────────────────
+async function createAccount(){
+  const err=document.getElementById('err2'),btn=document.getElementById('createBtn');
+  const email=v('email').trim(),password=v('password');
+  if(!/\S+@\S+\.\S+/.test(email)){err.textContent='Enter a valid email.';return;}
+  if(password.length<8){err.textContent='Password must be at least 8 characters.';return;}
+  err.textContent='';btn.disabled=true;btn.textContent='Creating…';
+  try{
+    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
+    const d=r.b;
+    if(!r.ok&&!d?.token&&!d?.session)throw new Error(d?.error||'Signup failed');
+    S.token=d.token||d.session?.access_token||'';
+    S.slug=d.tenant?.slug||'';
+    localStorage.setItem('loladesk_token',S.token);
+    if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
+    if(d.autoProvisioned?.assigned&&d.autoProvisioned.phoneNumber){S.autoAssigned=d.autoProvisioned.phoneNumber;S.selectedNumber=S.autoAssigned;}
+    go(3);
+  }catch(e){err.textContent=(e.name==='AbortError'?'The network timed out — check your connection and try again.':e.message)||'Something went wrong.';}
+  finally{btn.disabled=false;btn.textContent='Create workspace';}
+}
+
+// ── STEP 3 · NUMBER ──────────────────────────────────────────────
+async function searchNums(){
+  const areaCode=v('areaCode').trim();
+  const grid=document.getElementById('numGrid');
+  grid.style.display='block';
+  grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Searching…</div>';
+  try{
+    const url='/api/provision-number'+(areaCode?'?areaCode='+areaCode:'');
+    const r=await fetchJson(url,{headers:{Authorization:'Bearer '+S.token}});
+    const d=r.b||{};
+    if(!d.ok||!d.numbers?.length)throw new Error(d.error||'No numbers found');
+    S.selectedNumber=d.numbers[0].phone_number;
+    grid.innerHTML=d.numbers.slice(0,6).map(n=>'<div class="num-card'+(n.phone_number===S.selectedNumber?' on':'')+'" onclick="selNum(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+'</div><div class="num-meta">'+(n.region||'United States')+'</div></div><div class="num-price">'+(n.monthly_cost||'~$2/mo')+'</div></div>').join('');
+  }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
+}
+function selNum(num,el){S.useExisting=false;S.selectedNumber=num;document.querySelectorAll('.num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');document.getElementById('provisionBtn').textContent='Give Lola her number';}
+
+// ── USE A NUMBER THE OWNER ALREADY HAS ON TELNYX ────────────────
+async function loadOwned(){
+  const grid=document.getElementById('ownedGrid');
+  const btn=document.getElementById('ownedToggle');
+  const showing=grid.style.display==='block';
+  if(showing){grid.style.display='none';btn.textContent='Use a number I already own';return;}
+  grid.style.display='block';
+  btn.textContent='Hide my numbers';
+  grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Loading your Telnyx numbers…</div>';
+  try{
+    const r=await fetchJson('/api/provision-number',{headers:{Authorization:'Bearer '+S.token}});
+    const d=r.b;
+    const owned=(d.owned||[]).filter(n=>n.phone_number);
+    if(!owned.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">No numbers on this Telnyx account yet — buy one below.</div>';return;}
+    const order=owned.sort((a,b)=>(a.status==='active'?0:1)-(b.status==='active'?0:1));
+    grid.innerHTML=order.map(n=>{
+      const on=n.phone_number===S.selectedNumber&&S.useExisting?' on':'';
+      const sms=n.sms_enabled===false?' <span style="color:#ffb020;font-size:11px">SMS off</span>':'';
+      return '<div class="num-card'+on+'" onclick="selOwned(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+sms+'</div><div class="num-meta">'+(n.status||'active')+'</div></div><div class="num-badge">YOURS</div></div>';
+    }).join('');
+  }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
+}
+function selOwned(num,el){S.useExisting=true;S.selectedNumber=num;document.querySelectorAll('#ownedGrid .num-card').forEach(c=>c.classList.remove('on'));document.querySelectorAll('#numGrid .num-card').forEach(c=>c.classList.remove('on'));el.classList.add('on');document.getElementById('provisionBtn').textContent='Attach my number to Lola';}
+
+async function provisionNum(){
+  const err=document.getElementById('err3');
   err.textContent='';
-  next();
-};
+  go(4);setOrb('thinking');startMeter();
+  await runActivation();
+}
 
-let lastShownStep = 0;
-function showStep(n){
-  const goingBack = n < lastShownStep;
-  lastShownStep = n;
-  document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active','back'));
-  const el = document.querySelector(`.ob-step[data-step="${n}"]`);
-  // retrigger the entry animation even when revisiting the same node
-  void el.offsetWidth;
-  el.classList.add('active');
-  if(goingBack) el.classList.add('back');
-  // progress dots (we shift them by 1 visually so step 0 doesn't have a dot)
-  for(let i=0;i<4;i++){
-    const dot=document.querySelector(`.ob-dot[data-dot="${i}"]`);
-    const line=document.querySelector(`.ob-line[data-line="${i}"]`);
-    if(!dot) continue;
-    dot.classList.remove('active','done');
-    if(i<n-1){dot.classList.add('done');dot.innerHTML='✓';}
-    else if(i===n-1){dot.classList.add('active');dot.innerHTML=i+1;}
-    else{dot.innerHTML=i+1;}
-    if(line){line.classList.toggle('done',i<n-1);}
-  }
-  window.scrollTo(0,0);
-  // ── WIZARD FEEL: the machine meets you halfway ──
-  // Autofocus the first input of every step (typing starts instantly),
-  // and animate the step in on the brand spring.
+// ── LIVE-IN-60 METER ─────────────────────────────────────────────
+const METER_TOTAL=60;
+const RING_C=2*Math.PI*66;
+let meterTimer=null,meterLeft=METER_TOTAL,meterDone=false;
+function startMeter(){
+  meterLeft=METER_TOTAL;meterDone=false;
+  const fill=document.getElementById('meterFill');
+  fill.style.strokeDasharray=RING_C;
+  fill.style.strokeDashoffset=0;
+  document.getElementById('meterNum').textContent='60';
+  document.getElementById('meterNum').classList.remove('live');
+  document.getElementById('meterCopy').textContent='Wiring your number, voice, SMS, and brain. Don\'t go anywhere.';
+  clearInterval(meterTimer);
+  meterTimer=setInterval(()=>{
+    if(meterDone)return;
+    meterLeft=Math.max(0,meterLeft-1);
+    document.getElementById('meterNum').textContent=String(meterLeft);
+    const frac=meterLeft/METER_TOTAL;
+    document.getElementById('meterFill').style.strokeDashoffset=RING_C*(1-frac);
+    if(meterLeft===0)finishMeter();
+  },1000);
+}
+function finishMeter(){
+  meterDone=true;clearInterval(meterTimer);
+  const num=document.getElementById('meterNum');
+  num.textContent='LIVE';num.classList.add('live');
+  document.getElementById('meterCopy').textContent='She\'s live. Number, voice, SMS, and brain all wired.';
+  setOrb('speaking');
+}
+function mark(id,state,detail){
+  const row=document.getElementById(id);if(!row)return;
+  row.className='srow '+state;
+  if(detail)row.querySelector('small').textContent=detail;
+}
+
+// ── ACTIVATION ───────────────────────────────────────────────────
+async function runActivation(){
   try{
-    const stepEl = document.querySelectorAll('.ob-step')[n] || document.querySelector('.ob-step.active');
-    if(stepEl){
-      stepEl.style.animation = 'obIn .45s cubic-bezier(.22,1,.36,1) both';
-      const first = stepEl.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
-      if(first) setTimeout(()=>{ try{ first.focus({ preventScroll:false }); }catch(e){} }, 80);
-    }
-  }catch(e){}
-}
-
-// Enter advances — one key, forward motion, like it should be.
-document.addEventListener('keydown', (e)=>{
-  if(e.key !== 'Enter') return;
-  const tag = (document.activeElement?.tagName||'').toLowerCase();
-  if(tag === 'textarea' || tag === 'button' || tag === 'a') return;
-  const stepEl = document.querySelector('.ob-step.active') || [...document.querySelectorAll('.ob-step')].find(el => el.offsetParent);
-  const primary = stepEl?.querySelector('.ob-btn-primary, .ob-btn.ob-btn-primary');
-  if(primary && !primary.disabled){ e.preventDefault(); primary.click(); }
-});
-
-
-window.next=()=>{
-  saveStep();
-  if(state.step<4){
-    state.step++;
-    showStep(state.step);
-  }
-  if(state.step===3)renderServices();
-  if(state.step===2)renderPreview();
-};
-window.back=()=>{
-  if(state.step>0){state.step--;showStep(state.step);}
-};
-
-function renderPreview(){
-  document.getElementById('previewName').textContent = 'LOLA';
-  document.getElementById('previewGreeting').textContent = "Hi! I'm Lola" + (state.name&&state.name!=='Your Salon'?` from ${state.name}`:'') + ". How can I help you today?";
-}
-
-/* preview orb — the SAME neural Lola the owner will meet on their
-   dashboard, not a lookalike. She idles softly during setup, then
-   visibly wakes (flare + speaking resonance) at the go-live moment:
-   the product's "it's alive" beat. Falls back to the simple dot ring
-   only if lola-orb.js failed to load. */
-const pc=document.getElementById('previewCanvas');
-let previewOrb = null;
-if(window.LolaOrb){
-  previewOrb = LolaOrb.mount(pc, { size: 130 });
-  previewOrb.setState('ambient');
-} else {
-  const pctx=pc.getContext('2d');
-  let pt=0;
-  (function drawPreviewOrb(){
-    pctx.clearRect(0,0,130,130);
-    const cx=65,cy=65;
-    for(let i=0;i<40;i++){
-      const a=(i/40)*Math.PI*2;
-      const r=38+Math.sin(pt*.8+i*.4)*4+Math.sin(pt*1.4+i*.9)*2;
-      const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r;
-      const al=.12+Math.abs(Math.sin(pt*.6+i*.3))*.2;
-      pctx.beginPath();pctx.arc(x,y,1.1,0,Math.PI*2);
-      pctx.fillStyle=`rgba(204,255,0,${al})`;pctx.fill();
-    }
-    pt+=.018;
-    requestAnimationFrame(drawPreviewOrb);
-  })();
-}
-
-/* GO LIVE sequence */
-window.goLive=()=>{
-  saveStep();
-  state.step=4;
-  showStep(3); // keep last dot active
-  document.querySelector('.ob-step[data-step="3"]').classList.remove('active');
-  document.querySelector('.ob-step[data-step="4"]').classList.add('active');
-
-  const steps=[
-    'Creating your account',
-    `Connecting ${state.platform==='link'?'your booking link':capitalize(state.platform)}`,
-    'Teaching Lola your services',
-    state.numberMode === 'port' ? 'Submitting your number transfer and assigning a temporary line' : 'Setting up your new Lola phone line',
-    'Activating your dashboard'
-  ];
-  const el=document.getElementById('connecting');
-  el.innerHTML='';
-  if(previewOrb) previewOrb.setState('thinking'); // she's being born — synapses firing
-  let i=0;
-  function addNext(){
-    if(i>0){
-      const prev=el.children[i-1];
-      prev.querySelector('.ob-connect-spinner').outerHTML='<span class="ob-connect-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg></span>';
-    }
-    if(i<steps.length){
-      const row=document.createElement('div');
-      row.className='ob-connect-item';
-      row.innerHTML=`<span class="ob-connect-spinner"></span>${steps[i]}`;
-      el.appendChild(row);
-      i++;
-      setTimeout(addNext, 900+Math.random()*500);
-    }else{
-      finishLive();
-    }
-  }
-  addNext();
-};
-
-async function finishLive(){
-  // Hide liveCheck first
-  document.getElementById('liveCheck').style.display='none';
-  document.getElementById('liveNav').style.display='none';
-  document.getElementById('liveTitle').textContent='Setting up your account...';
-  document.getElementById('liveSub').textContent='Please wait while we provision your salon.';
-
-  // Actually create the account + tenant + trial in the backend
-  let created = null;
-  try{
-    const r = await fetch('/api/auth/signup', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        email: state.email,
-        password: state.password,
-        name: state.owner,
-        salonName: state.name,
-        location: state.location,
-        plan: state.plan,
-        bookingUrl: state.bookingUrl,
-        businessMode:  (state.type||'').toLowerCase().includes('med') ? 'medspa'
-                     : (state.type||'').toLowerCase().includes('spa') ? 'spa' : 'salon'
-      })
-    });
-    created = await r.json();
-    if(!r.ok) throw new Error(created.error||'Signup failed');
-    
-    // store the session so the dashboard knows who is logged in
-    if(created.session){
-      try{
-        localStorage.setItem('loladesk_token', created.session.access_token||'');
-        localStorage.setItem('loladesk_refresh', created.session.refresh_token||'');
-        if(created.tenant) localStorage.setItem('loladesk_tenant_id', created.tenant.id||'');
-      }catch(e){}
-    }
-
-    // Number porting (if the owner chose to transfer their existing number).
-    let portingNote = '';
-    if(created.session && state.numberMode === 'port'){
-      const token = created.session.access_token || '';
-      const rr = await fetch('/api/carrier-porting', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
-        body: JSON.stringify({
-          requested_phone_number: state.port.requestedNumber,
-          current_carrier: state.port.currentCarrier,
-          account_number: state.port.accountNumber,
-          account_pin: state.port.accountPin,
-          billing_name: state.port.billingName || state.owner,
-          billing_address: state.port.billingAddress || state.location,
-          authorized_contact_name: state.port.contactName || state.owner,
-          authorized_contact_email: state.port.contactEmail || state.email,
-          loa_uploaded: state.port.loaUploaded,
-          recent_bill_uploaded: state.port.billUploaded,
-          use_temporary_number: true
-        })
-      });
-      const pd = await rr.json();
-      if(!rr.ok) throw new Error(pd.error || 'Number transfer setup failed');
-      if(pd.temporary_phone_number) state.phone = pd.temporary_phone_number;
-      portingNote = pd.temporary_phone_number
-        ? ` Your temporary Lola line ${pd.temporary_phone_number} is live now while your main number transfer is processing.`
-        : ' Your number transfer request was submitted.';
-    }
-
-    // Auto-provision both voice lines (client-facing Lola + the owner's private
-    // private line) for this brand-new tenant. Non-blocking: if it hiccups the owner
-    // still gets in and can re-provision from Settings — never hard-fail signup.
-    try{
-      document.getElementById('liveSub').textContent='Provisioning your AI front desk…';
-      await fetch('/api/provision-tenant', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(created.session?.access_token||'') }
-      });
-    }catch(e){ /* owner can re-provision from Settings later */ }
-
-    // Success State — Lola visibly wakes: flare + speaking resonance.
-    if(previewOrb){ previewOrb.setState('speaking'); previewOrb.flare(); setTimeout(()=>previewOrb.setState('ambient'), 3800); }
-    document.getElementById('liveCheck').style.display='flex';
-    document.getElementById('liveTitle').textContent='Lola is live. 🎉';
-    let readinessNote = '';
-    try{
-      const token = localStorage.getItem('loladesk_token') || '';
-      if(token){
-        const rr = await fetch('/api/onboarding-readiness', { headers:{ Authorization:'Bearer '+token } });
-        if(rr.ok){
-          const rd = await rr.json();
-          if(!rd.can_go_live){
-            readinessNote = ` Setup score ${rd.score}%. Finish: ${String((rd.next_actions||[])[0] || 'complete readiness checklist')}.`;
-          }else{
-            readinessNote = ` Setup score ${rd.score}% — fully launch-ready.`;
-          }
-        }
-      }
-    }catch(e){}
-    document.getElementById('liveSub').textContent=`${state.name} now has a 24/7 AI front desk. Your 14-day trial has started.${portingNote}${readinessNote}`;
-    document.getElementById('liveNav').style.display='flex';
-
-    // ── "Put Lola on your website" — the last beat of go-live ──
-    // One paste on their site and every visitor meets THEIR Lola:
-    // same brain, same memory, strictly this tenant's data.
-    try{
-      const token = localStorage.getItem('loladesk_token') || '';
-      const er = await fetch('/api/widget-embed', { headers:{ Authorization:'Bearer '+token } });
-      if(er.ok){
-        const emb = await er.json();
-        if(emb?.snippet){
-          const wrap = document.createElement('div');
-          wrap.style.cssText = 'margin:22px auto 0;max-width:520px;text-align:left;animation:fade .6s cubic-bezier(.22,1,.36,1) both';
-          wrap.innerHTML = `
-            <div style="font-size:14px;font-weight:600;color:var(--text,#fff);margin-bottom:6px">One more superpower: Lola on your website</div>
-            <div style="font-size:12.5px;color:var(--muted,#9a93a1);margin-bottom:10px">Paste this once before <code>&lt;/body&gt;</code> on your site — every visitor can chat with Lola and get booked, 24/7.</div>
-            <div style="display:flex;gap:8px;align-items:stretch">
-              <code id="embedSnippet" style="flex:1;display:block;background:#141216;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;font-size:11px;color:#e6ff85;overflow-x:auto;white-space:nowrap">${emb.snippet.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code>
-              <button id="copyEmbed" class="ob-btn" style="white-space:nowrap">Copy</button>
-            </div>`;
-          document.getElementById('liveNav').parentNode.insertBefore(wrap, document.getElementById('liveNav'));
-          document.getElementById('copyEmbed').onclick = async (ev)=>{
-            try{ await navigator.clipboard.writeText(emb.snippet); ev.target.textContent='Copied ✓'; setTimeout(()=>ev.target.textContent='Copy', 1800); }
-            catch{ ev.target.textContent='Select + copy above'; }
-          };
-        }
-      }
-    }catch(e){ /* the snippet also lives in Settings — never block go-live */ }
-
+    mark('s-num','running');
+    const r=await fetchJson('/api/provision-number',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({phone_number:S.selectedNumber,use_existing:!!S.useExisting})},25000);
+    const d=r.b||{};
+    if(!r.ok||!d.ok)throw new Error(d.error||(d.message||'Provisioning failed'));
+    if(S.useExisting){const row=document.getElementById('s-num');if(row){row.querySelector('b').textContent='Attaching your number';row.querySelector('small').textContent='Linking your existing number to LolaDesk — no purchase';}}
+    mark('s-num','done',fmtPhone(d.phoneNumber)+(d.attachedExisting?' — linked, already yours':' — purchased'));
+    mark('s-voice','done','Voice webhook connected');
+    mark('s-sms',d.messagingProfileLinked?'done':'fail',d.messagingProfileLinked?'10DLC messaging profile linked':'Set TELNYX_MESSAGING_PROFILE_ID in Vercel');
+    mark('s-brain',d.lolaBrainLinked?'done':'fail',d.lolaBrainLinked?'LolaBrain connected':'Set TELNYX_LOLA_BRAIN_ID in Vercel');
+    mark('s-biz','running');
+    // Only ingest when the owner actually gave us a website — an empty URL
+    // 400s server-side and only adds console noise to an otherwise clean flow.
+    if(S.website) try{await fetch('/api/onboarding/step2-ingest',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({websiteUrl:S.website})});}catch(e){}
+    mark('s-biz','done','Business profile loaded');
+    document.getElementById('doneNum').textContent=fmtPhone(d.phoneNumber);
+    document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
+    renderEmbed();
+    finishMeter();
+    setTimeout(()=>{go(5);setOrb('speaking');},900);
   }catch(e){
-    const msg = (e.message||String(e));
-    // A returning user (email already registered) must NOT be trapped in the
-    // signup flow — send them to sign in instead of looping on "Try Again".
-    const exists = /already registered|already exists|exists/i.test(msg);
-    document.getElementById('liveCheck').style.display='none';
-    const navWrap = document.getElementById('liveNav');
-    const navBtn = navWrap.querySelector('button');
-    navWrap.style.display='flex';
-
-    if(exists){
-      document.getElementById('liveTitle').textContent='Welcome back 👋';
-      document.getElementById('liveTitle').style.color='var(--text)';
-      document.getElementById('liveSub').textContent='You already have a LolaDesk account with this email — let’s sign you in.';
-      navBtn.textContent = 'Go to sign in';
-      navBtn.onclick = () => { window.location.href = '/login?email=' + encodeURIComponent(state.email||''); };
-    } else {
-      document.getElementById('liveTitle').textContent='Setup Failed';
-      document.getElementById('liveTitle').style.color='#ff5a4d';
-      document.getElementById('liveSub').textContent='Error: '+msg+' — please try again.';
-      navBtn.textContent = 'Try Again';
-      navBtn.onclick = () => {
-        document.getElementById('liveTitle').style.color='var(--text)';
-        navBtn.textContent = 'Enter your dashboard';
-        navBtn.onclick = enterDashboard;
-        state.step = 1;
-        showStep(1);
-      };
-    }
+    clearInterval(meterTimer);
+    document.getElementById('err4').textContent=(e.name==='AbortError'?'Provisioning timed out — your number is still safe. Please try again.':e.message)||'Activation failed.';
+    document.getElementById('meterCopy').textContent='We hit a snag — try again.';
+    setOrb('idle');
   }
 }
 
-window.enterDashboard=()=>{
-  const cfg={
-    id:slugify(state.name),name:state.name,owner:state.owner,
-    location:state.location,phone:state.phone,
-    bookingUrl:'#',whatsapp:state.phone?'https://wa.me/'+state.phone.replace(/[^0-9]/g,''):'#',
-    persona:{name:'Lola'},
-    services:state.services.map(s=>({name:s.name,price:Number(s.price)||0,duration:s.dur})),
-    team:[{name:state.owner,role:'Owner',revenue:0,change:0}],
-    plan:state.plan
-  };
-  try{ sessionStorage.setItem('loladesk_tenant', JSON.stringify(cfg)); }catch(e){}
-  window.location.href='dashboard.html';
-};
+// ── EMBED ON THE SUCCESS SCREEN ──────────────────────────────────
+let EMBED='';
+function renderEmbed(){
+  const box=document.getElementById('embedBox');
+  const codeEl=document.getElementById('embedCode');
+  if(!box||!codeEl||!S.slug){if(box)box.style.display='none';return;}
+  const base=location.origin||'https://www.loladesk.com';
+  EMBED='<script src="'+base+'/booking-widget.js" data-tenant="'+S.slug+'" data-accent="#ccff00" data-mode="inline"><\/script>';
+  codeEl.textContent=EMBED;
+  document.getElementById('embedLink').href=base+'/book?t='+encodeURIComponent(S.slug);
+  box.style.display='block';
+}
+function flashEmbedNote(){
+  const note=document.getElementById('embedNote');
+  note.textContent='Copied ✓ — paste it right before </body> on your site.';
+  note.style.opacity='1';
+  setTimeout(()=>{note.style.opacity='0';},2200);
+}
+function trackEmbed(kind,snippet){
+  if(!S.slug)return;
+  try{fetch('/api/widget-beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:S.slug,kind,snippet:snippet||'',source:'onboarding'})}).catch(()=>{});}catch(e){}
+}
+function copyEmbed(){
+  trackEmbed('embed_copied','inline');
+  const done=()=>flashEmbedNote();
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(EMBED).then(done).catch(()=>fallbackEmbed(done));}
+  else fallbackEmbed(done);
+}
+function fallbackEmbed(done){
+  const t=document.createElement('textarea');
+  t.value=EMBED;t.style.position='fixed';t.style.opacity='0';
+  document.body.appendChild(t);t.select();
+  try{document.execCommand('copy');done();}catch(e){}
+  t.remove();
+}
+function openBookingLink(e){
+  e.preventDefault();
+  trackEmbed('embed_preview','link');
+  const a=document.getElementById('embedLink');
+  if(a&&a.href)window.open(a.href,'_blank');
+}
 
+// Autoplay the preview once, on first visit, so the very first thing a
+// visitor hears is Lola — the product is the voice.
+try{
+  if(!sessionStorage.getItem('lola_heard')){
+    setTimeout(()=>{sessionStorage.setItem('lola_heard','1');playPreview();},600);
+  }
+}catch(e){}
 
-function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
-function slugify(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
-
-renderServices();
+go(0);renderProgress();
 </script>
 </body>
 </html>

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>LolaDesk — The AI Concierge That Runs Your Front Desk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<meta name="description" content="Lola runs your front desk and your marketing — answers every call, text, and website chat, books the appointment, and fills your chair. 24/7. 14-day free trial.">
+<link rel="canonical" href="https://www.loladesk.com/">
+<meta name="description" content="Jarvis talks. Alexa answers. Lola executes — she answers every call, books the appointment, locks the slot, and texts the confirmation. Your front desk never sleeps. 14-day free trial.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="LolaDesk">
 <meta property="og:title" content="LolaDesk — Your front desk never sleeps">
@@ -18,7 +19,6 @@
 <meta name="twitter:title" content="LolaDesk — Your front desk never sleeps">
 <meta name="twitter:description" content="The AI concierge that answers every call, text & chat — and books the appointment.">
 <meta name="twitter:image" content="https://www.loladesk.com/og-image.png">
-<meta name="description" content="Lola answers every call, books every client, and never sleeps. The AI front desk concierge for salons, spas, and med spas."/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -43,7 +43,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .nav-actions{display:flex;align-items:center;gap:10px}
 .nav-link{font-size:13px;color:var(--text2);padding:8px 14px;transition:color .2s}
 .nav-link:hover{color:var(--text)}
-.nav-cta{background:var(--pink);color:#fff;padding:9px 18px;border-radius:100px;font-size:13px;font-weight:500;transition:all .2s}
+.nav-cta{background:var(--pink);color:#10140a;padding:9px 18px;border-radius:100px;font-size:13px;font-weight:500;transition:all .2s}
 .nav-cta:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
 
 /* HERO */
@@ -57,7 +57,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .hero-sub{font-size:clamp(17px,2.4vw,22px);font-weight:300;color:var(--text2);max-width:560px;margin:0 auto 40px;line-height:1.55;opacity:0;animation:rise 1.1s .7s forwards}
 .hero-ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;opacity:0;animation:rise 1.1s .9s forwards}
 @keyframes rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
-.btn-primary{background:var(--pink);color:#fff;padding:16px 34px;border-radius:100px;font-size:16px;font-weight:600;transition:all .25s;display:inline-flex;align-items:center;gap:10px}
+.btn-primary{background:var(--pink);color:#10140a;padding:16px 34px;border-radius:100px;font-size:16px;font-weight:600;transition:all .25s;display:inline-flex;align-items:center;gap:10px}
 .btn-primary:hover{background:var(--pink2);box-shadow:0 8px 36px var(--pink-glow);transform:translateY(-2px)}
 .btn-ghost{background:rgba(255,255,255,.04);color:var(--text);padding:16px 30px;border-radius:100px;font-size:16px;font-weight:500;border:0.5px solid var(--border2);transition:all .25s;backdrop-filter:blur(10px)}
 .btn-ghost:hover{border-color:var(--text3);background:rgba(255,255,255,.08)}
@@ -72,6 +72,10 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .voice-demo-title{font-size:clamp(24px,3.4vw,38px);font-weight:600;letter-spacing:-.02em;line-height:1.1;margin-bottom:8px}
 .voice-demo-sub{font-size:14px;color:var(--text2);margin-bottom:14px}
 .voice-demo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.position-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:14px 0 16px}
+.position-pill{font-size:12px;letter-spacing:.06em;color:var(--text3);border:0.5px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--surface)}
+.position-pill b{font-weight:600}
+.position-pill.lola{color:var(--pink2);border-color:rgba(204,255,0,.35);background:rgba(204,255,0,.06)}
 .voice-chip{background:rgba(204,255,0,.08);color:var(--text);border:1px solid rgba(204,255,0,.25);padding:11px 14px;border-radius:999px;font-size:13px}
 .voice-chip:hover{background:rgba(204,255,0,.15)}
 .voice-demo-status{font-size:12px;color:var(--text3);margin-top:10px;min-height:18px}
@@ -110,7 +114,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:34px 30px;display:flex;flex-direction:column;text-align:left;transition:all .3s}
 .price-card:hover{border-color:var(--border2);transform:translateY(-4px)}
 .price-card.featured{border-color:var(--pink);background:linear-gradient(180deg,var(--pink-dim),var(--surface) 45%);position:relative}
-.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10px;font-weight:600;letter-spacing:.12em;padding:5px 16px;border-radius:100px}
+.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--pink);color:#10140a;font-size:10px;font-weight:600;letter-spacing:.12em;padding:5px 16px;border-radius:100px}
 .price-name{font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--text2);margin-bottom:10px}
 .price-tag{display:flex;align-items:baseline;gap:5px;margin-bottom:8px}
 .price-amount{font-size:46px;font-weight:700;letter-spacing:-.03em}
@@ -120,7 +124,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-features li{font-size:14px;font-weight:300;color:var(--text2);display:flex;align-items:flex-start;gap:10px}
 .price-features li svg{color:var(--pink2);flex-shrink:0;margin-top:3px}
 .price-btn{width:100%;padding:14px;border-radius:100px;font-size:14px;font-weight:600;text-align:center;transition:all .2s}
-.price-btn.primary{background:var(--pink);color:#fff}
+.price-btn.primary{background:var(--pink);color:#10140a}
 .price-btn.primary:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
 .price-btn.ghost{background:var(--surface2);color:var(--text);border:0.5px solid var(--border2)}
 .price-btn.ghost:hover{border-color:var(--text3)}
@@ -130,7 +134,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-roi em{font-style:normal;color:var(--pink2)}
 .billing-toggle{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:0.5px solid var(--border2);border-radius:100px;padding:4px;margin:30px auto 0}
 .billing-opt{background:transparent;color:var(--text2);font-size:13px;font-weight:500;padding:9px 20px;border-radius:100px;transition:all .25s;display:inline-flex;align-items:center;gap:8px}
-.billing-opt.active{background:var(--pink);color:#fff}
+.billing-opt.active{background:var(--pink);color:#10140a}
 .billing-save{font-size:10px;font-weight:600;letter-spacing:.04em;padding:3px 8px;border-radius:100px;background:rgba(255,255,255,.18)}
 .billing-opt:not(.active) .billing-save{background:var(--pink-dim);color:var(--pink2)}
 .price-note{font-size:11.5px;color:var(--text3);min-height:15px;margin-bottom:18px;letter-spacing:.01em}
@@ -180,26 +184,30 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 /* ghost variants stay light-ink (they sit on dark, not on volt) */
 .btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
 </style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"LolaDesk","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"AI-powered front desk concierge for salons, spas, and med spas. Answers calls, books appointments, and grows revenue 24/7.","offers":[{"@type":"Offer","name":"Starter","price":"99","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"399","priceCurrency":"USD"},{"@type":"Offer","name":"Med-Spa","price":"599","priceCurrency":"USD"}],"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"127"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does Lola actually sound like a real person?","acceptedAnswer":{"@type":"Answer","text":"Yes. Lola uses carrier-grade voice AI with natural pauses, inflection, and warmth. Callers consistently report not realizing they spoke to an AI."}},{"@type":"Question","name":"What booking platforms does Lola work with?","acceptedAnswer":{"@type":"Answer","text":"Square, Mindbody, Vagaro, Fresha, and Google Calendar. Lola checks real-time availability and books the right service in seconds."}},{"@type":"Question","name":"What happens if Lola cannot answer something?","acceptedAnswer":{"@type":"Answer","text":"Lola never guesses. If a question falls outside her playbook, she takes a message and routes it to you immediately."}},{"@type":"Question","name":"Can I cancel anytime?","acceptedAnswer":{"@type":"Answer","text":"Yes. No contracts, no cancellation fees. Cancel from your dashboard and service continues until the end of your billing period. The 14-day trial requires no credit card."}},{"@type":"Question","name":"Is Lola HIPAA-compliant for med spas?","acceptedAnswer":{"@type":"Answer","text":"The Med-Spa plan includes HIPAA-aware call handling and consultation intake flows."}},{"@type":"Question","name":"How long does setup take?","acceptedAnswer":{"@type":"Answer","text":"About five minutes. Enter your salon name, services, and pricing, connect your booking platform, and pick your Lola number. Lola starts answering immediately."}}]}</script>
 </head>
 <body>
+
+<script src="lola-alive.js"></script>
 
 <nav class="nav" id="nav">
   <div class="nav-logo">LOLADESK</div>
   <div class="nav-actions">
-    <a href="login.html" class="nav-link">Sign in</a>
-    <a href="onboarding.html" class="nav-cta">Start free</a>
+    <a href="/login" class="nav-link">Sign in</a>
+    <a href="/start" class="nav-cta">Start free</a>
   </div>
 </nav>
 
 <header class="hero">
   <canvas class="hero-orb-canvas" id="heroOrb" width="680" height="680"></canvas>
   <div class="hero-content">
-    <div class="hero-eyebrow">Meet Lola</div>
+    <div class="hero-eyebrow">Meet Lola — she executes</div>
     <h1 class="hero-title">Your front desk<em>never sleeps.</em></h1>
-    <p class="hero-sub">Lola is the AI concierge that answers every call, books every client, and turns missed calls into revenue — 24 hours a day.</p>
+    <p class="hero-sub"><strong>Jarvis talks. Alexa answers. Lola executes.</strong> She answers every call, books every client, locks the slot, and texts the confirmation — before the call even ends.</p>
     <div class="hero-ctas">
-      <a href="onboarding.html" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-      <a href="login.html" class="btn-ghost">Talk to Lola</a>
+      <a href="/start" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="/login" class="btn-ghost">Talk to Lola</a>
     </div>
   </div>
   <div class="hero-scroll"><span>Scroll</span><div class="hero-scroll-line"></div></div>
@@ -207,9 +215,14 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 
 <section class="voice-demo" aria-label="Lola trial voice demo">
   <div class="voice-demo-card">
-    <div class="voice-demo-kicker">Lola trial demo</div>
+    <div class="voice-demo-kicker">Lola executes — hear her work</div>
     <h2 class="voice-demo-title">Hear Lola in real salon conversations</h2>
-    <p class="voice-demo-sub">Tap a scenario. Prospects hear Lola's real voice before they start trial.</p>
+    <p class="voice-demo-sub">Jarvis talks. Alexa answers. Lola executes. Tap a scenario and hear her book, recover, and sell.</p>
+    <div class="position-row">
+      <span class="position-pill">Jarvis · <b>talks</b></span>
+      <span class="position-pill">Alexa · <b>answers</b></span>
+      <span class="position-pill lola">Lola · <b>executes</b></span>
+    </div>
     <div class="voice-demo-actions">
       <button class="voice-chip" data-voice-demo="book">Play booking call</button>
       <button class="voice-chip" data-voice-demo="recover">Play missed-call recovery</button>
@@ -336,6 +349,63 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   </div>
 </section>
 
+<!-- FAQ -->
+<section class="reveal" id="faq">
+  <div class="reveal-inner" style="max-width:760px">
+    <div class="reveal-tag">Questions</div>
+    <h2 class="reveal-title">Everything you're <em>wondering.</em></h2>
+    <div class="faq-list" style="margin-top:48px;display:flex;flex-direction:column;gap:0">
+      <details class="faq-item" style="border-bottom:0.5px solid var(--border);padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>Does Lola actually sound like a real person?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">Yes. Lola uses carrier-grade voice AI with natural pauses, inflection, and warmth. Callers consistently report not realizing they spoke to an AI. You can customize her voice to match your salon's vibe.</p>
+      </details>
+      <details class="faq-item" style="border-bottom:0.5px solid var(--border);padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>What booking platforms does Lola work with?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">Square, Mindbody, Vagaro, Fresha, and Google Calendar. Lola checks real-time availability and books the right service in seconds. New integrations are added monthly.</p>
+      </details>
+      <details class="faq-item" style="border-bottom:0.5px solid var(--border);padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>What happens if Lola can't answer something?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">Lola never guesses. If a question falls outside her playbook, she takes a message and routes it to you immediately. You set the boundaries — she respects them.</p>
+      </details>
+      <details class="faq-item" style="border-bottom:0.5px solid var(--border);padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>Can I cancel anytime?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">Yes. No contracts, no cancellation fees. Cancel from your dashboard and service continues until the end of your billing period. The 14-day trial requires no credit card.</p>
+      </details>
+      <details class="faq-item" style="border-bottom:0.5px solid var(--border);padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>Is Lola HIPAA-compliant for med spas?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">The Med-Spa plan includes HIPAA-aware call handling and consultation intake flows. Lola screens for high-ticket treatments, handles intake questions, and routes sensitive information appropriately.</p>
+      </details>
+      <details class="faq-item" style="padding:24px 0">
+        <summary style="font-size:17px;font-weight:500;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+          <span>How long does setup take?</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform .3s"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p style="margin-top:14px;font-size:15px;font-weight:300;color:var(--text2);line-height:1.6">About five minutes. Enter your salon's name, services, and pricing, connect your booking platform, and pick your Lola number. Lola starts answering immediately.</p>
+      </details>
+    </div>
+    <style>
+      .faq-item summary::-webkit-details-marker{display:none}
+      .faq-item[open] summary svg{transform:rotate(180deg)}
+    </style>
+  </div>
+</section>
+
+
 <section class="pricing-sec reveal" id="pricing">
   <div class="reveal-inner" style="max-width:1040px">
     <div class="reveal-tag">Pricing</div>
@@ -347,42 +417,49 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     </div>
     <div class="pricing">
       <div class="price-card">
-        <div class="price-name">SOLO</div>
-        <div class="price-tag"><span class="price-amount" data-m="99" data-a="83">$99</span><span class="price-per">/mo</span></div>
+        <div class="price-name">Starter</div>
+        <div class="price-tag"><span class="price-amount" data-m="99" data-a="79">$99</span><span class="price-per">/mo</span></div>
         <div class="price-note"></div>
         <div class="price-desc">For solo stylists and single chairs.</div>
         <ul class="price-features">
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Web chat + SMS</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>1 booking platform</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>500 messages/mo</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Lola answers &amp; books 24/7</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Your custom voice</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Pricing/services &amp; recommendations</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Lead capture — never lose a caller</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>1 phone number included</li>
         </ul>
-        <a href="onboarding.html?plan=starter&billing=monthly" class="price-btn ghost pcta" data-plan="starter">Start free</a>
+        <a href="/start?plan=starter&billing=monthly" class="price-btn ghost pcta" data-plan="starter">Start free</a>
       </div>
       <div class="price-card featured">
         <div class="price-badge">MOST POPULAR</div>
         <div class="price-name">PRO</div>
-        <div class="price-tag"><span class="price-amount" data-m="399" data-a="333">$399</span><span class="price-per">/mo</span></div>
+        <div class="price-tag"><span class="price-amount" data-m="399" data-a="319">$399</span><span class="price-per">/mo</span></div>
         <div class="price-note"></div>
         <div class="price-desc">For salons that want the phone answered.</div>
         <ul class="price-features">
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Starter</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Dedicated AI voice line</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Instagram + WhatsApp</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>CRM + revenue insights</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Multi-stylist resource calendar</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Win-back &amp; rebooking campaigns</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Booking platform sync (Square, Google)</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Live activity &amp; smart insights</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Priority call handling</li>
         </ul>
-        <a href="onboarding.html?plan=pro&billing=monthly" class="price-btn primary pcta" data-plan="pro">Start free</a>
+        <a href="/start?plan=pro&billing=monthly" class="price-btn primary pcta" data-plan="pro">Start free</a>
       </div>
       <div class="price-card">
-        <div class="price-name">MED SPA</div>
-        <div class="price-tag"><span class="price-amount" data-m="599" data-a="499">$599</span><span class="price-per">/mo</span></div>
+        <div class="price-name">Med-Spa</div>
+        <div class="price-tag"><span class="price-amount" data-m="599" data-a="479">$599</span><span class="price-per">/mo</span></div>
         <div class="price-note"></div>
         <div class="price-desc">For med spas & aesthetic practices.</div>
         <ul class="price-features">
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Everything in Pro</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>HIPAA-aware flow</li>
-          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>High-ticket qualifying</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Highest call capacity</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Consultation &amp; intake flows</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Compliance-ready call handling</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Dedicated onboarding</li>
+          <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>All marketplace integrations</li>
         </ul>
-        <a href="onboarding.html?plan=medspa&billing=monthly" class="price-btn ghost pcta" data-plan="medspa">Start free</a>
+        <a href="/start?plan=medspa&billing=monthly" class="price-btn ghost pcta" data-plan="medspa">Start free</a>
       </div>
     </div>
   </div>
@@ -392,8 +469,8 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   <canvas class="final-orb" id="finalOrb" width="560" height="560"></canvas>
   <div class="final-content">
     <h1 class="final-title">Meet your<br><em>Lola.</em></h1>
-    <p class="final-sub">Set her up in five minutes. Watch her answer your first call today.</p>
-    <a href="onboarding.html" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+    <p class="final-sub">Jarvis talks. Alexa answers. Lola executes. Set her up in five minutes — watch her answer your first call today.</p>
+    <a href="/start" class="btn-primary">Start free trial<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
   </div>
 </section>
 
@@ -401,11 +478,11 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   <div class="footer-logo">LOLADESK</div>
   <div class="footer-links">
     <a href="#pricing">Pricing</a>
-    <a href="login.html">Sign in</a>
-    <a href="onboarding.html">Get started</a>
-    <a href="dashboard.html">Demo</a>
-    <a href="#">Privacy</a>
-    <a href="#">Terms</a>
+    <a href="/login">Sign in</a>
+    <a href="/start">Get started</a>
+    <a href="/dashboard">Demo</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
   </div>
   <div class="footer-copy">© 2026 LolaDesk · The AI front desk concierge</div>
 </footer>
@@ -422,7 +499,7 @@ document.querySelectorAll('.tcta').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const plan=btn.dataset.plan;
     if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
-    window.location.href = `onboarding.html?plan=${plan}`;
+    window.location.href = `/start?plan=${plan}`;
   });
 });
 
@@ -437,7 +514,7 @@ document.querySelectorAll('.tcta').forEach(btn=>{
     opts.forEach(o => o.classList.toggle('active', o.dataset.billing === mode));
     amounts.forEach(a => { a.textContent = '$' + (mode === 'annual' ? a.dataset.a : a.dataset.m); });
     notes.forEach(n => { n.textContent = mode === 'annual' ? 'billed annually · 2 months free' : ''; });
-    ctas.forEach(c => { c.href = `onboarding.html?plan=${c.dataset.plan}&billing=${mode}`; });
+    ctas.forEach(c => { c.href = `/start?plan=${c.dataset.plan}&billing=${mode}`; });
   }
   opts.forEach(o => o.addEventListener('click', () => setBilling(o.dataset.billing)));
 })();
@@ -509,29 +586,14 @@ makeOrb(document.getElementById('finalOrb'), 560);
   let currentAudio = null;
 
   async function playVoice(text){
-    if(currentAudio){
-      currentAudio.pause();
-      currentAudio = null;
-    }
+    if(currentAudio){ currentAudio.pause(); currentAudio = null; }
     if(status) status.textContent = 'Loading voice…';
-    const r = await fetch('/api/speak', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ text })
-    });
-    if(!r.ok) throw new Error('voice unavailable');
-    const bytes = await r.arrayBuffer();
-    const blob = new Blob([bytes], { type: r.headers.get('content-type') || 'audio/mpeg' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    currentAudio = audio;
-    if(status) status.textContent = 'Playing…';
-    await audio.play();
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      if(currentAudio === audio) currentAudio = null;
-      if(status) status.textContent = 'Ready to play';
-    };
+    // LolaAlive.speak() prefers her real ElevenLabs voice and falls back to
+    // the open-source browser voice — so the demo plays even in the static
+    // preview where /api/speak has no backend.
+    const s = await LolaAlive.speak(text);
+    if(status) status.textContent = s.engine === 'elevenlabs' ? 'Playing…' : "Lola's voice is warming up — tap again in a moment";
+    setTimeout(() => { if(status && s.engine === 'elevenlabs') status.textContent = 'Ready to play'; }, 8000);
   }
 
   document.querySelectorAll('[data-voice-demo]').forEach((btn) => {

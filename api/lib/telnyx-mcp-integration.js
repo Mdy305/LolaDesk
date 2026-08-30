@@ -19,6 +19,17 @@
  * LLM sees response immediately, no custom code needed
  */
 
+import { runBookingAction } from './booking-brain.js';
+import { getTenantById } from './operator-db.js';
+
+// The voice/SMS transports resolve tenant.id before the LLM runs; MCP tool
+// calls receive that id and must turn it back into a tenant row before the
+// booking brain can act on it. Null means the tool cannot safely run.
+async function tenantForMCP(tenantId){
+  if(!tenantId) return null;
+  try{ return await getTenantById(tenantId); }catch{ return null; }
+}
+
 const MCPToolDefinitions = {
   calendar: {
     name: 'calendar_check_availability',
@@ -187,6 +198,88 @@ const MCPToolDefinitions = {
       },
       required: ['webhook_key', 'data']
     }
+  },
+
+  // ── LolaDesk native booking + memory tools (the REAL smart booking path) ──
+  lola_check_availability: {
+    name: 'lola_check_availability',
+    description: 'Check real appointment availability in this salon\'s calendar for a service and optional stylist/date',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service: { type: 'string', description: 'Service name or id' },
+        stylist: { type: 'string', description: 'Stylist name (optional)' },
+        date: { type: 'string', description: 'Date YYYY-MM-DD (optional, defaults to today)' }
+      }
+    }
+  },
+
+  lola_book_appointment: {
+    name: 'lola_book_appointment',
+    description: 'Book a confirmed appointment: resolves service/stylist, holds the slot, commits, and remembers it',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        service: { type: 'string', description: 'Service name' },
+        stylist: { type: 'string', description: 'Stylist name (optional)' },
+        date: { type: 'string', description: 'Date YYYY-MM-DD or "tomorrow"' },
+        time: { type: 'string', description: 'Time, e.g. "2:00 PM"' },
+        client_name: { type: 'string', description: "Caller's name" },
+        client_phone: { type: 'string', description: "Caller's phone" },
+        notes: { type: 'string', description: 'Notes for the appointment' }
+      },
+      required: ['service']
+    }
+  },
+
+  lola_reschedule_appointment: {
+    name: 'lola_reschedule_appointment',
+    description: 'Reschedule an existing appointment to a new time (availability-checked)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        booking_id: { type: 'string', description: 'Existing booking id' },
+        starts_at: { type: 'string', description: 'New ISO 8601 start time' }
+      },
+      required: ['booking_id', 'starts_at']
+    }
+  },
+
+  lola_cancel_appointment: {
+    name: 'lola_cancel_appointment',
+    description: 'Cancel an existing appointment and free the slot',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        booking_id: { type: 'string', description: 'Booking id to cancel' },
+        reason: { type: 'string', description: 'Cancellation reason' }
+      },
+      required: ['booking_id']
+    }
+  },
+
+  lola_remember: {
+    name: 'lola_remember',
+    description: 'Save a fact about this salon or a client into Lola\'s per-tenant memory for later recall',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Short label for the fact' },
+        value: { type: 'string', description: 'What to remember' }
+      },
+      required: ['key']
+    }
+  },
+
+  lola_recall: {
+    name: 'lola_recall',
+    description: 'Recall what Lola remembers for this salon (or a specific key)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'Optional key to recall just one memory' }
+      }
+    }
   }
 };
 
@@ -215,11 +308,28 @@ Do NOT attempt to make raw HTTP requests. Always use MCP tools.
 }
 
 /**
+ * Pull a tool invocation out of an LLM reply: "[TOOL: lola_book_appointment {…}]".
+ * Returns { name, params } or null. Used by every voice/text transport so the
+ * LLM can call booking-brain tools conversationally.
+ */
+export function extractToolCall(text){
+  const m = String(text || '').match(/\[TOOL:\s*(\w+)\s*\{([^}]*)\}\]/);
+  if(!m) return null;
+  try{
+    const params = JSON.parse('{' + m[2] + '}');
+    return { name: m[1], params };
+  }catch{ return null; }
+}
+
+/**
  * MCP Tool Execution Handler
  * When LLM calls a tool, this intercepts and routes to the appropriate backend
  */
 export async function executeMCPTool(toolName, params, tenantId) {
-  const tool = MCPToolDefinitions[toolName];
+  // The LLM emits the tool's `.name` (e.g. "lola_book_appointment"), while the
+  // definitions are keyed by a shorthand. Resolve by name first, then key.
+  const defs = Object.values(MCPToolDefinitions);
+  const tool = defs.find(t => t.name === toolName) || MCPToolDefinitions[toolName];
 
   if (!tool) {
     return { error: `Unknown tool: ${toolName}` };
@@ -232,6 +342,32 @@ export async function executeMCPTool(toolName, params, tenantId) {
 
       case 'calendar_create_booking':
         return await createCalendarBooking(params, tenantId);
+
+      // ── LolaDesk native smart booking + memory (the REAL path) ──
+      case 'lola_check_availability': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('check_availability', t, params, { channel: 'voice' }) : { error: 'tenant_not_found' };
+      }
+      case 'lola_book_appointment': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('book_appointment', t, params, { channel: 'voice' }) : { error: 'tenant_not_found' };
+      }
+      case 'lola_reschedule_appointment': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('reschedule_appointment', t, params, { channel: 'voice' }) : { error: 'tenant_not_found' };
+      }
+      case 'lola_cancel_appointment': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('cancel_appointment', t, params, { channel: 'voice' }) : { error: 'tenant_not_found' };
+      }
+      case 'lola_remember': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('remember', t, params, {}) : { error: 'tenant_not_found' };
+      }
+      case 'lola_recall': {
+        const t = await tenantForMCP(tenantId);
+        return t ? runBookingAction('recall', t, params, {}) : { error: 'tenant_not_found' };
+      }
 
       case 'stripe_charge_client':
         return await chargeStripe(params, tenantId);
@@ -277,13 +413,24 @@ export async function executeMCPTool(toolName, params, tenantId) {
 // ─────────────────────────────────────────────────────────────────
 
 async function checkCalendarAvailability(params, tenantId) {
-  // TODO: Query Google Calendar API via tenant's OAuth token
-  return { slots: ['10:00 AM', '2:30 PM', '4:00 PM'], date: params.date };
+  const tenant = await tenantForMCP(tenantId);
+  if(!tenant) return { error: 'tenant_not_found' };
+  const r = await runBookingAction('check_availability', tenant, {
+    service: params.service, stylist: params.stylist_name, date: params.date
+  }, { channel: 'voice' });
+  return r.ok ? { slots: r.slots, date: params.date, speak: r.speak } : r;
 }
 
 async function createCalendarBooking(params, tenantId) {
-  // TODO: Create event in Google Calendar
-  return { success: true, event_id: 'evt_12345', calendar_link: '...' };
+  const tenant = await tenantForMCP(tenantId);
+  if(!tenant) return { error: 'tenant_not_found' };
+  return runBookingAction('book_appointment', tenant, {
+    service: params.title || params.service,
+    starts_at: params.start_time,
+    client_name: params.client_name,
+    client_email: params.client_email,
+    stylist: params.stylist_name
+  }, { channel: 'voice' });
 }
 
 async function chargeStripe(params, tenantId) {

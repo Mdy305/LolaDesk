@@ -7,6 +7,7 @@
  */
 
 import { db, e164 } from './db.js';
+import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
 
 /**
  * Fetch a client's long-term memory (LTM) context for Lola.
@@ -40,9 +41,9 @@ export async function injectCallerMemory(tenantId, clientPhone) {
     // Fetch their last booking to give Lola context
     const { data: lastBooking } = await c
       .from('bookings')
-      .select('service, starts_at, stylist')
+      .select('service:services(name), starts_at:start_time, stylist:staff(name)')
       .eq('client_id', client.id)
-      .order('starts_at', { ascending: false })
+      .order('start_time', { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -100,6 +101,15 @@ export async function executeSkill(tenant, clientPhone, toolName, payload, skill
   
   if (!skillsRegistry[toolName]) {
     throw new Error(`Skill ${toolName} not found in registry.`);
+  }
+
+  // Trial-to-paid gate: expired/suspended tenants cannot create new bookings
+  // through the legacy skill layer either. Cancels stay open so clients are
+  // never stranded. The legacy layer is caller-facing, so callers get the
+  // graceful decline (never reveals billing state).
+  if (BLOCKED_BOOKING_ACTIONS.has(toolName)) {
+    const gate = bookingGateResponse(tenant, 'voice');
+    if (gate) return gate;
   }
 
   console.log(`[orchestrator] Executing skill '${toolName}' for tenant ${tenant.slug}`);

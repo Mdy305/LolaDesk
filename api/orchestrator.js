@@ -3,6 +3,7 @@ import { db } from './lib/db.js';
 import { validateLLMOutput } from './lib/llm-validator.js';
 import { delegateToAgent } from './lib/router.js';
 import { normalizeAgentName, summarizeTopology } from './lib/agent-topology.js';
+import { chat } from './lib/llm.js';
 
 // Control plane endpoint:
 // 1) explicit routing mode (route_to + task)
@@ -14,7 +15,6 @@ export default async function handler(req, res){
   const routeTo = body.route_to || body.routeTo || null;
   const task = body.task || null;
   const tenant = body.tenant || {};
-  const model = process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini';
 
   const c = db();
   if(!c) return res.status(500).json({ error: 'Supabase not configured' });
@@ -42,32 +42,18 @@ export default async function handler(req, res){
     return res.status(400).json({ error: 'missing prompt (or pass route_to + task)' });
   }
 
-  // Call LLM if key present, otherwise safe mock.
+  // Plan through the same Telnyx Kimi client used by every Lola channel.
   let llmRaw = null;
   try{
-    if(process.env.OPENAI_API_KEY){
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{
-            role: 'system',
-            content: 'You are the LolaDesk control-plane orchestrator. Respond with ONE JSON object only in this shape: {action, params, speak, route_to?, task?}. action must be one of book,cancel,ask,route,none. Use action=route for specialized agents and set route_to to one of lola,ops,growth,website,reputation,citation,publication.'
-          }, { role: 'user', content: prompt }],
-          max_tokens: 800
-        })
-      });
-      const j = await resp.json();
-      // defensively pull text
-      llmRaw = j?.choices?.[0]?.message?.content || JSON.stringify(j);
-    } else {
-      // Mock safe response when no key present
-      llmRaw = JSON.stringify({ action: 'none', params: {}, speak: 'Control plane AI is not configured yet.' });
-    }
+    const result = await chat({
+      system: 'You are the LolaDesk control-plane orchestrator. Respond with ONE JSON object only in this shape: {action, params, speak, route_to?, task?}. action must be one of book,cancel,ask,route,none. Use action=route for specialized agents and set route_to to one of lola,ops,growth,website,reputation,citation,publication.',
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 800,
+      temperature: 0.2
+    });
+    llmRaw = result.ok
+      ? result.text
+      : JSON.stringify({ action: 'none', params: {}, speak: 'Control plane AI is temporarily unavailable.' });
   }catch(e){
     llmRaw = JSON.stringify({ action: 'none', params: {}, speak: `LLM call failed: ${String(e?.message||e)}` });
   }

@@ -137,13 +137,13 @@ export async function listBookings(tenantId, { from, to, limit = 25 } = {}){
   const f = (from ? startOfDay(from) : startOfDay(new Date())).toISOString();
   const t = (to ? endOfDay(to) : endOfDay(from || new Date())).toISOString();
   const { data } = await c.from('bookings')
-    .select('id, service, stylist, starts_at, duration_min, price, status, client_id, external_source')
+    .select('id, service:services(name), stylist:staff(name), starts_at:start_time, end_time, price:total_amount, status, client_id, external_source:external_provider')
     .eq('tenant_id', tenantId)
-    .gte('starts_at', f).lte('starts_at', t)
+    .gte('start_time', f).lte('start_time', t)
     .neq('status', 'cancelled')
-    .order('starts_at', { ascending: true })
+    .order('start_time', { ascending: true })
     .limit(limit);
-  return data || [];
+  return (data || []).map(b => ({ ...b, service: b.service?.name || null, stylist: b.stylist?.name || null, duration_min: b.starts_at ? Math.max(0, Math.round((new Date(b.end_time || b.starts_at).getTime() - new Date(b.starts_at).getTime()) / 60000)) : null }));
 }
 
 // Attach client name + phone to a set of booking rows.
@@ -187,7 +187,7 @@ export async function cancelBooking(tenantId, bookingId){
 export async function moveBooking(tenantId, bookingId, newStartsAt){
   const c = db(); if(!c) return null;
   const { data } = await c.from('bookings')
-    .update({ starts_at: new Date(newStartsAt).toISOString() })
+    .update({ start_time: new Date(newStartsAt).toISOString() })
     .eq('tenant_id', tenantId).eq('id', bookingId)
     .select().maybeSingle();
   return data;
@@ -199,9 +199,9 @@ export async function revenueSummary(tenantId, { from, to } = {}){
   const f = (from ? startOfDay(from) : startOfDay(new Date())).toISOString();
   const t = (to ? endOfDay(to) : endOfDay(from || new Date())).toISOString();
   const { data } = await c.from('bookings')
-    .select('price, status')
+    .select('price:total_amount, status')
     .eq('tenant_id', tenantId)
-    .gte('starts_at', f).lte('starts_at', t)
+    .gte('start_time', f).lte('start_time', t)
     .in('status', ['confirmed', 'completed']);
   const rows = data || [];
   const total = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);

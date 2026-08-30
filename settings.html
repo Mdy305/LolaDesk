@@ -1,464 +1,593 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Settings — LolaDesk</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Settings — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
-.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:860px){.settings-grid{grid-template-columns:1fr}}
-.set-section{padding:22px}
-.set-label{font-size:12px;color:var(--text2);margin-bottom:7px;display:block;font-weight:500}
-.set-input{width:100%;background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:14px;transition:border-color .15s}
-.set-input:focus{border-color:var(--pink)}
-.set-input:disabled{opacity:.55;cursor:not-allowed}
-
-.integration{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:0.5px solid var(--border)}
-.integration:last-child{border-bottom:none}
-.int-logo{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:15px}
-.int-info{flex:1;min-width:0}
-.int-name{font-size:14px;font-weight:500}
-.int-status{font-size:11px;color:var(--text3)}
-.connect-btn{padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;transition:all .15s;border:none;cursor:pointer;white-space:nowrap}
-.connect-btn.connected{background:var(--mono-dim);color:var(--text);cursor:default}
-.connect-btn.connect{background:var(--pink);color:#fff}
-.connect-btn.pending{background:var(--surface2);color:var(--text3);cursor:not-allowed}
-.plan-card{background:linear-gradient(135deg,var(--pink-dim),var(--surface));border:0.5px solid var(--pink);border-radius:var(--r);padding:22px;margin-top:0}
-.plan-name{font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--pink2);margin-bottom:6px}
-.plan-price{font-size:30px;font-weight:600;margin-bottom:4px}
-.plan-price span{font-size:14px;color:var(--text3);font-weight:400}
-.plan-feat{font-size:12px;color:var(--text2);margin-top:10px;line-height:1.7}
-.save-toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 18px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none;z-index:50}
-.save-toast.show{opacity:1;transform:translateY(0)}
-.save-toast.err{color:#ff7a6d;border-color:#ff7a6d}
-.save-toast.ok{color:var(--text)}
+.tabs{display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap;border-bottom:.5px solid var(--border);padding-bottom:0}
+.tab{padding:11px 18px;border-radius:11px 11px 0 0;background:transparent;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:var(--text2)}
+.tab.on{color:var(--text);border-bottom-color:var(--accent)}
+.pane{display:none}.pane.on{display:block;animation:fade .3s}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:24px;margin-bottom:16px}
+.card h3{font-size:16px;font-weight:600;margin-bottom:6px}
+.card .desc{font-size:12.5px;color:var(--text3);margin-bottom:18px;line-height:1.6}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fld input,.fld select,.fld textarea{background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%}
+.fld input:focus,.fld select:focus{border-color:var(--accent)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:.5px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-row .tl{font-size:13.5px;font-weight:500}
+.toggle-row .ts{font-size:11.5px;color:var(--text3);margin-top:2px}
+.sw{width:44px;height:26px;border-radius:99px;background:var(--surface2);border:.5px solid var(--border);position:relative;cursor:pointer;flex:0 0 44px;transition:.2s}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text3);transition:.2s}
+.sw.on{background:var(--accent);border-color:var(--accent)}
+.sw.on::after{left:21px;background:#080809}
+.status{display:flex;align-items:center;gap:10px;padding:14px;background:var(--bg2);border-radius:12px;margin-bottom:12px}
+.dot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+.dot.live{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.dot.off{background:var(--text3)}
+.dot.warn{background:#ffc043}
+.status-txt b{font-size:13px;display:block}
+.status-txt small{font-size:11.5px;color:var(--text3)}
+.btn-row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.btn-p{background:var(--text);color:#080809;border:0;border-radius:11px;padding:12px 20px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:inherit}
+.btn-g{background:transparent;border:.5px solid var(--border);color:var(--text2);border-radius:11px;padding:12px 20px;font-size:13.5px;cursor:pointer;font-family:inherit}
+.btn-p:disabled,.btn-g:disabled{opacity:.4;cursor:not-allowed}
+.num-list{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.num-item{display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:.5px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s}
+.num-item:hover,.num-item.on{border-color:var(--accent)}
+.num-n{font-size:15px;font-weight:500}
+.num-m{font-size:11.5px;color:var(--text3);margin-top:2px}
+.msg{font-size:12.5px;margin-top:12px;min-height:18px}
+.msg.ok{color:var(--accent2)}.msg.err{color:#ff8a8a}
+.copy-box{display:flex;gap:8px;align-items:center;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text2);word-break:break-all}
+.copy-box button{background:transparent;border:.5px solid var(--border);border-radius:7px;padding:5px 10px;color:var(--text3);font-size:11px;cursor:pointer;flex-shrink:0}
 </style>
 </head>
 <body data-page="settings">
-<div class="app">
-  <main class="main">
-    <div class="topbar">
-      <div class="page-head">
-        <h1 class="page-title">Settings</h1>
-<div class="set-quicklinks" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 22px">
-  <a href="team.html" style="padding:9px 16px;border-radius:11px;border:0.5px solid var(--border,rgba(255,255,255,.09));background:var(--surface,#171a0e);color:var(--text,#f5f6f0);font-size:13px;text-decoration:none">Team</a>
-  <a href="numbers.html" style="padding:9px 16px;border-radius:11px;border:0.5px solid var(--border,rgba(255,255,255,.09));background:var(--surface,#171a0e);color:var(--text,#f5f6f0);font-size:13px;text-decoration:none">Phone Numbers</a>
-  <a href="subscription.html" style="padding:9px 16px;border-radius:11px;border:0.5px solid var(--border,rgba(255,255,255,.09));background:var(--surface,#171a0e);color:var(--text,#f5f6f0);font-size:13px;text-decoration:none">Billing</a>
-  <a href="team.html" style="display:none"></a>
+<div class="app"><main class="main">
+<div class="page-head">
+  <div><h1 class="page-title">Settings</h1>
+  <p style="font-size:13px;color:var(--text3);margin-top:4px">Your salon, your phone line, your AI.</p></div>
 </div>
-        <p class="page-sub">Your salon operations and connections.</p>
-      </div>
-      <div class="topbar-actions">
-        <button class="btn btn-primary" id="saveBtn" onclick="saveSettings()">Save changes</button>
-      </div>
-    </div>
 
-    <div class="settings-grid">
-      <div class="card">
-        <div class="card-head"><div class="card-title">Salon details</div></div>
-        <div class="set-section">
-          <label class="set-label">Salon name</label>
-          <input class="set-input" id="fName" value=""/>
-          <label class="set-label">Phone (your Lola line)</label>
-          <input class="set-input" id="fPhone" value="" disabled title="Get or change your Lola number on the Numbers page"/>
-          <label class="set-label">Location</label>
-          <input class="set-input" id="fLocation" value=""/>
-          <label class="set-label">Hours</label>
-          <input class="set-input" id="fHours" value=""/>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">Smart Upsell Engine</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin-bottom:14px;margin-top:0;">Teach Lola to automatically suggest add-ons during calls.</p>
-          <div id="upsellList" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px;"></div>
-          <button class="btn btn-ghost" onclick="addUpsellRule()" style="font-size:12px;padding:6px 12px;">+ Add Upsell Rule</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">No-Show Protection &amp; Deposits</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin-bottom:14px;margin-top:0;">Require clients to secure their appointment with a deposit via Square.</p>
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-            <label class="switch">
-              <input type="checkbox" id="fDepositEnable">
-              <span class="slider round"></span>
-            </label>
-            <span style="font-size:13px;font-weight:500;">Enable deposit collection</span>
-          </div>
-          <div><label class="set-label" style="font-size:10px">Default Deposit Amount ($)</label><input class="set-input" id="fDepositAmount" placeholder="50" style="width:100px;margin-bottom:0"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">Integrations</div></div>
-        <div class="set-section" style="padding-top:6px" id="integrationsList">
-          <div class="integration">
-            <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
-            <div class="int-info"><div class="int-name">Voice &amp; Text</div><div class="int-status">Your Lola phone line — calls &amp; texts</div></div>
-            <button class="connect-btn connected">Active</button>
-          </div>
-          <div class="integration">
-            <div class="int-logo" style="background:#25d366;color:#fff">W</div>
-            <div class="int-info"><div class="int-name">WhatsApp</div><div class="int-status">Chat &amp; campaigns on WhatsApp</div></div>
-            <button class="connect-btn connected">Active</button>
-          </div>
-          <div class="integration">
-            <div class="int-logo" style="background:#999;color:#fff">…</div>
-            <div class="int-info"><div class="int-name">Loading booking platforms…</div><div class="int-status">&nbsp;</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Lola on your website — the embed snippet for existing accounts.
-           (New signups get this at the onboarding go-live screen; this card
-           is how everyone else plugs Lola into their site.) ── -->
-      <div class="card">
-        <div class="card-head"><div class="card-title">Lola on your website</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin:0 0 12px">Paste this once before <code>&lt;/body&gt;</code> on your website. Every visitor gets a chat bubble with <em>your</em> Lola — she answers from your menu and hours, remembers returning visitors, and drives bookings 24/7.</p>
-          <div id="widgetEmbedWrap" style="display:flex;gap:8px;align-items:stretch">
-            <code id="widgetEmbedSnippet" style="flex:1;display:block;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:11px;color:var(--pink2,#dcff66);overflow-x:auto;white-space:nowrap">Loading your snippet…</code>
-            <button id="widgetEmbedCopy" class="btn" style="white-space:nowrap">Copy</button>
-          </div>
-          <p style="font-size:11.5px;color:var(--muted,#8a8090);margin:10px 0 0">Works on any site — Squarespace, Wix, Shopify, WordPress, custom. The key is unique to your salon; visitors can only ever see your data.</p>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">Telecom &amp; Infrastructure</div></div>
-        <div class="set-section">
-          <p style="font-size:13px;color:var(--text2);margin-bottom:16px;margin-top:0;">Ensure Lola never goes offline and handles your actual business calls.</p>
-          
-          <div style="margin-bottom:20px; padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
-            <div style="font-weight:600; font-size:14px; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-              <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--pink);"></span>
-              Order Private APN SIM
-            </div>
-            <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Lola Link — a dedicated cellular connection for your salon. Your front-desk iPad stays connected to Lola even when the Wi-Fi drops.</p>
-            <button class="btn btn-primary" id="btnOrderSim" onclick="orderTelnyxSim()" style="font-size:12px;">Ship to Salon ($15/mo)</button>
-          </div>
-
-          <div style="padding:16px; border:0.5px solid var(--border); border-radius:var(--r-sm); background:var(--surface);">
-            <div style="font-weight:600; font-size:14px; margin-bottom:6px;">Port Business Number</div>
-            <p style="font-size:12px; color:var(--text3); margin-bottom:12px;">Move your legacy salon phone number (Verizon, AT&amp;T, etc.) to LolaDesk so Lola can answer the main line.</p>
-            <div style="display:flex; gap:10px;">
-              <input class="set-input" id="fPortNumber" placeholder="(305) 555-0199" style="margin:0; flex:1; max-width:200px;">
-              <button class="btn btn-ghost" id="btnPortNum" onclick="portTelnyxNumber()" style="font-size:12px;">Bring my number</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head"><div class="card-title">Your plan</div></div>
-        <div class="set-section">
-          <div class="plan-card" id="planCard">
-            <div class="plan-name" id="planName">—</div>
-            <div class="plan-price" id="planPrice">—</div>
-            <div class="plan-feat">✓ AI voice phone answering<br>✓ SMS &amp; CRM + revenue insights<br>✓ Real booking-platform sync</div>
-          </div>
-          <button class="btn btn-ghost" style="width:100%;margin-top:14px;justify-content:center" onclick="manageBilling()">Manage billing</button>
-        </div>
-      </div>
-    </div>
-  </main>
+<div class="tabs">
+  <button class="tab on" onclick="tab(0)">Salon</button>
+  <button class="tab" onclick="tab(1)">Phone &amp; Voice</button>
+  <button class="tab" onclick="tab(2)">Messaging</button>
+  <button class="tab" onclick="tab(3)">Booking</button>
+  <button class="tab" onclick="tab(4)">Lola AI</button>
+  <button class="tab" onclick="tab(5)">Integrations</button>
 </div>
-<div class="save-toast" id="saveToast"></div>
 
-<script src="auth-guard.js"></script>
-<script src="lola-data.js"></script>
-<script src="sidebar.js"></script>
+<!-- SALON -->
+<div class="pane on" data-pane="0">
+  <div class="card">
+    <h3>Salon details</h3>
+    <div class="desc">Lola uses these on every call, text, and booking confirmation.</div>
+    <div class="grid2">
+      <div class="fld"><label>Salon name</label><input id="sName"/></div>
+      <div class="fld"><label>Owner name</label><input id="sOwner"/></div>
+      <div class="fld"><label>Location</label><input id="sLocation" placeholder="1500 Alton Rd, Miami Beach, FL"/></div>
+      <div class="fld"><label>Business hours</label><input id="sHours" placeholder="Tue-Sat, Noon-8pm"/></div>
+      <div class="fld"><label>Website</label><input id="sWebsite" placeholder="https://yoursalon.com"/></div>
+      <div class="fld"><label>Google Business (Maps/GMB) link</label><input id="sGmb" placeholder="https://www.google.com/maps/place/Your+Salon"/></div>
+      <div class="fld"><label>Booking link</label><input id="sBookingUrl" readonly style="opacity:.7"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-p" onclick="saveSalon()">Save salon details</button></div>
+    <div class="msg" id="salonMsg"></div>
+  </div>
+</div>
+
+<!-- PHONE & VOICE -->
+<div class="pane" data-pane="1">
+  <div class="card">
+    <h3>Your Lola number</h3>
+    <div class="desc">The number clients call. Lola answers, books, and texts from here.</div>
+    <div class="status" id="phoneStatus"><span class="dot off"></span><div class="status-txt"><b>Checking...</b><small>Loading number status</small></div></div>
+    <div class="btn-row">
+      <button class="btn-g" onclick="tab(1);showNumberSearch()">Get a new number</button>
+      <a class="btn-g" href="numbers.html" style="text-decoration:none">Manage all numbers</a>
+    </div>
+  </div>
+
+  <div class="card" id="numberSearchCard" style="display:none">
+    <h3>Choose a number</h3>
+    <div class="desc">Search by area code, then buy instantly. Voice and SMS wired automatically.</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="fld" id="areaCode" placeholder="Area code (305)" maxlength="3" style="flex:1;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)" oninput="this.value=this.value.replace(/\D/g,'')"/>
+      <button class="btn-g" onclick="searchNumbers()">Search</button>
+    </div>
+    <div class="num-list" id="numList"></div>
+    <div class="balance-line" id="creditLine" style="display:none;margin-top:10px;padding:9px 12px;border-radius:10px;font-size:12px;background:rgba(204,255,0,.06);border:1px solid rgba(204,255,0,.16);color:#d9f5a8"></div>
+    <div class="btn-row"><button class="btn-p" id="buyBtn" onclick="buyNumber()" disabled>Buy this number</button></div>
+    <div class="msg" id="numMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Port your existing number</h3>
+    <div class="desc">Already have a salon number? Move it to LolaDesk and keep it.</div>
+    <div class="grid2">
+      <div class="fld"><label>Current number</label><input id="portNumber" placeholder="+1 305 555 0100"/></div>
+      <div class="fld"><label>Current carrier</label><input id="portCarrier" placeholder="Verizon, AT&amp;T..."/></div>
+      <div class="fld"><label>Account number</label><input id="portAccount"/></div>
+      <div class="fld"><label>PIN / passcode</label><input id="portPin"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-g" onclick="startPort()">Start port request</button></div>
+    <div class="msg" id="portMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Call handling</h3>
+    <div class="toggle-row"><div><div class="tl">Lola answers all calls</div><div class="ts">AI receptionist picks up instantly</div></div><div class="sw on" id="swVoice" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Record calls</div><div class="ts">Transcripts saved to client history</div></div><div class="sw on" id="swRecord" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">After-hours voicemail</div><div class="ts">Lola takes a message outside business hours</div></div><div class="sw on" id="swVoicemail" onclick="tog(this)"></div></div>
+    <div class="fld" style="margin-top:16px"><label>Forward to (if Lola can't handle)</label><input id="forwardNumber" placeholder="+1 305 555 0199"/></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveVoice()">Save call settings</button></div>
+    <div class="msg" id="voiceMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Owner voice command</h3>
+    <div class="desc">Call your Lola number from your own cell and run your day by voice — “what's my day”, “how much did we make this month”, “cancel Sarah's appointment”. Lola recognizes you by caller ID and switches to your private chief-of-staff mode.</div>
+    <div class="status" id="opStatus"><span class="dot off"></span><div class="status-txt"><b>Voice command not set up</b><small>Add your cell number below to unlock owner mode</small></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Your cell number</label><input id="opPhone" placeholder="+1 305 555 0100"/></div>
+      <div class="fld"><label>Spoken PIN (4–6 digits)</label><input id="opPin" maxlength="6" placeholder="1234" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
+    </div>
+    <div class="btn-row"><button class="btn-p" onclick="saveOperator()">Save voice command</button></div>
+    <div class="msg" id="opMsg"></div>
+  </div>
+</div>
+
+<!-- MESSAGING -->
+<div class="pane" data-pane="2">
+  <div class="card">
+    <h3>SMS status</h3>
+    <div class="desc">10DLC registration is required by US carriers for business texting.</div>
+    <div class="status" id="smsStatus"><span class="dot off"></span><div class="status-txt"><b>Checking...</b><small>Loading messaging status</small></div></div>
+  </div>
+
+  <div class="card">
+    <h3>Automatic messages</h3>
+    <div class="toggle-row"><div><div class="tl">Booking confirmations</div><div class="ts">Text sent the moment an appointment is booked</div></div><div class="sw on" id="swConfirm" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">24-hour reminders</div><div class="ts">Reduces no-shows significantly</div></div><div class="sw on" id="swRemind" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Missed call text-back</div><div class="ts">Auto-text if a call goes unanswered</div></div><div class="sw on" id="swMissed" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Review requests</div><div class="ts">Ask happy clients for a review after their visit</div></div><div class="sw" id="swReview" onclick="tog(this)"></div></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveMessaging()">Save messaging</button></div>
+    <div class="msg" id="msgMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Marketing compliance</h3>
+    <div class="desc">Every marketing text automatically includes an opt-out line. Clients who reply STOP are permanently excluded.</div>
+    <div class="status"><span class="dot live"></span><div class="status-txt"><b>Opt-out handling active</b><small>STOP / START / HELP handled automatically</small></div></div>
+  </div>
+</div>
+
+<!-- BOOKING -->
+<div class="pane" data-pane="3">
+  <div class="card">
+    <h3>Booking rules</h3>
+    <div class="desc">Applied everywhere — dashboard, online booking page, and Lola on the phone.</div>
+    <div class="grid2">
+      <div class="fld"><label>Timezone</label><select id="bTimezone">
+        <option value="America/New_York">Eastern</option><option value="America/Chicago">Central</option>
+        <option value="America/Denver">Mountain</option><option value="America/Los_Angeles">Pacific</option>
+      </select></div>
+      <div class="fld"><label>Slot interval (min)</label><input id="bSlot" type="number" value="15"/></div>
+      <div class="fld"><label>Minimum notice (min)</label><input id="bNotice" type="number" value="120"/></div>
+      <div class="fld"><label>Book up to (days ahead)</label><input id="bHorizon" type="number" value="90"/></div>
+      <div class="fld"><label>Cancellation window (hrs)</label><input id="bCancel" type="number" value="24"/></div>
+      <div class="fld"><label>Buffer after service (min)</label><input id="bBuffer" type="number" value="0"/></div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="toggle-row"><div><div class="tl">Public online booking</div><div class="ts">Clients book from your website link</div></div><div class="sw on" id="swPublic" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Voice booking</div><div class="ts">Lola books during phone calls</div></div><div class="sw on" id="swVoiceBook" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Clients choose their stylist</div><div class="ts">Otherwise assigned automatically</div></div><div class="sw on" id="swStaffChoice" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Require phone number</div><div class="ts">Needed for confirmations</div></div><div class="sw on" id="swReqPhone" onclick="tog(this)"></div></div>
+    </div>
+    <div class="btn-row"><button class="btn-p" onclick="saveBooking()">Save booking rules</button></div>
+    <div class="msg" id="bookMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Your booking page</h3>
+    <div class="desc">Share this link on your website, Instagram bio, and Google profile.</div>
+    <div class="copy-box"><span id="bookLink">Loading...</span><button onclick="copyLink()">Copy</button></div>
+  </div>
+</div>
+
+<!-- LOLA AI -->
+<div class="pane" data-pane="4">
+  <div class="card">
+    <h3>Lola's personality</h3>
+    <div class="desc">How she sounds and behaves on every call.</div>
+    <div class="grid2">
+      <div class="fld"><label>Greeting</label><input id="lGreeting" placeholder="Hi, thank you for calling..."/></div>
+      <div class="fld"><label>Lola's voice</label><div style="padding:9px 12px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:10px;font-size:13px;color:var(--text2,#ddd)"><b style="color:#d4ff00">LOLA™</b> — signature voice<div style="font-size:11px;color:var(--text3);margin-top:2px">One voice, every call, every salon. Lola is the brain of LolaDesk — like Siri on Apple, her voice is the brand. Not changeable.</div></div></div>
+    </div>
+    <div class="fld"><label>Special instructions</label><textarea id="lInstructions" rows="4" placeholder="Anything Lola should always mention, avoid, or handle a specific way..."></textarea></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveLola()">Save Lola settings</button></div>
+    <div class="msg" id="lolaMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>What Lola can do</h3>
+    <div class="toggle-row"><div><div class="tl">Book appointments</div><div class="ts">Live booking during calls</div></div><div class="sw on" id="swCanBook" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Quote prices</div><div class="ts">Reads from your service catalog</div></div><div class="sw on" id="swCanQuote" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Recommend services</div><div class="ts">Suggests based on what the client describes</div></div><div class="sw on" id="swCanRecommend" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Upsell add-ons</div><div class="ts">Suggests complementary treatments</div></div><div class="sw on" id="swCanUpsell" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Recognize returning clients</div><div class="ts">Greets them by name with their history</div></div><div class="sw on" id="swCanRecognize" onclick="tog(this)"></div></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveCapabilities()">Save capabilities</button></div>
+    <div class="msg" id="capMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Lola Autopilot</h3>
+    <div class="desc">Lola works while you sleep — recovers missed calls, invites rebookings, and heals syncs on her own.</div>
+    <div class="toggle-row"><div><div class="tl">Autonomous agents</div><div class="ts">Let Lola run recovery, rebooking, and sync-healing without asking</div></div><div class="sw on" id="swAutopilot" onclick="tog(this)"></div></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveAutopilot()">Save autopilot</button></div>
+    <div class="msg" id="apMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Connection status</h3>
+    <div class="status" id="brainStatus"><span class="dot off"></span><div class="status-txt"><b>Checking...</b><small>Verifying Lola's connection</small></div></div>
+  </div>
+</div>
+
+<!-- INTEGRATIONS -->
+<div class="pane" data-pane="5">
+  <div class="card">
+    <h3>Booking platforms</h3>
+    <div class="desc">Sync appointments both ways with your existing system.</div>
+    <div class="toggle-row"><div><div class="tl">Square Appointments</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-square" onclick="connect('square')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Boulevard</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-boulevard" onclick="connect('boulevard')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Vagaro</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-vagaro" onclick="connect('vagaro')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-mindbody" onclick="connect('mindbody')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-fresha" onclick="connect('fresha')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Booksy</div><div class="ts">Two-way sync · partner-gated</div></div><button class="btn-g" id="c-booksy" onclick="requestBooksy()">Request access</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Calendar</h3>
+    <div class="toggle-row"><div><div class="tl">Google Calendar</div><div class="ts">Block time from your personal calendar</div></div><button class="btn-g" id="c-google" onclick="connect('google')">Connect</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Reviews — get 5-star reviews on Yelp &amp; Google</h3>
+    <div class="desc">After every appointment ends, Lola texts the client a direct link to your review page — real customers write the reviews. Paste your two links below.</div>
+    <div class="fld"><label>Yelp review link</label><input class="sel" id="yelpReviewUrl" placeholder="https://www.yelp.com/biz/your-salon" value=""></div>
+    <div class="fld"><label>Google review link</label><input class="sel" id="googleReviewUrl" placeholder="https://g.page/r/xxxxx/review" value=""></div>
+    <div class="desc" style="margin-top:8px">How to find them: open your salon on Yelp and click <b>Write a Review</b>, copy the URL. For Google, use the <b>Share review form</b> in Google Business Profile.</div>
+    <div class="btn-row"><button class="btn-p" onclick="saveReviewLinks()">Save review links</button></div>
+    <div class="msg" id="revMsg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Danger zone</h3>
+    <div class="desc">Permanent actions. Export your data first.</div>
+    <div class="btn-row">
+      <button class="btn-g" onclick="exportData()">Export all data</button>
+      <button class="btn-g" style="color:#ff8a8a;border-color:#ff6b6b33" onclick="alert('Contact support@loladesk.com to close your account.')">Close account</button>
+    </div>
+  </div>
+</div>
+
+</main></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-const PROVIDER_LOGOS = {
-  square:          { bg:'#fff', color:'#000', glyph:'□' },
-  boulevard:        { bg:'#1a1a2e', color:'#fff', glyph:'B' },
-  vagaro:           { bg:'#a06af9', color:'#fff', glyph:'V' },
-  mindbody:         { bg:'#f6871f', color:'#fff', glyph:'M' },
-  fresha:           { bg:'#0d1619', color:'#fff', glyph:'F' },
-  shopify:          { bg:'#95bf47', color:'#fff', glyph:'S' },
-  google_calendar:  { bg:'#fff', color:'#4285F4', glyph:'G' }
-};
-const STATUS_LABEL = {
-  connected: 'Connected',
-  available: 'Connect',
-  beta: 'Coming soon',
-  needs_credentials: 'Coming soon',
-  pending_partner_approval: 'Pending approval'
-};
-
-let currentTenantSlug = '';
-
-function showToast(msg, kind){
-  const t = document.getElementById('saveToast');
-  t.textContent = msg;
-  t.className = 'save-toast show' + (kind ? ' '+kind : '');
-  setTimeout(()=> t.classList.remove('show'), 3200);
+let TENANT=null,SETTINGS={},selectedNumber='';
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
+function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function tab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',i===n));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',Number(p.dataset.pane)===n));
 }
+function tog(el){el.classList.toggle('on');}
+function on(id){return document.getElementById(id)?.classList.contains('on');}
+function setSw(id,v){const e=document.getElementById(id);if(e)e.classList.toggle('on',!!v);}
+function val(id){return document.getElementById(id)?.value||'';}
+function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
+function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
+function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
 
-/* ── Lola on your website: fetch this tenant's embed snippet ── */
-(async function loadWidgetSnippet(){
-  const codeEl = document.getElementById('widgetEmbedSnippet');
-  const btn = document.getElementById('widgetEmbedCopy');
-  if(!codeEl || !btn) return;
+async function load(){
   try{
-    const token = localStorage.getItem('loladesk_token') || '';
-    const r = await fetch('/api/widget-embed', { headers:{ Authorization:'Bearer '+token } });
-    const d = await r.json();
-    if(!r.ok || !d?.snippet) throw new Error(d?.error || 'no snippet');
-    codeEl.textContent = d.snippet;
-    btn.onclick = async ()=>{
-      try{ await navigator.clipboard.writeText(d.snippet); btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy', 1800); }
-      catch{ btn.textContent='Select + copy'; }
-    };
-  }catch(e){
-    codeEl.textContent = 'Could not load your snippet — refresh, or contact support.';
-    btn.style.display = 'none';
-  }
-})();
-
-function renderIntegrations(providers){
-  const list = document.getElementById('integrationsList');
-  const staticRows = `
-          <div class="integration">
-            <div class="int-logo" style="background:#000;color:#fff;border:0.5px solid var(--border2)">T</div>
-            <div class="int-info"><div class="int-name">Voice &amp; Text</div><div class="int-status">Your Lola phone line — calls &amp; texts</div></div>
-            <button class="connect-btn connected">Active</button>
-          </div>
-          <div class="integration">
-            <div class="int-logo" style="background:#25d366;color:#fff">W</div>
-            <div class="int-info"><div class="int-name">WhatsApp</div><div class="int-status">Chat &amp; campaigns on WhatsApp</div></div>
-            <button class="connect-btn connected">Active</button>
-          </div>`;
-  const rows = (providers||[]).map(p=>{
-    const logo = PROVIDER_LOGOS[p.id] || { bg:'#666', color:'#fff', glyph:(p.name||'?')[0] };
-    const label = STATUS_LABEL[p.status] || 'Connect';
-    const btnClass = p.status === 'connected' ? 'connected'
-      : (p.status === 'available' ? 'connect' : 'pending');
-    const disabled = p.status !== 'connected' && p.status !== 'available';
-    const clickHandler = p.status === 'connected' ? `disconnectProvider('${p.id}')` : `connectProvider('${p.id}')`;
-    const hoverTriggers = p.status === 'connected'
-      ? `onmouseover="this.textContent='Disconnect'; this.style.color='#ff7a6d'; this.style.backgroundColor='rgba(255,107,107,0.12)'; this.style.cursor='pointer';"` +
-        ` onmouseout="this.textContent='Connected'; this.style.color='var(--text)'; this.style.backgroundColor='var(--mono-dim)'; this.style.cursor='default';"`
-      : '';
-    const statusText = p.status === 'connected'
-      ? (p.metadata?.shop ? `Connected — ${p.metadata.shop}` : 'Connected')
-      : p.description;
-    return `
-      <div class="integration">
-        <div class="int-logo" style="background:${logo.bg};color:${logo.color}">${logo.glyph}</div>
-        <div class="int-info"><div class="int-name">${p.name}</div><div class="int-status">${statusText}</div></div>
-        <button class="connect-btn ${btnClass}" ${disabled?'disabled':''} ${hoverTriggers} onclick="${clickHandler}">${label}</button>
-      </div>`;
-  }).join('');
-  list.innerHTML = staticRows + rows;
-}
-
-window.connectProvider = function(providerId){
-  if(!currentTenantSlug){ showToast('Still loading your salon — try again in a second.', 'err'); return; }
-  location.href = `/api/oauth/connect?provider=${encodeURIComponent(providerId)}&tenant=${encodeURIComponent(currentTenantSlug)}`;
-};
-
-window.disconnectProvider = async function(providerId){
-  const providerName = providerId === 'google_calendar' ? 'Google Calendar' : providerId.charAt(0).toUpperCase() + providerId.slice(1);
-  if(!confirm(`Are you sure you want to disconnect ${providerName}?`)) return;
-  try{
-    const r = await fetch('/api/oauth/disconnect', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (window.LolaAuth?.token || '')
-      },
-      body: JSON.stringify({ provider: providerId })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Disconnect failed');
-    showToast('Disconnected.', 'ok');
-    const data = await LolaData.load('integrations');
-    if(data && data.providers) renderIntegrations(data.providers);
-  }catch(e){
-    showToast(e.message || 'Could not disconnect provider', 'err');
-  }
-};
-
-window.manageBilling = async function(){
-  try{
-    const customerId = window.LolaSettings?.stripeCustomerId;
-    if(!customerId){ location.href = 'subscription.html'; return; }
-    const r = await fetch('/api/billing/portal', {
-      method:'POST', headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ customerId })
-    });
-    const d = await r.json();
-    if(d.url) location.href = d.url;
-    else showToast(d.error || 'Could not open billing portal', 'err');
-  }catch(e){ showToast('Could not open billing portal', 'err'); }
-};
-
-// ── Telecom Wiring ──
-window.orderTelnyxSim = async function(){
-  const btn = document.getElementById('btnOrderSim');
-  const og = btn.textContent;
-  btn.textContent = 'Ordering...';
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/carrier-sims', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address_id: 'mock_addr_123', quantity: 1 })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Failed to order SIM');
-    showToast('SIM ordered! It will arrive in 2-3 business days.', 'ok');
-  } catch(e) {
-    showToast(e.message, 'err');
-  } finally {
-    btn.textContent = og;
-    btn.disabled = false;
-  }
-};
-
-window.portTelnyxNumber = async function(){
-  const num = document.getElementById('fPortNumber').value.trim();
-  if(!num){ showToast('Enter a number to port.', 'err'); return; }
-  
-  const btn = document.getElementById('btnPortNum');
-  const og = btn.textContent;
-  btn.textContent = 'Initiating...';
-  btn.disabled = true;
-  try {
-    const r = await fetch('/api/carrier-porting', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone_numbers: [num], tenantId: window.LolaData?.currentTenant?.slug })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Failed to port number');
-    showToast('Porting initiated! Check the Numbers tab for status.', 'ok');
-    document.getElementById('fPortNumber').value = '';
-  } catch(e) {
-    showToast(e.message, 'err');
-  } finally {
-    btn.textContent = og;
-    btn.disabled = false;
-  }
-};
-
-window.saveSettings = async function(){
-  const btn = document.getElementById('saveBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-
-  // Gather upsell rules
-  const ruleDivs = document.querySelectorAll('.upsell-rule');
-  upsellRules = Array.from(ruleDivs).map(div => ({
-    trigger: div.querySelector('.u-trigger').value.trim(),
-    offer: div.querySelector('.u-offer').value.trim(),
-    price: div.querySelector('.u-price').value.trim(),
-    pitch: div.querySelector('.u-pitch').value.trim()
-  })).filter(r => r.trigger && r.offer);
-
-  try{
-    const r = await fetch('/api/settings', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(window.LolaAuth?.token||'') },
-      body: JSON.stringify({
-        name: document.getElementById('fName').value.trim(),
-        location: document.getElementById('fLocation').value.trim(),
-        hours: document.getElementById('fHours').value.trim(),
-        knowledge: { 
-          upsells: upsellRules,
-          require_deposit: document.getElementById('fDepositEnable').checked,
-          deposit_amount: document.getElementById('fDepositAmount').value.trim() || '50'
-        }
-      })
-    });
-    const d = await r.json();
-    if(!r.ok) throw new Error(d.error || 'Save failed');
-    showToast('Saved.', 'ok');
-  }catch(e){
-    showToast(e.message || 'Could not save changes', 'err');
-  }finally{
-    btn.disabled = false; btn.textContent = 'Save changes';
-  }
-};
-
-window.addUpsellRule = function(rule = { trigger:'', offer:'', price:'', pitch:'' }) {
-  const list = document.getElementById('upsellList');
-  const div = document.createElement('div');
-  div.className = 'upsell-rule';
-  div.style.cssText = 'background:var(--surface2); border:0.5px solid var(--border); border-radius:var(--r-sm); padding:12px; position:relative;';
-  div.innerHTML = `
-    <button onclick="this.parentElement.remove()" style="position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;">×</button>
-    <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;margin-bottom:8px;">
-      <div><label class="set-label" style="font-size:10px">When client asks for</label><input class="set-input u-trigger" style="padding:8px;margin:0" placeholder="e.g. Blowout" value="${rule.trigger}"></div>
-      <div><label class="set-label" style="font-size:10px">Suggest adding</label><input class="set-input u-offer" style="padding:8px;margin:0" placeholder="e.g. Gloss Treatment" value="${rule.offer}"></div>
-      <div><label class="set-label" style="font-size:10px">Price ($)</label><input class="set-input u-price" style="padding:8px;margin:0" placeholder="45" value="${rule.price}"></div>
-    </div>
-    <div>
-      <label class="set-label" style="font-size:10px">Lola's Pitch</label>
-      <input class="set-input u-pitch" style="padding:8px;margin:0" placeholder="e.g. It adds incredible shine and only takes 20 minutes." value="${rule.pitch}">
-    </div>
-  `;
-  list.appendChild(div);
-};
-
-function fmtPlan(plan){
-  const PLANS = {
-    starter: { name:'SOLO', price:'$99' }, solo: { name:'SOLO', price:'$99' },
-    pro: { name:'PRO', price:'$399' },
-    medspa: { name:'MED SPA', price:'$599' },
-    enterprise: { name:'ENTERPRISE', price:'$999+' }
-  };
-  return PLANS[plan] || { name:(plan||'STARTER').toUpperCase(), price:'—' };
-}
-
-(async ()=>{
-  // auth-guard.js already redirected if there's no valid session;
-  // wait for it to resolve the real tenant before rendering anything.
-  let auth;
-  try{ auth = await window.LolaAuth.ready; }catch(e){ return; } // guard already redirecting
-
-  const tenant = auth.tenant;
-  if(tenant){
-    currentTenantSlug = tenant.slug || '';
-    document.getElementById('fName').value = tenant.name || '';
-    document.getElementById('fPhone').value = tenant.phone_number || 'Not set up yet';
-    document.getElementById('fLocation').value = tenant.location || '';
-    document.getElementById('fHours').value = tenant.hours || '';
-    
-    // Load upsells & deposits
-    if(tenant.knowledge) {
-      if(tenant.knowledge.upsells && tenant.knowledge.upsells.length > 0) {
-        tenant.knowledge.upsells.forEach(r => window.addUpsellRule(r));
-      } else {
-        window.addUpsellRule(); // default empty rule
-      }
-      document.getElementById('fDepositEnable').checked = !!tenant.knowledge.require_deposit;
-      if(tenant.knowledge.deposit_amount) document.getElementById('fDepositAmount').value = tenant.knowledge.deposit_amount;
-    } else {
-      window.addUpsellRule(); // default empty rule
+    const r=await fetch('/api/settings',{headers:H()});
+    const d=await r.json();
+    TENANT=d.tenant||d;
+    SETTINGS=d.settings||{};
+    setVal('sName',TENANT.name);setVal('sOwner',TENANT.owner_name);
+    setVal('sLocation',TENANT.location);setVal('sHours',TENANT.hours);
+    setVal('sWebsite',TENANT.website_url);
+    setVal('sGmb',TENANT.gmb_url);
+    setVal('opPhone',TENANT.operator_phone||'');
+    if(TENANT.operator_phone){
+      document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
     }
+    const bookUrl=TENANT.booking_url||('https://www.loladesk.com/book.html?t='+(TENANT.slug||''));
+    setVal('sBookingUrl',bookUrl);
+    document.getElementById('bookLink').textContent=bookUrl;
 
-    const plan = fmtPlan(tenant.plan);
-    document.getElementById('planName').textContent = plan.name;
-    document.getElementById('planPrice').innerHTML = plan.price + '<span>/month</span>';
-    window.LolaSettings = { stripeCustomerId: tenant.stripe_customer_id || null };
-  }
+    // Phone status
+    const ps=document.getElementById('phoneStatus');
+    if(TENANT.phone_number){
+      ps.innerHTML='<span class="dot live"></span><div class="status-txt"><b>'+esc(TENANT.phone_number)+'</b><small>Live — Lola is answering calls on this number</small></div>';
+    }else{
+      ps.innerHTML='<span class="dot off"></span><div class="status-txt"><b>No number yet</b><small>Get a number so Lola can answer calls</small></div>';
+      showNumberSearch();
+    }
+    // SMS status
+    const ss=document.getElementById('smsStatus');
+    if(TENANT.phone_number){
+      ss.innerHTML='<span class="dot live"></span><div class="status-txt"><b>SMS active</b><small>Texting enabled on '+esc(TENANT.phone_number)+'</small></div>';
+    }else{
+      ss.innerHTML='<span class="dot off"></span><div class="status-txt"><b>SMS inactive</b><small>Get a phone number to enable texting</small></div>';
+    }
+    // Brain status
+    const bs=document.getElementById('brainStatus');
+    bs.innerHTML=TENANT.phone_number
+      ?'<span class="dot live"></span><div class="status-txt"><b>Lola is connected</b><small>Voice, booking, and memory all active</small></div>'
+      :'<span class="dot warn"></span><div class="status-txt"><b>Waiting for a phone number</b><small>Lola activates once a number is assigned</small></div>';
 
-  // Real integration status
-  const data = await LolaData.load('integrations');
-  if(data && data.providers) renderIntegrations(data.providers);
-  if(data && data.tenantSlug && !currentTenantSlug) currentTenantSlug = data.tenantSlug;
+    setVal('lGreeting',SETTINGS.greeting||'Hi, thank you for calling '+(TENANT.name||'the salon')+'. This is Lola, how can I help you?');
+    setVal('lInstructions',TENANT.instructions||SETTINGS.instructions||'');
+    renderIntegrations(d.integrations);
+    setVal('forwardNumber',SETTINGS.forward_number||'');
+  }catch(e){console.warn(e);}
+  loadCredit();
 
-  // Came back from an OAuth redirect?
-  const qs = new URLSearchParams(location.search);
-  if(qs.get('connect') === 'success') showToast(`Connected ${qs.get('provider')||''}.`.trim(), 'ok');
-  else if(qs.get('connect') === 'error') showToast(`Couldn't connect ${qs.get('provider')||'that integration'}.`, 'err');
-})();
+  try{
+    const r=await fetch('/api/booking-settings',{headers:H()});
+    const d=await r.json();
+    const s=d.settings||{};
+    setVal('bTimezone',s.timezone||'America/New_York');
+    setVal('bSlot',s.slot_interval_minutes||15);
+    setVal('bNotice',s.minimum_notice_minutes||120);
+    setVal('bHorizon',s.booking_horizon_days||90);
+    setVal('bCancel',s.cancellation_window_hours||24);
+    setVal('bBuffer',s.default_buffer_after_min||0);
+    setSw('swPublic',s.public_booking_enabled!==false);
+    setSw('swVoiceBook',s.voice_booking_enabled!==false);
+    setSw('swStaffChoice',s.allow_staff_choice!==false);
+    setSw('swReqPhone',s.require_phone!==false);
+    setSw('swConfirm',s.confirmation_sms!==false);
+    setSw('swRemind',s.reminder_sms!==false);
+  }catch(e){}
+  // Missed-call text-back + review requests are on by default; reflect the
+  // real per-salon state from the tenants row.
+  setSw('swMissed',TENANT.missed_call_textback!==false);
+  setSw('swReview',TENANT.review_requests!==false);
+  setSw('swAutopilot',TENANT.autopilot_enabled!==false);
+  try{
+    if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);
+    if(TENANT.google_review_url) setVal('googleReviewUrl',TENANT.google_review_url);
+  }catch(e){}
+}
+
+async function saveSalon(){
+  msg('salonMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      name:val('sName'),owner_name:val('sOwner'),location:val('sLocation'),
+      hours:val('sHours'),website_url:val('sWebsite'),gmb_url:val('sGmb')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('salonMsg','Saved. Lola now uses these details on every call.',true);
+  }catch(e){msg('salonMsg',e.message,false);}
+}
+
+async function searchNumbers(){
+  const list=document.getElementById('numList');
+  list.innerHTML='<div style="color:var(--text3);font-size:13px;padding:12px 0">Searching...</div>';
+  try{
+    const ac=val('areaCode');
+    const r=await fetch('/api/provision-number'+(ac?'?areaCode='+ac:''),{headers:H()});
+    const d=await r.json();
+    if(!d.ok||!d.numbers?.length)throw new Error(d.error||'No numbers found');
+    selectedNumber=d.numbers[0].phone_number;
+    document.getElementById('buyBtn').disabled=false;
+    list.innerHTML=d.numbers.slice(0,6).map(n=>
+      '<div class="num-item'+(n.phone_number===selectedNumber?' on':'')+'" onclick="pickNum(\''+n.phone_number+'\',this)">'+
+      '<div><div class="num-n">'+esc(n.phone_number)+'</div><div class="num-m">'+esc(n.region||'United States')+'</div></div>'+
+      '<div class="num-m">'+esc(n.monthly_cost||'~$2/mo')+'</div></div>').join('');
+  }catch(e){list.innerHTML='<div style="color:#ff8a8a;font-size:13px;padding:12px 0">'+esc(e.message)+'</div>';}
+}
+function pickNum(n,el){selectedNumber=n;document.querySelectorAll('.num-item').forEach(x=>x.classList.remove('on'));el.classList.add('on');}
+
+async function loadCredit(){
+  // Advisory only: show Telnyx account credit so a low balance never surprises
+  // the owner mid-purchase.
+  const line=document.getElementById('creditLine');
+  try{
+    const r=await fetch('/api/provision-number',{headers:H()});
+    const d=await r.json();
+    if(!d.ok||!d.balance)return;
+    const credit=d.balance.available_credit;
+    const cur=d.balance.currency||'USD';
+    line.style.display='block';
+    if(credit<3){
+      line.style.background='rgba(255,179,64,.08)';line.style.borderColor='rgba(255,179,64,.3)';line.style.color='#ffd9a3';
+      line.innerHTML='<b style="color:#ffb340">Telnyx credit: '+cur+' $'+credit.toFixed(2)+'</b> — below the cost of a number. Top up to avoid a failed purchase.';
+    }else{
+      line.style.background='rgba(204,255,0,.06)';line.style.borderColor='rgba(204,255,0,.16)';line.style.color='#d9f5a8';
+      line.innerHTML='<b>Telnyx credit: '+cur+' $'+credit.toFixed(2)+'</b> — enough to buy numbers.';
+    }
+  }catch(e){/* silent — credit is advisory */}
+}
+
+async function buyNumber(){
+  const b=document.getElementById('buyBtn');
+  b.disabled=true;b.textContent='Setting up...';
+  msg('numMsg','Buying number and wiring voice + SMS...',true);
+  try{
+    const r=await fetch('/api/provision-number',{method:'POST',headers:H(),body:JSON.stringify({phone_number:selectedNumber})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Provisioning failed');
+    msg('numMsg','Done. '+d.phoneNumber+' is live — call it now.',true);
+    setTimeout(load,1500);
+  }catch(e){msg('numMsg',e.message,false);b.disabled=false;b.textContent='Buy this number';}
+  loadCredit();
+}
+
+async function startPort(){
+  msg('portMsg','Submitting port request...',true);
+  try{
+    const r=await fetch('/api/telnyx-porting',{method:'POST',headers:H(),body:JSON.stringify({
+      phone_number:val('portNumber'),carrier:val('portCarrier'),
+      account_number:val('portAccount'),pin:val('portPin')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Port request failed');
+    msg('portMsg','Port started. Typically completes in 7-10 business days. We will text you updates.',true);
+  }catch(e){msg('portMsg',e.message,false);}
+}
+
+async function saveOperator(){
+  msg('opMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/operator-setup',{method:'POST',headers:H(),body:JSON.stringify({operator_phone:val('opPhone'),pin:val('opPin')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(val('opPhone'))+' and just talk</small></div>';
+    msg('opMsg',"Saved. Call your Lola number from your cell — Lola will know it's you.",true);
+  }catch(e){msg('opMsg',e.message,false);}
+}
+
+async function saveVoice(){
+  msg('voiceMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      voice_enabled:on('swVoice'),record_calls:on('swRecord'),
+      voicemail_enabled:on('swVoicemail'),forward_number:val('forwardNumber')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error((d.error||'These call settings are not supported yet')+(d.ignored?' — not wired: '+d.ignored.join(', '):''));
+    msg('voiceMsg','Call settings saved.',true);
+  }catch(e){msg('voiceMsg',e.message,false);}
+}
+
+async function saveMessaging(){
+  msg('msgMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
+      confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind')})});
+    const s=await r.json();
+    const rs=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      missed_call_textback:on('swMissed'),review_requests:on('swReview')})});
+    const rd=await rs.json();
+    if((!r.ok||!s.ok))throw new Error('Booking message settings failed to save.');
+    if(rd.ignored&&rd.ignored.length){
+      msg('msgMsg',"Saved confirmations & reminders. Missed-call and review toggles aren't wired yet: "+rd.ignored.join(', '),false);
+    }else{
+      msg('msgMsg','Messaging saved.',true);
+    }
+  }catch(e){msg('msgMsg',e.message,false);}
+}
+
+async function saveBooking(){
+  msg('bookMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
+      timezone:val('bTimezone'),
+      slot_interval_minutes:Number(val('bSlot')),
+      minimum_notice_minutes:Number(val('bNotice')),
+      booking_horizon_days:Number(val('bHorizon')),
+      cancellation_window_hours:Number(val('bCancel')),
+      default_buffer_after_min:Number(val('bBuffer')),
+      public_booking_enabled:on('swPublic'),
+      voice_booking_enabled:on('swVoiceBook'),
+      allow_staff_choice:on('swStaffChoice'),
+      require_phone:on('swReqPhone')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('bookMsg','Booking rules saved — applied everywhere immediately.',true);
+  }catch(e){msg('bookMsg',e.message,false);}
+}
+
+async function saveLola(){
+  msg('lolaMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      instructions:val('lInstructions')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Save failed');
+    msg('lolaMsg','Saved. Lola will follow these instructions on every call.',true);
+  }catch(e){msg('lolaMsg',e.message,false);}
+}
+
+async function saveCapabilities(){
+  msg('capMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      can_book:on('swCanBook'),can_quote:on('swCanQuote'),
+      can_recommend:on('swCanRecommend'),can_upsell:on('swCanUpsell'),
+      can_recognize:on('swCanRecognize')})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error((d.error||'These capability toggles are not supported yet')+(d.ignored?' — not wired: '+d.ignored.join(', '):''));
+    msg('capMsg','Capabilities saved.',true);
+  }catch(e){msg('capMsg',e.message,false);}
+}
+
+async function saveAutopilot(){
+  msg('apMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({autopilot_enabled:on('swAutopilot')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('apMsg',on('swAutopilot')
+      ?'Autopilot on. Lola keeps working while you sleep.'
+      :'Autopilot paused. Lola waits for you.',true);
+  }catch(e){msg('apMsg',e.message,false);}
+}
+
+async function saveReviewLinks(){
+  msg('revMsg','Saving...',true);
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
+      yelp_review_url:val('yelpReviewUrl'),
+      google_review_url:val('googleReviewUrl')})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Save failed');
+    msg('revMsg','Saved. Lola will text clients a review link after each appointment.',true);
+  }catch(e){msg('revMsg',e.message,false);}
+}
+
+function copyLink(){
+  navigator.clipboard.writeText(document.getElementById('bookLink').textContent);
+  const b=event.target;const t=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=t,1200);
+}
+function connect(p){
+  const slug=(TENANT&&TENANT.slug)||'';
+  location.href='/api/oauth/connect?provider='+encodeURIComponent(p)+'&tenant='+encodeURIComponent(slug);
+}
+function requestBooksy(){
+  window.open('https://docs.booksy.com/','_blank');
+  alert('Booksy is partner-gated: request API access at docs.booksy.com, then support@loladesk.com wires your partner keys.');
+}
+function renderIntegrations(list){
+  (list||[]).forEach(i=>{
+    const b=document.getElementById('c-'+i.provider);
+    if(b){b.textContent=i.status==='connected'?'Connected ✓':'Reconnect';b.style.borderColor='#22c55e';b.style.color='#22c55e';}
+  });
+}
+async function exportData(){
+  try{
+    const r=await fetch('/api/salon?resource=clients',{headers:H()});
+    const d=await r.json();
+    const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='loladesk-export-'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  }catch(e){alert('Export failed: '+e.message);}
+}
+
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script>
 </body>
 </html>

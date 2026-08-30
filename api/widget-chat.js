@@ -58,6 +58,15 @@ function limited(id){
   return false;
 }
 
+// The widget's booking handoff: the salon's own booking_url when set, else
+// LolaDesk's hosted booking page for this salon — so every tenant's chat
+// widget always lands visitors on a working booking flow (book?t=slug).
+function bookingUrlFor(tenant){
+  if (tenant.booking_url) return tenant.booking_url;
+  const app = (process.env.APP_URL || 'https://www.loladesk.com').replace(/\/+$/, '');
+  return `${app}/book?t=${encodeURIComponent(tenant.slug || '')}`;
+}
+
 function fallbackAnswer(tenant, text){
   const t = String(text||'').toLowerCase();
   let services = [];
@@ -66,10 +75,12 @@ function fallbackAnswer(tenant, text){
     return `Here's our menu: ${services.map(s=>`${s.name}${s.price?` — $${s.price}`:''}`).join(', ')}. Want me to help you book one?`;
   if(/(hour|open|close|when)/.test(t) && tenant.hours) return `We're open ${tenant.hours}.`;
   if(/(where|location|address|find)/.test(t) && tenant.location) return `You'll find us at ${tenant.location}.`;
-  if(/(book|appointment|schedule|come in)/.test(t))
-    return tenant.booking_url
-      ? `I'd love to get you in! Book right here: ${tenant.booking_url} — or leave your number and we'll text you.`
+  if(/(book|appointment|schedule|come in)/.test(t)){
+    const url = bookingUrlFor(tenant);
+    return url
+      ? `I'd love to get you in! Book right here: ${url} — or leave your number and we'll text you.`
       : `I'd love to get you in! Leave your number and the service you want, and we'll text you to confirm.`;
+  }
   return `Hi! I'm Lola, ${tenant.name}'s assistant. Ask me about services, prices, hours — or let's get you booked in.`;
 }
 
@@ -95,7 +106,7 @@ export default async function handler(req, res){
   if(req.method === 'GET'){
     return res.status(200).json({ ok:true, name: tenant.name,
       greeting: `Hi! I'm Lola, ${tenant.name}'s assistant 💗 Ask me anything — or let's get you booked in.`,
-      booking_url: tenant.booking_url || null });
+      booking_url: bookingUrlFor(tenant) });
   }
   if(req.method !== 'POST') return res.status(405).json({ ok:false });
 
@@ -125,11 +136,17 @@ export default async function handler(req, res){
   /* ── the brain: deterministic skill → LLM → grounded fallback ── */
   const intent = detectLolaIntent(message);
   let reply = deterministicSkillReply({ tenant, intent, channel: 'web', clientName: profile?.name || '' }) || '';
+  // A skill handled it, but booking intents on the web channel must still
+  // hand off to a working booking page (salon URL or LolaDesk hosted page).
+  if(reply && intent === 'booking_new' && !/(http|book right here)/i.test(reply)){
+    const url = bookingUrlFor(tenant);
+    if(url) reply += ` You can book right here: ${url}`;
+  }
   if(!reply){
     const memoryBlock = buildClientMemoryBlock(profile) || '';
     const system = buildLolaSystemPrompt({ tenant, channel: 'web', intent, memoryBlock })
       + '\nYou are chatting on the salon\'s website with a potential client. Be warm and brief (1–3 sentences). Your #1 goal is getting them booked: offer to take their name, number, service, and preferred time.'
-      + (tenant.booking_url ? ` Online booking link if useful: ${tenant.booking_url}` : '');
+      + ` Online booking link if useful: ${bookingUrlFor(tenant)}`;
     const r = await chat({ system, messages: [...history, { role:'user', content: message }], maxTokens: 260, temperature: 0.7, source: 'widget' }).catch(()=>({ ok:false }));
     reply = (r?.ok && String(r.text||'').trim()) ? String(r.text).trim() : fallbackAnswer(tenant, message);
   }

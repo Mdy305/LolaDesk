@@ -30,6 +30,8 @@ export default async function handler(req, res){
 
     // Try to trigger Telnyx outbound call if configured
     const TELNYX_API_KEY = process.env.TELNYX_API_KEY;
+    // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
+    // the old 'legacy upgrade' to 2991758319724529273 is rejected by Telnyx.
     const TELNYX_VOICE_APP_ID = process.env.TELNYX_VOICE_APP_ID;
     const FROM_NUMBER = process.env.DEMO_FROM_NUMBER || process.env.TELNYX_FROM_NUMBER;
 

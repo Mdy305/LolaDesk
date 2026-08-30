@@ -1,0 +1,75 @@
+/* LolaDesk product reset — one calm system, responsive everywhere */
+:root{--page-max:1600px;--mobile-nav-h:74px}
+html{background:#070708}
+body{min-width:0;overflow-x:hidden}
+.app,.main,main,.content,.page,.workspace{min-width:0}
+.main,main{max-width:var(--page-max);width:100%}
+img,svg,canvas,video{max-width:100%}
+button,a,input,textarea,select{touch-action:manipulation}
+
+/* Reduce feature noise: one hierarchy, fewer competing badges and decorations. */
+.nav-badge{display:none!important}
+.sidebar .nav{gap:3px!important}
+.sidebar .nav-item{min-height:44px}
+.card,.panel,.surface,.desk-center,.res-panel,.roi-panel,.away-panel{box-shadow:none!important}
+
+/* Dashboard: Lola first, action queue second, supporting data last. */
+body:not([data-page]) .briefing-banner,
+body:not([data-page]) .roi-panel,
+body:not([data-page]) .away-panel,
+body:not([data-page]) .res-panel,
+body:not([data-page]) .quick-grid{display:none!important}
+body:not([data-page]) .dash-header{align-items:center!important;margin-bottom:16px!important}
+body:not([data-page]) .dash-greeting p{max-width:560px}
+body:not([data-page]) .grid-main{grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr)!important;align-items:start}
+body:not([data-page]) .grid-main>.col-stack:last-child{display:none!important}
+body:not([data-page]) .lola-panel{min-height:620px!important;border-color:rgba(204,255,0,.16)!important;background:radial-gradient(circle at 50% 54%,rgba(204,255,0,.10),rgba(18,18,20,.98) 54%)!important}
+body:not([data-page]) .desk-center{margin:0!important}
+body:not([data-page]) .cmd-dock{width:min(760px,calc(100vw - 300px))!important}
+
+/* Living presence field inserted around Lola. */
+.lola-orb-stage{isolation:isolate;overflow:visible!important}
+.lola-presence-field{position:absolute;inset:-18%;pointer-events:none;z-index:0;filter:blur(.15px)}
+.lola-presence-particle{position:absolute;width:3px;height:3px;border-radius:50%;background:#ccff00;box-shadow:0 0 9px rgba(204,255,0,.75);opacity:.16;animation:lolaDrift var(--d,7s) ease-in-out infinite alternate;animation-delay:var(--delay,0s)}
+@keyframes lolaDrift{0%{transform:translate3d(0,0,0) scale(.55);opacity:.08}45%{opacity:.58}100%{transform:translate3d(var(--x,12px),var(--y,-18px),0) scale(1.5);opacity:.18}}
+.lola-orb-stage canvas{filter:drop-shadow(0 0 20px rgba(204,255,0,.24));animation:lolaPresence 4.8s ease-in-out infinite}
+@keyframes lolaPresence{0%,100%{transform:scale(.985);filter:drop-shadow(0 0 16px rgba(204,255,0,.20))}50%{transform:scale(1.025);filter:drop-shadow(0 0 34px rgba(204,255,0,.34))}}
+.lola-orb-stage[data-lola-state="thinking"] canvas{animation-duration:1.6s}
+.lola-orb-stage[data-lola-state="speaking"] canvas{animation-duration:.8s}
+
+/* Shared responsive behavior for every interior page. */
+@media(max-width:1180px){
+  .app{grid-template-columns:1fr!important}
+  .sidebar{display:none!important}
+  .main,main{padding:18px 18px calc(var(--mobile-nav-h) + 46px)!important;max-width:none}
+  .mobile-bar{display:flex!important}
+  .cmd-dock{left:50%!important;width:calc(100vw - 28px)!important;bottom:calc(var(--mobile-nav-h) + 12px)!important}
+  body:not([data-page]) .grid-main{grid-template-columns:1fr!important}
+  body:not([data-page]) .lola-panel{min-height:540px!important}
+  .kpi-row,.stats-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:720px){
+  .main,main{padding:14px 12px calc(var(--mobile-nav-h) + 42px)!important}
+  .topbar{margin-bottom:16px!important}
+  .topbar .search{max-width:none!important}
+  .topbar-actions{display:none!important}
+  .dash-header{display:block!important}
+  .dash-greeting h1{font-size:24px!important}
+  .dash-header .kpi-row{margin-top:14px!important}
+  .kpi-row,.stats-grid,.metric-grid{grid-template-columns:1fr 1fr!important;gap:8px!important}
+  .kpi{padding:14px!important}.kpi-val{font-size:24px!important}
+  body:not([data-page]) .lola-panel{min-height:470px!important;padding:18px 14px 22px!important}
+  .lola-orb-stage{width:min(76vw,300px)!important;height:min(76vw,300px)!important}
+  .lola-name{font-size:28px!important}.lola-prompt-title{font-size:20px!important}
+  .desk-item{grid-template-columns:auto minmax(0,1fr)!important}.desk-actions{grid-column:2!important;flex-wrap:wrap}
+  .cmd-dock-kbd,.cmd-chips{display:none!important}
+  .card-head,.page-head,.section-head{gap:10px;flex-wrap:wrap}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .modal,.dialog,.chat-modal{max-width:calc(100vw - 16px)!important}
+}
+@media(max-width:420px){
+  .kpi-row,.stats-grid,.metric-grid{grid-template-columns:1fr!important}
+  .mobile-bar{padding-left:4px!important;padding-right:4px!important}
+  .mb-item{min-width:54px}
+}
+@media(prefers-reduced-motion:reduce){.lola-presence-particle,.lola-orb-stage canvas{animation:none!important}}

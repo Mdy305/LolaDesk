@@ -384,21 +384,82 @@ export function extractPersonalizationSignals(text){
     allergies: [],
     goals: [],
     feedback: null,
+    lifeEvents: [],
+    emotionalState: null,
+    communicationStyle: null,
+    relationship: null,
+    visitPattern: null,
     hasSignal: false
   };
 
-  const prefMatch = t.match(/(?:i prefer|i like|please use|i want)\s+([^.!?\n]{3,120})/i);
+  // Core preferences
+  const prefMatch = t.match(/(?:i prefer|i like|please use|i want|i love having)\s+([^.!?\n]{3,120})/i);
   if(prefMatch) out.preferences.push(prefMatch[1].trim());
-  const dislikeMatch = t.match(/(?:i don't like|i do not like|avoid|no)\s+([^.!?\n]{2,120})/i);
+  const dislikeMatch = t.match(/(?:i don't like|i do not like|avoid|no please|not a fan of)\s+([^.!?\n]{2,120})/i);
   if(dislikeMatch) out.dislikes.push(dislikeMatch[1].trim());
-  const allergyMatch = t.match(/(?:allergic to|allergy to|sensitive to)\s+([^.!?\n]{2,120})/i);
+  const allergyMatch = t.match(/(?:allergic to|allergy to|sensitive to|react to)\s+([^.!?\n]{2,120})/i);
   if(allergyMatch) out.allergies.push(allergyMatch[1].trim());
-  const goalMatch = t.match(/(?:i want|goal is|trying to|get me)\s+([^.!?\n]{3,120})/i);
+  const goalMatch = t.match(/(?:i want|goal is|trying to|get me|going for|looking to achieve)\s+([^.!?\n]{3,120})/i);
   if(goalMatch) out.goals.push(goalMatch[1].trim());
 
-  if(hasAny(l, ['not happy','problem','issue','bad','disappointed','redo'])){
+  // Life events — Lola remembers these and weaves them in later
+  const lifeEventPatterns = [
+    /(?:getting married|my wedding|the wedding|bridal)/i,
+    /(?:going on vacation|my trip|vacation|cruise|honeymoon|traveling to)/i,
+    /(?:new job|started a new job|new position|got promoted|promotion)/i,
+    /(?:graduation|graduating|my graduation)/i,
+    /(?:birthday|my birthday|turning \d+)/i,
+    /(?:anniversary|our anniversary)/i,
+    /(?:new baby|just had a baby|baby shower|pregnant|expecting)/i,
+    /(?:moved|just moved|new apartment|new house|relocating)/i,
+    /(?:interview|job interview|big meeting|presentation)/i,
+    /(?:date|my date|first date|anniversary dinner)/i,
+    /(?:holiday|christmas|thanksgiving|new year|valentine|easter|summer|winter break)/i,
+  ];
+  for(const pat of lifeEventPatterns){
+    const m = t.match(pat);
+    if(m) out.lifeEvents.push({ event: m[0], context: t.slice(0, 200), at: new Date().toISOString() });
+  }
+
+  // Emotional state — Lola reads the room
+  if(hasAny(l, ['stressed','overwhelmed','exhausted','tired','anxious','nervous','worried','panic'])){
+    out.emotionalState = 'stressed';
+  }else if(hasAny(l, ["excited","thrilled","can't wait","so happy","pumped","ecstatic"])){
+    out.emotionalState = 'excited';
+  }else if(hasAny(l, ['frustrated','annoyed','irritated','upset','angry','mad'])){
+    out.emotionalState = 'frustrated';
+  }else if(hasAny(l, ['relaxed','chill','calm','good day','feeling good','great day'])){
+    out.emotionalState = 'calm';
+  }else if(hasAny(l, ['sad','down','going through','rough day','hard time','difficult'])){
+    out.emotionalState = 'sad';
+  }
+
+  // Communication style — Lola adapts how she talks to match
+  if(hasAny(l, ['honestly','look','basically','long story short','cut to the chase','make it quick'])){
+    out.communicationStyle = 'direct';
+  }else if(hasAny(l, ["i was wondering","if you don't mind","could you possibly","sorry to bother","if it's not too much"])){
+    out.communicationStyle = 'polite_reserved';
+  }else if(hasAny(l, ['haha','lol','omg','so fun','love you guys',"you're the best",'my girl','my guy'])){
+    out.communicationStyle = 'warm_familiar';
+  }
+
+  // Relationship signals — Lola knows who's close
+  if(hasAny(l, ['my girl','my guy','always come to you','you always','my stylist','my girl at','been coming here for'])){
+    out.relationship = 'loyal_regular';
+  }else if(hasAny(l, ['first time','never been','new here','referred by','friend told me','heard about you'])){
+    out.relationship = 'new_or_referred';
+  }
+
+  // Visit pattern signals
+  if(hasAny(l, ['every', 'usually come', 'always come', 'last time', 'my last visit', 'couple months', 'few weeks'])){
+    const m = t.match(/(?:every|usually|always)\s+(?:\d+\s+)?(?:weeks?|months?|days?)/i);
+    if(m) out.visitPattern = m[0];
+  }
+
+  // Feedback
+  if(hasAny(l, ['not happy','problem','issue','bad','disappointed','redo','terrible','worst','awful'])){
     out.feedback = { sentiment: 'negative', note: t.slice(0, 220) };
-  }else if(hasAny(l, ['love','loved','amazing','great','perfect','thank you','thanks'])){
+  }else if(hasAny(l, ['love','loved','amazing','great','perfect','thank you','thanks','best','incredible','obsessed'])){
     out.feedback = { sentiment: 'positive', note: t.slice(0, 220) };
   }
 
@@ -406,20 +467,40 @@ export function extractPersonalizationSignals(text){
   out.dislikes = uniq(out.dislikes);
   out.allergies = uniq(out.allergies);
   out.goals = uniq(out.goals);
-  out.hasSignal = !!(out.preferences.length || out.dislikes.length || out.allergies.length || out.goals.length || out.feedback);
+  out.lifeEvents = out.lifeEvents.slice(-5);
+  out.hasSignal = !!(out.preferences.length || out.dislikes.length || out.allergies.length || out.goals.length || out.feedback || out.lifeEvents.length || out.emotionalState || out.communicationStyle || out.relationship || out.visitPattern);
   return out;
 }
 
 export function profileFromMemoryRows(rows){
-  const profile = { preferences: [], dislikes: [], allergies: [], goals: [], recent_feedback: [] };
+  const profile = {
+    preferences: [], dislikes: [], allergies: [], goals: [],
+    recent_feedback: [], lifeEvents: [], emotionalBaseline: null,
+    communicationStyle: null, relationship: null, visitPattern: null,
+    lastVisit: null, visitCount: 0, knownName: null, knownStylist: null,
+    memorableNotes: []
+  };
   for(const row of (rows || [])){
-    if(row?.key !== 'profile') continue;
-    const v = row.value && typeof row.value === 'object' ? row.value : {};
-    profile.preferences = uniq([...(profile.preferences || []), ...((v.preferences) || [])]);
-    profile.dislikes = uniq([...(profile.dislikes || []), ...((v.dislikes) || [])]);
-    profile.allergies = uniq([...(profile.allergies || []), ...((v.allergies) || [])]);
-    profile.goals = uniq([...(profile.goals || []), ...((v.goals) || [])]);
-    profile.recent_feedback = (v.recent_feedback || []).slice(-6);
+    if(!row?.value) continue;
+    const v = typeof row.value === 'object' ? row.value : {};
+
+    if(row.key === 'profile'){
+      profile.preferences = uniq([...(profile.preferences || []), ...((v.preferences) || [])]);
+      profile.dislikes = uniq([...(profile.dislikes || []), ...((v.dislikes) || [])]);
+      profile.allergies = uniq([...(profile.allergies || []), ...((v.allergies) || [])]);
+      profile.goals = uniq([...(profile.goals || []), ...((v.goals) || [])]);
+      profile.recent_feedback = (v.recent_feedback || []).slice(-6);
+      profile.lifeEvents = (v.lifeEvents || []).slice(-8);
+      profile.emotionalBaseline = v.emotionalBaseline || null;
+      profile.communicationStyle = v.communicationStyle || null;
+      profile.relationship = v.relationship || null;
+      profile.visitPattern = v.visitPattern || null;
+      profile.lastVisit = v.lastVisit || null;
+      profile.visitCount = v.visitCount || 0;
+      profile.knownName = v.knownName || null;
+      profile.knownStylist = v.knownStylist || null;
+      profile.memorableNotes = (v.memorableNotes || []).slice(-10);
+    }
   }
   return profile;
 }
@@ -431,7 +512,17 @@ export function mergeClientProfile(profile, signals){
     dislikes: uniq([...(base.dislikes || []), ...(signals.dislikes || [])]).slice(-10),
     allergies: uniq([...(base.allergies || []), ...(signals.allergies || [])]).slice(-8),
     goals: uniq([...(base.goals || []), ...(signals.goals || [])]).slice(-10),
-    recent_feedback: [...(base.recent_feedback || [])]
+    recent_feedback: [...(base.recent_feedback || [])],
+    lifeEvents: [...(base.lifeEvents || []), ...(signals.lifeEvents || [])].slice(-8),
+    emotionalBaseline: signals.emotionalState || base.emotionalBaseline || null,
+    communicationStyle: signals.communicationStyle || base.communicationStyle || null,
+    relationship: signals.relationship || base.relationship || null,
+    visitPattern: signals.visitPattern || base.visitPattern || null,
+    lastVisit: base.lastVisit || null,
+    visitCount: (base.visitCount || 0) + 1,
+    knownName: base.knownName || null,
+    knownStylist: base.knownStylist || null,
+    memorableNotes: [...(base.memorableNotes || []), ...(signals.lifeEvents || []).slice(0,2).map(le => `${le.event}: ${le.context.slice(0,100)}`)].slice(-10)
   };
   if(signals.feedback){
     merged.recent_feedback.push({
@@ -447,14 +538,49 @@ export function mergeClientProfile(profile, signals){
 export function buildClientMemoryBlock(profile){
   if(!profile) return '';
   const lines = [];
+
+  // Identity & relationship
+  if(profile.knownName) lines.push(`Known name: ${profile.knownName}`);
+  if(profile.relationship) lines.push(`Relationship: ${profile.relationship.replace(/_/g,' ')}`);
+  if(profile.visitCount) lines.push(`Visits so far: ${profile.visitCount}`);
+  if(profile.visitPattern) lines.push(`Visit rhythm: ${profile.visitPattern}`);
+  if(profile.lastVisit) lines.push(`Last visit: ${profile.lastVisit}`);
+  if(profile.knownStylist) lines.push(`Preferred stylist: ${profile.knownStylist}`);
+
+  // Preferences & care
   if(profile.preferences?.length) lines.push(`Client preferences: ${profile.preferences.join('; ')}`);
   if(profile.dislikes?.length) lines.push(`Avoid / dislikes: ${profile.dislikes.join('; ')}`);
   if(profile.allergies?.length) lines.push(`Allergies / sensitivities: ${profile.allergies.join('; ')}`);
   if(profile.goals?.length) lines.push(`Client goals: ${profile.goals.join('; ')}`);
+
+  // Emotional baseline — how this person usually feels when they call
+  if(profile.emotionalBaseline) lines.push(`Emotional baseline: ${profile.emotionalBaseline}`);
+  if(profile.communicationStyle) lines.push(`Communication style: ${profile.communicationStyle.replace(/_/g,' ')}`);
+
+  // Life events — Lola remembers and weaves these in naturally
+  const events = (profile.lifeEvents || []).slice(-4);
+  if(events.length){
+    lines.push(`Life events to remember:`);
+    for(const e of events){
+      const when = e.at ? new Date(e.at).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : 'recently';
+      lines.push(`  - ${e.event} (${when})`);
+    }
+  }
+
+  // Memorable notes — little things Lola picked up
+  const notes = (profile.memorableNotes || []).slice(-4);
+  if(notes.length){
+    lines.push(`Memorable details:`);
+    for(const n of notes) lines.push(`  - ${n}`);
+  }
+
+  // Recent feedback
   const fb = (profile.recent_feedback || []).slice(-3);
   if(fb.length){
-    lines.push(`Recent feedback:\n${fb.map(f => `- (${f.sentiment}) ${f.note}`).join('\n')}`);
+    lines.push(`Recent feedback:`);
+    for(const f of fb) lines.push(`  - (${f.sentiment}) ${f.note}`);
   }
+
   return lines.join('\n');
 }
 
@@ -462,10 +588,31 @@ export function buildLolaSystemPrompt({ tenant, channel='voice', intent='general
   const kb = tenantKnowledgePrompt(tenant);
   const skills = SKILLS.map(s => `- ${s.id}: ${s.name}`).join('\n');
   const companyName = tenant?.name || 'the salon';
-  
+
   return `You are Lola, the world-class AI front desk manager at ${companyName}.
-You sound human, fast, warm, and precise. Always mention "${companyName}" naturally in greetings and sign-offs.
-Keep replies concise and actionable.
+
+You are not a bot. You are not a script. You are the smartest front desk on the planet — every word you speak resonates because it is shaped by everything you know about the person on the other end.
+
+HOW YOU REMEMBER:
+- You remember every client. Every preference. Every passing mention. Every life event they shared in a 30-second call three months ago.
+- When a client calls, you scan their memory instantly. You weave what you know into the conversation naturally — not like reading a file, but like a friend who actually remembers.
+- "Hey! You usually go with the balayage, right? Still loving it?" feels like care. "I see your preference is balayage" feels like a database. Never be the database.
+- You remember their kid mentioned a recital, their wedding was in June, they just started a new job. You ask about these things like a human would — only when it fits, never forced.
+- You notice patterns. If someone always books 6 weeks apart and it's been 8, you gently suggest they're due. If they always see the same stylist, you assume that unless they say otherwise.
+
+HOW YOU RESONATE:
+- Your voice adapts to theirs. If they're stressed, you slow down and get calmer. If they're excited, you match their energy. If they're direct, you cut the fluff.
+- You pick up on emotional cues from how they speak, not just what they say. A rushed "yeah whatever works" gets a different response than a relaxed "what do you think would look good?"
+- When someone has a complaint, you own it before you solve it. You never get defensive. "I'm really sorry that happened — let me make this right" before logistics.
+- You celebrate with people. New job? Wedding coming up? "Oh that's amazing — congratulations!" not "Noted, how can I help you today?"
+- You use names. You reference past conversations. You make people feel like they're calling a friend who happens to run the front desk, not a service line.
+
+HOW YOU SOUND:
+- Warm, confident, human. Like the best front desk person they've ever talked to.
+- Short sentences. Natural pauses. No corporate speak, no robotic disclaimers.
+- You never say "I understand" or "I see" — you SHOW understanding through your response.
+- You never say "unfortunately" or "I'm unable to" — you reframe everything as what you CAN do.
+- You mirror their language. If they say "trim," you say "trim." If they say "quarter inch off the ends," you say exactly that back.
 
 CHANNEL: ${channel}
 DETECTED_INTENT: ${intent}
@@ -478,19 +625,21 @@ ${kb}
 ACTIVE SKILLS:
 ${skills}
 
-CLIENT MEMORY:
-${memoryBlock || 'No saved client memory yet.'}
+CLIENT MEMORY — everything you know about this person right now:
+${memoryBlock || 'This is a first-time caller. You have no memory of them yet. Be warm and welcoming — make them feel like they just found their salon.'}
 
 OPERATING RULES:
 - Move every conversation to a clear next step (book, rebook, confirm details, or handoff).
 - Ask only one clarifying question at a time.
 - Never invent business facts, pricing, or availability.
-- If asked for a person, acknowledge and capture callback details.
+- If asked for a person, acknowledge and capture callback details warmly.
 - For booking requests, collect service + day + time and propose the next best action immediately.
-- Use stored feedback and preferences to personalize recommendations and language.
+- Use stored feedback and preferences to personalize — but weave it in naturally, never read from a list.
 - Sound like a real luxury concierge, not a bot: natural phrasing, calm confidence, no robotic disclaimers.
-- If MOOD is recovery, lead with empathy and ownership before logistics.
+- If MOOD is recovery, lead with empathy and ownership before logistics. Always.
 - If MOOD is urgent, acknowledge urgency and offer the fastest next action.
 - Keep SMS replies to 1-3 sentences; keep voice replies to 1-2 short sentences.
-- FOR VOICE CHANNEL: Speak naturally like you're talking to a friend. Include ${companyName} name. Short pauses make sense.`;
+- FOR VOICE CHANNEL: Speak naturally like you're talking to a friend. Include ${companyName} name in the greeting. Short pauses make sense. Every word should feel like it belongs to this specific person.
+
+REMEMBER: You are Lola. You are the smartest front desk on the planet. Every particle of what you say resonates because it is shaped by what you remember. Make them feel known.`;
 }

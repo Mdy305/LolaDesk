@@ -4,7 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>Pricing — LolaDesk</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LolaDesk">
+<meta property="og:title" content="LolaDesk Pricing — Never miss a booking again">
+<meta property="og:description" content="LolaDesk pricing — AI front desk for salons and spas. Plans from $99/mo. 14-day free trial, no card to start.">
+<meta property="og:url" content="https://www.loladesk.com/pricing">
+<meta property="og:image" content="https://www.loladesk.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://www.loladesk.com/og-image.png">
+<meta name="description" content="LolaDesk pricing — AI front desk for salons and spas. Plans from $99/mo. 14-day free trial, no card to start.">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="canonical" href="https://www.loladesk.com/pricing">
 <link rel="stylesheet" href="app.css"/>
 <style>
 .pwrap{max-width:1080px;margin:0 auto;padding:60px 24px 80px}
@@ -51,13 +61,15 @@
 /* ghost variants stay light-ink (they sit on dark, not on volt) */
 .btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
 </style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"LolaDesk","description":"AI-powered front desk concierge for salons, spas, and med spas.","brand":{"@type":"Brand","name":"LolaDesk"},"offers":[{"@type":"Offer","name":"Starter","price":"99","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"399","priceCurrency":"USD"},{"@type":"Offer","name":"Med-Spa","price":"599","priceCurrency":"USD"}]}</script>
 </head>
 <body>
+<nav style="position:sticky;top:0;z-index:100;background:rgba(0,0,0,.7);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:.5px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between"><a href="/" style="font-size:17px;font-weight:600;letter-spacing:.18em;color:var(--text)">LOLADESK</a><div style="display:flex;align-items:center;gap:14px"><a href="/login" style="font-size:13px;color:var(--text2)">Sign in</a><a href="/start" style="background:var(--pink);color:#10140a;padding:9px 18px;border-radius:100px;font-size:13px;font-weight:600">Start free</a></div></nav>
 <div class="pwrap">
   <div class="phead">
     <div class="peyebrow">LolaDesk</div>
     <h1 class="ptitle">Never miss a booking again.</h1>
-    <p class="psub">Lola answers every call, books every appointment, and follows up with every client — 24/7, in a voice that sounds like your best front-desk manager.</p>
+    <p class="psub">Lola answers every call, books every appointment, and follows up with every client — 24/7, with the warmth and polish of your best front-desk manager.</p>
   </div>
 
   <div class="toggle">
@@ -134,7 +146,7 @@ document.querySelectorAll('.tcta').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     const plan=btn.dataset.plan;
     if(plan==='medspa'){ window.location.href='mailto:hello@loladesk.com?subject=Med-Spa%20plan'; return; }
-    window.location.href = `onboarding.html?plan=${plan}`;
+    window.location.href = `/start?plan=${plan}`;
   });
 });
 </script>

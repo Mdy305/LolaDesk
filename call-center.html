@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Call Center — LolaDesk</title>
+<link rel="stylesheet" href="app.css"/>
+<style>
+/* ── Call Center OS layout ─────────────────────────────────────────── */
+.cc-grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
+@media(max-width:1000px){.cc-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:0.5px solid var(--border);border-radius:16px;padding:18px}
+.panel-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--text2);margin-bottom:14px}
+.panel-title .dot-live{width:8px;height:8px;border-radius:50%;background:var(--lime,#ccff00);box-shadow:0 0 12px rgba(204,255,0,.6);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.call-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
+.call-row:hover{background:var(--surface2)}
+.call-row:last-child{border-bottom:none}
+.call-dir{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--mono-dim);color:var(--text)}
+.call-dir.live{background:rgba(204,255,0,.14);color:var(--lime,#ccff00)}
+.call-info{flex:1;min-width:0}
+.call-name{font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px}
+.call-meta{font-size:11px;color:var(--text3);margin-top:2px}
+.pill{font-size:10.5px;font-weight:650;letter-spacing:.05em;padding:3px 9px;border-radius:999px;text-transform:uppercase}
+.pill.booked{background:rgba(204,255,0,.12);color:#d6ff4d}
+.pill.handled{background:rgba(255,255,255,.07);color:var(--text2)}
+.pill.lead{background:rgba(255,179,64,.12);color:#ffb340}
+.pill.escalated{background:rgba(176,30,108,.2);color:#ff7ac2}
+.pill.missed,.pill.failed{background:rgba(255,59,48,.14);color:#ff5a4d}
+.pill.live{background:rgba(204,255,0,.16);color:#e2ff6b;animation:pulse 2s infinite}
+.cc-side{display:flex;flex-direction:column;gap:16px}
+.score-ring{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:26px;font-weight:800;color:#0a0c06;background:radial-gradient(circle,#d8ff45 0 46%,#1a210d 47% 100%)}
+.status-line{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border)}
+.status-line:last-child{border-bottom:none}
+.status-line .s-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.s-dot.on{background:#ccff00;box-shadow:0 0 10px rgba(204,255,0,.55)}
+.s-dot.off{background:#4a5142}
+.status-line .s-name{flex:1;font-size:13px;font-weight:500}
+.status-line .s-state{font-size:11px;color:var(--text3)}
+.big-num{font-size:34px;font-weight:700;letter-spacing:-.02em}
+.num-line{display:flex;align-items:center;gap:10px;margin-top:10px}
+.tap-call{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:11px;background:var(--lime,#ccff00);color:#10140a;font-weight:650;font-size:13px;text-decoration:none;margin-top:12px}
+.tap-call:hover{filter:brightness(1.06)}
+.test-zone{margin-top:14px;border-top:0.5px solid var(--border);padding-top:14px}
+.test-result{font-size:12.5px;margin-top:10px;line-height:1.55;color:var(--text2)}
+.test-result .err{color:#ff5a4d}
+.transcript{display:flex;flex-direction:column;gap:10px;margin:12px 0 4px;padding:12px;background:var(--surface2);border-radius:12px}
+.t-line{font-size:13px;line-height:1.5}
+.t-line .who{font-weight:600;color:var(--pink2)}
+.t-line.caller .who{color:var(--text2)}
+.cc-sub{font-size:12px;color:var(--text3);margin-top:4px}
+.empty-cta{margin-top:10px}
+.call-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.btn-xs{padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:650;letter-spacing:.02em}
+.memory-panel{background:var(--surface2);border:0.5px solid var(--border);border-radius:12px;padding:12px 14px;margin:2px 0 10px}
+.mem-row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:12.5px}
+.mem-row:last-child{border-bottom:none}
+.mem-key{font-weight:650;color:var(--pink2);flex-shrink:0}
+.mem-val{color:var(--text2);word-break:break-word}
+.mem-add{display:flex;gap:8px;margin-top:10px}
+.mem-add input{flex:1;background:var(--surface);border:0.5px solid var(--border);border-radius:9px;color:var(--text);padding:8px 11px;font:inherit;font-size:12.5px}
+.mem-empty{font-size:12px;color:var(--text3);padding:4px 0}
+.cb-note{font-size:12px;color:var(--lime,#ccff00);margin-top:6px}
+.cb-err{font-size:12px;color:#ff5a4d;margin-top:6px}
+</style>
+</head>
+<body data-page="call-center">
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Call Center</h1>
+        <p class="page-sub">Every call Lola answered — live status, outcomes, and full transcripts.</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btnRefresh" onclick="loadAll()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/></svg>Refresh</button>
+        <button class="btn btn-ghost" onclick="location.href='numbers.html'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/></svg>Manage numbers</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-val" id="kpiCallsToday">0</div><div class="kpi-label">Calls today</div><div class="kpi-sub" id="kpiCallsSub">Lola is listening</div></div>
+      <div class="kpi"><div class="kpi-val mono" id="kpiBooked">0</div><div class="kpi-label">Booked</div><div class="kpi-sub" id="kpiBookedSub">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiConv">—</div><div class="kpi-label">Conversion</div><div class="kpi-sub">calls → bookings</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvg">—</div><div class="kpi-label">Avg call</div><div class="kpi-sub" id="kpiAvgSub">—</div></div>
+      <div class="kpi"><div class="kpi-val pink" id="kpiMissed">0</div><div class="kpi-label">Missed</div><div class="kpi-sub">Lola never sleeps</div></div>
+    </div>
+
+    <div class="cc-grid" style="margin-top:16px">
+      <div>
+        <div class="panel">
+          <div class="panel-title"><span class="dot-live"></span>Live calls</div>
+          <div id="liveList" style="min-height:120px">
+            <div class="cc-sub" style="padding:10px 2px">Checking for active conversations…</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-title">Recent calls</div>
+          <div id="callList" style="min-height:120px">
+            <div class="cc-sub" style="padding:10px 2px">Loading your calls…</div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-title"><span class="dot-live"></span>Call back a client</div>
+          <div class="cc-sub" style="margin-bottom:12px">Lola calls them back from your salon line — she answers with their full context.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <input id="cbPhone" type="tel" placeholder="+1 415 555 0123" style="flex:1;min-width:220px;background:var(--surface2);border:0.5px solid var(--border);border-radius:11px;color:var(--text);padding:11px 14px;font:inherit"/>
+            <button class="btn" id="btnCallback" onclick="callBackFromInput()">Call back</button>
+          </div>
+          <div class="test-result" id="cbResult"></div>
+        </div>
+      </div>
+
+      <div class="cc-side">
+        <div class="panel">
+          <div class="panel-title">Lola live</div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div class="score-ring" id="score">—</div>
+            <div>
+              <div style="font-size:14px;font-weight:650" id="statusText">Checking…</div>
+              <div class="cc-sub">Platform readiness for your line</div>
+            </div>
+          </div>
+          <div style="margin-top:12px" id="channels"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Your line</div>
+          <div class="big-num mono" id="lineNumber">—</div>
+          <div class="cc-sub" id="lineRoute">Resolving your number…</div>
+          <a class="tap-call" id="tapCall" href="#" style="display:none">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Call Lola's line
+          </a>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Line test <span class="cc-sub" style="text-transform:none;letter-spacing:0">(operator)</span></div>
+          <div class="cc-sub">Ring your number through Telnyx and hear Lola answer in seconds.</div>
+          <div class="test-zone">
+            <button class="btn" id="btnTestCall" onclick="runLineTest()">Run a live test call</button>
+            <div class="test-result" id="testResult"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="auth-guard.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Read the token at call time, preferring the auth-guard session (which may
+// have just been refreshed) — a token captured at script-eval time can be
+// stale the moment the page loads with an expired session.
+async function authToken(){
+  try{
+    if(window.LolaAuth?.ready) await window.LolaAuth.ready;
+    return (window.LolaAuth && window.LolaAuth.token) || localStorage.getItem('loladesk_token') || '';
+  }catch(e){ try{ return localStorage.getItem('loladesk_token')||''; }catch(_){ return ''; } }
+}
+function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function outcomePill(o){
+  const k = String(o||'').toLowerCase();
+  const map = { booked:'booked', handled:'handled', lead:'lead', escalated:'escalated', missed:'missed', failed:'missed' };
+  const cls = map[k] || 'handled';
+  return `<span class="pill ${cls}">${esc(cls==='missed'&&k==='failed'?'failed':(o||'handled'))}</span>`;
+}
+function isLive(c){
+  const o = String(c.outcome||'').toLowerCase();
+  if(!['ringing','in_progress','in-progress'].includes(o)) return false;
+  const t = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+  return t && (Date.now() - t) < 30*60*1000;
+}
+function callRow(c, i, list){
+  // `list` prefixes the transcript id so a call shown in BOTH the live and
+  // recent lists never collides (getElementById returns the first match).
+  const rid = (list || 'rec') + '-' + i;
+  const live = isLive(c);
+  const phone = esc(c.from || '');
+  const actions = phone
+    ? `<div class="call-actions">
+        <button class="btn btn-xs" onclick="event.stopPropagation();callBack('${phone}','${rid}')" id="cbbtn-${rid}">↩ Call back</button>
+        <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();toggleMemory('${phone}','${rid}')" id="membtn-${rid}">Lola remembers</button>
+      </div>`
+    : '';
+  return `<div class="call-row" onclick="toggleTranscript('${rid}')">
+    <div class="call-dir ${live?'live':''}">${live
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>'}
+    </div>
+    <div class="call-info">
+      <div class="call-name">${phone||'Caller'} ${live?'<span class="pill live">Live</span>':''}</div>
+      <div class="call-meta">${esc(c.when||'')} · ${fmtDur(c.durationSec)} ${c.summary?` · ${esc(String(c.summary).slice(0,70))}${c.summary.length>70?'…':''}`:''}</div>
+      ${actions}
+      <div class="call-actions" id="cbout-${rid}"></div>
+    </div>
+    <div style="text-align:right">
+      ${outcomePill(c.outcome)}
+      <div class="call-time" style="font-size:11px;color:var(--text3);margin-top:3px">${c.booked?'✓ booked':''}</div>
+    </div>
+  </div>
+  <div id="tr-${rid}" style="display:none">${transcriptBlock(c)}</div>
+  <div id="mem-${rid}" class="memory-panel" style="display:none"></div>`;
+}
+function transcriptBlock(c){
+  if(!Array.isArray(c.transcript) || !c.transcript.length) return '';
+  return `<div class="transcript">${c.transcript.map(t=>`<div class="t-line ${t.role==='assistant'?'lola':'caller'}"><span class="who">${t.role==='assistant'?'Lola':'Caller'}</span> ${esc(t.content||'')}</div>`).join('')}</div>`;
+}
+function toggleTranscript(id){
+  const el = document.getElementById('tr-'+id);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+let CALLS = [];
+let MEM_LOADED = {};
+
+// ── Call back (Lola calls the client) ────────────────────────────────────
+// Originates a REAL Telnyx call from the salon's own line to the client's
+// number (api/call-center/callback). When the client answers, LolaBrain
+// greets them — with the caller's context from the last call already loaded.
+async function callBack(phone, rid){
+  const out = document.getElementById('cbout-' + rid);
+  const btn = document.getElementById('cbbtn-' + rid);
+  if(!phone) return;
+  if(btn){ btn.disabled = true; btn.textContent = 'Ringing…'; }
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/call-center/callback',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ to: phone })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok || !j.ok){ if(out) out.innerHTML = '<div class="cb-err">'+esc(j.error||('Call failed '+r.status))+'</div>'; return; }
+    if(out) out.innerHTML = `<div class="cb-note">✓ Calling <strong>${esc(j.to)}</strong> from ${esc(j.from)} — Lola answers. call <code>${esc(j.call_control_id||'—')}</code></div>`;
+  }catch(e){
+    if(out) out.innerHTML = '<div class="cb-err">Couldn\'t place the callback.</div>';
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '↩ Call back'; }
+  }
+}
+
+async function callBackFromInput(){
+  const input = document.getElementById('cbPhone');
+  const out = document.getElementById('cbResult');
+  const btn = document.getElementById('btnCallback');
+  const phone = (input.value||'').trim();
+  if(!phone){ if(out) out.innerHTML = '<div class="cb-err">Enter a client number first.</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Calling…';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/call-center/callback',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ to: phone })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok || !j.ok){ if(out) out.innerHTML = '<div class="cb-err">'+esc(j.error||('Call failed '+r.status))+'</div>'; return; }
+    if(out) out.innerHTML = `<div class="cb-note">✓ Calling <strong>${esc(j.to)}</strong> from ${esc(j.from)} — Lola answers with the client's full context. call <code>${esc(j.call_control_id||'—')}</code></div>`;
+  }catch(e){
+    if(out) out.innerHTML = '<div class="cb-err">Couldn\'t place the callback.</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Call back';
+  }
+}
+
+// ── Lola remembers ───────────────────────────────────────────────────────
+// Pulls the caller's client_memories (the same table the Memory page and
+// the caller_brief read) so the operator sees what Lola knows about this
+// caller, and can add a note that Lola carries into the next call.
+async function toggleMemory(phone, rid){
+  const panel = document.getElementById('mem-' + rid);
+  if(!panel) return;
+  if(panel.style.display !== 'none'){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  if(MEM_LOADED[rid]) return;
+  MEM_LOADED[rid] = true;
+  panel.innerHTML = '<div class="mem-empty">Loading what Lola remembers…</div>';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/memory?identity=' + encodeURIComponent(phone),{ headers:{ Authorization:'Bearer '+t } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    const rows = (j && j.memories) || [];
+    const html = rows.length
+      ? rows.map(m=>`<div class="mem-row"><span class="mem-key">${esc(m.key)}</span><span class="mem-val">${esc(typeof m.value==='string'?m.value:JSON.stringify(m.value))}</span></div>`).join('')
+      : '<div class="mem-empty">Lola doesn\'t remember this caller yet — add the first note and she\'ll carry it into their next call.</div>';
+    panel.innerHTML = html + `<div class="mem-add"><input id="meminput-${rid}" placeholder="What should Lola remember? (preference, visit, detail)"/><button class="btn btn-xs" onclick="rememberNote('${phone}','${rid}')">Remember</button></div>`;
+  }catch(e){
+    panel.innerHTML = '<div class="cb-err">Couldn\'t load memory.</div>';
+  }
+}
+
+async function rememberNote(phone, rid){
+  const input = document.getElementById('meminput-' + rid);
+  if(!input || !input.value.trim()) return;
+  const value = input.value.trim();
+  const btn = input.nextElementSibling;
+  btn.disabled = true;
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/memory',{
+      method:'PATCH',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ scope:'client', identity: phone, key:'operator_note', value })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok){ /* surface below */ }
+    MEM_LOADED[rid] = false;
+    await toggleMemory(phone, rid); // re-render with the new note
+  }catch(e){
+    /* ignore */
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function loadCalls(){
+  try{
+    const data = await LolaData.load('calls');
+    CALLS = (data && data.calls) || [];
+  }catch(e){ CALLS = []; }
+  const now = new Date(); now.setHours(0,0,0,0);
+  const isBooked = c => c.booked || String(c.outcome||'').toLowerCase()==='booked';
+  const today = CALLS.filter(c => c.createdAt && new Date(c.createdAt) >= now);
+  const booked = CALLS.filter(isBooked);
+  const bookedToday = today.filter(isBooked);
+  const missed = CALLS.filter(c => ['missed','failed'].includes(String(c.outcome||'').toLowerCase()));
+  const withDur = CALLS.filter(c => c.durationSec > 0);
+  const avg = withDur.length ? Math.round(withDur.reduce((s,c)=>s+c.durationSec,0)/withDur.length) : 0;
+
+  document.getElementById('kpiCallsToday').textContent = today.length;
+  document.getElementById('kpiCallsSub').textContent = CALLS.length ? 'Lola answered all' : 'No calls yet';
+  document.getElementById('kpiBooked').textContent = booked.length;
+  document.getElementById('kpiBookedSub').textContent = CALLS.length ? Math.round(booked.length/CALLS.length*100)+'% of all calls' : '—';
+  document.getElementById('kpiConv').textContent = today.length ? Math.round(bookedToday.length/today.length*100)+'%' : '—';
+  document.getElementById('kpiAvg').textContent = fmtDur(avg);
+  document.getElementById('kpiAvgSub').textContent = avg ? 'across all calls' : '—';
+  document.getElementById('kpiMissed').textContent = missed.length;
+
+  const live = CALLS.filter(isLive);
+  const liveEl = document.getElementById('liveList');
+  if(live.length){
+    liveEl.innerHTML = live.map((c,i)=>callRow(c,i,'live')).join('');
+  }else{
+    liveEl.innerHTML = '<div class="cc-sub" style="padding:10px 2px">No active conversations right now. Inbound calls appear here the moment they ring.</div>';
+  }
+  const listEl = document.getElementById('callList');
+  if(CALLS.length){
+    listEl.innerHTML = CALLS.map((c,i)=>callRow(c,i,'rec')).join('');
+  }else{
+    listEl.innerHTML = `<div class="cc-sub" style="padding:10px 2px">No calls yet.</div>
+      <div class="empty-cta"><a class="btn" href="numbers.html">Get a Lola number</a></div>`;
+  }
+}
+
+async function loadHealth(){
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/operator-health',{ headers:{ Authorization:'Bearer '+t } });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error||('health '+r.status));
+    document.getElementById('score').textContent = d.score;
+    document.getElementById('statusText').textContent = String(d.status||'unknown').replace('_',' ').toUpperCase();
+    const channels = d.channels || {};
+    document.getElementById('channels').innerHTML = Object.entries(channels).map(([k,v])=>`
+      <div class="status-line"><span class="s-dot ${v?'on':'off'}"></span><span class="s-name">${esc(k.replace('_',' '))}</span><span class="s-state">${v?'Operational':'Not verified'}</span></div>`).join('');
+    const phone = d.tenant?.phone_number || (window.LolaAuth?.tenant?.phone_number) || '';
+    setLine(phone);
+  }catch(e){
+    document.getElementById('score').textContent = '—';
+    document.getElementById('statusText').textContent = 'OFFLINE';
+    const phone = (window.LolaAuth && window.LolaAuth.tenant && window.LolaAuth.tenant.phone_number) || '';
+    setLine(phone);
+  }
+}
+function setLine(phone){
+  const el = document.getElementById('lineNumber');
+  const tap = document.getElementById('tapCall');
+  const route = document.getElementById('lineRoute');
+  if(phone){
+    el.textContent = phone;
+    tap.href = 'tel:'+phone; // E.164 keeps the leading '+'
+    tap.style.display = 'inline-flex';
+    route.textContent = 'This line is wired to Lola — call it and she answers.';
+  }else{
+    el.textContent = 'No line yet';
+    tap.style.display = 'none';
+    route.textContent = 'Assign a number to go live.';
+  }
+}
+
+async function runLineTest(){
+  const btn = document.getElementById('btnTestCall');
+  const result = document.getElementById('testResult');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Ringing…';
+  result.innerHTML = '';
+  const to = (window.LolaAuth && window.LolaAuth.tenant && window.LolaAuth.tenant.phone_number) || '';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/admin/test-call',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ to })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ result.innerHTML = '<div class="err">Operator access only — this action lives on the admin screen.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ result.innerHTML = `<div class="err">Call failed: ${esc(j.error||'unknown error')}</div>`; return; }
+    const rt = j.routing;
+    const routePill = rt && rt.status === 'resolved'
+      ? `<span class="pill booked">will answer: ${esc(rt.tenant?.name||'')}</span>`
+      : (rt ? `<span class="pill handled">${esc(rt.status)} — no tenant on this number</span>` : '');
+    result.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px">
+        <span class="pill live">Ringing</span>
+        <strong>${esc(j.to)}</strong>
+        <span class="cc-sub">from ${esc(j.from||'—')}</span>
+        ${routePill}
+      </div>
+      <div class="cc-sub" style="margin-top:8px">call <code>${esc(j.call_control_id||'—')}</code> · connection <code>${esc(j.connection_id||'—')}</code></div>
+      <div class="cc-sub" style="margin-top:6px">Lola answers in seconds — the call will appear in Live calls and then Recent calls with her transcript.</div>`;
+  }catch(e){
+    result.innerHTML = `<div class="err">Couldn't place the call.</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function loadAll(){
+  await Promise.all([loadCalls(), loadHealth()]);
+}
+document.addEventListener('DOMContentLoaded', loadAll);
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

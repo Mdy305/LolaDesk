@@ -1,0 +1,212 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reviews — LolaDesk</title><link rel="stylesheet" href="app.css"><link rel="stylesheet" href="ux-runtime.css"><style>
+body{background:#080909}.shell{max-width:1320px;margin:auto;padding:28px}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;margin-bottom:20px}.eyebrow{font-size:11px;letter-spacing:.14em;color:#ccff00}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{padding:18px}.metric{font-size:30px;font-weight:800;margin-top:8px}.grid{display:grid;grid-template-columns:1fr .9fr;gap:14px;margin-top:14px}.drop{border:1.5px dashed rgba(204,255,0,.3);border-radius:14px;padding:26px;text-align:center;cursor:pointer;transition:.2s;background:rgba(204,255,0,.03)}.drop:hover,.drop.drag{border-color:#ccff00;background:rgba(204,255,0,.07)}.drop svg{opacity:.7}.fld{margin:12px 0}.fld label{display:block;font-size:12px;color:#999;margin-bottom:6px}.sel,textarea{width:100%;background:#101212;border:1px solid rgba(255,255,255,.12);color:#e8e8ea;border-radius:10px;padding:11px 12px;font:inherit}.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.07);font-size:11px;white-space:nowrap}.st{display:inline-flex;align-items:center;gap:6px}.dot{width:7px;height:7px;border-radius:50%}.q{background:#ccff00}.s{background:#8b5cf6}.p{background:#22c55e}.f{background:#ef4444}.muted{color:#999}.good{color:#ccff00}.err{color:#ff8a8a}.review{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer}.review:hover .rbody{color:#fff}.rbody{color:#c9c9cf;font-size:14px;line-height:1.5}.btn{display:inline-block;border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;font:inherit}.btn-p{background:#ccff00;color:#080808}.btn-g{background:transparent;border:1px solid rgba(255,255,255,.16);color:#e8e8ea}.btn:disabled{opacity:.35;cursor:not-allowed}.previewimg{width:100%;border-radius:14px;display:block}.msg{margin-top:12px;font-size:13px}.skip{margin-top:10px;font-size:12px;color:#999;display:none}.skip.show{display:block}@media(max-width:900px){.metrics{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.hero{align-items:flex-start;flex-direction:column}}@media(max-width:560px){.metrics{grid-template-columns:1fr}}
+</style></head><body data-page="reviews"><div class="app"><main class="main"><div class="shell">
+  <section class="hero"><div><div class="eyebrow">ATOMIC REVIEW SYNDICATION</div><h1>Reputation, on autopilot</h1><p class="muted">Upload your 5-star reviews once. Lola renders them into branded cards and publishes them to your Facebook &amp; Instagram — one post every 48 hours.</p></div><div class="pill" id="generated">Loading…</div></section>
+
+  <section class="metrics">
+    <div class="card"><div class="muted">QUEUED</div><div class="metric" id="mQueued">—</div></div>
+    <div class="card"><div class="muted">SCHEDULED</div><div class="metric" id="mScheduled">—</div></div>
+    <div class="card"><div class="muted">PUBLISHED</div><div class="metric" id="mPublished">—</div></div>
+    <div class="card"><div class="muted">FAILED</div><div class="metric" id="mFailed">—</div></div>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <div class="row">
+      <div>
+        <h2 style="margin:0">Google reviews — auto-import</h2>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Connect your Google Business Profile once, then pull your real Google reviews into the queue with one click — no CSV needed. They post to your Facebook &amp; Instagram as branded cards.</p>
+      </div>
+      <div id="gmbState" style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-g" id="gmbConnect" onclick="gmbConnect()">Connect Google</button>
+        <button class="btn btn-p" id="gmbImport" onclick="gmbImport()" disabled>Import Google reviews</button>
+      </div>
+    </div>
+    <div class="msg" id="gmbMsg"></div>
+    <div class="row" style="margin-top:16px;align-items:center">
+      <div>
+        <div style="font-weight:700;font-size:14px">Lola answers on Google</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">Google retired Maps chat — review replies are the live way Lola answers your customers on Google. Toggle auto-reply, or answer the unreplied reviews now.</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px"><input type="checkbox" id="gmbAuto" onchange="gmbToggle(this)" style="accent-color:#ccff00;width:16px;height:16px"> Auto-reply on</label>
+        <button class="btn btn-p" id="gmbReply" onclick="gmbReply()" disabled>Reply now</button>
+      </div>
+    </div>
+    <div class="msg" id="gmbReplyMsg" style="font-size:12px"></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Import reviews</h2>
+      <p class="muted" style="font-size:13px">Export your reviews to CSV from Google, Yelp or Facebook, then drop the file here. Only 5-star reviews longer than 10 characters are queued.</p>
+      <div class="fld"><label>Source</label>
+        <select class="sel" id="source">
+          <option value="google_gmb">Google</option>
+          <option value="yelp_csv">Yelp</option>
+          <option value="facebook">Facebook</option>
+          <option value="manual_csv">Other / manual</option>
+        </select>
+      </div>
+      <div class="drop" id="drop">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ccff00"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+        <div style="margin-top:8px"><b>Drop your CSV here</b></div>
+        <div class="muted" style="font-size:12px;margin-top:4px" id="fileHint">or click to browse — rating, author, review columns</div>
+        <input type="file" id="file" accept=".csv,.txt,text/csv,text/plain" style="display:none">
+      </div>
+      <div class="row" style="margin-top:14px">
+        <span class="muted" id="fileMeta" style="font-size:13px">No file selected</span>
+        <button class="btn btn-p" id="importBtn" onclick="importReviews()" disabled>Import reviews</button>
+      </div>
+      <div class="msg" id="importMsg"></div>
+      <div class="skip" id="skipBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Live card preview</h2>
+      <p class="muted" style="font-size:13px">This is the exact 1080×1080 card posted to your page — tap any review below to preview it.</p>
+      <img class="previewimg" id="cardImg" alt="Review card preview" src="/api/reviews/card?author=Happy%20client&body=Best%20salon%20experience%20ever%20%E2%80%94%20Lola%20booked%20me%20instantly.">
+      <div class="muted" style="font-size:12px;margin-top:8px" id="previewCaption">Default sample</div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Review queue</h2>
+    <div id="queue">Loading…</div>
+  </section>
+</div></main></div>
+<script src="auth-guard.js"></script><script src="ux-runtime.js"></script><script src="sidebar.js"></script>
+<script>
+const token=()=>localStorage.getItem('loladesk_token')||'';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H=()=>({'Content-Type':'application/json',Authorization:'Bearer '+token()});
+let queue=null,fileText=null,fileName='';
+const SOURCE_LABEL={google_gmb:'Google',yelp_csv:'Yelp',facebook:'Facebook',shopify:'Shopify',manual_csv:'Other'};
+const STATUS_DOT={queued:'<span class="dot q"></span>',scheduled:'<span class="dot s"></span>',published:'<span class="dot p"></span>',failed:'<span class="dot f"></span>'};
+function el(id){return document.getElementById(id)}
+function fmt(d){return d?new Date(d).toLocaleString():'—'}
+
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{...H(),...(options.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);return d}
+
+function preview(author,body,caption){el('cardImg').src='/api/reviews/card?author='+encodeURIComponent(author)+'&body='+encodeURIComponent(body)+'&tenant='+encodeURIComponent(queue?.tenant?.name||'');el('previewCaption').textContent=caption}
+
+function render(){
+  const c=queue.counts||{};
+  el('mQueued').textContent=c.queued??0;el('mScheduled').textContent=c.scheduled??0;
+  el('mPublished').textContent=c.published??0;el('mFailed').textContent=c.failed??0;
+  el('generated').textContent='Updated '+new Date().toLocaleTimeString();
+  const rows=queue.reviews||[];
+  el('queue').innerHTML=rows.length?rows.map((r,i)=>'<div class="review" data-i="'+i+'"><div class="row"><div class="st">'+(STATUS_DOT[r.status]||'')+'<b>'+esc(r.author_name)+'</b><span class="pill">'+esc(SOURCE_LABEL[r.source]||r.source)+'</span></div><span class="pill">'+esc(r.status)+'</span></div><div class="rbody" style="margin-top:8px">'+esc(r.review_body)+'</div><div class="muted" style="font-size:11px;margin-top:8px">Scheduled '+fmt(r.scheduled_for)+(r.published_at?' · Published '+fmt(r.published_at):'')+(r.error_message?' · <span class="err">'+esc(r.error_message.slice(0,120))+'</span>':'')+'</div></div>').join(''):'<p class="muted">No reviews yet. Upload a CSV to start building social proof.</p>';
+  el('queue').querySelectorAll('.review').forEach(node=>{
+    node.addEventListener('click',()=>{
+      const r=rows[Number(node.dataset.i)];
+      if(r)preview(r.author_name,r.review_body,r.author_name+' · '+(SOURCE_LABEL[r.source]||r.source));
+    });
+  });
+  if(rows.length)preview(rows[0].author_name,rows[0].review_body,rows[0].author_name+' · '+(SOURCE_LABEL[rows[0].source]||rows[0].source));
+}
+
+async function load(){queue=await api('/api/reviews/list');render();gmbState();}
+
+function gmbState(){
+  fetch('/api/settings',{headers:H()}).then(r=>r.json()).then(d=>{
+    const ints=d.integrations||[];
+    const g=ints.find(i=>i.provider==='google_gmb'||i.provider==='google');
+    if(g){
+      el('gmbConnect').textContent='Connected ✓';
+      el('gmbConnect').disabled=true;
+      el('gmbImport').disabled=false;
+      el('gmbMsg').innerHTML='<span class="good">Google connected'+(g.updated_at?' · '+fmt(g.updated_at):'')+'</span> — ready to import your reviews.';
+    }else{
+      el('gmbConnect').textContent='Connect Google';
+      el('gmbConnect').disabled=false;
+      el('gmbImport').disabled=true;
+      el('gmbMsg').innerHTML='<span class="muted">Connect Google to auto-import your Business Profile reviews.</span>';
+    }
+  }).catch(()=>{});
+  fetch('/api/reviews/gmb-reply',{headers:H()}).then(r=>r.json()).then(d=>{
+    if(!d.ok)return;
+    el('gmbAuto').checked=!!d.auto_reply_gmb;
+    el('gmbReply').disabled=!d.connected;
+    const recent=d.recent||[];
+    el('gmbReplyMsg').innerHTML='<span class="muted">'+(recent.length?recent.length+' review(s) already answered by Lola':'No replies yet')+' · '+esc(d.note||'')+'</span>';
+  }).catch(()=>{});
+}
+
+async function gmbToggle(cb){
+  const on=cb.checked;
+  const ok=await LolaUX.run(async()=>{
+    const d=await api('/api/reviews/gmb-reply',{method:'PATCH',body:JSON.stringify({auto_reply_gmb:on})});
+    if(!d.ok)throw new Error(d.error||'Could not save');
+    return d;
+  },{success:on?'Lola will auto-reply to new Google reviews.':'Auto-reply paused.'});
+  if(!ok)cb.checked=!on;
+}
+
+async function gmbReply(){
+  const result=await LolaUX.run(async()=>{
+    const d=await api('/api/reviews/gmb-reply',{method:'POST',body:JSON.stringify({})});
+    if(!d.ok)throw new Error(d.error||'Reply run failed');
+    return d;
+  },{button:el('gmbReply'),success:'Lola answered your Google reviews.'});
+  if(!result)return;
+  el('gmbReplyMsg').innerHTML='<span class="good">'+result.replied+' replied</span> · '+result.already+' already answered'+(result.errors?.length?' · <span class="err">'+result.errors.length+' failed</span>':'')+' · '+esc(result.note||'');
+  gmbState();
+}
+
+function gmbConnect(){
+  const slug=(queue&&queue.tenant&&queue.tenant.slug)||'';
+  location.href='/api/oauth/connect?provider=google_gmb&tenant='+encodeURIComponent(slug);
+}
+
+async function gmbImport(){
+  const result=await LolaUX.run(async()=>{
+    const d=await api('/api/reviews/import-google',{method:'POST',body:JSON.stringify({})});
+    if(!d.ok)throw new Error(d.error||'Import failed');
+    return d;
+  },{button:el('gmbImport'),success:'Google reviews imported.'});
+  if(!result)return;
+  const s=result.skipped||{};
+  el('gmbMsg').innerHTML=`<span class="good">${result.fetched} fetched</span> · <b>${result.scheduled} scheduled</b> · ${(s.not_five_star||0)} non-5-star · ${(s.too_short||0)} too short · ${(s.duplicate||0)} already queued`;
+  load();
+}
+
+async function importReviews(){
+  if(!fileText)return;
+  const source=el('source').value;
+  const result=await LolaUX.run(async()=>{
+    const d=await api('/api/reviews/upload',{method:'POST',body:JSON.stringify({source,csv:fileText})});
+    if(!d.ok)throw new Error(d.error||'Import failed');
+    return d;
+  },{button:el('importBtn'),success:'Reviews imported — cards will post every 48 hours.'});
+  if(!result)return;
+  const s=result.skipped||{};
+  el('importMsg').innerHTML=`<span class="good">${result.accepted} accepted</span> · <b>${result.scheduled} scheduled</b> · ${(s.not_five_star||0)} non-5-star · ${(s.too_short||0)} too short · ${(s.flagged||0)} flagged · ${(s.duplicate||0)} duplicates`;
+  const skip=el('skipBox');
+  skip.classList.add('show');
+  skip.innerHTML='Only 5-star reviews longer than 10 characters with no phone/address are queued. Everything else is skipped automatically.';
+  fileText=null;fileName='';el('file').value='';el('fileMeta').textContent='No file selected';el('importBtn').disabled=true;el('fileHint').textContent='or click to browse — rating, author, review columns';
+  load();
+}
+
+function readFile(f){
+  if(!f)return;
+  fileName=f.name;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    fileText=String(reader.result||'');
+    const lines=fileText.split(/\r?\n/).filter(l=>l.trim());
+    el('fileMeta').textContent=`${f.name} · ${lines.length} line${lines.length===1?'':'s'}`;
+    el('fileHint').textContent=lines.length?('First row: '+lines[0].slice(0,80)):'File is empty';
+    el('importBtn').disabled=!fileText.trim();
+  };
+  reader.readAsText(f);
+}
+
+el('drop').onclick=()=>el('file').click();
+el('file').onchange=e=>readFile(e.target.files[0]);
+['dragover','dragenter'].forEach(ev=>el('drop').addEventListener(ev,e=>{e.preventDefault();el('drop').classList.add('drag')}));
+['dragleave','drop'].forEach(ev=>el('drop').addEventListener(ev,e=>{e.preventDefault();el('drop').classList.remove('drag')}));
+el('drop').addEventListener('drop',e=>readFile(e.dataTransfer.files[0]));
+
+window.LolaAuth.ready.then(()=>LolaUX.run(load,{error:'Reviews could not load.'})).catch(e=>el('queue').innerHTML='<p class="err">'+esc(e.message)+'</p>');
+</script></body></html>

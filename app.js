@@ -15,6 +15,7 @@ const DEFAULT_TENANT = {
   name: 'MMΛ Salon',
   owner: 'Meddy',
   location: '1500 Alton Road, Miami Beach',
+  hours: 'Tue–Sat, Noon–8pm. Appointment only.',
   phone: '+17864497058',
   bookingUrl: 'https://www.mmasalon.com/book',
   whatsapp: 'https://wa.me/17864497058',
@@ -23,7 +24,7 @@ const DEFAULT_TENANT = {
   persona: {
     name: 'Lola',
     energy: 'warm, intelligent, lightly playful Valley Girl confidence',
-    voice: 'Samantha'
+    voice: 'lola'  // Lola's ONE canonical voice — never a picker, never a substitute
   },
   // Services drive Lola's booking knowledge
   services: [
@@ -106,6 +107,7 @@ function avatar(name, img, cls){
 }
 
 function renderSchedule(){
+  if(window.__LOLA_REAL_DATA__) return; // dashboard.html already rendered real bookings — don't clobber with demo data
   document.getElementById('scheduleList').innerHTML = DATA.schedule.map(s => `
     <div class="sched-item" onclick="askLola('Tell me about my ${s.time} ${s.service} with ${s.client}')">
       <div class="sched-time"><span class="sched-dot"></span>${s.time}</div>
@@ -118,6 +120,7 @@ function renderSchedule(){
 }
 
 function renderInsights(){
+  if(window.__LOLA_REAL_DATA__) return; // dashboard.html already rendered real insights — don't clobber with demo data
   document.getElementById('insightsList').innerHTML = DATA.insights.map(i => `
     <div class="insight" onclick="askLola('${i.prompt.replace(/'/g,"\\'")}')">
       <div class="insight-icon ${i.cls}">${i.icon}</div>
@@ -175,21 +178,32 @@ function renderTeam(){
    ───────────────────────────────────────────────────────────── */
 const orbCanvas = document.getElementById('orbCanvas');
 const orb = (window.LolaOrb && orbCanvas)
-  ? LolaOrb.mount(orbCanvas, { size: 240 })
+  ? LolaOrb.mount(orbCanvas, { size: 320 })
   : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
+// Expose the mounted orb so the resonance runtime (lola-resonance.js)
+// can drive its particle canvas live from Lola's real voice amplitude.
+window.__LOLA_ORB__ = orb;
 let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
 
 function setOrbState(s){
+  const prevState = orbState;
   orbState = s;
   orb.setState(s);
+
+  // The wake moment: any transition INTO listening (voice wake-word
+  // "Hey Lola" or a manual tap) is when Lola visibly comes alive.
+  if(s === 'listening' && prevState !== 'listening'){
+    orb.flare();
+    if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
+  }
 
   const wave = document.getElementById('orbWave');
   const title = document.getElementById('orbTitle');
   const sub = document.getElementById('orbSub');
   const mic = document.getElementById('orbMic');
   const stage = document.getElementById('orbStage');
-  wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
-  mic.classList.toggle('on', s==='listening');
+  if(wave) wave.style.display = (s==='listening'||s==='speaking') ? 'flex' : 'none';
+  if(mic) mic.classList.toggle('on', s==='listening');
   if(stage) stage.classList.toggle('ambient', s==='ambient');
   const labels = {
     idle: ['Hey Lola…','Tap to speak or type a command'],
@@ -198,8 +212,8 @@ function setOrbState(s){
     thinking: ['Thinking…','Working on it'],
     speaking: ['Lola','Speaking…']
   };
-  title.textContent = labels[s][0];
-  sub.textContent = labels[s][1];
+  if(title) title.textContent = labels[s][0];
+  if(sub) sub.textContent = labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -302,7 +316,7 @@ ${svc}
 TEAM: ${team}
 
 BOOKING: ${TENANT.bookingUrl} · WhatsApp ${TENANT.whatsapp} · Phone ${TENANT.phone}
-HOURS: Tue–Sat, Noon–8pm. Appointment only.
+HOURS: ${TENANT.hours || 'Contact the salon for hours.'}
 
 PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
 
@@ -371,6 +385,8 @@ function fmt(t){
     .replace(/\n/g,'<br>');
 }
 
+window.addChatMsg = function(role, text){ addChatMsg(role, text); };
+window.setChatTyping = setChatTyping;
 function addChatMsg(role, text){
   const msgs = document.getElementById('chatMsgs');
   const row = document.createElement('div');
@@ -399,15 +415,47 @@ window.openChat = function(){
     chatOpened = true;
     setTimeout(async ()=>{
       setChatTyping(true);
-      await new Promise(r=>setTimeout(r,1000));
+      const greeting = await buildRealGreeting();
+      await new Promise(r=>setTimeout(r,300));
       setChatTyping(false);
-      const greeting = `Hey ${TENANT.owner}. I've got your salon loaded — 7 appointments today, $2,840 on the board, and 3 clients due for rebooking. What do you need?`;
       addChatMsg('ai', greeting);
       speak(greeting);
     }, 300);
   }
   setTimeout(()=>document.getElementById('chatInput').focus(), 350);
 };
+
+// Real numbers, not the placeholder greeting this used to hardcode
+// ("7 appointments today, $2,840 on the board, 3 clients due for
+// rebooking" — shown to every tenant regardless of their actual data).
+async function buildRealGreeting(){
+  const name = TENANT.owner || 'there';
+  try{
+    if(!window.LolaData) throw new Error('LolaData unavailable');
+    const [bkData, revData] = await Promise.all([
+      LolaData.load('bookings').catch(()=>null),
+      LolaData.load('revenue').catch(()=>null)
+    ]);
+    const bookings = (bkData && bkData.bookings) || [];
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const todayCount = bookings.filter(b => {
+      const d = new Date(b.startsAt);
+      return d >= today && d < tomorrow && String(b.status||'').toLowerCase() !== 'cancelled';
+    }).length;
+    const total = (revData && revData.total) || 0;
+
+    if(!bookings.length && !total){
+      return `Hey ${name}. I'm ready when you are — nothing on the books yet, so let's fill your first appointment.`;
+    }
+    const parts = [];
+    parts.push(todayCount === 1 ? '1 appointment today' : `${todayCount} appointments today`);
+    if(total > 0) parts.push(`$${Math.round(total).toLocaleString()} on the board`);
+    return `Hey ${name}. I've got your salon loaded — ${parts.join(', ')}. What do you need?`;
+  }catch(e){
+    return `Hey ${name}. I've got your salon loaded. What do you need?`;
+  }
+}
 
 window.closeChat = function(){
   document.getElementById('chatOverlay').classList.remove('show');
@@ -503,6 +551,10 @@ window.sendChat = function(){
 };
 
 window.askLola = function(prompt){
+  // Voice-first: when the resonance runtime is loaded, Lola answers by
+  // voice at the orb (with her reply rendered inline) instead of forcing
+  // the text-chat modal. The chat overlay stays for typed conversation.
+  if(window.LolaResonance) return window.LolaResonance.ask(prompt);
   openChat();
   setTimeout(()=> processMessage(prompt), chatOpened ? 100 : 1400);
 };
@@ -564,13 +616,23 @@ function setupRecognition(){
       else interim += e.results[i][0].transcript;
     }
     const t = final || interim;
-    if(voiceTarget==='orb') document.getElementById('orbTranscript').textContent = t;
+    if(voiceTarget==='orb'){
+      const transcript=document.getElementById('orbTranscript');
+      if(transcript) transcript.textContent=t;
+    }
     if(final){
       stopListening();
       askLola(final);
     }
   };
-  recognition.onerror = ()=> stopListening();
+  recognition.onerror = (event)=>{
+    console.error('[Lola voice] recognition error',event?.error||event);
+    const sub=document.getElementById('orbSub');
+    if(sub) sub.textContent=event?.error==='not-allowed'
+      ? 'Microphone access is blocked — allow it in your browser, then tap again'
+      : 'Voice stopped — tap Lola to retry';
+    stopListening();
+  };
   recognition.onend = ()=>{ if(listening) stopListening(); };
 }
 
@@ -582,7 +644,14 @@ function startListening(){
   stopSpeaking();
   if(voiceTarget==='orb') setOrbState('listening');
   if(voiceTarget==='chat') document.getElementById('chatMic').classList.add('on');
-  try{ recognition.start(); }catch(e){}
+  try{ recognition.start(); }
+  catch(error){
+    console.error('[Lola voice] could not start recognition',error);
+    listening=false;
+    setOrbState('idle');
+    const sub=document.getElementById('orbSub');
+    if(sub) sub.textContent='Voice could not start — tap Lola to retry';
+  }
   // Resonance IN: a parallel analyser on the mic so the neural orb
   // ripples with the owner's actual voice amplitude while listening.
   if(window.LolaOrb && voiceTarget==='orb'){
@@ -599,19 +668,40 @@ function stopListening(){
   if(recognition) try{ recognition.stop(); }catch(e){}
   if(voiceTarget==='orb') setOrbState(ambientOn && !ambientMuted ? 'ambient' : 'idle');
   document.getElementById('chatMic').classList.remove('on');
-  setTimeout(()=>{ document.getElementById('orbTranscript').textContent=''; }, 2500);
+  setTimeout(()=>{ const transcript=document.getElementById('orbTranscript'); if(transcript) transcript.textContent=''; }, 2500);
   // Resume passive wake-word listening once the active command finishes,
   // if ambient mode is on and not muted.
   if(ambientOn && !ambientMuted) setTimeout(startAmbientListening, 400);
 }
 
 window.toggleVoice = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggle();
   voiceTarget = 'orb';
   listening ? stopListening() : startListening();
 };
 window.toggleChatVoice = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggle();
   voiceTarget = 'chat';
   listening ? stopListening() : startListening();
+};
+
+// Called by the live-activity poller when a new booking/call/message
+// comes in — a lighter reaction than a full wake (no burst, no mic),
+// just a resonance pulse and a brief label so it doesn't fight with
+// whatever the user is actually doing with the orb.
+window.lolaPulse = function(label){
+  orb.flare();
+  if(listening || orbState === 'speaking' || orbState === 'thinking') return; // don't interrupt an active exchange
+  const sub = document.getElementById('orbSub');
+  const title = document.getElementById('orbTitle');
+  if(!sub || !title) return;
+  const prevTitle = title.textContent, prevSub = sub.textContent;
+  title.textContent = 'New activity';
+  sub.textContent = label || 'Something just came in';
+  setTimeout(()=>{
+    if(listening || orbState === 'speaking' || orbState === 'thinking') return;
+    title.textContent = prevTitle; sub.textContent = prevSub;
+  }, 3200);
 };
 
 /* ── AMBIENT WAKE-WORD LISTENING ── */
@@ -646,6 +736,7 @@ function setupAmbientRecognition(){
     // because playback is local.)
     stopSpeaking();
     orb.flare(); // visible acknowledgment the wake word landed
+    if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
     stopAmbientListening();
     voiceTarget = 'orb';
     askLola(command);
@@ -694,6 +785,7 @@ function updateAmbientToggleUI(){
 }
 
 window.toggleAmbientListening = function(){
+  if(window.LolaResonance) return window.LolaResonance.toggleAmbient();
   if(!ambientOn){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!SR){ alert('Always-listening needs Chrome, Edge, or Safari.'); return; }
@@ -725,7 +817,8 @@ window.toggleAmbientListening = function(){
 // Press-and-hold the toggle for ~800ms to fully turn ambient listening
 // off (not just mute) and forget the preference — for an owner who
 // decides this isn't for their salon, rather than a temporary mute.
-(function wireAmbientLongPress(){
+// (Skipped when the resonance runtime owns the voice layer.)
+if(!window.LolaResonance) (function wireAmbientLongPress(){
   let pressTimer = null;
   let longPressFired = false;
   const btn = document.getElementById('ambientToggle');
@@ -754,12 +847,25 @@ window.toggleAmbientListening = function(){
 
 // Restore the owner's last preference on page load — ambient listening
 // is opt-in (off by default for a brand-new salon) but persists once chosen.
-(function restoreAmbientPreference(){
-  if(localStorage.getItem(AMBIENT_STORAGE_KEY) === '1'){
+// (Skipped when the resonance runtime owns the voice layer.)
+if(!window.LolaResonance) (function restoreAmbientPreference(){
+  // ALWAYS-ON BY DEFAULT: Lola is the owner's Jarvis — she should be
+  // listening for her name without being asked to switch it on. The
+  // first visit sets the preference; the owner can mute (tap the toggle)
+  // or fully turn it off (hold the toggle) anytime, and the choice
+  // persists across sessions.
+  const stored = localStorage.getItem(AMBIENT_STORAGE_KEY);
+  if(stored === '1' || stored === null){
+    if(stored === null){
+      try{ localStorage.setItem(AMBIENT_STORAGE_KEY, '1'); }catch{}
+      const sub = document.getElementById('orbSub');
+      const prev = sub ? sub.textContent : '';
+      if(sub) sub.textContent = 'Lola is listening for “Hey Lola” — tap the toggle to mute, hold to turn off.';
+      setTimeout(()=>{ if(sub && sub.textContent === 'Lola is listening for “Hey Lola” — tap the toggle to mute, hold to turn off.') sub.textContent = prev; }, 6000);
+    }
     ambientOn = true;
-    // Don't auto-start the mic without a user gesture — most browsers
-    // block getUserMedia/SpeechRecognition until the page has had a
-    // real click/keypress, so we arm it and start on first interaction.
+    // Browsers need a user gesture before the mic can open — arm it and
+    // start on the first interaction.
     const arm = ()=>{ startAmbientListening(); updateAmbientToggleUI(); document.removeEventListener('click', arm); };
     document.addEventListener('click', arm, { once:true });
   }
@@ -773,33 +879,59 @@ window.toggleAmbientListening = function(){
 let currentAudio = new Audio();
 let currentAudioUrl = null;
 let audioUnlocked = false;
+let audioUnlocking = false;
+const audioUnlockEvents = ['click', 'pointerdown', 'touchstart', 'keydown'];
+// A real, silent WAV lets the browser authorize this persistent Audio element
+// during a user gesture. Calling play() with an empty src always rejects.
+const silentAudioSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
 
-function unlockAudio() {
-  if (audioUnlocked) return;
+function removeAudioUnlockListeners() {
+  audioUnlockEvents.forEach((eventName) => {
+    window.removeEventListener(eventName, unlockAudio);
+  });
+}
 
-  const unlockPromise = currentAudio.play();
+async function unlockAudio() {
+  if (audioUnlocked || audioUnlocking) return;
+  audioUnlocking = true;
 
-  if (unlockPromise && typeof unlockPromise.then === 'function') {
-    unlockPromise
-      .then(() => {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        audioUnlocked = true;
-      })
-      .catch(() => {});
+  try {
+    currentAudio.src = silentAudioSrc;
+    currentAudio.currentTime = 0;
+    await currentAudio.play();
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
+    audioUnlocked = true;
+    removeAudioUnlockListeners();
+  } catch (error) {
+    // Keep the listeners installed so the next genuine gesture can retry.
+    console.warn('[speak] Audio unlock was blocked; waiting for another gesture.', error);
+  } finally {
+    audioUnlocking = false;
   }
 }
 
-['click', 'pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
-  window.addEventListener(eventName, unlockAudio, {
-    once: true,
-    passive: true
-  });
+audioUnlockEvents.forEach((eventName) => {
+  window.addEventListener(eventName, unlockAudio, { passive: true });
 });
 
 let voiceMeter = null; // Lola's playback → orb resonance
 
+// Revoking a blob URL while the browser still has an in-flight fetch for
+// it (common: speak() called again before the previous utterance finished
+// loading/playing) produces net::ERR_FILE_NOT_FOUND and silently kills
+// audio — text still shows fine since that's a separate synchronous
+// update, so it LOOKS like "she only replies by text." A short delay
+// gives any in-flight load a chance to actually resolve first.
+function revokeUrlSafely(url){
+  if(!url) return;
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} }, 400);
+}
+
 function stopSpeaking(){
+  if(window.LolaResonance){ window.LolaResonance.cancel('stopped'); return; }
   if(voiceMeter){
     voiceMeter.stop();
     voiceMeter = null;
@@ -815,7 +947,7 @@ function stopSpeaking(){
   }
 
   if(currentAudioUrl){
-    URL.revokeObjectURL(currentAudioUrl);
+    revokeUrlSafely(currentAudioUrl);
     currentAudioUrl = null;
   }
 
@@ -825,6 +957,9 @@ function stopSpeaking(){
 }
 
 async function speak(text){
+  // ONE voice engine: when the resonance runtime is loaded, all chat
+  // replies speak through Lola's canonical ElevenLabs voice there.
+  if(window.LolaResonance) return window.LolaResonance.speak(text);
   stopSpeaking();
   const clean = text.replace(/\*([^*]+)\*/g,'$1').replace(/https?:\/\/[^\s]+/g,'').trim().slice(0, 2500);
   if(!clean) return;
@@ -842,37 +977,46 @@ async function speak(text){
     const blob = await res.blob();
 
     if(currentAudioUrl){
-      URL.revokeObjectURL(currentAudioUrl);
+      revokeUrlSafely(currentAudioUrl);
     }
 
     currentAudioUrl = URL.createObjectURL(blob);
+    const cleanup = ()=>{ if(currentAudioUrl){ revokeUrlSafely(currentAudioUrl); currentAudioUrl = null; } if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
+    currentAudio.onended = cleanup;
+    currentAudio.onerror = cleanup;
     currentAudio.src = currentAudioUrl;
     currentAudio.currentTime = 0;
     onStart();
     // Resonance OUT: her actual voice amplitude radiates through the
     // neural orb as she speaks — the orb IS her voice made visible.
     if(window.LolaOrb) voiceMeter = LolaOrb.attachAudioElement(orb, currentAudio);
-    const cleanup = ()=>{ URL.revokeObjectURL(url); if(voiceMeter){ voiceMeter.stop(); voiceMeter = null; } onEnd(); };
-    currentAudio.onended = cleanup;
-    currentAudio.onerror = cleanup;
-    await currentAudio.play();
+    try{
+      await currentAudio.play();
+      audioUnlocked = true;
+      removeAudioUnlockListeners();
+    }catch(playbackError){
+      if(playbackError && playbackError.name === 'NotAllowedError'){
+        audioUnlocked = false;
+        audioUnlockEvents.forEach((eventName) => {
+          window.addEventListener(eventName, unlockAudio, { passive: true });
+        });
+      }
+      throw playbackError;
+    }
   }catch(e){
-    // Fallback: the browser's built-in voice, only if ElevenLabs is
-    // unreachable or unconfigured — keeps the dashboard from going silent.
-    console.error('[speak] ElevenLabs failed, falling back to browser voice:', e);
-    if(!window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(clean);
-    window._ttsU = u;
-    u.rate = 0.94; u.pitch = 1.06; u.volume = 0.92;
-    const voices = speechSynthesis.getVoices();
-    const pref = [TENANT.persona.voice,'Samantha','Karen','Moira','Google UK English Female','Microsoft Zira'];
-    for(const n of pref){ const v=voices.find(x=>x.name.includes(n)); if(v){ u.voice=v; break; } }
-    onStart();
-    u.onend = onEnd;
-    u.onerror = onEnd;
-    speechSynthesis.speak(u);
+    // ONE LOLA, ONE VOICE — never a substitute. If her canonical
+    // ElevenLabs voice can't be produced, Lola stays silent (and the orb
+    // returns to its resting state) rather than speaking in a generic
+    // browser voice. A silent Lola is honest; a fake voice is not her.
+    console.error('[speak] Lola voice unavailable — staying silent (no fallback voice):', e);
+    onEnd();
   }
 }
+
+// Expose the canonical-voice speak to other scripts (e.g. dashboard's
+// playBriefing) so they route through Lola's ElevenLabs voice — never a
+// browser-TTS substitute.
+window.speak = speak;
 
 /* ─────────────────────────────────────────────────────────────
    KEYBOARD + INPUT WIRING

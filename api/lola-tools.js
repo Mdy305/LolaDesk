@@ -30,14 +30,26 @@ import {
   getTenantByPhone, getTenantBySlug, upsertClient, getClientByPhone,
   logUsage, getOrStartConversation, getTenantIntegrations, db
 } from './lib/db.js';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
 
-// Resolve which salon this call is for
+// Resolve which salon this call is for. When a dialed `to` number is present
+// (a Telnyx-originated call), resolution goes through the STRICT inbound
+// resolver — the same gate every other inbound transport uses — so an
+// unrecognized number can never slide into the demo salon's data. The
+// legacy getTenantByPhone path is kept only for callers that pass no
+// number at all (e.g. dashboard/slug-driven calls).
 async function resolveTenant(body){
   if(body.tenant) return getTenantBySlug(body.tenant);
   const to = body.to || body.To || body.called_number || '';
+  const phone = to ? String(to).replace(/\D/g, '') : '';
+  if(phone.length >= 8){
+    const routing = await resolveInboundTenant({ to });
+    if(routing.status === 'resolved') return routing.tenant;
+    return null; // hard gate: unrouted number → no tenant, never demo data
+  }
   return getTenantByPhone(to);
 }
 
@@ -47,6 +59,104 @@ function findService(tenant, query){
   return (tenant.services||[]).find(s =>
     s.name.toLowerCase().includes(q) || q.includes(s.name.toLowerCase())
   );
+}
+
+// Resolve a service by its canonical services-table id (the blueprint's
+// detect_upsell_opportunity(serviceId, …) signature). Falls back to the
+// tenant.services jsonb when the services table has no row (legacy tenants).
+async function findServiceById(tenant, id){
+  const c = db();
+  if(!c || !tenant?.id || !id) return null;
+  const { data } = await c.from('services')
+    .select('id,name,price,duration_minutes').eq('tenant_id', tenant.id).eq('id', id)
+    .maybeSingle().then(r => r).catch(() => ({ data: null }));
+  if(data) return { id: data.id, name: data.name, price: data.price, duration: data.duration_minutes };
+  const tsvc = (tenant.services||[]).find(s => String(s.id||'') === String(id));
+  return tsvc || null;
+}
+
+// ── SKILL: detect_upsell_opportunity (the Yield Engine's call-time arm) ──
+// Deterministic, high-margin pairing: match the booked/known service to a
+// complementary add-on and gate it by the caller's spend tier, so Lola can
+// grow the ticket on every call — "Since you're coming in for a balayage,
+// I'd add our restorative gloss…". No client identity is fine (pairing is
+// service-driven); no base service is a clean no-op.
+const UPSELL_PAIRS = [
+  { match: /balayage|highlight|color|gloss|toner|root/i, addons: [
+    { name: 'Restorative Gloss', price: 60, vip: false, pitch: 'it makes the color pop and keeps the tone fresh twice as long' },
+    { name: 'Bond-Building Treatment', price: 45, vip: true, pitch: 'it protects your hair during the lightening process' }
+  ] },
+  { match: /cut|trim|shape/i, addons: [
+    { name: 'Signature Blowout', price: 40, vip: false, pitch: 'it finishes the cut with a bouncy, salon-perfect style' },
+    { name: 'Scalp Ritual', price: 35, vip: true, pitch: 'it relaxes the scalp and stimulates healthy growth' }
+  ] },
+  { match: /botox|keratin|smooth|relax/i, addons: [
+    { name: 'Maintenance Gloss', price: 45, vip: false, pitch: 'it stretches your smoothing results by weeks' },
+    { name: 'Leave-In Repair Serum', price: 28, vip: true, pitch: 'it defends the hair from heat and humidity daily' }
+  ] },
+  { match: /extension/i, addons: [
+    { name: 'Extension Care Kit', price: 55, vip: false, pitch: 'it keeps the bonds secure and the hair silky between visits' },
+    { name: 'Bond Touch-Up', price: 40, vip: true, pitch: 'it refreshes the attachment points so everything stays invisible' }
+  ] },
+  { match: /treatment|repair|condition|mask/i, addons: [
+    { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it doubles the repair power of the treatment' },
+    { name: 'Scalp Therapy', price: 45, vip: true, pitch: 'it targets the root cause of stress-related thinning' }
+  ] },
+  { match: /blowout|style|updo/i, addons: [
+    { name: 'Finishing Product Set', price: 30, vip: false, pitch: 'it recreates the look at home in minutes' },
+    { name: 'Luxury Shine Mist', price: 25, vip: true, pitch: 'it adds that red-carpet reflection' }
+  ] }
+];
+const DEFAULT_ADDONS = [
+  { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it leaves the hair feeling incredible' }
+];
+
+function spendTier(client, ltv){
+  if(client?.is_vip || String(client?.status||'').toLowerCase() === 'vip') return 'vip';
+  if(ltv != null && Number(ltv) >= 1000) return 'vip';
+  if(ltv != null && Number(ltv) > 0) return 'regular';
+  return 'new';
+}
+
+async function detect_upsell_opportunity(tenant, body){
+  const { service, service_id, client_phone, from, client_id, client_ltv } = body || {};
+  // 1. Resolve the booked/known base service (id first, then name).
+  let base = service_id ? await findServiceById(tenant, service_id) : null;
+  if(!base && service) base = findService(tenant, service);
+  if(!base){
+    return {
+      speak: 'I can pair the perfect add-on once I know which service you are booking. Which one were you thinking?',
+      base_service: null, recommended: [], reason: 'service_not_found'
+    };
+  }
+
+  // 2. Resolve the caller's spend tier (explicit LTV, else the client row).
+  let ltv = null;
+  if(client_ltv != null && !Number.isNaN(Number(client_ltv))) ltv = Number(client_ltv);
+  let client = null;
+  const phone = client_phone || from;
+  if(phone){
+    try{ client = await getClientByPhone(tenant.id, phone); }catch{}
+    if(client && ltv == null) ltv = Number(client.lifetime_value || 0);
+  }
+  const tier = spendTier(client, ltv);
+
+  // 3. Deterministic pairing, gated by tier.
+  const name = String(base.name || '').toLowerCase();
+  const pair = UPSELL_PAIRS.find(p => p.match.test(name)) || null;
+  const addons = (pair?.addons || DEFAULT_ADDONS);
+  const recommended = addons.filter(a => (a.vip ? tier === 'vip' : true)).slice(0, 2);
+
+  // 4. Speak it the way the blueprint's pitch example reads.
+  let speak;
+  if(recommended.length){
+    const top = recommended[0];
+    speak = `Since you're coming in for ${base.name}, I'd suggest adding our ${top.name} for $${top.price} — ${top.pitch}. Should I add that on?`;
+  } else {
+    speak = `I don't have an add-on pairing for ${base.name} yet, but I can recommend something the moment you pick your time.`;
+  }
+  try{ await logUsage(tenant.id, 'upsell_detected', 1, { service: base.name, tier, client_id: client?.id || null }); }catch{}
+  return { speak, base_service: base.name, tier, client_known: !!client, ltv: ltv ?? null, recommended };
 }
 
 // ── SKILL: list everything offered ──
@@ -221,17 +331,17 @@ async function confirm_booking(tenant, { client_phone, client_name }){
   if(!client) return { speak:'I could not find that booking yet. Share the phone number on the appointment.' };
   const { data: rows } = await c
     .from('bookings')
-    .select('*')
+    .select('id,tenant_id,client_id,service_id,staff_id,start_time,end_time,status,total_amount,created_at,updated_at,location_id,source,conversation_id,external_id,external_provider,hold_id,deposit_status,confirmation_code,starts_at:start_time,service:services(name)')
     .eq('tenant_id', tenant.id)
     .eq('client_id', client.id)
-    .gte('starts_at', new Date().toISOString())
+    .gte('start_time', new Date().toISOString())
     .neq('status', 'cancelled')
-    .order('starts_at', { ascending: true })
+    .order('start_time', { ascending: true })
     .limit(1);
   const next = rows?.[0];
   if(!next) return { speak:`I do not see an upcoming booking for ${client.name || 'that client'}. Want me to book one now?`, confirmed:false };
-  const when = new Date(next.starts_at).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  return { speak:`Yes - you are confirmed for ${next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
+  const when = new Date(next.starts_at || next.start_time).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  return { speak:`Yes - you are confirmed for ${next.service?.name || next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
 }
 
 async function reschedule_appointment(tenant, { booking_id, client_phone, new_date, new_time }){
@@ -242,12 +352,12 @@ async function reschedule_appointment(tenant, { booking_id, client_phone, new_da
     const client = await getClientByPhone(tenant.id, client_phone);
     if(client){
       const { data } = await c.from('bookings')
-        .select('id, starts_at')
+        .select('id')
         .eq('tenant_id', tenant.id)
         .eq('client_id', client.id)
-        .gte('starts_at', new Date().toISOString())
+        .gte('start_time', new Date().toISOString())
         .neq('status','cancelled')
-        .order('starts_at', { ascending: true })
+        .order('start_time', { ascending: true })
         .limit(1);
       bookingId = data?.[0]?.id;
     }
@@ -279,9 +389,9 @@ async function cancel_appointment(tenant, { booking_id, client_phone }){
         .select('id')
         .eq('tenant_id', tenant.id)
         .eq('client_id', client.id)
-        .gte('starts_at', new Date().toISOString())
+        .gte('start_time', new Date().toISOString())
         .neq('status','cancelled')
-        .order('starts_at', { ascending: true })
+        .order('start_time', { ascending: true })
         .limit(1);
       bookingId = data?.[0]?.id;
     }
@@ -321,6 +431,17 @@ async function escalate(tenant, { message, client_phone, client_name }){
   return { speak: `I've made a note for the team and they'll follow up with you personally. Is there anything else I can help with right now?` };
 }
 
+// Telnyx's LolaBrain tool is named "take-message" (its schema sends
+// message_summary / caller_name / callback_number) — map it onto the escalate
+// skill so a message left in voice lands in the same escalation log.
+async function takeMessage(tenant, args){
+  return escalate(tenant, {
+    message: args?.message_summary || args?.message || '',
+    client_name: args?.caller_name || args?.client_name || '',
+    client_phone: args?.callback_number || args?.client_phone || ''
+  });
+}
+
 function to24(t){
   // accepts "2:00 PM" or "14:00" -> "14:00:00"
   if(/^\d{1,2}:\d{2}$/.test(t)) return t+':00';
@@ -334,8 +455,11 @@ function to24(t){
 export const SKILLS = {
   list_services, get_pricing, recommend_service,
   check_availability, book_appointment, capture_lead,
-  handle_recovery, escalate,
-  confirm_booking, reschedule_appointment, cancel_appointment
+  handle_recovery, escalate, takeMessage,
+  'take-message': takeMessage, // Telnyx's LolaBrain tool name
+  'take_message': takeMessage, // older alias seen on some shared tools
+  confirm_booking, reschedule_appointment, cancel_appointment,
+  detect_upsell_opportunity // Yield Engine: pair add-ons to the booked service by spend tier
 };
 
 export default async function handler(req, res){
@@ -347,7 +471,11 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
-    const tool = body.tool || body.function || body.skill;
+    // Tool name may arrive as ?tool=… on the URL (Telnyx configures each
+    // webhook tool with its own URL — pointing them all at this endpoint with
+    // ?tool=<name> keeps one dispatched handler) OR in the body (function,
+    // function_name, skill) for callers that send it that way.
+    const tool = req.query?.tool || body.tool || body.function || body.function_name || body.skill;
     
     // Special Memory Injection Skill requested by Telnyx to start a call
     if (tool === 'inject_memory') {

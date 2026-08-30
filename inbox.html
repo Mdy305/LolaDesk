@@ -94,17 +94,44 @@ function renderConv(){
     + `<div class="auto-note">Lola is handling this conversation automatically</div>`;
   const m = document.getElementById('convMsgs'); m.scrollTop = m.scrollHeight;
 }
-function sendReply(){
+function token(){ try{ return window.LolaAuth?.token || localStorage.getItem('loladesk_token') || ''; }catch(e){ return ''; } }
+async function sendReply(){
   const inp = document.getElementById('reply');
-  if(!inp.value.trim()) return;
-  THREADS[active].msgs.push(['us', inp.value.trim(), 'now', false]);
+  const text = inp.value.trim();
+  if(!text) return;
+  const t = THREADS[active];
+  if(!t) return;
+
+  const btn = document.querySelector('.send');
+  inp.disabled = true; if(btn) btn.disabled = true;
+
+  // Optimistic UI: show it immediately, but mark as sending.
+  const msg = ['us', text, 'Sending…', false];
+  t.msgs.push(msg);
   inp.value=''; renderConv();
+
+  try{
+    const r = await fetch('/api/inbox-reply', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token() },
+      body: JSON.stringify({ conversation_id: t.id, text })
+    });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok || !data.ok) throw new Error(data.error || 'Could not send');
+    msg[2] = 'now';
+    renderConv();
+  }catch(e){
+    msg[2] = 'Failed to send — ' + (e.message||'try again');
+    renderConv();
+  }finally{
+    inp.disabled = false; if(btn) btn.disabled = false; inp.focus();
+  }
 }
 document.getElementById('reply').addEventListener('keydown',e=>{ if(e.key==='Enter') sendReply(); });
 (async ()=>{
   const data = await LolaData.load('inbox');
   const list = (data && data.threads) || [];
-  THREADS = list.map(t=>({ name:t.who||'Client', ch:t.channel||'sms', time:t.when||'', preview:t.preview||'', img:'', msgs: t.preview?[['them',t.preview,t.when||'',false]]:[] }));
+  THREADS = list.map(t=>({ id:t.id, name:t.who||'Client', ch:t.channel||'sms', time:t.when||'', preview:t.preview||'', img:'', msgs: t.preview?[['them',t.preview,t.when||'',false]]:[] }));
   if(!THREADS.length){ document.getElementById('threads').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No messages yet.</div>'; }
   else { renderThreads(); renderConv(); }
 })();

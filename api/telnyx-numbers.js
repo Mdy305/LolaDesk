@@ -1,6 +1,7 @@
 import { db, updateTenantFields, logUsage } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { getCanonicalVoiceConnectionId } from './lib/telnyx-provision.js';
 
 /**
  * /api/telnyx-numbers — Search & buy phone numbers
@@ -85,11 +86,13 @@ async function orderNumber({ phone_number }){
 // ── Attach the number to voice (TeXML app) + messaging profile ──
 async function provisionNumber({ phone_number_id }){
   const results = {};
-  // attach voice connection (TeXML app)
-  if(process.env.TELNYX_VOICE_APP_ID){
+  // attach voice connection — prefer the LolaBrain assistant's TeXML app
+  // (the AI voice path), falling back to TELNYX_VOICE_APP_ID.
+  const voiceAppId = await getCanonicalVoiceConnectionId();
+  if(voiceAppId){
     const r = await fetch(`${TELNYX}/phone_numbers/${phone_number_id}/voice`, {
       method:'PATCH', headers: authHeaders(),
-      body: JSON.stringify({ connection_id: process.env.TELNYX_VOICE_APP_ID })
+      body: JSON.stringify({ connection_id: voiceAppId })
     });
     results.voice = await r.json();
   }

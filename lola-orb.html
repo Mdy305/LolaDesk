@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lola · Voice Concierge</title>
+<style>
+  :root {
+    --lime:  #D4FF00;
+    --lime2: #CCFF00;
+    --lime3: #70FF00;
+    --ink:   #0a0d05;
+    --muted: #9aa388;
+    --line:  #1c2212;
+    --panel: #0d1206;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #000; color: #e8f2d0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ── The orb canvas: fixed true-black stage ─────────────────────── */
+  #orb {
+    position: fixed;
+    inset: 0;
+    display: block;
+    z-index: 0;
+  }
+
+  /* ── Hero overlays the orb ──────────────────────────────────────── */
+  .hero {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    pointer-events: none; /* clicks pass through except controls */
+  }
+  .hero h1 {
+    margin: 0;
+    font-size: clamp(48px, 9vw, 120px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(180deg, #F2FFB0 0%, var(--lime) 45%, var(--lime3) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 24px rgba(212,255,0,0.35));
+  }
+  .oneliner {
+    margin: 18px 0 8px;
+    font-size: clamp(15px, 2.4vw, 22px);
+    color: #cfdcb0;
+  }
+  .oneliner em {
+    font-style: normal;
+    color: var(--lime);
+    font-weight: 600;
+  }
+  .sub {
+    margin: 0 0 28px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .controls {
+    pointer-events: auto;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0a0d05;
+    background: linear-gradient(180deg, var(--lime), var(--lime3));
+    border: none;
+    border-radius: 999px;
+    padding: 12px 22px;
+    cursor: pointer;
+    box-shadow: 0 0 22px rgba(204,255,0,0.35);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(212,255,0,0.55); }
+  button.ghost {
+    background: rgba(212,255,0,0.08);
+    color: var(--lime);
+    border: 1px solid rgba(212,255,0,0.35);
+    box-shadow: none;
+  }
+  .status {
+    pointer-events: auto;
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--lime3);
+    min-height: 18px;
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    animation: bob 2s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { transform: translate(-50%,0); } 50% { transform: translate(-50%,6px); } }
+
+  /* ── Copy sections over true black ──────────────────────────────── */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 40px 24px 120px;
+  }
+  section { margin: 64px 0; }
+  h2 {
+    font-size: 13px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--lime);
+    margin: 0 0 18px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 26px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 14px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child th, tr:last-child td { border-bottom: none; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; width: 160px; }
+  td.legacy { color: #88927a; }
+  td.lola { color: #e8f2d0; }
+  td.lola strong { color: var(--lime); }
+  .pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+  .pillar { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .pillar h3 { margin: 0 0 8px; font-size: 15px; color: var(--lime); }
+  .pillar p { margin: 0; font-size: 13.5px; line-height: 1.55; color: #cfdcb0; }
+  .spec { display: flex; gap: 16px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .spec:last-child { border-bottom: none; }
+  .swatches { display: flex; gap: 6px; margin-top: 6px; }
+  .swatch { width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.14); }
+  .spec h3 { margin: 0 0 6px; font-size: 15px; color: #e8f2d0; }
+  .spec p { margin: 0; font-size: 13.5px; line-height: 1.55; color: #9aa388; }
+  .spec code { color: var(--lime3); }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
+</style>
+</head>
+<body>
+  <canvas id="orb" aria-hidden="true"></canvas>
+
+  <div class="hero">
+    <h1>Lola</h1>
+    <p class="oneliner">Jarvis talks. Alexa answers. <em>Lola executes.</em></p>
+    <p class="sub">An autonomous, ultra-low-latency voice concierge — engineered for human cadence and real-time execution.</p>
+    <div class="controls">
+      <button id="mic">Activate microphone</button>
+      <button id="demo" class="ghost">Simulate a call</button>
+    </div>
+    <p class="status" id="status">Calm, breathing — speak to make her react.</p>
+    <div class="scroll-hint">Scroll</div>
+  </div>
+
+  <main>
+    <section>
+      <h2>Why Lola beats Alexa &amp; legacy voice bots</h2>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Dimension</th><th>Alexa / Legacy Bots</th><th>Lola</th></tr>
+          </thead>
+          <tbody>
+            <tr><th>Response Latency</th><td class="legacy">1.5s – 3.0s robotic pauses, unnatural turn-taking</td><td class="lola"><strong>Sub-500ms</strong> real-time conversational streaming</td></tr>
+            <tr><th>Domain Mastery</th><td class="legacy">Surface-level web searches, basic commands</td><td class="lola">Deep vertical intelligence — <strong>gap scheduling, tiered pricing, service dependencies</strong></td></tr>
+            <tr><th>Voice &amp; Delivery</th><td class="legacy">Monotone, synthetic, repetitive</td><td class="lola">Dynamic ElevenLabs <strong>acoustic realism</strong>, natural cadence, warm tone</td></tr>
+            <tr><th>Action Capacity</th><td class="legacy">Passive query answering</td><td class="lola"><strong>Active transaction execution</strong> — locks slots, captures deposits, checks CRM, routes SMS</td></tr>
+            <tr><th>Contextual Memory</th><td class="legacy">Forgets prior turns; isolated sessions</td><td class="lola"><strong>Multi-tenant caller awareness</strong> — recognizes repeat VIPs, stylist preferences, past history</td></tr>
+            <tr><th>Barge-In Handling</th><td class="legacy">Gets confused or talks over the user</td><td class="lola">Instant <strong>sub-50ms audio flush</strong> on user interruption</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>The 4 pillars of Lola's persona</h2>
+      <div class="pillars">
+        <div class="pillar"><h3>1 · Polished, High-Touch Concierge</h3><p>Speaks like a top-tier front-desk director at a luxury boutique — calm, confident, articulate, effortlessly efficient. Never robotic clichés like “press 1.”</p></div>
+        <div class="pillar"><h3>2 · Autonomous Revenue Operator</h3><p>Handles gap scheduling, resolves conflicts in real time, and dispatches secure deposit and intake links via SMS — while still on the call.</p></div>
+        <div class="pillar"><h3>3 · Adaptive Emotional Intelligence</h3><p>Detects tone, pace and hesitation. Rushes the flow for callers in a hurry; slows down and explains for complex services.</p></div>
+        <div class="pillar"><h3>4 · Zero-Friction Hand-off</h3><p>Knows when to escalate — warm-transfers instantly with complete context already logged on the dashboard.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Engineering the presence</h2>
+      <div class="panel">
+        <div class="spec">
+          <div>
+            <h3>True Acoustic Reactivity</h3>
+            <p>Connects directly to the frequency amplitude of ElevenLabs / Telnyx incoming audio buffers — expanding dynamically when she speaks and returning to a calm, breathing organic state when listening.</p>
+          </div>
+        </div>
+        <div class="spec">
+          <div>
+            <h3>Apple Retina Precision</h3>
+            <p>Auto-adjusts for <code>devicePixelRatio</code> with zero pixelation or blurry edges on OLED displays.</p>
+          </div>
+        </div>
+        <div class="spec">
+          <div>
+            <h3>Electric Neon-Lime Gradient Spectrum</h3>
+            <p>Calibrated hues with layered dynamic bloom and radial glow for an ultra-luxury, high-contrast aesthetic against true black.</p>
+            <div class="swatches">
+              <span class="swatch" style="background:#D4FF00"></span>
+              <span class="swatch" style="background:#CCFF00"></span>
+              <span class="swatch" style="background:#70FF00"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>Lola · LolaDesk voice concierge</footer>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('orb');
+  var ctx = canvas.getContext('2d');
+  var statusEl = document.getElementById('status');
+
+  // ── Retina stage: canvas sized in device pixels, drawn in CSS px ──
+  var W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.max(1, window.devicePixelRatio || 1);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // crisp on OLED, no blur
+  }
+  window.addEventListener('resize', resize);
+
+  // ── Audio: live mic → AnalyserNode → amplitude/frequency ──────────
+  var audioCtx = null, analyser = null, freqData = null;
+  var micActive = false, simMode = false;
+
+  function ensureCtx() {
+    if (!audioCtx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  function enableMic() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Microphone unavailable in this browser — use “Simulate a call.”');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var ac = ensureCtx();
+      if (!ac) { setStatus('Web Audio not supported.'); return; }
+      var src = ac.createMediaStreamSource(stream);
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.82;
+      src.connect(analyser);
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      micActive = true;
+      simMode = false;
+      setStatus('Listening — speak and Lola reacts in real time.');
+    }).catch(function () {
+      setStatus('Microphone blocked — running in calm breathing mode.');
+      micActive = false;
+    });
+  }
+
+  function simulateCall() {
+    simMode = !simMode;
+    micActive = false;
+    setStatus(simMode
+      ? 'Simulating a live call — watch the acoustic reactivity.'
+      : 'Calm, breathing — speak to make her react.');
+  }
+
+  document.getElementById('mic').addEventListener('click', enableMic);
+  document.getElementById('demo').addEventListener('click', simulateCall);
+
+  // Speech-band energy (≈300–3400 Hz) for the orb's expansion, plus the
+  // full spectrum for the frequency ring.
+  function readAudio() {
+    if (micActive && analyser && freqData) {
+      analyser.getByteFrequencyData(freqData);
+      var sr = audioCtx.sampleRate || 48000;
+      var nyq = sr / 2;
+      var lo = Math.max(0, Math.floor(300 / nyq * freqData.length));
+      var hi = Math.min(freqData.length - 1, Math.floor(3400 / nyq * freqData.length));
+      var sum = 0;
+      for (var i = lo; i <= hi; i++) sum += freqData[i];
+      return { energy: sum / ((hi - lo + 1) * 255), spectrum: freqData };
+    }
+    if (simMode) {
+      var t = performance.now() / 1000;
+      // layered LFOs synthesize the cadence of a spoken turn
+      var burst = Math.pow(Math.max(0, Math.sin(t * 1.35)), 8);
+      var chatter = 0.5 + 0.5 * Math.sin(t * 9.1 + Math.sin(t * 3.7));
+      var gate = 0.5 + 0.5 * Math.sin(t * 2.3);
+      return { energy: Math.min(1, 0.55 * chatter * burst + 0.12 * gate), spectrum: null };
+    }
+    return { energy: 0, spectrum: null };
+  }
+
+  // Fast attack, slow release — speech pops, then eases back to breathing.
+  var energySmooth = 0;
+  function smoothEnergy(target, dt) {
+    var k = 1 - Math.pow(target > energySmooth ? 0.55 : 0.06, dt * 60);
+    energySmooth += (target - energySmooth) * k;
+    if (energySmooth < 0.0005 && target === 0) energySmooth = 0;
+    return energySmooth;
+  }
+
+  // ── Rendering ─────────────────────────────────────────────────────
+  function glow(x, y, r, stops) {
+    var g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    for (var i = 0; i < stops.length; i++) g.addColorStop(stops[i][0], stops[i][1]);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawRing(cx, cy, r, energy, spectrum, now) {
+    var segs = 72;
+    var hasAudio = micActive && spectrum;
+    ctx.lineCap = 'round';
+    for (var i = 0; i < segs; i++) {
+      var a0 = i / segs * Math.PI * 2;
+      var a1 = a0 + (Math.PI * 2 / segs) * 0.72;
+      var v;
+      if (hasAudio) {
+        var bin = Math.floor(i / segs * spectrum.length);
+        v = spectrum[bin] / 255;
+      } else {
+        // calm shimmer when idle / simulated
+        v = 0.18 + 0.16 * Math.sin(now / 1000 * 2 + i * 0.5) + 0.12 * energy;
+        v = Math.max(0.05, Math.min(1, v));
+      }
+      var rr = r * 1.28 + v * r * 0.95;
+      ctx.strokeStyle = 'rgba(212,255,0,' + (0.10 + v * 0.5).toFixed(3) + ')';
+      ctx.lineWidth = 1 + v * 2.6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr, a0, a1);
+      ctx.stroke();
+    }
+  }
+
+  var last = performance.now();
+  function frame(now) {
+    if (window.devicePixelRatio !== DPR || window.innerWidth !== W || window.innerHeight !== H) resize();
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    var cx = W / 2, cy = H / 2;
+    var base = Math.min(W, H) * 0.20;
+
+    // calm, breathing organic state (always present)
+    var breath = 1 + 0.035 * Math.sin(now / 1000 * 1.6) + 0.015 * Math.sin(now / 1000 * 0.53);
+    var audio = readAudio();
+    var e = smoothEnergy(audio.energy, dt);
+    var r = base * breath * (1 + e * 0.38);
+
+    // true black
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // additive neon-lime bloom (layered)
+    ctx.globalCompositeOperation = 'lighter';
+
+    // outermost atmospheric bloom
+    glow(cx, cy, r * 3.1, [
+      [0, 'rgba(112,255,0,0.16)'],
+      [0.4, 'rgba(112,255,0,0.05)'],
+      [1, 'rgba(0,0,0,0)']
+    ]);
+
+    // frequency halo ring
+    drawRing(cx, cy, r, e, audio.spectrum, now);
+
+    // mid halo
+    glow(cx, cy, r * 1.7, [
+      [0, 'rgba(204,255,0,0.20)'],
+      [1, 'rgba(0,0,0,0)']
+    ]);
+
+    // core orb — #D4FF00 → #CCFF00 → #70FF00
+    glow(cx, cy, r, [
+      [0, 'rgba(242,255,176,0.95)'],
+      [0.35, 'rgba(212,255,0,0.85)'],
+      [0.72, 'rgba(112,255,0,0.42)'],
+      [1, 'rgba(112,255,0,0)']
+    ]);
+
+    // specular highlight
+    glow(cx - r * 0.28, cy - r * 0.32, r * 0.42, [
+      [0, 'rgba(255,255,230,0.5)'],
+      [1, 'rgba(255,255,255,0)']
+    ]);
+
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

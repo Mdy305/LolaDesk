@@ -12,7 +12,15 @@
  *   TELNYX_VOICE_ID (e.g., ElevenLabs ID hosted on Telnyx)
  */
 
+import { bearer, getUserFromToken } from './lib/auth.js';
+
 const TELNYX = 'https://api.telnyx.com/v2';
+
+function isAdmin(email){
+  const list = String(process.env.ADMIN_EMAILS || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return !!email && list.includes(String(email).toLowerCase());
+}
 
 function authHeaders(){
   return {
@@ -22,7 +30,11 @@ function authHeaders(){
 }
 
 const DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
-const DEFAULT_VOICE = process.env.TELNYX_VOICE_ID || 'Polly.Joanna-Neural';
+// Lola's ONE canonical voice — the exact voice the owner created.
+// ELEVENLABS_VOICE_ID is authoritative; TELNYX_VOICE_ID is a legacy alias.
+// Never default to a different (e.g. Polly) voice: if no canonical voice is
+// configured, provisioning must fail loudly rather than ship a modified one.
+const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOICE_ID || '';
 
 function buildAgents(tenant){
   const t = tenant || {};
@@ -88,10 +100,23 @@ export default async function handler(req, res){
     return res.status(500).json({ error: 'Missing TELNYX_API_KEY env var' });
   }
 
+  // Provisions/lists the single shared Telnyx AI Assistant that every
+  // tenant's calls route through — an operator-only setup tool, never
+  // a per-tenant resource. Previously had no auth check at all: anyone
+  // who found this URL could create real Telnyx assistants (with
+  // whatever `tenant` object they put in the request body) or list
+  // the account's existing ones, no login required.
+  const user = await getUserFromToken(bearer(req));
+  if(!user) return res.status(401).json({ error: 'Not signed in' });
+  if(!isAdmin(user.email)) return res.status(403).json({ error: 'Not authorized' });
+
   try{
     if(req.method === 'GET'){
-      const data = await listAgents();
-      return res.status(200).json({ ok:true, assistants: data });
+      const raw = await listAgents();
+      // Normalize to a clean array so the Command UI can render directly
+      // without reaching into the Telnyx `{ data, meta }` envelope.
+      const assistants = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+      return res.status(200).json({ ok:true, assistants, meta: raw?.meta || null });
     }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});

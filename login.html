@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Sign in — LolaDesk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="canonical" href="https://www.loladesk.com/login">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -37,6 +38,7 @@ a{color:inherit;text-decoration:none}
 .voice-orb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:500;letter-spacing:.26em;text-indent:.26em}
 
 .voice-title{font-family:var(--ff-serif);font-size:30px;font-style:italic;font-weight:300;margin-bottom:8px}
+.voice-tagline{font-size:11px;letter-spacing:.08em;color:var(--pink2);margin-bottom:10px;font-weight:500}
 .voice-state{font-size:13px;color:var(--text3);min-height:20px;margin-bottom:8px;transition:color .3s}
 .voice-state.listening{color:var(--pink2)}
 .voice-transcript{font-size:13px;font-style:italic;color:var(--pink2);min-height:18px;margin-bottom:24px}
@@ -51,7 +53,7 @@ a{color:inherit;text-decoration:none}
 .input::placeholder{color:var(--text3)}
 
 .btn{width:100%;padding:14px;border-radius:100px;font-size:14px;font-weight:600;transition:all .2s;margin-top:8px}
-.btn-primary{background:var(--pink);color:#fff}
+.btn-primary{background:var(--pink);color:#10140a}
 .btn-primary:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
 .btn-google{background:var(--surface);color:var(--text);border:0.5px solid var(--border2);display:flex;align-items:center;justify-content:center;gap:10px}
 .btn-google:hover{border-color:var(--text3)}
@@ -74,7 +76,7 @@ a{color:inherit;text-decoration:none}
 
 <canvas class="bg-orb" id="bgOrb" width="760" height="760"></canvas>
 
-<a href="landing.html" class="back">
+<a href="/" class="back">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
   Back
 </a>
@@ -89,6 +91,7 @@ a{color:inherit;text-decoration:none}
   </div>
 
   <div class="voice-title">Welcome back.</div>
+  <div class="voice-tagline">Jarvis talks. Alexa answers. Lola executes.</div>
   <div class="voice-state" id="voiceState">Tap Lola and say "sign me in"</div>
   <div class="voice-transcript" id="voiceTranscript"></div>
 
@@ -96,22 +99,23 @@ a{color:inherit;text-decoration:none}
 
   <div class="field">
     <label class="label">Email</label>
-    <input class="input" id="email" type="email" placeholder="you@salon.com" autocomplete="email"/>
+    <input class="input" id="email" type="email" placeholder="you@salon.com" autocomplete="email" required/>
   </div>
   <div class="field">
     <label class="label">Password</label>
-    <input class="input" id="password" type="password" placeholder="••••••••" autocomplete="current-password"/>
+    <input class="input" id="password" type="password" placeholder="••••••••" autocomplete="current-password" required/>
   </div>
   <button class="btn btn-primary" onclick="signIn()">Sign in</button>
-  <button class="btn btn-google" onclick="signIn()">
+  <button class="btn btn-google" onclick="signInWithGoogle()">
     <svg width="17" height="17" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.3h5.9c-.3 1.4-1 2.5-2.2 3.3v2.8h3.6c2.1-1.9 3.2-4.8 3.2-8.2z"/><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.6l-3.6-2.8c-1 .7-2.3 1.1-3.6 1.1-2.8 0-5.1-1.9-6-4.4H2.3v2.9C4.1 20.6 7.8 23 12 23z"/><path fill="#FBBC05" d="M6 14.3c-.2-.7-.4-1.4-.4-2.3s.1-1.6.4-2.3V6.8H2.3C1.5 8.3 1 10.1 1 12s.5 3.7 1.3 5.2L6 14.3z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .5 4.1 1.6l3.1-3.1C17.4 2.1 14.9 1 12 1 7.8 1 4.1 3.4 2.3 6.8L6 9.7c.9-2.5 3.2-4.3 6-4.3z"/></svg>
     Continue with Google
   </button>
 
-  <div class="foot">New here? <a href="onboarding.html">Set up your salon →</a></div>
+  <div class="foot">New here? <a href="/start">Set up your salon →</a></div>
 </div>
 
 <script src="lola-orb.js"></script>
+<script src="lola-alive.js"></script>
 <script>
 // ── orb — the same neural particle Lola as the dashboard ──
 // One Lola everywhere: identical engine, so the Lola an owner meets at
@@ -164,7 +168,8 @@ function makeOrb(canvas, size, getActive){
   })();
 }
 let listening=false;
-makeOrb(document.getElementById('orbCanvas'),180,()=>listening);
+let speaking=false;
+makeOrb(document.getElementById('orbCanvas'),180,()=>speaking?'speaking':(listening?'listening':'ambient'));
 makeOrb(document.getElementById('bgOrb'),760,()=>false);
 
 // ── voice sign-in ──
@@ -178,9 +183,11 @@ function setupSR(){
     document.getElementById('voiceTranscript').textContent=txt;
     if(e.results[e.results.length-1].isFinal){
       stopListening();
-      // Voice biometric sign-in is NOT built yet. Never bypass auth here —
-      // this previously set a demo token and let anyone reach the dashboard.
-      document.getElementById('voiceState').textContent='Voice sign-in is coming soon — please sign in with your email and password below.';
+      // Lola is ALIVE here: she hears, thinks, and answers — via the
+      // open-source neurologic path (browser STT + intent brain + TTS
+      // fallback). Voice NEVER bypasses auth: sign-in still requires the
+      // email/password below.
+      respond(txt.trim());
     }
   };
   recognition.onerror=()=>stopListening();
@@ -200,8 +207,32 @@ function stopListening(){
   document.getElementById('voiceState').classList.remove('listening');
   if(recognition)try{recognition.stop();}catch(e){}
 }
+async function respond(text){
+  const state=document.getElementById('voiceState');
+  const reply = window.LolaAlive ? LolaAlive.reply(text) : '';
+  if(reply) document.getElementById('voiceTranscript').textContent=reply;
+  if(window.LolaAlive){
+    speaking=true;
+    state.textContent='Lola is replying…';
+    const s = await LolaAlive.speak(reply || 'How can I help you today?');
+    speaking=false;
+    state.textContent = s.engine==='elevenlabs' ? 'Tap Lola and speak again' : "Lola's voice is warming up — tap again in a moment";
+  } else {
+    state.textContent='Tap Lola and speak again';
+  }
+}
 window.toggleVoice=()=> listening?stopListening():startListening();
 document.getElementById('voiceOrb').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleVoice();}});
+
+window.signInWithGoogle=()=>{
+  // Preserve the post-login destination across the Google round-trip via
+  // sessionStorage (survives the redirect, keeps redirectTo free of query
+  // params so it matches the allow-listed callback URL exactly).
+  const next = new URLSearchParams(location.search).get('next');
+  try{ if(next) sessionStorage.setItem('loladesk_oauth_next', next); }catch(e){}
+  document.getElementById('voiceState').textContent='Opening Google…';
+  window.location.href='/api/auth/google';
+};
 
 window.signIn=async ()=>{
   const email=(document.getElementById('email').value||'').trim();

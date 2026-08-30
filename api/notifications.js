@@ -1,122 +1,65 @@
 /**
- * /api/notifications — Lola's awareness feed
- * ════════════════════════════════════════════════════════════════
- * The living atom polls this to know what's happening in the business
- * right now, so it can glow on new events and surface insights.
- *
- * Multi-tenant: resolves the salon by ?tenant=slug or ?to=+number.
- * Pulls recent activity from Supabase (bookings, calls, leads, messages)
- * and derives smart "insights" (double-bookings, VIP notes, gaps).
- *
- * GET /api/notifications?tenant=mma   ->  { events:[...], insights:[...], counts:{...} }
- *
- * Degrades gracefully: if Supabase isn't configured, returns a small
- * demo feed so the atom still feels alive.
+ * /api/notifications — authenticated tenant activity feed.
+ * Returns only the current user's tenant activity. Never emits demo business records.
  */
-
-import { db, getTenantBySlug, getTenantByPhone } from './lib/db.js';
+import { db } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 function timeAgo(ts){
   if(!ts) return '';
-  const s = Math.floor((Date.now() - new Date(ts).getTime())/1000);
-  if(s < 60) return 'just now';
-  if(s < 3600) return Math.floor(s/60)+'m ago';
-  if(s < 86400) return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
+  const s=Math.floor((Date.now()-new Date(ts).getTime())/1000);
+  if(s<60)return 'just now'; if(s<3600)return Math.floor(s/60)+'m ago';
+  if(s<86400)return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago';
 }
+function empty(tenant='Your business',extra={}){return {tenant,counts:{bookings:0,leads:0,calls:0},events:[],insights:[],...extra};}
 
-async function resolveTenant(req){
-  // Owner-scoped only: no ?tenant= override, no real-data fallback.
-  try{
-    const u = await getUserFromToken(bearer(req));
-    if(!u?.email) return null;
-    const c = db(); if(!c) return null;
-    const { data } = await c.from('tenants').select('*').eq('owner_email', u.email).limit(1);
-    return (data && data[0]) || null;
-  }catch(e){ return null; }
-}
-
-export default async function handler(req, res){
+export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
-  if(req.method === 'OPTIONS') return res.status(200).end();
-
-  let q = {};
-  try{ q = Object.fromEntries(new URL(req.url,'http://x').searchParams); }catch{}
-
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
+  if(req.method==='OPTIONS') return res.status(200).end();
   try{
-    const c = db();
-    // No Supabase -> demo feed so the atom is still alive (never real data)
-    if(!c) return res.status(200).json(demoFeed());
-    const tenant = await resolveTenant(req);
-    if(!tenant?.id) return res.status(401).json({ error:'Not authenticated' });
-
-    const tid = tenant.id;
-    const since = new Date(Date.now() - 24*3600*1000).toISOString();
-
-    // recent activity (best-effort; tables may be sparse)
-    const [bookings, calls, leads, convos] = await Promise.all([
-      c.from('bookings').select('*').eq('tenant_id',tid).gte('created_at',since).order('created_at',{ascending:false}).limit(10).then(r=>r.data||[]).catch(()=>[]),
-      c.from('calls').select('*').eq('tenant_id',tid).gte('created_at',since).order('created_at',{ascending:false}).limit(10).then(r=>r.data||[]).catch(()=>[]),
-      c.from('usage_events').select('*').eq('tenant_id',tid).eq('kind','lead').gte('created_at',since).order('created_at',{ascending:false}).limit(10).then(r=>r.data||[]).catch(()=>[]),
-      c.from('conversations').select('*').eq('tenant_id',tid).gte('started_at',since).order('started_at',{ascending:false}).limit(10).then(r=>r.data||[]).catch(()=>[])
+    const user=await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({error:'Not authenticated'});
+    const tenant=await resolveTenantForUser(user);
+    if(!tenant?.id) return res.status(403).json({error:'No tenant mapped to this account'});
+    const c=db();
+    if(!c) return res.status(200).json(empty(tenant.name||'Your business',{dataUnavailable:true}));
+    const tid=tenant.id, since=new Date(Date.now()-24*3600*1000).toISOString();
+    const [bookings,calls,leads,convos]=await Promise.all([
+      c.from('bookings').select('*').eq('tenant_id',tid).gte('created_at',since).order('created_at',{ascending:false}).limit(10),
+      c.from('calls').select('*').eq('tenant_id',tid).gte('created_at',since).order('created_at',{ascending:false}).limit(10),
+      c.from('usage_events').select('*').eq('tenant_id',tid).eq('kind','lead').gte('created_at',since).order('created_at',{ascending:false}).limit(10),
+      c.from('conversations').select('*').eq('tenant_id',tid).gte('started_at',since).order('started_at',{ascending:false}).limit(10)
     ]);
-
-    const events = [];
-    for(const b of bookings) events.push({ type:'booking', icon:'calendar', title:`New booking — ${b.service||'appointment'}`, when:timeAgo(b.created_at), ts:b.created_at });
-    for(const l of leads) events.push({ type:'lead', icon:'user', title:`New lead captured`, when:timeAgo(l.created_at), ts:l.created_at });
-    for(const cl of calls) events.push({ type:'call', icon:'phone', title:`Call ${cl.outcome||'handled'}`, when:timeAgo(cl.created_at), ts:cl.created_at });
-    events.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-
-    // derive insights
-    const insights = deriveInsights(bookings, tenant);
-
-    return res.status(200).json({
-      tenant: tenant.name || 'our salon',
-      counts: { bookings: bookings.length, leads: leads.length, calls: calls.length },
-      events: events.slice(0,8),
-      insights
-    });
-  }catch(e){
-    return res.status(200).json({ ...demoFeed(), _error:String(e&&e.message||e) });
-  }
-}
-
-function deriveInsights(bookings, tenant){
-  const insights = [];
-  // double-booking detection: same start time twice
-  const byTime = {};
-  for(const b of bookings){
-    if(!b.starts_at) continue;
-    const key = new Date(b.starts_at).toISOString().slice(0,16);
-    byTime[key] = (byTime[key]||0)+1;
-    if(byTime[key] === 2){
-      const d = new Date(b.starts_at);
-      insights.push({ level:'warn', text:`Possible double-booking around ${d.toLocaleString([], {weekday:'short', hour:'numeric', minute:'2-digit'})}.` });
+    const failed=[bookings,calls,leads,convos].some(r=>r?.error);
+    if(failed){
+      console.error('[notifications] tenant query failed',bookings?.error||calls?.error||leads?.error||convos?.error);
+      return res.status(200).json(empty(tenant.name||'Your business',{dataUnavailable:true}));
     }
+    const bRows=bookings.data||[], cRows=calls.data||[], lRows=leads.data||[], convRows=convos.data||[];
+    const events=[];
+    for(const b of bRows)events.push({type:'booking',icon:'calendar',title:`New booking — ${b.service||'appointment'}`,when:timeAgo(b.created_at),ts:b.created_at});
+    for(const l of lRows)events.push({type:'lead',icon:'user',title:'New lead captured',when:timeAgo(l.created_at),ts:l.created_at});
+    for(const call of cRows)events.push({type:'call',icon:'phone',title:`Call ${call.outcome||'handled'}`,when:timeAgo(call.created_at),ts:call.created_at});
+    for(const convo of convRows)events.push({type:'message',icon:'message',title:`New ${convo.channel||'client'} conversation`,when:timeAgo(convo.started_at||convo.created_at),ts:convo.started_at||convo.created_at});
+    events.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+    return res.status(200).json({tenant:tenant.name||'Your business',counts:{bookings:bRows.length,leads:lRows.length,calls:cRows.length},events:events.slice(0,10),insights:deriveInsights(bRows)});
+  }catch(e){
+    console.error('[notifications] unavailable',e);
+    return res.status(200).json(empty('Your business',{dataUnavailable:true}));
   }
-  // quiet-day nudge
-  if(bookings.length === 0){
-    insights.push({ level:'info', text:`No new bookings in the last 24h — want me to draft a win-back text?` });
-  }
-  return insights;
 }
 
-function demoFeed(){
-  return {
-    tenant: 'our salon',
-    counts: { bookings: 3, leads: 2, calls: 5 },
-    events: [
-      { type:'booking', icon:'calendar', title:'New booking — Balayage', when:'12m ago' },
-      { type:'call', icon:'phone', title:'Call handled — booked', when:'40m ago' },
-      { type:'lead', icon:'user', title:'New lead captured', when:'1h ago' },
-      { type:'booking', icon:'calendar', title:'New booking — Blowout', when:'2h ago' }
-    ],
-    insights: [
-      { level:'warn', text:'Two appointments overlap tomorrow at 2:00 PM — want me to fix it?' },
-      { level:'info', text:'A VIP client returns Friday — she had a note about scalp sensitivity.' }
-    ]
-  };
+function deriveInsights(bookings){
+  const insights=[],byTime={};
+  for(const b of bookings){
+    if(!b.starts_at)continue;
+    const key=new Date(b.starts_at).toISOString().slice(0,16);
+    byTime[key]=(byTime[key]||0)+1;
+    if(byTime[key]===2){const d=new Date(b.starts_at);insights.push({level:'warn',text:`Possible double-booking around ${d.toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'})}.`});}
+  }
+  if(bookings.length===0)insights.push({level:'info',text:'No new bookings in the last 24 hours. Lola can help prepare a win-back campaign.'});
+  return insights;
 }

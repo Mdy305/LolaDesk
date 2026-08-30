@@ -64,44 +64,48 @@ export default async function handler(req,res){
       case 'clients': {
         const { data=[] } = await c.from('clients').select('*').eq('tenant_id',tid).order('updated_at',{ascending:false}).limit(200);
         return res.status(200).json({ tenant:tenant.name, clients:(data||[]).map(x=>({
-          id:x.id, name:x.name||'Unknown', phone:x.phone_number||'', email:x.email||'',
-          vip:!!x.is_vip, lastService:x.last_service||'', lastVisit:x.last_visit||'',
-          stylist:x.preferred_stylist||'', ltv:Number(x.lifetime_value||0), notes:x.notes||'', tags:x.tags||[]
+          id:x.id, name:[x.first_name,x.last_name].filter(Boolean).join(' ')||'Unknown', phone:x.phone||'', email:x.email||'',
+          photo:x.profile_picture_url||null, vip:String(x.status||'').toLowerCase()==='vip', lastService:x.preferred_service||'', lastVisit:x.last_visit||'',
+          stylist:'', ltv:Number(x.lifetime_value||0), notes:x.notes||'', tags:[]
         })) });
       }
       case 'calls': {
         const { data=[] } = await c.from('calls').select('*').eq('tenant_id',tid).order('created_at',{ascending:false}).limit(100);
         return res.status(200).json({ tenant:tenant.name, calls:(data||[]).map(x=>({
-          id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at),
-          outcome:x.outcome||'handled', durationSec:x.duration_sec||x.duration_seconds||x.duration||0, // schema column is duration_sec — the old keys never matched, so every call showed 0:00
-          summary:x.summary||x.transcript?.slice(0,120)||'', booked:(x.outcome==='booked')||!!x.booked // no `booked` column exists — derive from outcome
+          id:x.id, from:x.from_number||x.caller||'', when:ago(x.created_at), createdAt:x.created_at,
+          outcome:x.outcome||x.status||'handled', // insight outcome first, then call state
+          durationSec:x.duration_seconds||x.duration_sec||x.duration||0,
+          summary:x.summary||x.recording_url||'', // post-call insight summary, fallback recording_url
+          transcript:x.transcript||null,          // [{role,content}] from the transcript insight
+          booked:(x.outcome==='booked')||(x.status==='booked')||!!x.booked
         })) });
       }
       case 'inbox': {
         const { data=[] } = await c.from('conversations').select('*').eq('tenant_id',tid).order('started_at',{ascending:false}).limit(60);
         return res.status(200).json({ tenant:tenant.name, threads:(data||[]).map(x=>({
           id:x.id, channel:x.channel||'sms', who:x.client_name||x.from_number||'Client',
-          when:ago(x.started_at||x.created_at), preview:x.last_message||x.summary||'', unread:!!x.unread
+          phone:x.from_number||'', when:ago(x.started_at||x.created_at), preview:x.last_message||x.summary||'', unread:!!x.unread
         })) });
       }
       case 'bookings': {
-        const { data=[] } = await c.from('bookings').select('*').eq('tenant_id',tid).order('starts_at',{ascending:true}).limit(200);
+        const { data=[] } = await c.from('bookings').select('id,status,start_time,price:total_amount,service:services(name),stylist:staff(name),client:clients(name)').eq('tenant_id',tid).order('start_time',{ascending:true}).limit(200);
         return res.status(200).json({ tenant:tenant.name, bookings:(data||[]).map(x=>({
-          id:x.id, service:x.service||'Appointment', client:x.client_name||'Client',
-          stylist:x.stylist||'', startsAt:x.starts_at, price:Number(x.price||0), status:x.status||'confirmed'
+          id:x.id, service:x.service?.name||'Appointment', client:x.client?.name||'Client',
+          stylist:x.stylist?.name||'', startsAt:x.start_time, price:Number(x.price||0), status:x.status||'confirmed'
         })) });
       }
       case 'revenue': {
-        const { data=[] } = await c.from('bookings').select('price,starts_at,service,stylist').eq('tenant_id',tid).limit(1000);
-        const rows=data||[];
+        const { data=[] } = await c.from('bookings').select('price:total_amount,starts_at:start_time,service:services(name),stylist:staff(name)').eq('tenant_id',tid).limit(1000);
+        const rows=(data||[]).map(x=>({...x,service:x.service?.name||null,stylist:x.stylist?.name||null}));
         const total=rows.reduce((s,r)=>s+Number(r.price||0),0);
         // by month
         const byMonth={}; for(const r of rows){ const m=(r.starts_at||'').slice(0,7); if(!m)continue; byMonth[m]=(byMonth[m]||0)+Number(r.price||0); }
         // by service
-        const byService={}; for(const r of rows){ const k=r.service||'Other'; byService[k]=(byService[k]||0)+Number(r.price||0); }
+        const byService={}; const byServiceCount={};
+        for(const r of rows){ const k=r.service||'Other'; byService[k]=(byService[k]||0)+Number(r.price||0); byServiceCount[k]=(byServiceCount[k]||0)+1; }
         return res.status(200).json({ tenant:tenant.name, total, money:money(total),
           months:Object.entries(byMonth).sort().map(([m,v])=>({month:m,value:v})),
-          services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value})),
+          services:Object.entries(byService).sort((a,b)=>b[1]-a[1]).map(([name,value])=>({name,value,count:byServiceCount[name]||0})),
           bookingCount:rows.length });
       }
       case 'team': {
@@ -165,7 +169,7 @@ export default async function handler(req,res){
         const [cl,ca,bk,usage, upsellEvents]=await Promise.all([
           c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
-          c.from('bookings').select('price').eq('tenant_id',tid).gte('starts_at',since).then(r=>r.data||[]).catch(()=>[]),
+          c.from('bookings').select('price:total_amount').eq('tenant_id',tid).gte('start_time',since).then(r=>r.data||[]).catch(()=>[]),
           getUsageStatus(tid, tenant.plan).catch(()=>null),
           c.from('usage_events').select('units').eq('tenant_id',tid).eq('kind','upsell').gte('created_at',since).then(r=>r.data||[]).catch(()=>[])
         ]);

@@ -156,7 +156,7 @@ export class TelnyxRTPStream {
 
   /**
    * Stream Lola's response audio back to caller via WebSocket
-   * Uses ElevenLabs or Polly for synthesis
+   * Synthesizes with Lola's canonical ElevenLabs voice — never a substitute
    */
   async streamAudioResponse(response) {
     try {
@@ -237,7 +237,7 @@ async function lolaRespond(utterance, tenantId) {
  * Placeholder: Text-to-speech synthesis
  */
 async function synthesizeText(text) {
-  // TODO: Call ElevenLabs or Polly
+  // TODO: Call ElevenLabs (Lola's canonical voice only)
   return Buffer.from([]);
 }
 

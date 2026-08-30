@@ -14,3 +14,6 @@ Integral_Full_iCloud_Export.html
 *.icloud-export.html
 lib/stripe.js
 .env*
+
+# Codebuff local session database — never commit
+.freebuff/

@@ -1,77 +1,77 @@
-// api/onboarding/step2-ingest.js - Auto-analyze business data
-import { createClient } from '@supabase/supabase-js';
-import axios from 'axios';
-import cheerio from 'cheerio';
+// api/onboarding/step2-ingest.js — The magic: Lola reads your website
+// The reveal moment. The owner pastes a URL, Lola reads it with the LLM
+// (falls back to a heuristic when inference is down), drafts their service
+// menu and brand voice, and hands back her actual opening line.
+import { getUserFromToken, bearer } from '../lib/auth.js';
+import { db } from '../lib/db.js';
+import { resolveTenantForUser } from '../lib/tenant-access.js';
+import {
+  safePublicUrl, discoverWebsite, applyDiscovery,
+  previewGreeting, journey
+} from '../lib/onboarding-engine.js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export default async function handler(req, res){
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
+  if(req.method === 'OPTIONS') return res.status(204).end();
+  if(req.method !== 'POST') return res.status(405).json({ ok:false, error:'POST only' });
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end();
+  try{
+    const user = await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({ ok:false, error:'Not authenticated' });
+    const tenant = await resolveTenantForUser(user);
+    if(!tenant?.id) return res.status(404).json({ ok:false, error:'No tenant mapped to this account' });
+    const client = db();
+    if(!client) return res.status(503).json({ ok:false, error:'Database not configured' });
 
-  const { websiteUrl, gmbUrl, instagramUrl, tenantId } = req.body;
-  let dataPoints = 0;
-  let results = {};
+    const input = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const websiteUrl = safePublicUrl(input.websiteUrl || input.website_url || tenant.website_url || '');
+    if(!websiteUrl) return res.status(400).json({ ok:false, error:'A website URL is required — that is all Lola needs to learn your business.' });
 
-  try {
-    // 1. SCRAPE WEBSITE
-    if (websiteUrl) {
-      try {
-        const response = await axios.get(websiteUrl, { timeout: 10000 });
-        const $ = cheerio.load(response.data);
+    const discovery = await discoverWebsite({ websiteUrl, businessMode: tenant.business_mode || 'salon', name: tenant.name });
+    const applied = await applyDiscovery(client, tenant, discovery.knowledge);
 
-        const services = [];
-        $('[data-service], .service, .pricing').each((i, el) => {
-          const name = $(el).find('.name, .title, h3').text().trim();
-          const price = $(el).find('.price').text().trim();
-          if (name) services.push({ name, price });
-        });
+    // Refresh so the greeting below reflects the just-drafted menu.
+    const { data: fresh } = await client.from('tenants').select('*').eq('id', tenant.id).maybeSingle();
+    const t = fresh || tenant;
 
-        const team = [];
-        $('[data-team], .team, .staff').each((i, el) => {
-          const name = $(el).find('.name, h3').text().trim();
-          const role = $(el).find('.role').text().trim();
-          if (name) team.push({ name, role });
-        });
+    await client.from('tenant_onboarding').update({
+      stage: 'discovery',
+      status: 'in_progress',
+      progress: 50,
+      business: {
+        website_url: websiteUrl,
+        discovered: {
+          title: discovery.website.title,
+          services_found: applied.services.length,
+          used_llm: discovery.usedLlm
+        }
+      },
+      last_error: null,
+      updated_at: new Date().toISOString()
+    }).eq('tenant_id', tenant.id);
 
-        results.website = { services: services.slice(0, 50), team: team.slice(0, 20) };
-        dataPoints += services.length + team.length;
-      } catch (e) {
-        console.error('[INGEST] Website error:', e.message);
-      }
-    }
-
-    // 2. PARSE GOOGLE MY BUSINESS
-    if (gmbUrl) {
-      try {
-        const response = await axios.get(gmbUrl, { timeout: 10000 });
-        const $ = cheerio.load(response.data);
-
-        const rating = parseFloat($('[data-rating], .rating').first().text());
-        const reviewCount = parseInt($('[data-reviews], .review-count').text());
-
-        results.gmb = { rating: rating || 0, reviewCount: reviewCount || 0 };
-        dataPoints += 2;
-      } catch (e) {
-        console.error('[INGEST] GMB error:', e.message);
-      }
-    }
-
-    // 3. STORE IN SUPABASE
-    await supabase.from('tenant_memories').upsert({
-      tenant_id: tenantId,
-      memory_type: 'business_data',
-      memory_key: 'ingested',
-      value: results,
-      source: 'onboarding',
+    const j = await journey(client, t);
+    return res.status(200).json({
+      ok: true,
+      tenant_id: tenant.id,
+      lola_says: previewGreeting(t),
+      learned: {
+        services: applied.services,
+        services_count: applied.services.length,
+        tone: discovery.knowledge.tone || null,
+        positioning: discovery.knowledge.positioning || null,
+        audience: discovery.knowledge.audience || null,
+        summary: discovery.knowledge.summary || null,
+        usp: discovery.knowledge.usp || null,
+        opportunities: Array.isArray(discovery.knowledge.opportunities) ? discovery.knowledge.opportunities : [],
+        hours: discovery.knowledge.hours || null,
+        used_llm: discovery.usedLlm
+      },
+      ...j
     });
-
-    await supabase.from('tenants').update({ status: 'onboarding_step2' }).eq('id', tenantId);
-
-    res.json({ ok: true, dataPoints, ...results });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  }catch(error){
+    return res.status(error?.status || 500).json({ ok:false, error:String(error?.message || error) });
   }
 }

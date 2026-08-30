@@ -1,90 +1,36 @@
-/* ═══════════════════════════════════════════════════════════════
-   LolaDesk — shared sidebar / nav
-   Each page sets <body data-page="clients"> etc. This injects the
-   sidebar with the right active item and the mobile bottom bar.
-   ═══════════════════════════════════════════════════════════════ */
+/* LolaDesk — shared sidebar / mobile navigation */
 (function(){
-  const page = document.body.getAttribute('data-page') || 'overview';
-
-  const icons = {
+  if(!document.querySelector('link[href="ux-runtime.css"]')){const css=document.createElement('link');css.rel='stylesheet';css.href='ux-runtime.css';document.head.appendChild(css)}
+  if(!document.querySelector('link[href="product-reset.css"]')){const css=document.createElement('link');css.rel='stylesheet';css.href='product-reset.css';document.head.appendChild(css)}
+  if(!document.querySelector('script[src="ux-runtime.js"]')){const js=document.createElement('script');js.src='ux-runtime.js';js.defer=true;document.head.appendChild(js)}
+  const page=document.body.getAttribute('data-page')||'overview';
+  const icons={
+    brain:'<circle cx="12" cy="12" r="8"/><path d="M8 12h8M12 8v8M5.5 7.5l13 9M18.5 7.5l-13 9"/>',
     overview:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/>',
-    agents:'<circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 6L10 10M17 6L14 10M7 18L10 14M17 18L14 14"/>',
-    clients:'<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/>',
-    calls:'<path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/>',
-    inbox:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
-    numbers:'<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/>',
+    operations:'<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>',
     bookings:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/>',
+    team:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 5a3 3 0 010 6M21 20v-1a5 5 0 00-4-4.8"/>',
+    inbox:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    clients:'<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/>',
+    growth:'<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/><path d="M4 8l6-4 6 5 5-6"/>',
     revenue:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-    team:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/>',
-    marketing:'<path d="M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 11-5.8-1.6"/>',
-    marketer:'<path d="M12 2a4 4 0 014 4v1a5 5 0 013 4.6V14a5 5 0 01-3 4.6V20a4 4 0 11-8 0v-1.4A5 5 0 015 14v-2.4A5 5 0 018 7V6a4 4 0 014-4z"/><path d="M9 11h.01M15 11h.01"/>',
+    reviews:'<path d="M12 2l2.9 6.26 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8-5.1-4.7 6.9-.8z"/>',
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
-  };
-
-  // Seven items. Jobs rule: every item earns its place or leaves.
-  // Calls lives inside Inbox (one conversation surface, two views).
-  // Marketing lives inside Growth Studio. Numbers/Team/Billing live
-  // inside Settings. No hardcoded fake badges — a business tool that
-  // lies about numbers loses the room.
-  const items = [
-    { id:'overview', label:'Home',          href:'dashboard.html' },
-    { id:'bookings', label:'Calendar',      href:'bookings.html' },
-    { id:'inbox',    label:'Inbox',         href:'inbox.html' },
-    { id:'clients',  label:'Clients',       href:'clients.html' },
-    { id:'revenue',  label:'Revenue',       href:'revenue.html' },
-    { id:'marketer', label:'Growth Studio', href:'marketer.html#control', badge:'AI', pink:true },
-    { id:'settings', label:'Settings',      href:'settings.html' }
+  };icons.settings=icons.settings.slice(0,-1);
+  const items=[
+    {id:'brain',label:'Lola',href:'brain-os.html'},{id:'overview',label:'Home',href:'dashboard.html'},{id:'operations',label:'Operate',href:'operations-os.html'},
+    {id:'bookings',label:'Calendar',href:'bookings.html'},{id:'team',label:'Team',href:'team.html'},{id:'inbox',label:'Inbox',href:'inbox.html'},
+    {id:'callcenter',label:'Call Center',href:'call-center.html'},{id:'clients',label:'Clients',href:'clients.html'},{id:'growth',label:'Grow',href:'growth-os.html'},{id:'reviews',label:'Reviews',href:'reviews.html'},{id:'revenue',label:'Revenue',href:'revenue.html'},
+    {id:'telecom',label:'Telecom',href:'telecom.html'},{id:'settings',label:'Settings',href:'settings.html'}
   ];
-
-  const navHTML = items.map(it => `
-    <a class="nav-item ${it.id===page?'active':''}" href="${it.href}">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>
-      ${it.label}
-      ${it.badge?`<span class="nav-badge ${it.green?'mono':''} ${it.pink?'pink':''}">${it.badge}</span>`:''}
-    </a>`).join('');
-
-  const sidebar = document.createElement('aside');
-  sidebar.className = 'sidebar';
-  sidebar.innerHTML = `
-    <div class="logo">
-      <div class="logo-mark">LOLA</div>
-      <div class="logo-sub">DESK</div>
-    </div>
-    <nav class="nav">${navHTML}</nav>
-    <div style="margin: 0 16px 20px; padding: 12px; background: linear-gradient(135deg, rgba(204,255,0,0.08), rgba(176,30,108,0.04)); border: 0.5px solid var(--pink-dim); border-radius: 8px; display: flex; align-items: center; gap: 10px;">
-      <div style="font-size: 20px; filter: drop-shadow(0 0 6px var(--pink));">🔥</div>
-      <div>
-        <div style="font-size: 12px; font-weight: 600; color: var(--pink2);">12-Day Streak</div>
-        <div style="font-size: 10px; color: var(--text2);">Top 15% of salons</div>
-      </div>
-    </div>
-    <a class="nav-user" href="settings.html">
-      <div class="nav-user-av">M</div>
-      <div class="nav-user-info">
-        <div class="nav-user-name">Meddy</div>
-        <div class="nav-user-role">Owner · MMΛ Salon</div>
-      </div>
-    </a>`;
-
-  // mobile bar
-  const mobile = document.createElement('nav');
-  mobile.className = 'mobile-bar';
-  // The center orb is Lola herself — the signature tap. Everything
-  // else mirrors the desktop truth exactly (one nav, two renders).
-  const mb = [
-    { id:'overview', href:'dashboard.html', label:'Home', icon:icons.overview },
-    { id:'bookings', href:'bookings.html', label:'Calendar', icon:icons.bookings },
-    { id:'lola', href:'lola-live.html', label:'', orb:true },
-    { id:'inbox', href:'inbox.html', label:'Inbox', icon:icons.inbox },
-    { id:'settings', href:'settings.html', label:'More', icon:icons.settings }
-  ];
-  mobile.innerHTML = mb.map(m => m.orb
-    ? `<a class="mb-item" href="${m.href}"><div class="mb-orb">L</div></a>`
-    : `<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`
-  ).join('');
-
-  // mount: sidebar first child of .app, mobile at end of body
-  const app = document.querySelector('.app');
-  if(app) app.insertBefore(sidebar, app.firstChild);
-  document.body.appendChild(mobile);
+  icons.telecom='<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>';
+  icons.callcenter='<path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>';
+  const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}</a>`).join('');
+  const sidebar=document.createElement('aside');sidebar.className='sidebar';
+  sidebar.innerHTML=`<div class="logo"><div class="logo-mark">LOLA</div><div class="logo-sub">DESK</div></div><nav class="nav">${navHTML}</nav><button data-ux-action onclick="location.href='brain-os.html'" style="margin:0 16px 10px;padding:12px;border:1px solid rgba(204,255,0,.25);border-radius:12px;display:flex;justify-content:space-between;color:#ccff00;background:rgba(204,255,0,.06)"><span>Talk to Lola</span><kbd style="font:11px var(--ff)">⌘ K</kbd></button><a class="nav-user" href="settings.html"><div class="nav-user-av" id="sbInitial">W</div><div class="nav-user-info"><div class="nav-user-name" id="sbBusiness">Workspace</div><div class="nav-user-role">Signed-in tenant</div></div></a>`;
+  const mobile=document.createElement('nav');mobile.className='mobile-bar';
+  const mb=[{id:'overview',href:'dashboard.html',label:'Home',icon:icons.overview},{id:'bookings',href:'bookings.html',label:'Calendar',icon:icons.bookings},{id:'brain',href:'brain-os.html',label:'',orb:true},{id:'team',href:'team.html',label:'Team',icon:icons.team},{id:'settings',href:'settings.html',label:'More',icon:icons.settings}];
+  mobile.innerHTML=mb.map(m=>m.orb?`<a class="mb-item ${page==='brain'?'active':''}" href="${m.href}"><div class="mb-orb">L</div></a>`:`<a class="mb-item ${m.id===page?'active':''}" href="${m.href}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">${m.icon}</svg>${m.label}</a>`).join('');
+  const app=document.querySelector('.app');if(app)app.insertBefore(sidebar,app.firstChild);document.body.appendChild(mobile);
+  if(window.LolaData?.load){Promise.resolve(window.LolaData.load('overview')).then(d=>{const name=d?.tenant||'Workspace';const n=document.getElementById('sbBusiness');const i=document.getElementById('sbInitial');if(n)n.textContent=name;if(i)i.textContent=String(name).trim().charAt(0).toUpperCase()||'W'}).catch(()=>{})}
 })();

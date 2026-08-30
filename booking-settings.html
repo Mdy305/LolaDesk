@@ -1,0 +1,59 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Booking Settings — LolaDesk</title><link rel="stylesheet" href="app.css"/><style>.head{margin-bottom:24px}.head h1{font-size:32px}.head p{color:var(--text3);font-size:13px;margin-top:4px}.panel{max-width:900px;border:1px solid var(--border);background:var(--surface);border-radius:20px;padding:22px}.section{padding:18px 0;border-bottom:1px solid var(--border)}.section:last-child{border-bottom:0}.section h2{font-size:15px;margin-bottom:14px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}.field input,.field select{height:42px;border:1px solid var(--border);border-radius:11px;background:var(--bg2);color:var(--text);padding:0 12px}.switches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.switch{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:12px}.switch input{width:18px;height:18px}.actions{display:flex;gap:10px;margin-top:18px}.status{font-size:12px;color:var(--text3);margin-top:12px}.hint{font-size:12px;color:var(--text3);margin:-4px 0 16px;line-height:1.7}.embed-row{display:flex;align-items:stretch;gap:10px;margin-bottom:16px}.embed-row>div{flex:1;min-width:0}.embed-row label{display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.codebox{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:11px 13px;font-size:12px;line-height:1.6;color:var(--text2);overflow-x:auto;white-space:pre-wrap;word-break:break-all;min-height:40px}.copy{width:84px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:11px;cursor:pointer;font-size:12px;font-family:inherit;flex-shrink:0}.copy:hover{background:var(--surface2)}.copy.done{color:#080809;background:var(--accent);border-color:transparent}.embed-preview{margin:0 0 18px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg2)}.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text3)}.preview-head b{color:var(--text2);font-weight:600}.preview-head .ptoggle{width:auto;padding:6px 12px;font-size:11px;height:auto;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit}.preview-head .ptoggle:hover{background:var(--surface2)}.embed-preview iframe{width:100%;height:660px;border:0;display:block;background:#050506}.embed-status{display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:12.5px;border-radius:11px;padding:10px 14px;line-height:1.5}.embed-status.ok{background:rgba(94,255,168,.08);border:.5px solid rgba(94,255,168,.25);color:#8affc4}.embed-status.no{background:rgba(255,179,64,.06);border:.5px solid rgba(255,179,64,.2);color:var(--text3)}@media(max-width:720px){.fields,.switches{grid-template-columns:1fr}.embed-preview iframe{height:520px}}</style></head><body data-page="booking-settings"><div class="app"><main class="main"><div class="head"><h1>Booking settings</h1><p>Rules used by dashboard booking, public booking and Lola.</p></div><div class="panel"><div class="section"><h2>Scheduling</h2><div class="fields"><div class="field"><label>Timezone</label><input id="timezone" placeholder="America/New_York"/></div><div class="field"><label>Slot interval (minutes)</label><input id="slot_interval_minutes" type="number" min="5" max="120"/></div><div class="field"><label>Minimum notice (minutes)</label><input id="minimum_notice_minutes" type="number" min="0"/></div><div class="field"><label>Booking horizon (days)</label><input id="booking_horizon_days" type="number" min="1" max="730"/></div><div class="field"><label>Cancellation window (hours)</label><input id="cancellation_window_hours" type="number" min="0"/></div><div class="field"><label>Buffer after (minutes)</label><input id="default_buffer_after_min" type="number" min="0"/></div></div></div><div class="section"><h2>Channels & client rules</h2><div class="switches"><label class="switch">Public booking <input id="public_booking_enabled" type="checkbox"/></label><label class="switch">Voice booking <input id="voice_booking_enabled" type="checkbox"/></label><label class="switch">SMS booking <input id="sms_booking_enabled" type="checkbox"/></label><label class="switch">Allow staff choice <input id="allow_staff_choice" type="checkbox"/></label><label class="switch">Allow any staff <input id="allow_any_staff" type="checkbox"/></label><label class="switch">Require phone <input id="require_phone" type="checkbox"/></label><label class="switch">Require email <input id="require_email" type="checkbox"/></label><label class="switch">Confirmation SMS <input id="confirmation_sms" type="checkbox"/></label><label class="switch">Reminder SMS <input id="reminder_sms" type="checkbox"/></label><label class="switch">Processing overlap <input id="allow_processing_overlap" type="checkbox"/></label></div></div><div class="section"><h2>Share &amp; embed</h2><p class="hint">Put your booking flow on your website with one script tag — the same engine Lola uses on the phone. Clients see service, team, live slots, and can cancel later with their confirmation code.</p><div class="embed-status" id="embedStatus"></div><div class="embed-preview" id="embedPreview" style="display:none"><div class="preview-head"><b>Live preview — exactly what your clients see</b><button class="ptoggle" id="previewToggle" onclick="togglePreview()">Hide</button></div><iframe id="embedIframe" title="Booking widget live preview" loading="lazy"></iframe></div><div class="embed-row"><div><label>Public booking link</label><div class="codebox" id="embedUrl">Loading…</div></div><button class="copy" data-copy="embedUrl">Copy</button></div><div class="embed-row"><div><label>Inline widget — shows the full flow on your page</label><div class="codebox" id="embedInline">Loading…</div></div><button class="copy" data-copy="embedInline">Copy</button></div><div class="embed-row"><div><label>Floating button — opens the flow in a modal</label><div class="codebox" id="embedModal">Loading…</div></div><button class="copy" data-copy="embedModal">Copy</button></div></div><div class="actions"><button class="btn btn-primary" onclick="save()">Save settings</button><a class="btn btn-ghost" href="bookings.html">Back to calendar</a></div><div class="status" id="status"></div></div></main></div><script src="auth-guard.js"></script><script src="lola-data.js"></script><script src="sidebar.js"></script><script>
+const fields=['timezone','slot_interval_minutes','minimum_notice_minutes','booking_horizon_days','cancellation_window_hours','default_buffer_after_min'];const bools=['public_booking_enabled','voice_booking_enabled','sms_booking_enabled','allow_staff_choice','allow_any_staff','require_phone','require_email','confirmation_sms','reminder_sms','allow_processing_overlap'];function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||''}async function api(method='GET',body=null){if(window.LolaAuth?.ready)await window.LolaAuth.ready;const r=await fetch('/api/booking-settings',{method,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}async function load(){try{const j=await api();const s=j.settings||{};fields.forEach(k=>{const el=document.getElementById(k);if(el&&s[k]!=null)el.value=s[k]});bools.forEach(k=>{const el=document.getElementById(k);if(el)el.checked=!!s[k]})}catch(e){status.textContent=e.message}}async function save(){status.textContent='Saving…';const body={};fields.forEach(k=>{const el=document.getElementById(k);body[k]=el.type==='number'?Number(el.value||0):el.value.trim()});bools.forEach(k=>body[k]=document.getElementById(k).checked);try{await api('POST',body);status.textContent='Saved'}catch(e){status.textContent=e.message}}
+function copyText(text,btn){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>flash(btn)).catch(()=>fallbackCopy(text,btn))}else fallbackCopy(text,btn)}
+function fallbackCopy(text,btn){const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();try{document.execCommand('copy');flash(btn)}catch(e){}t.remove()}
+function flash(btn){if(!btn)return;btn.textContent='Copied ✓';btn.classList.add('done');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('done')},1600)}
+function togglePreview(){
+  const p=document.getElementById('embedPreview'),t=document.getElementById('previewToggle');
+  const hidden=p.style.display==='none';
+  p.style.display=hidden?'block':'none';
+  if(t)t.textContent=hidden?'Hide':'Show preview';
+}
+let EMBED_SLUG='';
+async function loadEmbedStatus(){
+  const el=document.getElementById('embedStatus');
+  if(!el)return;
+  try{
+    const r=await fetch('/api/embed-status',{headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()}});
+    if(!r.ok){el.style.display='none';return;}
+    const j=await r.json().catch(()=>({}));
+    if(j.installed&&j.hosts&&j.hosts.length){
+      const site=j.hosts[0].host;
+      const more=j.hosts.length>1?(' +'+(j.hosts.length-1)+' more'):'';
+      el.className='embed-status ok';
+      el.textContent='✓ Widget is live on your site — detected on '+site+more+'.';
+    }else{
+      el.className='embed-status no';
+      el.textContent='Not detected on your website yet — copy the snippet above and add it to your site.';
+    }
+  }catch(e){ el.style.display='none'; }
+}
+function trackEmbed(kind,snippet){
+  if(!EMBED_SLUG)return;
+  try{fetch('/api/widget-beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:EMBED_SLUG,kind,snippet:snippet||'',source:'settings'})}).catch(()=>{});}catch(e){}
+}
+async function initEmbed(){
+  try{
+    if(window.LolaAuth?.ready) await window.LolaAuth.ready;
+    const r=await fetch('/api/auth/session',{headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()}});
+    const j=await r.json().catch(()=>({}));
+    const slug=(j&&j.tenant&&j.tenant.slug)||'';
+    if(!slug){document.getElementById('embedUrl').textContent='Public booking link unavailable for this account.';return;}
+    EMBED_SLUG=slug;
+    const base=location.origin||'https://www.loladesk.com';
+    const url=base+'/book?t='+encodeURIComponent(slug);
+    const inline='<script src="'+base+'/booking-widget.js" data-tenant="'+slug+'" data-accent="#ccff00" data-mode="inline"><\/script>';
+    const modal='<script src="'+base+'/booking-widget.js" data-tenant="'+slug+'" data-mode="modal"><\/script>';
+    document.getElementById('embedUrl').textContent=url;
+    document.getElementById('embedInline').textContent=inline;
+    document.getElementById('embedModal').textContent=modal;
+    const iframe=document.getElementById('embedIframe');
+    if(iframe)iframe.src=url;
+    const preview=document.getElementById('embedPreview');
+    if(preview)preview.style.display='block';
+    loadEmbedStatus();
+    document.querySelectorAll('.copy').forEach(b=>{b.onclick=()=>{trackEmbed('embed_copied',b.getAttribute('data-copy'));copyText(document.getElementById(b.getAttribute('data-copy')).textContent,b)}});
+  }catch(e){document.getElementById('embedUrl').textContent='Could not load your booking link: '+e.message}
+}
+load();initEmbed();
+</script></body></html>

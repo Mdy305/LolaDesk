@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Book an appointment</title>
+<meta name="description" content="Book online with LolaDesk — instant availability, one tap."/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050506;color:#f6f6f7;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.host{max-width:560px;margin:0 auto;padding:28px 14px 80px}
+</style>
+</head>
+<body>
+<div class="host">
+  <!--
+    LolaDesk booking widget — the same engine Lola uses on the phone.
+    The tenant is taken from ?t=SLUG (or ?slug=) on the URL, or set
+    data-tenant below for a fixed salon.
+  -->
+  <script src="/booking-widget.js" data-mode="inline"></script>
+</div>
+</body>
+</html>

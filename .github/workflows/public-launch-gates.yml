@@ -1,0 +1,85 @@
+name: Public Launch Gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-launch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-integrity:
+    name: Code integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate serverless JavaScript syntax
+        run: |
+          find api e2e tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 \
+            | xargs -0 -n1 node --check
+      - name: Verify production build contract
+        run: npm run build
+
+  tenant-journey:
+    name: Tenant-safe end-to-end journey
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: loladesk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d loladesk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: loladesk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run complete launch-readiness journey
+        run: npm run test:e2e
+
+  onboarding-smoke:
+    name: Onboarding smoke (staging)
+    # Manual, opt-in: only runs when dispatched AND a staging URL is configured.
+    # Search-only so a CI run never purchases a real Telnyx number.
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.LOLA_STAGING_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Walk signup → number search against staging
+        env:
+          LOLA_BASE_URL: ${{ vars.LOLA_STAGING_URL }}
+        run: npm run smoke:onboarding:search

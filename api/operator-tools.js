@@ -29,10 +29,11 @@
  * Never throws at the caller; failures degrade to a graceful spoken line.
  */
 
-import { getTenantBySlug, getTenantByPhone, createBooking, upsertClient } from './lib/db.js';
+import { getTenantBySlug, getTenantByPhone } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
+import { runBookingAction } from './lib/booking-brain.js';
 import {
-  listBookings, enrichBookings, findBooking, cancelBooking, moveBooking,
+  findBooking,
   revenueSummary, dueForRebooking, broadcastAudience,
   resolveDate, computeNewStart, pinOk, isKnownOperator, signAction, verifyAction,
   tenantToolSecret
@@ -42,7 +43,6 @@ import {
 const money = n => `$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US')}`;
 const timeLabel = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 const dayLabel = d => new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-const first = n => String(n || '').split(' ')[0];
 
 // Resolve which salon this operator session belongs to.
 async function resolveTenant(body){
@@ -81,13 +81,8 @@ function takeConfirm(tenant, tool, args){
 
 // ── SKILL: read the day ───────────────────────────────────────────────────
 async function whats_my_day(tenant, args){
-  const date = resolveDate(args.date);
-  const rows = await enrichBookings(tenant.id, await listBookings(tenant.id, { from: date, to: date }));
-  if(!rows.length) return { speak: `Nothing on the books for ${dayLabel(date)} yet.`, count: 0, appointments: [] };
-  const lines = rows.map(b =>
-    `${timeLabel(b.starts_at)} ${b.service}${b.client_name ? ` for ${first(b.client_name)}` : ''}${b.stylist ? ` with ${b.stylist}` : ''}`
-  );
-  return { speak: `${rows.length} on ${dayLabel(date)}: ${lines.join('; ')}.`, count: rows.length, appointments: rows };
+  const result = await runBookingAction('get_day', tenant, { date: args.date }, {});
+  return { speak: result.speak, count: result.count, appointments: result.appointments };
 }
 
 // ── SKILL: revenue ────────────────────────────────────────────────────────
@@ -114,12 +109,9 @@ async function move_appointment(tenant, args){
   if(args.confirm){
     const r = takeConfirm(tenant, 'move_appointment', args);
     if(r.error) return { speak: r.error };
-    const moved = await moveBooking(tenant.id, r.k.id, r.k.new_starts_at);
-    if(!moved) return { speak: "I couldn't find that appointment to move." };
-    return {
-      speak: `Done — moved to ${dayLabel(r.k.new_starts_at)} at ${timeLabel(r.k.new_starts_at)}.${moved.external_source ? ` Heads up: it also lives in ${moved.external_source}, so update that too.` : ''}`,
-      moved: true
-    };
+    const moved = await runBookingAction('reschedule_appointment', tenant, { booking_id: r.k.id, starts_at: r.k.new_starts_at }, { channel: 'operator' });
+    if(!moved.ok) return { speak: moved.speak || "I couldn't find that appointment to move." };
+    return { speak: moved.speak, moved: true };
   }
   const matches = await findBooking(tenant.id, args);
   if(!matches.length) return { speak: "I don't see that appointment — which client and time?" };
@@ -137,9 +129,9 @@ async function cancel_appointment(tenant, args){
   if(args.confirm){
     const r = takeConfirm(tenant, 'cancel_appointment', args);
     if(r.error) return { speak: r.error };
-    const cancelled = await cancelBooking(tenant.id, r.k.id);
-    if(!cancelled) return { speak: "I couldn't find that appointment." };
-    return { speak: `Cancelled ${r.k.label}. I can text them to rebook if you'd like.`, cancelled: true };
+    const cancelled = await runBookingAction('cancel_appointment', tenant, { booking_id: r.k.id, reason: r.k.label }, { channel: 'operator' });
+    if(!cancelled.ok) return { speak: cancelled.speak || "I couldn't find that appointment." };
+    return { speak: cancelled.speak, cancelled: true };
   }
   const matches = await findBooking(tenant.id, args);
   if(!matches.length) return { speak: "I don't see that one — which client and time?" };
@@ -178,17 +170,13 @@ async function broadcast_text(tenant, args){
 
 // ── SKILL: book for a client ──────────────────────────────────────────────
 async function book_for_client(tenant, args){
-  const { client_name, client_phone, service, date, time, stylist } = args;
-  const svc = (tenant.services || []).find(s => s.name.toLowerCase().includes(String(service || '').toLowerCase()));
-  let client = null;
-  if(client_phone) client = await upsertClient(tenant.id, { phone: client_phone, name: client_name });
-  const startsAt = computeNewStart(new Date().toISOString(), { new_date: date, new_time: time });
-  const bk = await createBooking(tenant.id, {
-    clientId: client?.id, service: svc?.name || service, stylist,
-    startsAt, durationMin: svc?.durationMin || 60, price: svc?.price
-  });
-  if(!bk) return { speak: "I couldn't save that just now — try again in a moment." };
-  return { speak: `Booked ${svc?.name || service}${client_name ? ` for ${first(client_name)}` : ''} on ${dayLabel(startsAt)} at ${timeLabel(startsAt)}.`, booked: true };
+  // Route through the ONE smart booking path (availability + hold + commit
+  // + tenant memory). Falls back gracefully with a spoken prompt when a
+  // required field is missing.
+  const result = await runBookingAction('book_appointment', tenant, args, { channel: 'operator' });
+  if(result.ok) return { speak: result.speak, booked: true, booking_id: result.booking?.id };
+  if(result.needs) return { speak: result.speak, booked: false, needs: result.needs };
+  return { speak: result.speak || "I couldn't save that just now — try again in a moment.", booked: false };
 }
 
 export const OPERATOR_SKILLS = {

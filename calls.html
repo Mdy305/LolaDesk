@@ -51,9 +51,9 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="kpi-val">47</div><div class="kpi-label">Calls today</div><div class="kpi-sub">Lola answered all</div></div>
-      <div class="kpi"><div class="kpi-val mono">38</div><div class="kpi-label">Booked</div><div class="kpi-sub">81% conversion</div></div>
-      <div class="kpi"><div class="kpi-val">2m 14s</div><div class="kpi-label">Avg call</div><div class="kpi-sub">Quick & warm</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiCallsToday">0</div><div class="kpi-label">Calls today</div><div class="kpi-sub" id="kpiCallsSub">No calls yet</div></div>
+      <div class="kpi"><div class="kpi-val mono" id="kpiBooked">0</div><div class="kpi-label">Booked</div><div class="kpi-sub" id="kpiBookedSub">—</div></div>
+      <div class="kpi"><div class="kpi-val" id="kpiAvgCall">—</div><div class="kpi-label">Avg call</div><div class="kpi-sub" id="kpiAvgSub">—</div></div>
       <div class="kpi"><div class="kpi-val pink">$0</div><div class="kpi-label">Lost to voicemail</div><div class="kpi-sub">Lola never sleeps</div></div>
     </div>
 
@@ -82,6 +82,7 @@ function dirIcon(d){
   return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2"/><path d="M19 5l-4 4M15 5l4 4"/></svg>';
 }
 function fmtDur(sec){ if(!sec) return '—'; const m=Math.floor(sec/60),s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function render(){
   if(!CALLS.length){ 
     document.getElementById('callList').innerHTML=`
@@ -115,6 +116,7 @@ function showDetail(i){
     <div class="detail-title">${c.name}</div>
     <div class="detail-sub">${c.num} · ${c.time}</div>
     ${c.summary?`<div class="transcript"><div class="t-line lola">${c.summary}</div></div>`:''}
+    ${Array.isArray(c.transcript)&&c.transcript.length?c.transcript.map(t=>`<div class="t-line ${t.role==='assistant'?'lola':'caller'}"><span class="who">${t.role==='assistant'?'Lola':'Caller'}</span> ${esc(t.content||'')}</div>`).join(''):''}
     <div class="detail-stat"><span class="detail-stat-label">Outcome</span><span style="font-weight:500">${c.outcome}</span></div>
     <div class="detail-stat"><span class="detail-stat-label">Duration</span><span>${c.dur}</span></div>
     <div class="detail-stat" style="border:none"><span class="detail-stat-label">Service</span><span>${c.service||'—'}</span></div>`;
@@ -127,9 +129,26 @@ function showDetail(i){
     name: c.from || 'Caller', num: c.from || '', dir: c.booked?'in':'in',
     outcome: c.booked?'Booked':(c.outcome||'Handled'),
     service: c.summary ? '' : '', summary: c.summary||'',
-    time: c.when||'', dur: fmtDur(c.durationSec)
+    transcript: c.transcript || null,
+    time: c.when||'', dur: fmtDur(c.durationSec), durationSec: c.durationSec||0,
+    createdAt: c.createdAt||null, booked: !!c.booked
   }));
   render();
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayCalls = CALLS.filter(c => c.createdAt && new Date(c.createdAt) >= today);
+  const bookedCount = CALLS.filter(c => c.booked).length;
+  const withDuration = CALLS.filter(c => c.durationSec > 0);
+  const avgSec = withDuration.length ? Math.round(withDuration.reduce((s,c)=>s+c.durationSec,0)/withDuration.length) : 0;
+
+  document.getElementById('kpiCallsToday').textContent = todayCalls.length;
+  document.getElementById('kpiCallsSub').textContent = CALLS.length ? 'Lola answered all' : 'No calls yet';
+  document.getElementById('kpiBooked').textContent = bookedCount;
+  document.getElementById('kpiBookedSub').textContent = CALLS.length ? Math.round(bookedCount/CALLS.length*100)+'% conversion' : '—';
+  if(avgSec > 0){
+    document.getElementById('kpiAvgCall').textContent = fmtDur(avgSec);
+    document.getElementById('kpiAvgSub').textContent = 'Quick & warm';
+  }
 })();
 </script>
 </body>

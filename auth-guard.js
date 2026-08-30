@@ -1,69 +1,104 @@
 /* ═══════════════════════════════════════════════════════════════
    LolaDesk — auth guard
-   ════════════════════════════════════════════════════════════════
-   Include BEFORE lola-data.js on any page that shows a salon's real
-   data. Without this, /api/data silently falls back to the seeded
-   MMΛ Salon tenant for anyone with no token — i.e. every interior
-   page was showing real salon data to unauthenticated visitors.
-
-   What this does:
-   1. Reads loladesk_token from localStorage (set by login.html / onboarding.html)
-   2. If missing, redirects to login.html immediately — nothing renders
-   3. If present, validates it against /api/auth/session (catches
-      expired/revoked tokens, not just "is there a string present")
-   4. On success, stores the resolved user+tenant on window.LolaAuth
-      so pages/lola-data.js don't need a second round-trip
-   5. On failure, clears the stale token and redirects to login.html
-
-   This is synchronous-feeling but actually async — pages should wait
-   on window.LolaAuth.ready (a Promise) before rendering anything
-   sensitive, the same way they already await LolaData.load().
+   Validates the stored Supabase session before tenant data renders.
+   Loads the shared tenant workspace on every authenticated app page.
    ═══════════════════════════════════════════════════════════════ */
 (function(){
   function getToken(){ try{ return localStorage.getItem('loladesk_token')||''; }catch(e){ return ''; } }
+  function getRefreshToken(){ try{ return localStorage.getItem('loladesk_refresh')||''; }catch(e){ return ''; } }
+  function saveSession(session){ try{ if(session?.access_token) localStorage.setItem('loladesk_token',session.access_token); if(session?.refresh_token) localStorage.setItem('loladesk_refresh',session.refresh_token); }catch(e){} }
   function clearToken(){ try{ localStorage.removeItem('loladesk_token'); localStorage.removeItem('loladesk_refresh'); }catch(e){} }
-  function redirectToLogin(){
-    const here = encodeURIComponent(location.pathname + location.search);
-    location.replace('login.html?next=' + here);
+  async function renewSession(){
+    const refreshToken=getRefreshToken();
+    if(!refreshToken) throw new Error('no refresh token');
+    const r=await fetch('/api/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refreshToken})});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok||!data.session?.access_token) throw new Error(data.error||('refresh '+r.status));
+    saveSession(data.session);
+    return data.session.access_token;
   }
-  function redirectToOnboarding(){
-    const here = encodeURIComponent(location.pathname + location.search);
-    location.replace('onboarding.html?next=' + here);
+  async function loadSession(){
+    let token=getToken();
+    let r=token?await fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}):null;
+    if(!r||r.status===401){ token=await renewSession(); r=await fetch('/api/auth/session',{headers:{Authorization:'Bearer '+token}}); }
+    if(!r.ok) throw new Error('session invalid: '+r.status);
+    return {data:await r.json(),token};
   }
-
-  const token = getToken();
-  if(!token){
-    redirectToLogin();
-    // Throwing stops any inline page script below this guard from
-    // running and racing the redirect with a fetch using no token.
-    throw new Error('LolaDesk auth-guard: no token, redirecting to login');
+  function redirectToLogin(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('login.html?next='+here); }
+  function redirectToOnboarding(){ const here=encodeURIComponent(location.pathname+location.search); location.replace('onboarding.html?next='+here); }
+  function isDashboard(){ return /(^|\/)dashboard\.html$/.test(location.pathname)||location.pathname==='/dashboard'; }
+  function isMarketing(){ return /(^|\/)marketing(?:\.html)?$/.test(location.pathname); }
+  function isSettings(){ return /(^|\/)settings(?:\.html)?$/.test(location.pathname); }
+  function loadScript(src,key){
+    if(document.querySelector(`script[data-${key}]`)) return;
+    const script=document.createElement('script'); script.src=src; script.async=false; script.dataset[key]='true'; document.head.appendChild(script);
   }
-
-  const ready = fetch('/api/auth/session', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  }).then(r => {
-    if(!r.ok) throw new Error('session invalid: ' + r.status);
-    return r.json();
-  }).then(data => {
-    if(!data?.tenant){
-      redirectToOnboarding();
-      throw new Error('session valid but tenant not provisioned yet');
-    }
-    // Keep `ready` available after resolution. Several independently loaded
-    // dashboard modules use it as their single session/tenant gate.
-    window.LolaAuth = { user: data.user, tenant: data.tenant, token, ready };
-    return window.LolaAuth;
-  }).catch(err => {
-    if(String(err?.message || '').includes('tenant not provisioned')){
-      return Promise.reject(err);
-    }
-    console.warn('[auth-guard] session check failed, redirecting to login:', err);
-    clearToken();
-    redirectToLogin();
-    // Re-throw so anything chained on window.LolaAuth.ready also stops
-    // rather than rendering with no user/tenant.
-    throw err;
-  });
-
-  window.LolaAuth = { ready };
+  function loadStyle(href,key){
+    if(document.querySelector(`link[data-${key}]`)) return;
+    const link=document.createElement('link'); link.rel='stylesheet'; link.href=href; link.dataset[key]='true'; document.head.appendChild(link);
+  }
+  function loadAppRuntime(){
+    loadScript('/tenant-workspace.js','tenantWorkspace');
+    loadScript('/tenant-notifications.js','tenantNotifications');
+    // The Apple-grade interaction runtime on EVERY authenticated page:
+    // toasts, dialogs, ⌘K command palette, skeletons, offline banner,
+    // busy progress. Idempotent — pages that link ux-runtime directly
+    // (reviews, growth-os, …) never double-boot.
+    loadStyle('/ux-runtime.css','uxRuntime');
+    loadScript('/ux-runtime.js','uxRuntime');
+    // The front-desk OS layer on EVERY authenticated page: the ONE unified
+    // notification (lola-notify.js) and the luxury design language
+    // (front-desk-os.js) — injected last so its styles win every tie.
+    loadScript('/lola-notify.js','lolaNotify');
+    // Lola Autopilot announcements ride the ONE notification: poll recent
+    // agent_runs and announce new runs ("Lola recovered 3 missed calls")
+    // after each hourly autopilot run, wherever the operator is.
+    loadScript('/lola-autopilot-announce.js','lolaAutopilotAnnounce');
+    // Trial-to-paid paywall on EVERY authenticated page: days-left banner
+    // during the trial, hard paywall after it ends, upgrade CTA that
+    // deep-links into Stripe Checkout for the tenant's current plan.
+    loadScript('/trial-paywall.js','trialPaywall');
+    loadScript('/front-desk-os.js','frontDeskOs');
+    if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
+    if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');
+    if(!isDashboard()) return;
+    loadScript('/voice-compat.js','voiceCompat');
+    loadScript('/tenant-dashboard.js','tenantDashboard');
+    loadScript('/tenant-opportunities.js','tenantOpportunities');
+    loadScript('/tenant-action-center.js','tenantActionCenter');
+  }
+  function actionFor(){ return {label:'Open Activation Studio',href:'activation-studio.html'}; }
+  async function loadReadiness(token){
+    const r=await fetch('/api/launch-readiness',{headers:{Authorization:'Bearer '+token}}); const data=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error||('readiness '+r.status)); return data;
+  }
+  function startDashboardVoice(){
+    if(typeof window.toggleVoice==='function') return window.toggleVoice();
+    const mic=document.getElementById('orbMic');
+    if(mic) return mic.click();
+    setTimeout(()=>{ if(typeof window.toggleVoice==='function') window.toggleVoice(); },500);
+  }
+  function renderReadiness(token,role){
+    if(!isDashboard()||!['owner','admin','manager'].includes(role)) return;
+    loadReadiness(token).then(data=>{
+      const main=document.querySelector('.main'); if(!main||document.getElementById('launchReadinessBanner')) return;
+      const score=Number(data.score||0),next=Array.isArray(data.next_actions)?data.next_actions[0]:'',ready=!!data.can_go_live;
+      const action=ready?{label:'Talk to Lola',kind:'talk'}:actionFor();
+      const banner=document.createElement('button'); banner.id='launchReadinessBanner';
+      banner.type='button';
+      banner.title=ready?'Lola is live':(next||'Finish connecting Lola');
+      banner.setAttribute('aria-label',ready?'Lola is live. Talk to Lola.':`Setup ${score}% complete. ${next||'Open Activation Studio.'}`);
+      banner.style.cssText=['display:flex','align-items:center','gap:8px','height:40px','padding:0 12px','border:1px solid '+(ready?'rgba(204,255,0,.22)':'rgba(255,179,64,.3)'),'border-radius:12px','background:'+(ready?'rgba(204,255,0,.07)':'rgba(255,179,64,.08)'),'color:#f2f2f5','font:inherit','cursor:pointer','white-space:nowrap'].join(';');
+      banner.innerHTML=`<span style="width:8px;height:8px;border-radius:50%;background:${ready?'#ccff00':'#ffb340'};box-shadow:0 0 10px ${ready?'rgba(204,255,0,.55)':'rgba(255,179,64,.5)'}"></span><span style="font-size:12px;font-weight:650">${ready?'Lola live':`Setup ${score}%`}</span>`;
+      const actions=main.querySelector('.topbar-actions'); if(actions) actions.prepend(banner); else main.prepend(banner);
+      banner.onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };
+    }).catch(err=>console.warn('[auth-guard] launch readiness unavailable:',err));
+  }
+  if(!getToken()&&!getRefreshToken()){redirectToLogin();throw new Error('LolaDesk auth-guard: no session, redirecting to login');}
+  const ready=loadSession().then(({data,token})=>{
+    if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
+    const role=String(data.role||'staff').toLowerCase();
+    window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready}; loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
+  }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session renewal failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
+  window.LolaAuth={ready};
 })();

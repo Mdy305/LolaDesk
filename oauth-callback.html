@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Signing you in — LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:100%;max-width:360px;text-align:center}
+.orb{width:64px;height:64px;border-radius:50%;margin:0 auto 28px;background:radial-gradient(circle at 45% 40%,#ecffae,#ccff00 30%,#638000 58%,#10140a 74%);box-shadow:0 0 60px rgba(204,255,0,.35);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.1);opacity:.8}}
+.logo{font-size:16px;font-weight:600;letter-spacing:.2em;margin-bottom:18px}
+.msg{font-size:15px;color:#9a9aa2;line-height:1.5}
+.foot{display:inline-block;margin-top:28px;font-size:13px;color:#ccff00;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="orb"></div>
+  <div class="logo">LOLADESK</div>
+  <div class="msg" id="msg">Signing you in with Google…</div>
+  <a class="foot" id="back" href="/login" hidden>Back to sign in</a>
+</div>
+<script>
+(function(){
+  var msg = document.getElementById('msg');
+  var back = document.getElementById('back');
+  function fail(text){
+    msg.textContent = text || 'Google sign-in failed. Please try again.';
+    back.hidden = false;
+  }
+
+  // Tokens arrive in the URL fragment (implicit flow): they are never sent to
+  // the server, so nothing here is logged or leaked via referrer.
+  var params = new URLSearchParams(location.hash.slice(1));
+  var next = '';
+  try { next = sessionStorage.getItem('loladesk_oauth_next') || ''; } catch(e){}
+  try { sessionStorage.removeItem('loladesk_oauth_next'); } catch(e){}
+  if(next && !(next.charAt(0) === '/' && next.charAt(1) !== '/')) next = '';
+
+  if(params.get('error') || params.get('error_description')){
+    fail('Google sign-in was cancelled or failed.');
+    return;
+  }
+
+  var access = params.get('access_token');
+  var refresh = params.get('refresh_token');
+  if(!access){ fail('No session was returned by Google. Please try again.'); return; }
+
+  // Same storage the email/password flow writes, so every page's existing
+  // LolaAuth / localStorage lookups just work.
+  localStorage.setItem('loladesk_token', access);
+  localStorage.setItem('loladesk_refresh', refresh || '');
+  try { history.replaceState(null, '', location.pathname); } catch(e){}
+
+  fetch('/api/auth/session', { headers: { Authorization: 'Bearer ' + access } })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d && d.tenant && d.tenant.id){
+        localStorage.setItem('loladesk_tenant_id', d.tenant.id);
+        window.location.href = next || 'dashboard.html';
+        return;
+      }
+      // First-time Google sign-in: no workspace yet → provision one.
+      return fetch('/api/auth/google/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + access }
+      }).then(function(r){ return r.json(); }).then(function(f){
+        if(f && f.tenant && f.tenant.id){
+          localStorage.setItem('loladesk_tenant_id', f.tenant.id);
+          window.location.href = next || 'dashboard.html';
+        } else {
+          fail(f && f.error ? f.error : 'Could not set up your workspace.');
+        }
+      });
+    })
+    .catch(function(){ fail('Signed in, but we could not load your workspace. Refresh to continue.'); });
+})();
+</script>
+</body>
+</html>

@@ -27,6 +27,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `dashboard.html` | **The dashboard** — what each salon logs into daily. Reads real data via `/api/data`. Lola can be talked to two ways: tap-to-talk, or enable "always listening for Lola" for hands-free, ambient wake-word activation (mic stays passively open; nothing is sent to the AI brain until her name is said). |
 | `clients.html`, `calls.html`, `inbox.html`, `bookings.html`, `revenue.html`, `team.html`, `numbers.html`, `marketing.html`, `settings.html`, `agents.html` | Interior dashboard pages, each tenant-scoped via `/api/data`. |
 | `login.html` | Returning owner sign-in. |
+| `book.html` | **Public booking page** — the same engine Lola uses on the phone, for clients who book on the web. Any URL `?t=SLUG` works; it's a thin host for `booking-widget.js`. |
 | `landing.html` | Alternate marketing page (not currently linked from main nav). |
 
 ## The API layer (`api/`)
@@ -47,7 +48,7 @@ usage_events · integrations         /api/telnyx-sms by called #     dashboard, 
 | `billing/checkout.js`, `billing/portal.js`, `billing/webhook.js`, `lib/stripe.js` | Stripe subscriptions — Checkout, customer portal, and a signature-verified webhook that activates/suspends tenants. |
 | `oauth/connect.js`, `oauth/callback.js`, `lib/connectors/*.js` | OAuth to Square, Boulevard, Vagaro, Mindbody, Fresha, Shopify, Google Calendar. Tokens are **encrypted at rest** (`lib/crypto.js`) — never stored in plaintext. Vagaro/Mindbody/Fresha show as "Coming soon" until their partner credentials are set (see `.env.example`). |
 | `lib/db.js` | The shared Supabase client + every multi-tenant helper (tenant resolution, client/conversation/booking writes, usage logging, encrypted integration storage). Everything else imports from here. |
-| `lib/llm.js` | Shared LLM client — Telnyx Inference (Kimi-K2.6) by default, or Anthropic Claude directly if `LLM_PROVIDER=anthropic`. Resilient retry on empty responses. |
+| `lib/llm.js` | The only LLM client — Telnyx Inference with Moonshot Kimi-K2.6. Resilient retry on empty responses. |
 | `lib/auth.js` | Supabase Auth helpers (create user, sign in, verify bearer tokens). |
 | `marketer.js`, `agent-variables.js`, `notifications.js` | Supporting agents/utilities — site analysis, templated prompt variables, in-app notifications. |
 
@@ -60,6 +61,23 @@ python3 -m http.server 8080
 ```
 
 The `api/*.js` files are Vercel serverless functions and won't run under the plain Python server — use `vercel dev` for those, or just deploy to a Vercel preview to test the full stack.
+
+## Open-source booking — embed it on any website
+
+The booking system is open and embeddable. Any salon — on LolaDesk or not — can put Lola's booking flow on their own site with one script tag. It uses the same `/api/public-booking` engine as her voice, so web, phone, and dashboard bookings share one conflict-free calendar.
+
+```html
+<!-- Inline flow (service → team → time → details → confirmed) -->
+<script src="https://www.loladesk.com/booking-widget.js"
+        data-tenant="YOUR-SLUG"
+        data-accent="#ccff00"
+        data-mode="inline"></script>
+
+<!-- Or modal mode: a floating "Book now" button opens the flow -->
+<script src="https://www.loladesk.com/booking-widget.js" data-tenant="YOUR-SLUG" data-mode="modal"></script>
+```
+
+The widget is a single file (`booking-widget.js`), vanilla JS, Shadow DOM (never fights the host site's CSS), no build step. `book.html` is the canonical standalone host. Sync works the other way too — LolaDesk ingests any salon's existing booking system via the connector contract. See [`CONNECTORS.md`](CONNECTORS.md) for how to add Square/Vagaro/Mindbody/Boulevard/Fresha/Google Calendar — or any new system — in three steps, with the conformance suite in `tests/connector-contract.test.mjs`.
 
 ## Deploy
 

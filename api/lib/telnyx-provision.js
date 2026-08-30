@@ -1,0 +1,367 @@
+/**
+ * api/lib/telnyx-provision.js — Telnyx number provisioning, shared by the
+ * onboarding flow (api/provision-number.js) and the Stripe webhook's
+ * automated provisioning (api/stripe-webhook.js) so there is exactly ONE
+ * implementation of search -> order -> link -> tenant activation.
+ *
+ * ENV: TELNYX_API_KEY, TELNYX_MESSAGING_PROFILE_ID, TELNYX_LOLA_BRAIN_ID,
+ *      APP_URL
+ */
+
+import { db, upsertTenantNumber } from './db.js';
+import { invalidateRouting } from './tenant-resolver.js';
+
+const TELNYX = 'https://api.telnyx.com/v2';
+function telnyxH(){ return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.TELNYX_API_KEY }; }
+function appUrl(){ return process.env.APP_URL || 'https://www.loladesk.com'; }
+
+export async function tFetch(path, opts = {}){
+  const r = await fetch(TELNYX + path, { ...opts, headers: { ...telnyxH(), ...(opts.headers || {}) } });
+  const j = await r.json().catch(() => ({ errors: [{ detail: 'No body' }] }));
+  if(!r.ok) throw new Error(j?.errors?.[0]?.detail || j?.error || 'Telnyx ' + r.status);
+  return j;
+}
+
+/**
+ * GET /v2/balance — Telnyx account credit, used to warn owners before they
+ * hit "Not enough credit" mid-purchase. Advisory only: never blocks
+ * provisioning; returns null if Telnyx is unreachable.
+ */
+export async function getAccountBalance(){
+  try{
+    const j = await tFetch('/balance');
+    const d = j?.data || {};
+    const available = Number(d.available_credit ?? d.balance ?? 0);
+    return {
+      currency: d.currency || 'USD',
+      balance: Number(d.balance ?? 0),
+      available_credit: available,
+      credit_limit: Number(d.credit_limit ?? 0)
+    };
+  }catch(e){
+    return null;
+  }
+}
+
+export async function searchNumbers(areaCode, { limit = 10 } = {}){
+  const p = new URLSearchParams();
+  p.set('filter[country_code]', 'US');
+  p.set('filter[features][]', 'voice');
+  p.append('filter[features][]', 'sms');
+  p.set('filter[limit]', String(limit));
+  p.set('filter[phone_number_type]', 'local');
+  if(areaCode && /^\d{3}$/.test(areaCode)) p.set('filter[national_destination_code]', areaCode);
+  let j;
+  try{
+    j = await tFetch('/available_phone_numbers?' + p);
+  }catch(e){
+    if(/no numbers found|best_effort/i.test(String(e?.message || e))){
+      throw new Error('No numbers available' + (areaCode ? ' in area code ' + areaCode : '') + '. Try a different area code.');
+    }
+    throw e;
+  }
+  const nums = (j?.data || []).filter(n => n?.phone_number);
+  if(!nums.length) throw new Error('No numbers available' + (areaCode ? ' in area code ' + areaCode : '') + '. Try a different area code.');
+  return nums;
+}
+
+export async function getOrCreateTexmlApp(){
+  const webhookUrl = appUrl() + '/api/telnyx-voice';
+  // TeXML applications carry the name as `friendly_name` (and the webhook as
+  // `webhook_url` or `voice_url` depending on API version) — never `name`.
+  // Match on all three so a pre-existing app is reused instead of colliding.
+  const matches = (a) => a?.friendly_name === 'LolaDesk' || a?.webhook_url === webhookUrl || a?.voice_url === webhookUrl;
+  const list = await tFetch('/texml_applications?page[size]=20').catch(() => ({ data: [] }));
+  const ex = (list?.data || []).find(matches);
+  if(ex) return ex;
+  try{
+    const j = await tFetch('/texml_applications', {
+      method: 'POST',
+      body: JSON.stringify({ friendly_name: 'LolaDesk', webhook_url: webhookUrl, webhook_api_version: '2', inbound: { channel_limit: 10 }, outbound: { channel_limit: 10 } })
+    });
+    return j?.data || {};
+  }catch(e){
+    // Name collision — a stale 'LolaDesk' app exists with a different webhook
+    // (created before the friendly_name fix). Adopt it instead of failing
+    // provisioning, and repoint its webhook so calls route to the voice line.
+    if(/already in use|conflict|duplicate/i.test(String(e?.message || e))){
+      const retry = await tFetch('/texml_applications?page[size]=20').catch(() => ({ data: [] }));
+      const adopt = (retry?.data || []).find(a => a?.friendly_name === 'LolaDesk');
+      if(adopt){
+        try{
+          await tFetch('/texml_applications/' + adopt.id, {
+            method: 'PATCH',
+            body: JSON.stringify({ webhook_url: webhookUrl, webhook_api_version: '2' })
+          });
+        }catch(patchErr){ console.warn('[PROVISION] adopted app webhook update:', patchErr.message); }
+        return adopt;
+      }
+    }
+    throw e;
+  }
+}
+
+export async function purchaseNumber(phoneNumber, texmlAppId){
+  const body = { phone_numbers: [{ phone_number: phoneNumber }] };
+  if(texmlAppId) body.connection_id = texmlAppId;
+  const j = await tFetch('/number_orders', { method: 'POST', body: JSON.stringify(body) });
+  return j?.data || {};
+}
+
+export async function linkMessagingProfile(phoneNumberId){
+  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE;
+  if(!profileId) return false;
+  await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) })
+    .catch(e => console.warn('[PROVISION] SMS profile:', e.message));
+  return true;
+}
+
+// ── Canonical voice connection ────────────────────────────────────
+// The platform's voice lines answer via the LolaBrain AI assistant: Telnyx
+// routes a number into the assistant by pointing its connection at the
+// assistant's OWN TeXML app (telephony_settings.default_texml_app_id). That
+// id is resolved live from the assistant (with a short cache) rather than
+// hardcoded, so provisioning, health, and the numbers panel all agree with
+// Telnyx truth. TELNYX_VOICE_APP_ID stays as the fallback when the
+// assistant id can't be resolved.
+let _brainAppId = null;
+let _brainAppAt = 0;
+const BRAIN_APP_TTL_MS = 60_000;
+
+// The LolaBrain assistant's own TeXML app — the connection inbound calls on a
+// number must point at for Telnyx to route them into the assistant. Resolved
+// live from the assistant; this constant is the current production value used
+// as a known-good fallback by health/panel checks before the first resolve.
+export const LOLA_BRAIN_TEXML_APP_ID = '2958004434761680608';
+
+export async function getLolaBrainConnectionId(){
+  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
+  if(!assistantId) return null;
+  if(_brainAppId && Date.now() - _brainAppAt < BRAIN_APP_TTL_MS) return _brainAppId;
+  try{
+    const a = await tFetch('/ai/assistants/' + assistantId);
+    const appId = a?.telephony_settings?.default_texml_app_id || null;
+    if(appId){ _brainAppId = appId; _brainAppAt = Date.now(); return appId; }
+  }catch(e){ console.warn('[PROVISION] LolaBrain app resolve:', e.message); }
+  return null;
+}
+
+// Sync read of the cached value (never resolves) — for sync call sites
+// (e.g. the connection-sync known-good set). Returns null on first call.
+export function getLolaBrainConnectionIdSync(){
+  return _brainAppId || LOLA_BRAIN_TEXML_APP_ID;
+}
+
+export async function getCanonicalVoiceConnectionId(){
+  return (await getLolaBrainConnectionId()) || process.env.TELNYX_VOICE_APP_ID || null;
+}
+
+/**
+ * Attach the number to the platform's voice connection. Prefers the
+ * LolaBrain assistant's own TeXML app (the ultra-smart AI path); falls back
+ * to TELNYX_VOICE_APP_ID. Returns false when no connection is configured.
+ */
+export async function linkVoiceConnection(phoneNumberId){
+  const connectionId = await getCanonicalVoiceConnectionId();
+  if(!connectionId) return false;
+  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: connectionId }) })
+    .catch(e => console.warn('[PROVISION] Voice connection:', e.message));
+  return true;
+}
+
+/**
+ * List numbers already owned on the Telnyx account. This powers the
+ * onboarding "use a number I already own" path: attaching an owned number
+ * costs nothing, so the flow never stalls on credit. Fail soft → [] so a
+ * Telnyx outage never blocks the purchase path.
+ */
+export async function listOwnedNumbers(){
+  try{
+    const j = await tFetch('/phone_numbers?page[size]=100');
+    return (j?.data || []).filter(n => n?.phone_number).map(n => ({
+      phone_number: n.phone_number,
+      id: n.id,
+      status: n.status || null,
+      connection_id: n.connection_id || null,
+      voice_enabled: n.voice_enabled ?? null,
+      sms_enabled: n.messaging_profile_id ? true : null
+    }));
+  }catch(e){
+    return [];
+  }
+}
+
+/**
+ * Attach an ALREADY-OWNED Telnyx number to a tenant — voice connection +
+ * SMS profile + LolaBrain — and persist the routing row. No purchase, so no
+ * credit is consumed. This is the zero-cost sibling of
+ * provisionNumberForTenant (which buys a new number).
+ *
+ * @returns {Promise<{ok:boolean, phoneNumber, phoneNumberId, voiceLinked:boolean,
+ *                    smsLinked:boolean, brainLinked:boolean}>}
+ * @throws when the number is not on this Telnyx account.
+ */
+export async function attachOwnedNumberForTenant(tenant, phoneNumber, { persist = true } = {}){
+  const e164 = String(phoneNumber || '').trim().replace(/[^+\d]/g, '');
+  if(!/^\+\d{10,15}$/.test(e164)) throw new Error('Enter a valid phone number, e.g. +13055550100');
+
+  // 1. Verify the number is on THIS Telnyx account (never attach a stranger's line).
+  const found = await tFetch('/phone_numbers?filter[phone_number]=' + encodeURIComponent(e164));
+  const rec = (found?.data || []).find(n => n?.phone_number === e164);
+  if(!rec?.id) throw new Error(e164 + ' is not on this Telnyx account — first buy or port it into Telnyx, then come back.');
+
+  // 2. Attach voice connection + SMS profile + LolaBrain + dynvars webhook.
+  //    All are idempotent and none throw (they warn + return false on failure),
+  //    so run them in parallel — keeps signup-time auto-assignment inside its
+  //    latency budget instead of stacking five sequential Telnyx round trips.
+  const [voiceLinked, smsLinked, brainLinked] = await Promise.all([
+    linkVoiceConnection(rec.id),
+    linkMessagingProfile(rec.id),
+    linkLolaBrain(rec.id),
+    setDynamicVariablesWebhook()
+  ]);
+
+  if(persist) await persistProvisioning(tenant, { phoneNumber: e164, phoneNumberId: rec.id, texmlAppId: await getCanonicalVoiceConnectionId() });
+
+  return { ok: true, phoneNumber: e164, phoneNumberId: rec.id, voiceLinked, smsLinked, brainLinked };
+}
+
+/**
+ * Best-effort instant onboarding: give a brand-new tenant a live number the
+ * moment their workspace is created by attaching the first Telnyx number this
+ * account owns that isn't already tracked — no purchase, no credit, no wizard.
+ *
+ * Safety: the "tracked" set covers tenant_numbers routing rows AND the legacy
+ * tenants.phone_number column, so another salon's active line can never be
+ * grabbed. Fail-soft: signup must succeed even when Telnyx is down, the key is
+ * missing, or every owned number is in use — the owner can always pick or port
+ * a number in the wizard instead.
+ *
+ * @returns {Promise<{assigned:boolean, phoneNumber?:string, reason?:string}>}
+ */
+export async function autoAssignOwnedNumber(tenant){
+  if(!tenant?.id) return { assigned:false, reason:'no-tenant' };
+  if(!process.env.TELNYX_API_KEY) return { assigned:false, reason:'telnyx-not-configured' };
+  try{
+    const owned = await listOwnedNumbers();
+    if(!owned.length) return { assigned:false, reason:'no-owned-numbers' };
+
+    const c = db();
+    if(!c) return { assigned:false, reason:'database-not-configured' };
+
+    // Numbers already in use: tenant_numbers routing rows AND the legacy
+    // tenants.phone_number column (a tenant may predate the routing table).
+    const tracked = new Set();
+    const [routes, legacy] = await Promise.all([
+      c.from('tenant_numbers').select('phone_number'),
+      c.from('tenants').select('phone_number')
+    ]);
+    (routes?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+    (legacy?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+
+    const free = owned.find(n => !tracked.has(String(n.phone_number)));
+    if(!free) return { assigned:false, reason:'no-untracked-numbers' };
+
+    const result = await attachOwnedNumberForTenant(tenant, free.phone_number);
+    return { assigned:true, phoneNumber: result.phoneNumber };
+  }catch(e){
+    console.warn('[PROVISION] auto-assign skipped:', String(e?.message || e).slice(0, 200));
+    return { assigned:false, reason:'error' };
+  }
+}
+
+/**
+ * Fail-loud persist shared by BOTH provisioning paths (attach an owned
+ * number, buy a new one). supabase-js returns DB errors as an `error` object
+ * instead of throwing, so an ignored result makes provisioning look
+ * successful while tenants.phone_number stays null (e.g. a missing column
+ * from an unapplied migration). Every write here checks its result and
+ * throws a message naming the failing step — a 500 beats a silent lie.
+ */
+async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId }){
+  const c = db();
+  if(!c || !tenant?.id) return;
+
+  const { error: tenantErr } = await c.from('tenants').update({
+    phone_number: phoneNumber,
+    telnyx_phone_id: phoneNumberId || null,
+    texml_app_id: texmlAppId || null,
+    provisioning_status: 'active',
+    provisioned_at: new Date().toISOString(),
+    booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
+  }).eq('id', tenant.id);
+  if(tenantErr) throw new Error('Provisioning persist failed updating tenants (' + tenant.id + '): ' + tenantErr.message);
+
+  // PostgrestBuilder is only PromiseLike (.then) — never .catch on the chain,
+  // so the error check lives inside .then and .catch re-throws it.
+  await c.from('tenant_onboarding').update({ stage: 'phone_provisioned', updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenant.id).maybeSingle()
+    .then(({ error }) => { if(error) throw new Error('Provisioning persist failed updating tenant_onboarding (' + tenant.id + '): ' + error.message); })
+    .catch(e => { throw e; });
+
+  const route = await upsertTenantNumber(tenant.id, phoneNumber, { kind: 'primary', connectionId: texmlAppId || null, status: 'active' });
+  if(!route) throw new Error('Provisioning persist failed upserting tenant_numbers routing row for ' + phoneNumber);
+
+  invalidateRouting(phoneNumber);
+}
+
+export async function linkLolaBrain(phoneNumberId){
+  // The real attachment: point the number's voice connection at the
+  // assistant's own TeXML app so Telnyx routes inbound calls into the
+  // assistant. (The old POST /ai/assistants/{id}/phone_numbers endpoint 404s
+  // — it silently failed, leaving numbers off the assistant while the
+  // connection looked healthy.)
+  const appId = await getLolaBrainConnectionId();
+  if(!appId) return false;
+  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: appId }) })
+    .catch(e => console.warn('[PROVISION] LolaBrain:', e.message));
+  return true;
+}
+
+export async function setDynamicVariablesWebhook(){
+  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
+  if(!assistantId) return false;
+  await tFetch('/ai/assistants/' + assistantId, { method: 'PATCH', body: JSON.stringify({ dynamic_variables_webhook_url: appUrl() + '/api/agent-variables' }) })
+    .catch(e => console.warn('[PROVISION] DynVars:', e.message));
+  return true;
+}
+
+/**
+ * The full provisioning flow, idempotent-ish:
+ *   search -> order (with TeXML app connection) -> find phone number id ->
+ *   link SMS profile + LolaBrain -> persist on the tenant + routing table.
+ *
+ * Returns { ok, phoneNumber, texmlAppId, phoneNumberId, smsLinked, brainLinked }.
+ * Throws on Telnyx failures so callers can mark provisioning_pending.
+ */
+export async function provisionNumberForTenant(tenant, { areaCode, requestedNumber, persist = true } = {}){
+  const phoneNumber = requestedNumber || (await searchNumbers(areaCode || ''))[0].phone_number;
+  const canonicalAppId = await getCanonicalVoiceConnectionId();
+  const texmlApp = await getOrCreateTexmlApp();
+  // Prefer the LolaBrain assistant's app (ultra-smart AI path); the legacy
+  // TeXML app (getOrCreateTexmlApp) remains the fallback connection.
+  const texmlAppId = canonicalAppId || texmlApp?.id || texmlApp?.data?.id;
+  await purchaseNumber(phoneNumber, texmlAppId);
+  // Telnyx needs a beat for the order to land before we can address the
+  // number. Overridable via env so tests don't sleep.
+  await new Promise(r => setTimeout(r, Number(process.env.TELNYX_ORDER_SETTLE_MS || 3000)));
+
+  const numbersRes = await tFetch('/phone_numbers?filter[phone_number]=' + encodeURIComponent(phoneNumber)).catch(() => ({ data: [] }));
+  const phoneNumberId = numbersRes?.data?.[0]?.id;
+
+  const smsLinked = phoneNumberId ? await linkMessagingProfile(phoneNumberId) : false;
+  const brainLinked = phoneNumberId ? await linkLolaBrain(phoneNumberId) : false;
+  await setDynamicVariablesWebhook();
+
+  if(persist) await persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId: canonicalAppId });
+
+  return { ok: true, phoneNumber, texmlAppId: canonicalAppId, phoneNumberId, smsLinked, brainLinked };
+}
+
+export default {
+  tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
+  linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
+  getLolaBrainConnectionId, getLolaBrainConnectionIdSync, getCanonicalVoiceConnectionId,
+  LOLA_BRAIN_TEXML_APP_ID,
+  listOwnedNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant
+};

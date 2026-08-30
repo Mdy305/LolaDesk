@@ -1,42 +1,25 @@
 {
   "cleanUrls": true,
   "outputDirectory": ".",
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
-    { "source": "/start",     "destination": "/onboarding.html" },
-    { "source": "/dashboard", "destination": "/dashboard.html" },
-    { "source": "/login",     "destination": "/login.html" },
-    { "source": "/admin",     "destination": "/admin.html" },
-    { "source": "/clients",   "destination": "/clients.html" },
-    { "source": "/calls",     "destination": "/calls.html" },
-    { "source": "/inbox",     "destination": "/inbox.html" },
-    { "source": "/bookings",  "destination": "/bookings.html" },
-    { "source": "/revenue",   "destination": "/revenue.html" },
-    { "source": "/settings",  "destination": "/settings.html" },
-    { "source": "/numbers",   "destination": "/numbers.html" },
-    { "source": "/marketer",  "destination": "/marketer.html" },
-    { "source": "/pricing",   "destination": "/pricing.html" }
+  "fluid": true,
+  "functions": {"api/**/*.js":{"maxDuration":60}},
+  "redirects":[
+    {"source":"/landing","destination":"/","permanent":false},
+    {"source":"/start","destination":"/onboarding","permanent":false},
+    {"source":"/get-started","destination":"/onboarding","permanent":false},
+    {"source":"/sign-in","destination":"/login","permanent":false},
+    {"source":"/demo","destination":"/dashboard","permanent":false},
+    {"source":"/brain","destination":"/brain-os","permanent":false},
+    {"source":"/operations","destination":"/operations-os","permanent":false},
+    {"source":"/growth","destination":"/growth-os","permanent":false}
   ],
-  "redirects": [
-    {
-      "source": "/landing",
-      "destination": "/",
-      "permanent": false
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: *;"
-        }
-      ]
-    }
+  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}],
+  "crons":[
+    {"path":"/api/cron/sync-availability","schedule":"* * * * *"},
+    {"path":"/api/cron/sync-alerts","schedule":"*/15 * * * *"},
+    {"path":"/api/cron/publish-reviews","schedule":"0 * * * *"},
+    {"path":"/api/cron/sync-connections","schedule":"0 3 * * *"},
+    {"path":"/api/cron/autopilot","schedule":"0 * * * *"},
+    {"path":"/api/cron/booking-reminders","schedule":"0 * * * *"}
   ]
 }

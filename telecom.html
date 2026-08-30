@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Telecom — LolaDesk</title>
+<link rel="stylesheet" href="app.css"/>
+<style>
+.page{max-width:1080px;margin:0 auto;padding:0 6px 40px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);text-align:left;padding:10px 12px;border-bottom:.5px solid var(--border)}
+.tbl td{padding:11px 12px;border-bottom:.5px solid var(--border);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:var(--surface2);color:var(--text2)}
+.pill.ok{background:rgba(94,255,168,.14);color:#8affc4}
+.pill.warn{background:rgba(255,192,67,.14);color:#ffd27a}
+.pill.bad{background:rgba(255,120,120,.13);color:#ffb3aa}
+.pill.volt{background:rgba(204,255,0,.14);color:var(--pink2)}
+.fld{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.fld input,.fld select{background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%}
+.fld input:focus,.fld select:focus{border-color:var(--accent)}
+.btn-row{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+.btn-sm{background:var(--surface2);border:.5px solid var(--border);border-radius:9px;color:var(--text2);padding:7px 13px;font-size:12px;cursor:pointer;font-family:inherit}
+.btn-sm:hover{color:var(--text);border-color:var(--border2)}
+.btn-sm:disabled{opacity:.4;cursor:not-allowed}
+.msg{font-size:12.5px;margin-top:12px;min-height:16px}
+.msg.ok{color:var(--accent2)}.msg.err{color:#ff8a8a}
+.muted{font-size:12px;color:var(--text3)}
+.cap-grid{display:flex;flex-wrap:wrap;gap:8px}
+.cap{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:.5px solid var(--border);border-radius:99px;padding:6px 13px;font-size:12px}
+.cap .d{width:7px;height:7px;border-radius:50%}
+.cap .d.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
+.cap .d.off{background:var(--text3)}
+.empty{text-align:center;padding:26px 16px;color:var(--text3);font-size:13px}
+</style>
+</head>
+<body data-page="telecom">
+<div class="app"><main class="main">
+<div class="page-head">
+  <div><h1 class="page-title">Telecom</h1>
+  <p style="font-size:13px;color:var(--text3);margin-top:4px">Every Telnyx capability behind your Lola number — routing, messaging, compliance, SIMs, ports.</p></div>
+  <div class="topbar-actions"><button class="btn btn-ghost" onclick="loadAll()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Refresh</button></div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="kpi-val" id="kCapOn">—</div><div class="kpi-label">Capabilities live</div><div class="kpi-sub" id="kCapSub">Telnyx features probed</div></div>
+  <div class="kpi"><div class="kpi-val" id="kRouting">—</div><div class="kpi-label">Voice routing</div><div class="kpi-sub">Connection attached</div></div>
+  <div class="kpi"><div class="kpi-val" id="kProfile">—</div><div class="kpi-label">Messaging profile</div><div class="kpi-sub" id="kProfileSub">SMS/MMS/WhatsApp</div></div>
+  <div class="kpi"><div class="kpi-val" id="k10dlc">—</div><div class="kpi-label">10DLC</div><div class="kpi-sub">A2P compliance</div></div>
+</div>
+
+<!-- CAPABILITIES -->
+<div class="card">
+  <div class="card-head"><div class="card-title">Account capabilities</div></div>
+  <div class="card-body" style="padding:18px 22px">
+    <div class="cap-grid" id="capGrid"><div class="empty">Loading…</div></div>
+    <p class="muted" style="margin-top:12px">Probed live against your Telnyx account — numbers, porting, SIMs, mobile voice, and AI assistants.</p>
+  </div>
+</div>
+
+<!-- NUMBER ROUTING -->
+<div class="card">
+  <div class="card-head"><div class="card-title">Your number routing</div></div>
+  <div class="card-body" style="padding:18px 22px">
+    <div id="routingBody"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div class="grid2">
+  <!-- MESSAGING PROFILES -->
+  <div class="card">
+    <div class="card-head"><div class="card-title">Messaging profiles</div></div>
+    <div class="card-body" style="padding:18px 22px">
+      <p class="muted" style="margin-bottom:12px">A profile is the config object that powers SMS, MMS, and WhatsApp for your numbers. Assign one to your Lola number.</p>
+      <div id="profileBody"><div class="empty">Loading…</div></div>
+      <div style="margin-top:16px;border-top:.5px solid var(--border);padding-top:14px">
+        <div class="fld"><label>New profile name</label><input id="newProfileName" placeholder="MMA Salon — Client SMS"/></div>
+        <div class="btn-row"><button class="btn-sm" onclick="createProfile()">Create profile</button></div>
+        <div class="msg" id="profileMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10DLC COMPLIANCE -->
+  <div class="card">
+    <div class="card-head"><div class="card-title">10DLC &amp; A2P compliance</div></div>
+    <div class="card-body" style="padding:18px 22px">
+      <p class="muted" style="margin-bottom:12px">US carriers require registered brands and campaigns for business texting. See your registration state here.</p>
+      <div id="complianceBody"><div class="empty">Loading…</div></div>
+      <div style="margin-top:16px;border-top:.5px solid var(--border);padding-top:14px">
+        <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px"><b>Assign a campaign</b> — once Telnyx registers your brand + campaign, link the campaign to a messaging profile to take A2P live.</p>
+        <div class="fld"><label>Messaging profile</label><select id="regProfile"><option value="">Loading profiles…</option></select></div>
+        <div class="fld"><label>Campaign ID (TCR)</label><input id="regCampaign" placeholder="C1234567"/></div>
+        <div class="btn-row"><button class="btn-sm" id="regBtn" onclick="assign10dlc()">Assign campaign</button></div>
+        <div class="msg" id="regMsg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SIMS -->
+<div class="card">
+  <div class="card-head"><div class="card-title">SIM cards</div><span class="pill volt">Private APN</span></div>
+  <div class="card-body" style="padding:18px 22px">
+    <p class="muted" style="margin-bottom:12px">Wireless connectivity for front-desk iPads and failover routers — Lola never goes offline when salon Wi-Fi drops.</p>
+    <div id="simBody"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<!-- PORTS -->
+<div class="card">
+  <div class="card-head"><div class="card-title">Port orders</div></div>
+  <div class="card-body" style="padding:18px 22px">
+    <p class="muted" style="margin-bottom:12px">Move an existing salon number to LolaDesk. Confirm a submitted order to start the carrier handoff.</p>
+    <div id="portBody"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+</main></div>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+<script>
+function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
+function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function tel(action, body){
+  const r=await fetch('/api/telecom?action='+encodeURIComponent(action),{method:body?'POST':'GET',headers:H(),body:body?JSON.stringify(body):undefined});
+  return r.json();
+}
+function capPill(name, on, reason){
+  return '<span class="cap"><span class="d '+(on?'on':'off')+'"></span>'+esc(name)+(on?'':'<span class="muted">'+esc(reason||'unavailable')+'</span>')+'</span>';
+}
+function pill(cls, label){return '<span class="pill '+cls+'">'+esc(label)+'</span>';}
+
+async function loadCapabilities(){
+  const d=await tel('capabilities');
+  const grid=document.getElementById('capGrid');
+  if(!d.ok){grid.innerHTML='<div class="empty">'+esc(d.error||'Could not probe capabilities')+'</div>';return;}
+  const c=Object.fromEntries((d.data||[]).map(x=>[x.name,x]));
+  const names={numbers:'Phone numbers',porting:'Porting',sim_cards:'SIM cards',mobile_voice:'Mobile voice',ai_assistants:'AI assistants'};
+  const onCount=(d.data||[]).filter(x=>x.available).length;
+  document.getElementById('kCapOn').textContent=onCount+'/'+(d.data||[]).length;
+  document.getElementById('kCapSub').textContent='Telnyx features probed';
+  grid.innerHTML=(d.data||[]).map(x=>capPill(names[x.name]||x.name,x.available,x.reason)).join('')||'<div class="empty">No capabilities returned</div>';
+}
+
+async function loadRouting(){
+  const d=await tel('numbers.status');
+  const body=document.getElementById('routingBody');
+  if(!d.ok){body.innerHTML='<div class="empty">'+esc(d.error||'No number yet')+'</div>';document.getElementById('kRouting').textContent='—';return;}
+  const n=d.data||{};
+  document.getElementById('kRouting').textContent=n.voice?.connection_id?'Attached':'No voice';
+  const rows=[
+    ['Phone number','<b>'+esc(n.phone_number||'—')+'</b>'],
+    ['Status',pill(n.status==='active'||n.status==='provisioned'?'ok':'warn',n.status||'unknown')],
+    ['Voice connection',n.voice?.connection_id?pill('ok','Attached')+` <span class="muted">${esc(n.voice.connection_id)}</span>`:pill('warn','Not attached')],
+    ['Messaging product',esc(n.messaging?.messaging_product||'—')],
+    ['Messaging profile',n.messaging?.messaging_profile_id?pill('ok',n.messaging.messaging_profile_id):pill('warn','None assigned')]
+  ];
+  body.innerHTML='<table class="tbl">'+rows.map(([k,v])=>'<tr><td style="color:var(--text3)">'+esc(k)+'</td><td>'+v+'</td></tr>').join('')+'</table>';
+}
+
+let PROFILES=[];
+async function loadProfiles(){
+  const d=await tel('messaging_profiles.list');
+  const body=document.getElementById('profileBody');
+  if(!d.ok){body.innerHTML='<div class="empty">'+esc(d.error||'Could not load messaging profiles')+'</div>';return;}
+  const profiles=d.data||[];
+  PROFILES=profiles;
+  const sel=document.getElementById('regProfile');
+  if(sel) sel.innerHTML=profiles.length
+    ? '<option value="">Choose a profile…</option>'+profiles.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')
+    : '<option value="">No profiles yet</option>';
+  document.getElementById('kProfile').textContent=profiles.length;
+  document.getElementById('kProfileSub').textContent=profiles.length?profiles.map(p=>p.name).slice(0,2).join(', ')+'…':'SMS/MMS/WhatsApp';
+  if(!profiles.length){body.innerHTML='<div class="empty">No messaging profiles yet — create one below, then assign it to your number.</div>';return;}
+  const rows=profiles.map(p=>{
+    const feats=(p.features||[]).map(f=>pill('volt',f)).join(' ')||'<span class="muted">—</span>';
+    return '<tr><td><b>'+esc(p.name)+'</b><div class="muted">'+esc(p.id)+'</div></td>'+
+      '<td>'+feats+'</td>'+
+      '<td>'+(p.tcr?pill('ok','10DLC: '+esc(p.tcr.status)):'<span class="muted">no campaign</span>')+'</td>'+
+      '<td><button class="btn-sm" onclick="assignProfile(\''+esc(p.id)+'\')">Assign to my number</button></td></tr>';
+  }).join('');
+  body.innerHTML='<table class="tbl"><thead><tr><th>Profile</th><th>Features</th><th>10DLC</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+async function assignProfile(id){
+  const d=await tel('messaging_profiles.assign',{messaging_profile_id:id});
+  const m=document.getElementById('profileMsg');
+  if(d.ok){m.className='msg ok';m.textContent='Profile assigned — SMS/MMS/WhatsApp now route through it.';loadRouting();loadProfiles();}
+  else{m.className='msg err';m.textContent=esc(d.error||'Assign failed');}
+}
+
+async function createProfile(){
+  const name=document.getElementById('newProfileName').value.trim();
+  const m=document.getElementById('profileMsg');
+  if(!name){m.className='msg err';m.textContent='Give the profile a name first.';return;}
+  const d=await tel('messaging_profiles.create',{name});
+  if(d.ok){m.className='msg ok';m.textContent='Profile created — now assign it to your number.';document.getElementById('newProfileName').value='';loadProfiles();}
+  else{m.className='msg err';m.textContent=esc(d.error||'Create failed');}
+}
+
+async function assign10dlc(){
+  const profileId=document.getElementById('regProfile').value;
+  const campaignId=document.getElementById('regCampaign').value.trim();
+  const btn=document.getElementById('regBtn');
+  const m=document.getElementById('regMsg');
+  if(!profileId){m.className='msg err';m.textContent='Choose a messaging profile first.';return;}
+  if(!campaignId){m.className='msg err';m.textContent='Enter the TCR campaign ID.';return;}
+  btn.disabled=true;btn.textContent='Assigning…';
+  const d=await tel('compliance.assign_10dlc',{messaging_profile_id:profileId,tcr_campaign_id:campaignId});
+  btn.disabled=false;btn.textContent='Assign campaign';
+  if(d.ok){m.className='msg ok';m.textContent='Campaign assigned — A2P texting is registered for this profile.';loadCompliance();loadProfiles();}
+  else{m.className='msg err';m.textContent=esc(d.error||'Assign failed');}
+}
+
+async function loadCompliance(){
+  const d=await tel('compliance.status');
+  const body=document.getElementById('complianceBody');
+  document.getElementById('k10dlc').textContent='—';
+  if(!d.ok){body.innerHTML='<div class="empty">'+esc(d.error||'Could not load compliance status')+'</div>';return;}
+  const c=d.data||{};
+  const brands=c.brands||[], campaigns=c.campaigns||[];
+  document.getElementById('k10dlc').textContent=campaigns.length?campaigns.length:'0';
+  if(!brands.length&&!campaigns.length){
+    const err=c.brands_error||c.campaigns_error;
+    body.innerHTML='<div class="empty">No 10DLC brands or campaigns registered.'+(err?'<div class="muted" style="margin-top:6px">'+esc(err)+'</div>':'')+'</div>';
+    return;
+  }
+  const bRows=brands.map(b=>'<tr><td><b>'+esc(b.name||b.id)+'</b></td><td>'+pill(b.status==='verified'?'ok':b.status==='pending'?'warn':'warn',b.status||'unknown')+'</td></tr>').join('');
+  const cRows=campaigns.map(cp=>'<tr><td><b>'+esc(cp.campaign_id||cp.id)+'</b></td><td>'+pill(cp.status==='active'?'ok':'warn',cp.status||'unknown')+'</td><td class="muted">'+esc(cp.use_case||'—')+'</td></tr>').join('');
+  body.innerHTML='<b style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Brands</b>'+
+    (bRows?'<table class="tbl" style="margin:8px 0 16px"><tbody>'+bRows+'</tbody></table>':'<div class="empty">No brands</div>')+
+    '<b style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Campaigns</b>'+
+    (cRows?'<table class="tbl" style="margin:8px 0 0"><thead><tr><th>Campaign</th><th>Status</th><th>Use case</th></tr></thead><tbody>'+cRows+'</tbody></table>':'<div class="empty">No campaigns</div>');
+}
+
+async function loadSims(){
+  const d=await tel('sims.list');
+  const body=document.getElementById('simBody');
+  if(!d.ok){body.innerHTML='<div class="empty">'+esc(d.error||'Could not load SIM cards')+'</div>';return;}
+  const sims=d.data?.sims||[];
+  if(!sims.length){body.innerHTML='<div class="empty">No SIM cards on this account yet. Order physical SIMs or an eSIM from the Numbers page.</div>';return;}
+  const rows=sims.map(s=>{
+    const st=String(s.status?.value||s.status||'unknown');
+    return '<tr><td><b>'+esc(s.iccid||s.id)+'</b></td>'+
+      '<td>'+pill(st==='active'||st==='enabled'?'ok':st==='suspended'?'bad':'warn',st)+'</td>'+
+      '<td>'+esc(s.data_limit?.amount?s.data_limit.amount+' '+s.data_limit.unit:'—')+'</td>'+
+      '<td><div class="btn-row">'+
+        (st!=='active'&&st!=='enabled'?'<button class="btn-sm" onclick="simAction(\''+esc(s.id)+'\',\'sims.activate\',this)">Activate</button>':'')+
+        '<button class="btn-sm" onclick="simAction(\''+esc(s.id)+'\',\'sims.enable_voice\',this)">Enable voice</button>'+
+      '</div></td></tr>';
+  }).join('');
+  body.innerHTML='<table class="tbl"><thead><tr><th>ICCID</th><th>Status</th><th>Data limit</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+async function simAction(id, action, btn){
+  btn.disabled=true;
+  const d=await tel(action,{sim_card_id:id});
+  btn.disabled=false;
+  if(d.ok){loadSims();}
+  else{alert(d.error||'Action failed');}
+}
+
+async function loadPorts(){
+  const d=await tel('ports.list');
+  const body=document.getElementById('portBody');
+  if(!d.ok){body.innerHTML='<div class="empty">'+esc(d.error||'Could not load port orders')+'</div>';return;}
+  const ports=d.data||[];
+  if(!ports.length){body.innerHTML='<div class="empty">No port orders. Start one from Settings → Phone &amp; Voice → Port your existing number.</div>';return;}
+  const rows=ports.map(p=>{
+    const st=String(p.status||'unknown');
+    const nums=(p.phone_numbers||[]).join(', ');
+    const confirmable=['pending','submitted','in_progress'].includes(st);
+    return '<tr><td><b>'+esc(nums||p.id)+'</b></td>'+
+      '<td>'+pill(st==='ported'?'ok':st==='rejected'?'bad':'warn',st)+'</td>'+
+      '<td class="muted">'+esc(p.foc_date||'—')+'</td>'+
+      '<td>'+(confirmable?'<button class="btn-sm" onclick="confirmPort(\''+esc(p.id)+'\',this)">Confirm</button>':'<span class="muted">—</span>')+'</td></tr>';
+  }).join('');
+  body.innerHTML='<table class="tbl"><thead><tr><th>Number</th><th>Status</th><th>FOC date</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+async function confirmPort(id,btn){
+  if(!confirm('Confirm this port order? This tells Telnyx to proceed with the carrier handoff.'))return;
+  btn.disabled=true;
+  const d=await tel('ports.confirm',{porting_order_id:id});
+  btn.disabled=false;
+  if(d.ok){loadPorts();}
+  else{alert(d.error||'Confirm failed');}
+}
+
+async function loadAll(){
+  await Promise.all([loadCapabilities(),loadRouting(),loadProfiles(),loadCompliance(),loadSims(),loadPorts()]);
+}
+(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}loadAll();})();
+</script>
+</body>
+</html>

@@ -1,11 +1,14 @@
 import { WebSocketServer } from 'ws';
 import url from 'url';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import {
-  getTenantByPhone, upsertClient, getOrStartConversation,
+  upsertClient, getOrStartConversation,
   logMessage, getConversationHistory, logUsage, e164, tenantKnowledgePrompt
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
+import { createDeepgramStream } from './lib/deepgram.js';
+import { buildMCPToolsPrompt, executeMCPTool, extractToolCall } from './lib/telnyx-mcp-integration.js';
 
 export const activeStreams = new Map();
 
@@ -89,13 +92,26 @@ class CallContext {
 
     this.speechFrames = 0;
     this.abortController = null;
+
+    // Deepgram streaming STT — transcribes the caller's raw mu-law frames.
+    this.deepgram = null;
   }
 
   async initialize() {
     try {
-      // 1. Tenant lookup
-      const row = await getTenantByPhone(this.toN);
-      this.tenantId = row?.id;
+      // 1. Tenant lookup — STRICT. The dialed number must resolve to one
+      //    tenant before anything is spoken or streamed. A miss refuses
+      //    politely and hangs up; it never greets with demo/other data.
+      const routing = await resolveInboundTenant({ to: this.toN, from: this.fromN });
+      if(routing.status !== 'resolved' || !routing.tenant){
+        const refuse = routing.status === 'disabled'
+          ? 'This number is not active yet. Please try again later.'
+          : 'This number is not set up for Lola yet. Please call back soon.';
+        await this.rejectCall(refuse);
+        return;
+      }
+      const row = routing.tenant;
+      this.tenantId = row.id;
       this.tenant = shape(row);
 
       // 2. Client & Conversation
@@ -109,11 +125,37 @@ class CallContext {
         this.history = await getConversationHistory(this.conv.id, 8);
       }
 
-      // 4. Initial greeting after 500ms
+      // 4. Start Deepgram streaming STT (inbound mu-law -> final transcripts)
+      if(process.env.DEEPGRAM_API_KEY){
+        try{
+          this.deepgram = createDeepgramStream({
+            apiKey: process.env.DEEPGRAM_API_KEY,
+            onTranscript: t => this.handleUserSpeech(t),
+            onInterim: () => {}, // silence is not speech — no dead-air ack needed here
+            onError: e => console.error('[voice-stream] Deepgram:', e?.message || e)
+          });
+        }catch(e){ console.error('[voice-stream] Deepgram init:', e?.message || e); }
+      }
+
+      // 5. Initial greeting after 500ms
       setTimeout(() => this.greet(), 500);
 
     } catch (e) {
       console.error('[voice-stream] Init error:', e);
+    }
+  }
+
+  // Unroutable call: say one polite line and hang up. Never speaks any
+  // tenant's data because none was resolved.
+  async rejectCall(text) {
+    await sendCallControlCommand(this.callControlId, 'speak', {
+      text,
+      voice: 'en-US-Neural2-F',
+      payload_type: 'text'
+    });
+    await sendCallControlCommand(this.callControlId, 'hangup', {});
+    if (this.ws && this.ws.readyState === 1) {
+      try { this.ws.close(); } catch {}
     }
   }
 
@@ -195,7 +237,8 @@ class CallContext {
     sendNext();
   }
 
-  // Handle incoming raw audio frames for VAD detection
+  // Handle incoming raw audio frames: VAD for barge-in AND forward to
+  // Deepgram so the caller's speech becomes text (the duplex STT path).
   handleInboundAudio(payload) {
     const buf = Buffer.from(payload, 'base64');
     const rms = getRms(buf);
@@ -208,6 +251,8 @@ class CallContext {
     } else {
       this.speechFrames = Math.max(0, this.speechFrames - 1);
     }
+
+    if (this.deepgram) this.deepgram.send(buf);
   }
 
   triggerInterruption() {
@@ -244,10 +289,16 @@ class CallContext {
 
     this.history.push({ role: 'user', content: text });
 
+    // Booking + memory tools are MCP-native and route to booking-brain:
+    // lola_book_appointment / lola_check_availability / reschedule / cancel /
+    // remember / recall. The LLM emits [TOOL: name {…}] when one is needed;
+    // we execute it and let the LLM speak the result to the caller.
+    const sys = systemPrompt(this.tenant) + '\n' + buildMCPToolsPrompt();
+
     let reply = "I'm sorry, I had a little trouble there — could you say that again?";
     try {
       const r = await chat({
-        system: systemPrompt(this.tenant),
+        system: sys,
         messages: this.history,
         maxTokens: 90,
         temperature: 0.7
@@ -255,6 +306,30 @@ class CallContext {
       if (r.ok && r.text) reply = r.text.trim();
     } catch (e) {
       console.error('[voice-stream] chat error:', e);
+    }
+
+    const toolCall = extractToolCall(reply);
+    if (toolCall && this.tenantId){
+      try{
+        const { name, params } = toolCall;
+        if(!params.client_phone && this.fromN) params.client_phone = this.fromN;
+        if(!params.client_name && this.client?.name) params.client_name = this.client.name;
+        const toolResult = await executeMCPTool(name, params, this.tenantId);
+        const refinedMessages = [
+          ...this.history,
+          { role: 'assistant', content: reply },
+          { role: 'user', content: `Tool "${name}" returned: ${JSON.stringify(toolResult)}` }
+        ];
+        const refined = await chat({
+          system: sys,
+          messages: refinedMessages,
+          maxTokens: 120,
+          temperature: 0.6
+        });
+        if (refined.ok && refined.text) reply = refined.text.trim();
+      }catch(e){
+        console.error('[voice-stream] MCP tool error:', e?.message || e);
+      }
     }
 
     this.history.push({ role: 'assistant', content: reply });
@@ -283,6 +358,10 @@ class CallContext {
     }
     if (this.abortController) {
       this.abortController.abort();
+    }
+    if (this.deepgram) {
+      this.deepgram.close();
+      this.deepgram = null;
     }
     console.log(`[voice-stream] Session cleaned up: call_control_id=${this.callControlId}`);
   }

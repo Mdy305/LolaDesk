@@ -4,7 +4,18 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>LolaDesk — The AI Front Desk That Never Misses a Call</title>
-<meta name="description" content="Lola answers your phone, books appointments, and follows up with clients 24/7. The AI receptionist for salons, spas, and med spas. From $99/month."/>
+<meta name="description" content="Jarvis talks. Alexa answers. Lola executes — she answers your phone, books the appointment, locks the slot, and follows up with clients 24/7. From $99/month."/>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LolaDesk">
+<meta property="og:title" content="LolaDesk — Your front desk never sleeps">
+<meta property="og:description" content="Lola answers every call, text, and website chat for your salon or spa — and books the appointment. 24/7.">
+<meta property="og:url" content="https://www.loladesk.com/">
+<meta property="og:image" content="https://www.loladesk.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="LolaDesk — Your front desk never sleeps">
+<meta name="twitter:image" content="https://www.loladesk.com/og-image.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="canonical" href="https://www.loladesk.com/">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -32,7 +43,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 @media(max-width:720px){.nav-links a{display:none}}
 .nav-links a{font-size:13px;color:var(--text2);transition:color .15s}
 .nav-links a:hover{color:var(--text)}
-.nav-cta{background:var(--pink);color:#fff;padding:9px 18px;border-radius:var(--r-sm);font-size:13px;font-weight:500;transition:all .15s}
+.nav-cta{background:var(--pink);color:#10140a;padding:9px 18px;border-radius:var(--r-sm);font-size:13px;font-weight:500;transition:all .15s}
 .nav-cta:hover{background:var(--pink2);box-shadow:0 4px 16px var(--pink-glow)}
 
 /* HERO */
@@ -45,7 +56,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .hero-h1 em{font-family:var(--ff-serif);font-style:italic;font-weight:300;color:var(--pink2)}
 .hero-sub{font-size:clamp(16px,2.5vw,19px);font-weight:300;color:var(--text2);max-width:560px;margin:0 auto 36px;position:relative}
 .hero-ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;position:relative;margin-bottom:18px}
-.btn-primary{background:var(--pink);color:#fff;padding:15px 30px;border-radius:var(--r-sm);font-size:15px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:9px}
+.btn-primary{background:var(--pink);color:#10140a;padding:15px 30px;border-radius:var(--r-sm);font-size:15px;font-weight:600;transition:all .15s;display:inline-flex;align-items:center;gap:9px}
 .btn-primary:hover{background:var(--pink2);box-shadow:0 6px 28px var(--pink-glow);transform:translateY(-1px)}
 .btn-ghost{background:var(--surface);color:var(--text);padding:15px 28px;border-radius:var(--r-sm);font-size:15px;font-weight:500;border:0.5px solid var(--border2);transition:all .15s}
 .btn-ghost:hover{border-color:var(--text3)}
@@ -111,7 +122,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 @media(max-width:880px){.pricing{grid-template-columns:1fr;max-width:380px;margin:0 auto}}
 .price-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:30px;display:flex;flex-direction:column}
 .price-card.featured{border-color:var(--pink);background:linear-gradient(180deg,var(--pink-dim),var(--surface) 40%);position:relative}
-.price-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#fff;font-size:10px;font-weight:600;letter-spacing:.1em;padding:4px 14px;border-radius:20px}
+.price-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--pink);color:#10140a;font-size:10px;font-weight:600;letter-spacing:.1em;padding:4px 14px;border-radius:20px}
 .price-name{font-size:14px;font-weight:600;letter-spacing:.04em;margin-bottom:6px}
 .price-tag{display:flex;align-items:baseline;gap:4px;margin-bottom:6px}
 .price-amount{font-size:42px;font-weight:600;letter-spacing:-.02em}
@@ -121,7 +132,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .price-features li{font-size:13px;font-weight:300;color:var(--text2);display:flex;align-items:flex-start;gap:9px}
 .price-features li svg{color:var(--green);flex-shrink:0;margin-top:3px}
 .price-btn{width:100%;padding:13px;border-radius:var(--r-sm);font-size:14px;font-weight:600;transition:all .15s;text-align:center}
-.price-btn.primary{background:var(--pink);color:#fff}
+.price-btn.primary{background:var(--pink);color:#10140a}
 .price-btn.primary:hover{background:var(--pink2)}
 .price-btn.ghost{background:var(--surface2);color:var(--text);border:0.5px solid var(--border2)}
 .price-btn.ghost:hover{border-color:var(--text3)}
@@ -150,7 +161,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="#pricing">Pricing</a>
-      <a href="onboarding.html" class="nav-cta">Start free trial</a>
+      <a href="/start" class="nav-cta">Start free trial</a>
     </div>
   </div>
 </nav>
@@ -161,9 +172,9 @@ button{font-family:var(--ff);cursor:pointer;border:none}
   <div class="wrap">
     <div class="hero-eyebrow"><span class="hero-eyebrow-dot"></span>Now answering calls 24/7 with AI voice</div>
     <h1 class="hero-h1">The front desk<br>that <em>never</em> misses<br>a call.</h1>
-    <p class="hero-sub">Lola answers your phone, books appointments, and follows up with clients around the clock — so you never lose a booking to voicemail again.</p>
+    <p class="hero-sub"><strong>Jarvis talks. Alexa answers. Lola executes.</strong> She answers your phone, books the appointment, locks the slot, and follows up with clients around the clock — so you never lose a booking to voicemail again.</p>
     <div class="hero-ctas">
-      <a href="onboarding.html" class="btn-primary">Start 14-day free trial<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="/start" class="btn-primary">Start 14-day free trial<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <a href="index.html" class="btn-ghost">See live demo</a>
     </div>
     <p class="hero-trust">No credit card required · Live in under 5 minutes</p>
@@ -254,7 +265,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
       </div>
     </div>
     <div style="text-align:center;margin-top:40px">
-      <a href="onboarding.html" class="btn-primary">Set up my Lola<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="/start" class="btn-primary">Set up my Lola<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
@@ -317,7 +328,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>500 messages/month</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Email support</li>
         </ul>
-        <a href="onboarding.html" class="price-btn ghost">Start free trial</a>
+        <a href="/start" class="price-btn ghost">Start free trial</a>
       </div>
       <div class="price-card featured">
         <div class="price-badge">MOST POPULAR</div>
@@ -331,7 +342,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Photo consultation AI</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>CRM + revenue insights</li>
         </ul>
-        <a href="onboarding.html" class="price-btn primary">Start free trial</a>
+        <a href="/start" class="price-btn primary">Start free trial</a>
       </div>
       <div class="price-card">
         <div class="price-name">MED SPA</div>
@@ -344,10 +355,10 @@ button{font-family:var(--ff);cursor:pointer;border:none}
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>High-ticket qualifying</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Priority support</li>
         </ul>
-        <a href="onboarding.html" class="price-btn ghost">Start free trial</a>
+        <a href="/start" class="price-btn ghost">Start free trial</a>
       </div>
     </div>
-    <p style="text-align:center;font-size:13px;color:var(--text3);margin-top:24px">Multi-location or franchise? <a href="#" style="color:var(--pink2)">Talk to us about Enterprise →</a></p>
+    <p style="text-align:center;font-size:13px;color:var(--text3);margin-top:24px">Multi-location or franchise? <a href="mailto:hello@loladesk.com?subject=Enterprise%20plan" style="color:var(--pink2)">Talk to us about Enterprise →</a></p>
   </div>
 </section>
 
@@ -357,7 +368,7 @@ button{font-family:var(--ff);cursor:pointer;border:none}
     <div class="cta-band">
       <h2 class="cta-band-title">Stop losing bookings<br>to <em>voicemail.</em></h2>
       <p class="cta-band-sub">Every missed call is a client who booked somewhere else. Give them Lola instead.</p>
-      <a href="onboarding.html" class="btn-primary">Start your free trial<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a href="/start" class="btn-primary">Start your free trial<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
@@ -370,8 +381,8 @@ button{font-family:var(--ff);cursor:pointer;border:none}
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
       <a href="index.html">Demo</a>
-      <a href="#">Privacy</a>
-      <a href="#">Terms</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
     </div>
     <div class="footer-copy">© 2026 LolaDesk. The AI front desk for salons & spas.</div>
   </div>
