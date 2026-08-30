@@ -253,6 +253,7 @@
     <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-mindbody" onclick="connect('mindbody')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-fresha" onclick="connect('fresha')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Booksy</div><div class="ts">Two-way sync · partner-gated</div></div><button class="btn-g" id="c-booksy" onclick="requestBooksy()">Request access</button></div>
+    <div class="toggle-row"><div><div class="tl">Cal.com (White-Label)</div><div class="ts">Booking mesh · Platform or API-key mode</div></div><button class="btn-g" id="c-cal_platform" onclick="requestCal()">Configure</button></div>
   </div>
 
   <div class="card">
@@ -570,6 +571,9 @@ function connect(p){
 function requestBooksy(){
   window.open('https://docs.booksy.com/','_blank');
   alert('Booksy is partner-gated: request API access at docs.booksy.com, then support@loladesk.com wires your partner keys.');
+}
+function requestCal(){
+  alert('Cal.com (White-Label) activates from server credentials: set CAL_COM_CLIENT_ID + CAL_COM_CLIENT_SECRET (Platform managed users) or CAL_COM_API_KEY (API-key mode) in Vercel, then this node joins the booking mesh.');
 }
 function renderIntegrations(list){
   (list||[]).forEach(i=>{

@@ -2,7 +2,7 @@ import { getUserFromToken, bearer } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 
-const PROVIDERS = ['square','boulevard','fresha','vagaro','mindbody','booksy','shopify','google_calendar','google_gmb'];
+const PROVIDERS = ['square','boulevard','fresha','vagaro','mindbody','booksy','shopify','google_calendar','google_gmb','cal_platform'];
 
 function state(id, name, status, detail, action, metadata={}){
   return { id, name, status, detail, action, metadata };
@@ -48,7 +48,7 @@ export default async function handler(req,res){
       else if(expired){status='attention';detail='Authorization expired — reconnect required';action='reconnect';}
       else if(row?.status&&row.status!=='connected'){status='attention';detail=`Connection status: ${row.status}`;action='reconnect';}
       else if(selected&&bookingUrl){status='link_only';detail='Booking link saved; live calendar sync is not connected';action='connect';}
-      const nameMap={google_calendar:'Google Calendar',google_gmb:'Google reviews (GMB)',mindbody:'Mindbody'};
+      const nameMap={google_calendar:'Google Calendar',google_gmb:'Google reviews (GMB)',mindbody:'Mindbody',cal_platform:'Cal.com (White-Label)'};
       integrations.push(state(id,nameMap[id]||id.charAt(0).toUpperCase()+id.slice(1),status,detail,action,row?.metadata||{}));
     }
 

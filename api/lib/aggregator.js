@@ -7,8 +7,9 @@ import * as mindbody   from './connectors/mindbody.js';
 import * as fresha     from './connectors/fresha.js';
 import * as booksy     from './connectors/booksy.js';
 import * as gmb        from './connectors/google-gmb.js';
+import * as cal        from './connectors/cal-platform.js';
 
-const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb };
+const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb, cal_platform: cal };
 
 export function getConnector(provider){
   const c = CONNECTORS[provider];
