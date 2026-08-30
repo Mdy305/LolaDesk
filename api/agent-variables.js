@@ -159,6 +159,12 @@ export default async function handler(req, res){
       staff: staffList || '',
       marketing_context: marketingContext || '',
       booking_url: tenant.booking_url || ('https://www.loladesk.com/book.html?t=' + (tenant.slug||'')),
+      // The salon's real web home + Google Business/Maps profile — Lola is
+      // this business's VP-marketing voice, so she cites the actual website
+      // and points clients to the Google profile for directions/reviews.
+      website_url: tenant.website_url || '',
+      gmb_url: tenant.gmb_url || tenant.google_review_url || '',
+      maps_url: tenant.gmb_url || '',
       knowledge: tenantKnowledgePrompt(tenant),
       ...memory
     };

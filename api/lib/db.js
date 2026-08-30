@@ -543,7 +543,7 @@ export async function updateTenantFields(tenantId, patch = {}){
   if(!c || !tenantId) return null;
   // voice_id is intentionally NOT in the allow-list — Lola's voice is
   // canonical platform-wide and cannot be changed per tenant.
-  const allowed = ['name','owner_name','location','hours','booking_url','website_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url','instructions','missed_call_textback','review_requests'];
+  const allowed = ['name','owner_name','location','hours','booking_url','website_url','gmb_url','business_mode','persona','services','team','phone_number','operator_phone','autopilot_enabled','yelp_review_url','google_review_url','instructions','missed_call_textback','review_requests'];
   const row = {};
   for(const k of allowed){ if(patch[k] !== undefined) row[k] = patch[k]; }
   
@@ -591,6 +591,10 @@ export function tenantKnowledgePrompt(tenant){
   const svc = (tenant.services||[]).map(s=>`${s.name}${s.price?` $${s.price}`:''}${s.duration?` (${s.duration})`:''}`).join('; ');
   if(svc) lines.push(`Services: ${svc}`);
   if(tenant.booking_url) lines.push(`Booking link: ${tenant.booking_url}`);
+  if(tenant.website_url) lines.push(`Website: ${tenant.website_url}`);
+  if(tenant.gmb_url) lines.push(`Google Business (Maps) profile: ${tenant.gmb_url}`);
+  if(tenant.google_review_url) lines.push(`Google review page: ${tenant.google_review_url}`);
+  if(tenant.yelp_review_url) lines.push(`Yelp profile: ${tenant.yelp_review_url}`);
   if(k.positioning) lines.push(`Positioning: ${k.positioning}`);
   if(k.tone) lines.push(`Brand voice: ${k.tone}`);
   if(k.summary) lines.push(`About: ${k.summary}`);

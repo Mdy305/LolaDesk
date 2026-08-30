@@ -76,6 +76,7 @@
       <div class="fld"><label>Location</label><input id="sLocation" placeholder="1500 Alton Rd, Miami Beach, FL"/></div>
       <div class="fld"><label>Business hours</label><input id="sHours" placeholder="Tue-Sat, Noon-8pm"/></div>
       <div class="fld"><label>Website</label><input id="sWebsite" placeholder="https://yoursalon.com"/></div>
+      <div class="fld"><label>Google Business (Maps/GMB) link</label><input id="sGmb" placeholder="https://www.google.com/maps/place/Your+Salon"/></div>
       <div class="fld"><label>Booking link</label><input id="sBookingUrl" readonly style="opacity:.7"/></div>
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveSalon()">Save salon details</button></div>
@@ -307,6 +308,7 @@ async function load(){
     setVal('sName',TENANT.name);setVal('sOwner',TENANT.owner_name);
     setVal('sLocation',TENANT.location);setVal('sHours',TENANT.hours);
     setVal('sWebsite',TENANT.website_url);
+    setVal('sGmb',TENANT.gmb_url);
     setVal('opPhone',TENANT.operator_phone||'');
     if(TENANT.operator_phone){
       document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
@@ -376,7 +378,7 @@ async function saveSalon(){
   try{
     const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       name:val('sName'),owner_name:val('sOwner'),location:val('sLocation'),
-      hours:val('sHours'),website_url:val('sWebsite')})});
+      hours:val('sHours'),website_url:val('sWebsite'),gmb_url:val('sGmb')})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Save failed');
     msg('salonMsg','Saved. Lola now uses these details on every call.',true);

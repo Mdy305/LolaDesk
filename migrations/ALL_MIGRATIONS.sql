@@ -1632,7 +1632,12 @@ union all
 select t.id, 'Consultation', 60, 0, '', true
 from public.tenants t
 where not exists (select 1 from public.services s where s.tenant_id = t.id)
-  and (t.services is null or jsonb_array_length(t.services) = 0);
+  and  (t.services is null or jsonb_array_length(t.services) = 0);
+
+-- 20260829_gmb_website_wiring.sql — Lola knows each salon's website + Google
+-- Business/Maps profile (she is that business's VP-marketing voice), so those
+-- links are stored on the tenant and injected into her call-time variables.
+alter table public.tenants add column if not exists gmb_url text;
 
 insert into public.staff (tenant_id, name, role, is_active)
 select t.id, 'Any available team member', 'Stylist', true

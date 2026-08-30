@@ -119,6 +119,30 @@ test('a posted field with no backend column fails loud instead of false success'
   assert.equal(fake.all('tenants')[0].voice_enabled, undefined);
 });
 
+test('website + GMB + review URLs surface into Lola call prompt', async () => {
+  seed();
+  const t = fake.all('tenants')[0];
+  t.website_url = 'https://salona.com';
+  t.gmb_url = 'https://www.google.com/maps/place/Salon+A';
+  t.google_review_url = 'https://g.page/r/abcd/review';
+  t.yelp_review_url = 'https://www.yelp.com/biz/salon-a';
+  const prompt = tenantKnowledgePrompt(t);
+  assert.match(prompt, /Website: https:\/\/salona\.com/);
+  assert.match(prompt, /Google Business \(Maps\) profile: https:\/\/www\.google\.com\/\S+/);
+  assert.match(prompt, /Google review page: https:\/\/g\.page\/\S+/);
+  assert.match(prompt, /Yelp profile: https:\/\/www\.yelp\.com\/\S+/);
+});
+
+test('gmb_url persists via settings and is not ignored', async () => {
+  seed();
+  const { status, json } = await call(settingsHandler, 'POST', { gmb_url: 'https://maps.google.com/?cid=123' });
+  assert.equal(status, 200);
+  assert.equal(json.ok, true);
+  assert.deepEqual(json.saved, ['gmb_url']);
+  assert.deepEqual(json.ignored, []);
+  assert.equal(fake.all('tenants')[0].gmb_url, 'https://maps.google.com/?cid=123');
+});
+
 test('an entire unsupported panel is reported, not silently dropped', async () => {
   seed();
   const { status, json } = await call(settingsHandler, 'POST', {
