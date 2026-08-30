@@ -58,12 +58,18 @@ export default async function handler(req,res){
       const start=new Date(date); start.setUTCHours(0,0,0,0);
       const days=action==='week' ? Math.max(1,Math.min(14,Number(body.days||7))) : 1;
       const end=new Date(start.getTime()+days*86400000);
-      const [bookings,settings]=await Promise.all([
+      // Blocks (lunch, breaks, days off) ride the same payload so the calendar
+      // can shade them on the staff grid. The table landed in
+      // 20260829_inventory_ops.sql; pre-migration the query resolves empty.
+      const from=start.toISOString().slice(0,10), to=end.toISOString().slice(0,10);
+      const [bookings,settings,blocked]=await Promise.all([
         listBookings(tenant.id,start.toISOString(),end.toISOString()),
-        action==='day' ? getBookingSettings(tenant.id) : Promise.resolve(null)
+        action==='day' ? getBookingSettings(tenant.id) : Promise.resolve(null),
+        db().from('blocked_slots').select('*').eq('tenant_id',tenant.id)
+          .gte('blocked_date',from).lte('blocked_date',to)
       ]);
       const enriched=await enrichBookings(tenant.id,bookings,services,staff);
-      const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched };
+      const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched, blocked_slots:blocked.data||[] };
       if(action==='day'){ out.date=start.toISOString().slice(0,10); out.settings=settings; }
       return res.json(out);
     }

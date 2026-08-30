@@ -62,6 +62,19 @@
 .now-line{position:absolute;left:0;right:0;height:2px;background:var(--pink,#ff6b81);z-index:8;pointer-events:none}
 .now-line::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--pink,#ff6b81)}
 
+/* ── Blocked time (lunch, breaks, days off) ── */
+.cal-block{position:absolute;left:5px;right:5px;border-radius:12px;padding:7px 9px;font-size:10.5px;line-height:1.35;cursor:pointer;overflow:hidden;z-index:5;color:var(--text2);border:1px dashed rgba(255,159,10,.35);background:repeating-linear-gradient(45deg,rgba(255,159,10,.10),rgba(255,159,10,.10) 6px,rgba(255,159,10,.03) 6px,rgba(255,159,10,.03) 12px);backdrop-filter:blur(8px);transition:transform .18s var(--spring),box-shadow .18s var(--spring);animation:apptIn .35s var(--spring-snap) both}
+.cal-block:hover{box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:10;transform:translateY(-1px)}
+.cal-block .bk-t{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.cal-block .bk-n{font-weight:600;color:var(--text);font-size:11px;margin-top:1px}
+.cal-block:hover .bk-x{display:inline}
+.bk-x{display:none;margin-left:5px;color:#ff8a8a;font-weight:700}
+.wk-block{display:inline-flex;align-items:center;gap:5px;margin:6px 8px 2px;padding:4px 8px;border-radius:8px;border:1px dashed rgba(255,159,10,.35);background:rgba(255,159,10,.08);color:var(--text2);font-size:10px;cursor:pointer}
+.wk-block:hover{color:#ffb340}
+.block-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
+.block-btn:hover{border-color:rgba(255,159,10,.4);color:#ffb340}
+.bk-day-off{color:#ffb340;font-size:10px;font-weight:650}
+
 /* ── Week view ── */
 .week-grid{display:grid;min-width:760px}
 .wk-day{border-right:.5px solid var(--border);min-height:440px;position:relative}
@@ -163,6 +176,7 @@
     <a href="team.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Team</a>
     <a href="booking-settings.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Settings</a>
     <button class="wl-btn" onclick="openWaitlist()" title="Clients waiting for a slot to open">Waitlist <span class="wl-badge zero" id="wlCount">0</span></button>
+    <button class="block-btn" onclick="openBlock()" title="Mark lunch, a break, or a day off on the staff grid">⏱ Block time</button>
     <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:#ccff00;color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(204,255,0,.25)">+ New booking</button>
   </div>
 </div>
@@ -181,13 +195,15 @@
 const START=8,END=21,SLOT_H=64;
 let cursor=new Date();cursor.setHours(0,0,0,0);
 let VIEW=localStorage.getItem('lola_cal_view')||'week';
-let STATE={bookings:[],services:[],staff:[],start:null,days:7};
+let STATE={bookings:[],services:[],staff:[],start:null,days:7,blocked_slots:[]};
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function hdr(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
 function fmtT(d){const h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM',hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;}
 function fmtDur(mins){if(!mins)return '60 min';if(mins>=60)return (mins/60>=10?Math.round(mins/60):(mins/60).toFixed(1).replace(/\.0$/,''))+'h';return mins+'m';}
+function toMin(t){const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);}
+function blockLabel(b){const allDay=!b.start_time&&!b.end_time;const t=b.start_time&&b.end_time?(' · '+b.start_time.slice(0,5)+'–'+b.end_time.slice(0,5)):'';return (allDay?'Day off':(b.reason||'Blocked'))+t;}
 function initials(name){return String(name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();}
 function svcColor(id){if(!id)return '#ccff00';const pal=['#ccff00','#5ac8fa','#ff9f0a','#bf5af2','#ff375f','#30d158','#64d2ff','#ffd60a'];let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return pal[h%pal.length];}
 function toast(msg,type){if(window.LolaUX)window.LolaUX.toast(msg,{type:type||'success'});}
@@ -204,7 +220,7 @@ async function load(){
       const r=await fetch('/api/calendar?action=week&date='+isoDay(start)+'&days=7',{headers:hdr()});
       const d=await r.json();
       if(!d.ok)throw new Error(d.error||'Failed');
-      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.start),days:d.days||7};
+      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.start),days:d.days||7,blocked_slots:d.blocked_slots||[]};
       render();
     }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
   }else{
@@ -213,7 +229,7 @@ async function load(){
       const r=await fetch('/api/calendar?action=day&date='+isoDay(cursor),{headers:hdr()});
       const d=await r.json();
       if(!d.ok)throw new Error(d.error||'Failed');
-      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.date+'T00:00:00'),days:1};
+      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.date+'T00:00:00'),days:1,blocked_slots:d.blocked_slots||[]};
       render();
     }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
   }
@@ -255,6 +271,7 @@ function renderWeekStrip(){
   strip.style.display='flex';
 }
 function pickDay(iso){cursor=new Date(iso+'T00:00:00');if(VIEW==='week'){VIEW='day';setView('day');}load();}
+function loadDayWithBlocks(iso){cursor=new Date(iso+'T00:00:00');VIEW='day';document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v==='day'));load();}
 function setView(v){
   VIEW=v;localStorage.setItem('lola_cal_view',v);
   document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
@@ -298,6 +315,25 @@ function renderDay(){
     el.onclick=ev=>{ev.stopPropagation();showDetail(b);};
     cell.appendChild(el);
   });
+  // Blocked time — lunch, breaks, days off (staff grid shading).
+  const dayIso=isoDay(cursor);
+  const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===dayIso);
+  dayBlocks.forEach(b=>{
+    const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
+    if(!cell)return;
+    const sMin=b.start_time?toMin(b.start_time):START*60;
+    const eMin=b.end_time?toMin(b.end_time):END*60;
+    const top=(sMin-START*60)/60*SLOT_H,height=Math.max(30,(eMin-sMin)/60*SLOT_H-5);
+    const el=document.createElement('div');
+    el.className='cal-block';
+    el.style.cssText='top:'+top+'px;height:'+height+'px';
+    const label=(b.reason||'Blocked')+(b.start_time&&b.end_time?(' · '+b.start_time.slice(0,5)+'–'+b.end_time.slice(0,5)):'');
+    const allDay=!b.start_time&&!b.end_time;
+    el.innerHTML='<div class="bk-t">'+(allDay?'Day off':'Blocked')+'<span class="bk-x" title="Remove block">✕</span></div><div class="bk-n">'+esc(b.reason||'No reason')+'</div>';
+    el.title=label+(b.staff_id?(' — '+esc((staff.find(s=>s.id===b.staff_id)||{}).name||'')):'');
+    el.onclick=ev=>{ev.stopPropagation();deleteBlock(b);};
+    cell.appendChild(el);
+  });
   const now=new Date();
   if(now.toDateString()===cursor.toDateString()){
     const mins=(now.getHours()-START)*60+now.getMinutes();
@@ -318,8 +354,10 @@ function renderWeek(){
     const iso=isoDay(d);
     const today=d.toDateString()===new Date().toDateString();
     const dayBk=bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===iso);
+    const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===iso);
     html+='<div class="wk-day'+(today?' today':'')+'">'
       +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+d.getDate()+'</div></div>'
+      +(dayBlocks.length?'<div class="wk-block" onclick="event.stopPropagation();loadDayWithBlocks(\''+iso+'\')" title="Blocked time on this day">⏱ '+dayBlocks.length+' block'+(dayBlocks.length===1?'':'s')+'</div>':'')
       +'<div class="wk-empty">'+(dayBk.length?'':'No bookings')+'</div>';
     dayBk.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time)).forEach(b=>{
       const color=svcColor(b.service_id);
@@ -428,6 +466,50 @@ function openNew(prefill){
 function hydrateForm(){
   const svc=document.getElementById('bkSvc');if(svc){svc.innerHTML=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');}
   const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');}
+}
+/* ── Blocked time (lunch, breaks, days off) ── */
+function openBlock(){
+  const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  openModal('Block time','Mark lunch, a break, or a day off — Lola and the calendar will treat the slot as unavailable.','<div class="fld"><label>Staff</label><select id="bkBlockStaff">'+stfOpts+'</select></div>'
+    +'<div class="fld"><label>Date</label><input id="bkBlockDate" type="date" value="'+isoDay(cursor)+'"/></div>'
+    +'<div class="row2"><div class="fld"><label>Start time</label><input id="bkBlockStart" type="time" value="12:00"/></div>'
+    +'<div class="fld"><label>End time</label><input id="bkBlockEnd" type="time" value="13:00"/></div></div>'
+    +'<div class="fld"><label>Reason</label><input id="bkBlockReason" placeholder="Lunch, training, meeting, day off…"/></div>'
+    +'<div class="fld"><label class="bk-day-off">All day (leave times empty)</label></div>'
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBlock()">Block this time</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>');
+  document.getElementById('bkBlockStart').value='12:00';
+  document.getElementById('bkBlockEnd').value='13:00';
+  document.getElementById('bkBlockStart').addEventListener('change',()=>{if(!document.getElementById('bkBlockReason').value.trim())document.getElementById('bkBlockReason').value='Lunch';});
+}
+async function saveBlock(){
+  const st=document.getElementById('mstatus');st.textContent='Blocking…';st.className='mstatus';
+  const staffId=document.getElementById('bkBlockStaff').value;
+  const date=document.getElementById('bkBlockDate').value;
+  const start=document.getElementById('bkBlockStart').value;
+  const end=document.getElementById('bkBlockEnd').value;
+  const reason=document.getElementById('bkBlockReason').value.trim()||'Blocked';
+  if(!date){st.textContent='Pick a date.';st.className='mstatus err';return;}
+  if(start&&end&&toMin(end)<=toMin(start)){st.textContent='End time must be after start time (or leave both empty for an all-day block).';st.className='mstatus err';return;}
+  try{
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',staff_id:staffId,date,start_time:start||null,end_time:end||null,reason})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    closeModal();toast('Time blocked.');await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+}
+async function deleteBlock(b){
+  const label=blockLabel(b);
+  const go=async()=>{
+    try{
+      const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',action:'delete',id:b.id})});
+      const d=await r.json();
+      if(!d.ok)throw new Error(d.error||'Failed');
+      toast('Block removed.');await load();
+    }catch(e){toast(e.message||'Failed','error');}
+  };
+  if(window.LolaUX){window.LolaUX.confirm({title:'Remove this block?',message:label+' — the time becomes bookable again.',confirmLabel:'Remove block',danger:true}).then(ok=>{if(ok)go();});}
+  else if(confirm('Remove '+label+'?'))go();
 }
 function quickBook(staffId,hour){openModal('New booking','Book '+esc(STATE.staff.find(s=>s.id===staffId)?.name||'')+' at '+String(hour).padStart(2,'0')+':00.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();if(staffId)document.getElementById('bkStaff').value=staffId;}
 async function saveBooking(){

@@ -63,6 +63,7 @@ function seed() {
   fake.seed('staff_schedules', []);
   fake.seed('staff_time_off', []);
   fake.seed('availability_holds', []);
+  fake.seed('blocked_slots', []);
   fake.auth.users.set('tok-owner', USER);
 }
 
@@ -119,6 +120,33 @@ test('day action enriches bookings with service, staff, and client objects', asy
   assert.equal(b.client.name, 'Maya Chen', 'client name joined');
   assert.equal(b.client.phone, '+13055550123');
   assert.equal(b.total_amount, 180);
+});
+
+test('day action carries blocked_slots (lunch/breaks/days off) in the payload', async () => {
+  seed();
+  const day = iso(0, 12, 0).slice(0, 10);
+  fake.seed('blocked_slots', [{
+    id: 'bl-1', tenant_id: T1, staff_id: 'st-1', blocked_date: day,
+    start_time: '12:00:00', end_time: '13:00:00', reason: 'Lunch'
+  }]);
+  const [res, out] = makeRes();
+  await handler(getReq({ action: 'day', date: day }), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.ok, true);
+  assert.ok(Array.isArray(out.body.blocked_slots), 'blocked_slots present');
+  assert.equal(out.body.blocked_slots.length, 1);
+  const bl = out.body.blocked_slots[0];
+  assert.equal(bl.reason, 'Lunch');
+  assert.equal(bl.staff_id, 'st-1');
+  assert.equal(bl.start_time, '12:00:00');
+});
+
+test('week action returns empty blocked_slots when none exist', async () => {
+  seed();
+  const [res, out] = makeRes();
+  await handler(getReq({ action: 'week', date: iso(0, 12, 0).slice(0, 10), days: '7' }), res);
+  assert.equal(out.code, 200);
+  assert.deepEqual(out.body.blocked_slots, []);
 });
 
 test('week action returns a multi-day range with enriched bookings', async () => {
