@@ -1,22 +1,51 @@
-/** Lightweight production readiness check. Never returns secret values. */
-export default function handler(req, res){
-  if(req.method !== 'GET' && req.method !== 'HEAD'){
-    res.setHeader('Allow', 'GET, HEAD');
-    return res.status(405).json({ ok:false, error:'Method not allowed' });
+/**
+ * api/health.js — Application health check
+ * Used by Docker, monitoring systems, and Vercel for uptime verification
+ */
+
+import { db } from './lib/db.js';
+
+export default async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: {
+      node_env: process.env.NODE_ENV || 'production',
+      vercel_env: process.env.VERCEL_ENV || 'production'
+    },
+    services: {
+      telnyx: { ok: !!process.env.TELNYX_API_KEY },
+      supabase: { ok: !!process.env.NEXT_PUBLIC_SUPABASE_URL },
+      elevenlabs: { ok: !!process.env.ELEVENLABS_API_KEY && !!process.env.ELEVENLABS_VOICE_ID }
+    },
+    database: { ok: false, latency_ms: 0 }
+  };
+
+  // Test database connection
+  try {
+    const start = Date.now();
+    const supabase = db();
+    const { error } = await supabase.from('tenants').select('id').limit(1);
+    health.database.latency_ms = Date.now() - start;
+    health.database.ok = !error;
+
+    if (error) {
+      health.status = 'degraded';
+      health.database.error = error.message;
+    }
+  } catch (e) {
+    health.status = 'degraded';
+    health.database.ok = false;
+    health.database.error = e.message;
   }
 
-  res.setHeader('Cache-Control', 'no-store');
-  const services = {
-    supabase: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
-    telnyx: Boolean(process.env.TELNYX_API_KEY),
-    elevenlabs: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID)
-  };
-  const ok = services.supabase && services.telnyx;
-  if(req.method === 'HEAD') return res.status(ok ? 200 : 503).end();
-  return res.status(ok ? 200 : 503).json({
-    ok,
-    provider: 'telnyx',
-    services,
-    timestamp: new Date().toISOString()
-  });
+  // Overall status
+  const criticalOk = health.services.telnyx.ok && health.services.supabase.ok && health.database.ok;
+  if (!criticalOk) health.status = 'degraded';
+
+  const statusCode = health.status === 'ok' ? 200 : 503;
+  return res.status(statusCode).json(health);
 }
