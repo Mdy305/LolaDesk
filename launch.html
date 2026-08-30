@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Launch — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<style>
+.page-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.16em;color:var(--text3);margin-bottom:8px}
+.page-head h1{margin:0;font-size:30px;letter-spacing:-.03em}
+.page-head .sub{margin:6px 0 0;color:var(--text2);font-size:13px;font-family:var(--ff-mono,ui-monospace,monospace);letter-spacing:-.01em}
+.badge{font-size:13px;font-weight:750;padding:9px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+.badge[data-status="ok"]{color:#d8ff45;border-color:rgba(216,255,69,.35);background:rgba(216,255,69,.06)}
+.badge[data-status="warn"]{color:#ffb454;border-color:rgba(255,180,84,.35);background:rgba(255,180,84,.07)}
+.badge[data-status="fail"]{color:#ff8178;border-color:rgba(255,129,120,.4);background:rgba(255,129,120,.08)}
+.sum-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.sum{border-radius:16px;border:.5px solid var(--border);background:var(--surface);padding:14px 16px;display:flex;align-items:baseline;justify-content:space-between}
+.sum b{font-size:24px;letter-spacing:-.02em}
+.sum[data-k="ok"] b{color:#d8ff45}.sum[data-k="warn"] b{color:#ffb454}.sum[data-k="fail"] b{color:#ff8178}
+.sum span{font-size:11.5px;color:var(--text3);letter-spacing:.05em}
+.ck{border:.5px solid var(--border);background:var(--surface);border-radius:18px;margin-bottom:14px;overflow:hidden}
+.ck-head{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.ck-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:15px;border:1px solid var(--border)}
+.ck-ic.st-ok{color:#d8ff45;border-color:rgba(216,255,69,.3)}
+.ck-ic.st-warn{color:#ffb454;border-color:rgba(255,180,84,.3)}
+.ck-ic.st-fail{color:#ff8178;border-color:rgba(255,129,120,.35)}
+.ck-t{flex:1;min-width:0}
+.ck-t h2{margin:0;font-size:15px;letter-spacing:-.01em}
+.ck-ep{font-family:var(--ff-mono,ui-monospace,monospace);font-size:10.5px;color:var(--text3);margin-top:3px;display:inline-block}
+.ck-count{font-size:11.5px;font-weight:700;color:var(--text3)}
+.ck-count.st-ok{color:#d8ff45}.ck-count.st-warn{color:#ffb454}.ck-count.st-fail{color:#ff8178}
+.ck-row{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border)}
+.ck-row:last-child{border-bottom:0}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:#4a4dFF00;border:1px solid var(--border)}
+.dot.st-ok{background:#d8ff45;box-shadow:0 0 10px rgba(216,255,69,.5)}
+.dot.st-warn{background:#ffb454;box-shadow:0 0 10px rgba(255,180,84,.45)}
+.dot.st-fail{background:#ff8178;box-shadow:0 0 10px rgba(255,129,120,.5)}
+.ck-rl{flex:1;min-width:0}
+.ck-rl b{display:block;font-size:13px;font-weight:600}
+.ck-rl span{display:block;font-size:11.5px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere}
+.ck-tag{font-size:10.5px;font-weight:750;letter-spacing:.04em;padding:4px 9px;border-radius:8px;flex:none}
+.ck-tag.st-ok{color:#d8ff45;background:rgba(216,255,69,.1)}
+.ck-tag.st-warn{color:#ffb454;background:rgba(255,180,84,.12)}
+.ck-tag.st-fail{color:#ff8178;background:rgba(255,129,120,.12)}
+.empty{padding:30px;text-align:center;color:var(--text3);font-size:13px}
+.toolbar{display:flex;gap:10px;align-items:center}
+.toolbar .btn{padding:9px 14px;font-size:12.5px}
+.last-check{font-size:11.5px;color:var(--text3);margin:-8px 0 16px;font-family:var(--ff-mono,ui-monospace,monospace)}
+@media(max-width:640px){.sum-strip{grid-template-columns:1fr}.page-head{flex-direction:column}}
+</style>
+</head>
+<body data-page="launch"><div class="app"><main class="main">
+<header class="page-head">
+  <div>
+    <div class="eyebrow">LAUNCH READINESS</div>
+    <h1>Launch checklist</h1>
+    <p class="sub">Live read of every health surface — real endpoints, nothing cached, nothing simulated.</p>
+  </div>
+  <div class="toolbar">
+    <div class="badge" id="badge" data-status="warn">Checking…</div>
+    <button class="btn" id="refreshBtn">↻ Refresh</button>
+  </div>
+</header>
+<div class="last-check" id="lastCheck"></div>
+<section class="sum-strip">
+  <div class="sum" data-k="ok"><span>READY</span><b id="sOk">0</b></div>
+  <div class="sum" data-k="warn"><span>ATTENTION</span><b id="sWarn">0</b></div>
+  <div class="sum" data-k="fail"><span>BLOCKED</span><b id="sFail">0</b></div>
+</section>
+<div id="list"><div class="empty">Loading live health data…</div></div>
+</main></div>
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+const token = localStorage.getItem('loladesk_token') || '';
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const $ = (id) => document.getElementById(id);
+
+async function get(endpoint, auth) {
+  const headers = auth ? { Authorization: 'Bearer ' + token } : {};
+  const r = await fetch(endpoint, { headers });
+  if (r.status === 401) return { __auth: true, status: 'fail', label: 'Sign-in required', detail: 'Authenticate to read ' + endpoint };
+  let data = null;
+  try { data = await r.json(); } catch { data = { ok: false }; }
+  if (!r.ok && !data) throw new Error(endpoint + ' ' + r.status);
+  return data;
+}
+
+const ok = (label, good, detail) => ({ label, status: good ? 'ok' : 'fail', detail: detail || (good ? 'Configured' : 'Not configured') });
+const pick = (s) => (s === 'ok' ? 'ok' : s === 'warn' ? 'warn' : 'fail');
+
+const SECTIONS = [
+  {
+    id: 'core', title: 'Core services', endpoint: '/api/health', auth: false,
+    build(d) {
+      const s = d.services || {};
+      return [
+        ok('Telnyx', !!(s.telnyx && s.telnyx.ok), 'TELNYX_API_KEY'),
+        ok('Supabase', !!(s.supabase && s.supabase.ok), 'database project'),
+        ok('ElevenLabs', !!(s.elevenlabs && s.elevenlabs.ok), 'TELNYX voice engine key + voice id'),
+        ok('Database', !!(d.database && d.database.ok), d.database && d.database.ok ? (d.database.latency_ms + 'ms round trip') : (d.database && d.database.error) || 'unreachable'),
+      ];
+    },
+  },
+  {
+    id: 'telecom', title: 'Telecom provisioning', endpoint: '/api/telecom-health', auth: false,
+    build(d) {
+      const cfg = d.configuration || {};
+      return [
+        ok('Telnyx reachable', d.telnyx !== 'unreachable' && d.telnyx !== 'not_checked', d.telnyx === 'reachable' ? 'API reachable' : String(d.telnyx || 'not checked')),
+        ok('API key', !!cfg.api_key, 'TELNYX_API_KEY'),
+        ok('Public key', !!cfg.public_key, 'TELNYX_PUBLIC_KEY (signature verification)'),
+        ok('Voice app', !!cfg.voice_app, 'TELNYX_VOICE_APP_ID'),
+        ok('Messaging profile', !!cfg.messaging_profile, 'TELNYX_MESSAGING_PROFILE — SMS/reminders/waitlist depend on it'),
+        ok('App URL', !!cfg.app_url, 'APP_URL'),
+      ];
+    },
+  },
+  {
+    id: 'schema', title: 'Database schema', endpoint: '/api/calendar-health', auth: false,
+    build(d) {
+      const missing = Array.isArray(d.missing) ? d.missing : [];
+      return [
+        { label: 'Required tables', status: d.ready ? 'ok' : 'fail', detail: missing.length ? ('missing: ' + missing.join(', ')) : ('all ' + (d.required ?? '') + ' present') },
+        ...missing.map((t) => ({ label: t, status: 'fail', detail: 'table missing' })),
+      ];
+    },
+  },
+  {
+    id: 'exec', title: 'Execution & CRM routes', endpoint: '/api/execution-health', auth: false,
+    build(d) {
+      const failed = Array.isArray(d.failed) ? d.failed : [];
+      return [ { label: 'Execution schema', status: d.ok === false ? 'fail' : 'ok', detail: failed.length ? ('missing/errored: ' + failed.join(', ')) : 'all execution tables present' } ];
+    },
+  },
+  {
+    id: 'integrations', title: 'Integrations', endpoint: '/api/integration-health', auth: true,
+    build(d) {
+      if (d.__auth || d.ok === false) return [{ label: 'Integrations', status: 'fail', detail: d.detail || d.error || 'unable to load' }];
+      return (d.integrations || []).map((it) => ({
+        label: it.name || it.id,
+        status: it.status === 'healthy' ? 'ok' : (it.status === 'attention' || it.status === 'blocked' ? 'fail' : 'warn'),
+        detail: it.detail || it.status,
+      }));
+    },
+  },
+  {
+    id: 'channels', title: 'Voice & text channels', endpoint: '/api/operator-health', auth: true,
+    build(d) {
+      if (d.__auth || d.ok === false) return [{ label: 'Channels', status: 'fail', detail: d.detail || d.error || 'unable to load' }];
+      const out = [];
+      for (const [k, v] of Object.entries(d.channels || {})) out.push({ label: k.replace(/_/g, ' '), status: v ? 'ok' : 'fail', detail: v ? 'Operational' : 'Not verified' });
+      return out;
+    },
+  },
+];
+
+function row(it) {
+  const st = pick(it.status);
+  return `<div class="ck-row"><span class="dot st-${st}"></span><div class="ck-rl"><b>${esc(it.label)}</b><span>${esc(it.detail)}</span></div><span class="ck-tag st-${st}">${st === 'ok' ? 'OK' : st === 'warn' ? 'ATTN' : 'BLOCKED'}</span></div>`;
+}
+
+async function load() {
+  $('list').innerHTML = '<div class="empty">Reading live health endpoints…</div>';
+  let okN = 0, warnN = 0, failN = 0;
+  const sections = [];
+  for (const s of SECTIONS) {
+    let items;
+    try { items = s.build(await get(s.endpoint, s.auth)); }
+    catch (e) { items = [{ label: 'Endpoint unreachable', status: 'fail', detail: esc(String(e && e.message || e)) }]; }
+    const cnt = { ok: 0, warn: 0, fail: 0 };
+    for (const it of items) cnt[pick(it.status)]++;
+    const st = cnt.fail ? 'fail' : (cnt.warn ? 'warn' : 'ok');
+    okN += cnt.ok; warnN += cnt.warn; failN += cnt.fail;
+    sections.push(`<section class="ck"><header class="ck-head"><span class="ck-ic st-${st}">${st === 'ok' ? '✓' : st === 'warn' ? '!' : '✕'}</span><div class="ck-t"><h2>${esc(s.title)}</h2><span class="ck-ep">${esc(s.endpoint)}</span></div><span class="ck-count st-${st}">${cnt.ok + cnt.warn + cnt.fail}</span></header><div>${items.map(row).join('')}</div></section>`);
+  }
+  $('list').innerHTML = sections.join('');
+  $('sOk').textContent = okN; $('sWarn').textContent = warnN; $('sFail').textContent = failN;
+  const overall = failN ? 'fail' : (warnN ? 'warn' : 'ok');
+  const badge = $('badge'); badge.dataset.status = overall;
+  badge.textContent = failN ? ('NOT READY · ' + failN + ' blocked') : (warnN ? ('PARTIAL · ' + warnN + ' need attention') : 'READY');
+  $('lastCheck').textContent = 'checked at ' + new Date().toLocaleTimeString() + ' — refresh for a fresh read';
+}
+
+$('refreshBtn').addEventListener('click', load);
+load();
+setInterval(load, 60000);
+</script>
+</body></html>
