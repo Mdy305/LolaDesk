@@ -105,6 +105,19 @@ export async function getStaffTimeOff(tenantId, from, to){
   return data || [];
 }
 
+// Blocked time (lunch, breaks, days off) recorded by the owner on the
+// calendar. Rows are date-keyed (blocked_date) with optional local start/end
+// times; a row with no times is an all-day block. The engine converts these
+// into UTC windows per staff member. Degrades to [] when the table is absent
+// (pre-20260901_inventory_ops.sql) so availability never breaks.
+export async function getBlockedSlots(tenantId, dateKey){
+  const c = db(); if(!c) return [];
+  const { data, error } = await c.from('blocked_slots').select('*')
+    .eq('tenant_id', tenantId).eq('blocked_date', dateKey);
+  if(error) return [];
+  return data || [];
+}
+
 export async function getBusinessHoursForTenant(tenantId){
   const c = db(); if(!c) return [];
   const { data: locations } = await c.from('locations').select('id,is_primary,timezone').eq('organization_id', tenantId);

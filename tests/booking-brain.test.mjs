@@ -389,3 +389,54 @@ test('checkAvailability falls back to the local engine when the Cal mapping is m
     assert.equal(called, false);
   }finally{ globalThis.fetch = realFetch; }
 });
+
+test('a blocked lunch window removes those hours from availability (public widget path)', async () => {
+  seedStandard();
+  const { dateKey } = seedStandard();
+  // 14:00 slot is the anchor; block 13:30–15:00 so the anchor and neighbors
+  // disappear while morning slots survive.
+  fake.seed('blocked_slots', [{
+    id: 'bl-1', tenant_id: tenantA.id, staff_id: 'stf-1', blocked_date: dateKey,
+    start_time: '13:30', end_time: '15:00', reason: 'Lunch'
+  }]);
+  const date = zonedLocalToUtc(dateKey, '00:00:00', TZ);
+  const r = await brain.checkAvailability(tenantA, { service_id: 'srv-1', staff_id: 'stf-1', date });
+  assert.equal(r.ok, true);
+  assert.ok(r.slots.length >= 1, 'morning slots still offered');
+  const within = s => {
+    const h = new Date(s.starts_at).getHours();
+    const m = new Date(s.starts_at).getMinutes();
+    const mins = h * 60 + m;
+    return mins >= 13 * 60 + 30 && mins < 15 * 60; // 13:30–15:00 local
+  };
+  assert.ok(!r.slots.some(within), 'no slot starts inside the blocked lunch window');
+  assert.ok(r.slots.some(s => new Date(s.starts_at).getHours() < 13), 'slots before lunch survive');
+});
+
+test('an all-day block removes every slot for that staff member', async () => {
+  seedStandard();
+  const { dateKey } = seedStandard();
+  fake.seed('blocked_slots', [{
+    id: 'bl-2', tenant_id: tenantA.id, staff_id: 'stf-1', blocked_date: dateKey,
+    start_time: null, end_time: null, reason: 'Day off'
+  }]);
+  const date = zonedLocalToUtc(dateKey, '00:00:00', TZ);
+  const r = await brain.checkAvailability(tenantA, { service_id: 'srv-1', staff_id: 'stf-1', date });
+  assert.equal(r.ok, true);
+  assert.equal(r.slots.length, 0, 'day off leaves no slots');
+});
+
+test('a block with no staff_id applies to every staff member', async () => {
+  seedStandard();
+  const { dateKey } = seedStandard();
+  fake.seed('blocked_slots', [{
+    id: 'bl-3', tenant_id: tenantA.id, staff_id: null, blocked_date: dateKey,
+    start_time: '12:00', end_time: '13:00', reason: 'Team lunch'
+  }]);
+  const date = zonedLocalToUtc(dateKey, '00:00:00', TZ);
+  const r = await brain.checkAvailability(tenantA, { service_id: 'srv-1', staff_id: 'stf-1', date });
+  assert.equal(r.ok, true);
+  assert.ok(r.slots.length >= 1, 'other hours survive');
+  const inLunch = s => { const d = new Date(s.starts_at); const m = d.getHours() * 60 + d.getMinutes(); return m >= 12 * 60 && m < 13 * 60; };
+  assert.ok(!r.slots.some(inLunch), 'team lunch window blocked for the member');
+});

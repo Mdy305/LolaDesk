@@ -1,6 +1,6 @@
 import {
   addMinutes, getBookingSettings, listServices, listStaff, getStaffServices,
-  getStaffSchedules, getStaffTimeOff, listBookings, listActiveHolds, createHold
+  getStaffSchedules, getStaffTimeOff, getBlockedSlots, listBookings, listActiveHolds, createHold
 } from './booking-repository.js';
 import { dayBoundsUtc, localWeekday, zonedLocalToUtc } from './timezone.js';
 
@@ -72,6 +72,16 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   const dayOfWeek=localWeekday(new Date(from),timeZone);
   const schedules=await getStaffSchedules(tenantId);
   const timeOff=await getStaffTimeOff(tenantId,from,to);
+  const blocks=await getBlockedSlots(tenantId,dateKey);
+  // Normalize date-keyed blocks into UTC windows for this exact day.
+  // All-day rows (no start/end) span the whole working day; timed rows
+  // (lunch, breaks) map to their local window. A block with no staff_id
+  // applies to every eligible staff member.
+  const blockedWindows=blocks.map(b=>({
+    staff_id:b.staff_id||null,
+    start:b.start_time?zonedLocalToUtc(dateKey,b.start_time,timeZone):from,
+    end:b.end_time?zonedLocalToUtc(dateKey,b.end_time,timeZone):to
+  }));
   const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId);
   const existing=await listBookings(tenantId,from,to);
   const holds=await listActiveHolds(tenantId,from,to);
@@ -98,6 +108,7 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
       if(leadMs<Number(settings.minimum_notice_minutes||0)*60000) continue;
       if(leadMs>Number(settings.booking_horizon_days||90)*86400000) continue;
       if(timeOff.some(x=>x.staff_id===member.id && overlap(windowStart,windowEnd,x.start_time,x.end_time))) continue;
+      if(blockedWindows.some(x=>(!x.staff_id||x.staff_id===member.id) && overlap(windowStart,windowEnd,x.start,x.end))) continue;
 
       const requestedActive=activeSegments(startsAt,phases,settings.allow_processing_overlap!==false);
       const memberBookings=existing.filter(x=>x.staff_id===member.id);
