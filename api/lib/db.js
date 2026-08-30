@@ -196,23 +196,14 @@ function demoTenant(){
   return {
     id: '00000000-0000-0000-0000-000000000000',
     slug: 'demo',
-    name: 'MMΛ Salon',
-    owner_name: 'Meddy',
-    location: 'Miami Beach',
-    hours: 'Tuesday to Saturday, noon to 8pm',
-    booking_url: 'https://www.mmasalon.com/book',
-    phone_number: '+19294568227',
-    services: [
-      { name:'Balayage', price:395, duration:'2h30' },
-      { name:'Extensions', price:800, duration:'consult' },
-      { name:'Hair Botox', price:325, duration:'2h' },
-      { name:'Cut and Gloss', price:225, duration:'1h15' },
-      { name:'Blowout', price:95, duration:'1h' }
-    ],
-    team: [
-      { name:'Meddy', role:'Owner · Master Colorist' },
-      { name:'Michelle', role:'Senior Stylist' }
-    ],
+    name: 'Demo Salon',
+    owner_name: 'Owner',
+    location: '',
+    hours: '',
+    booking_url: '',
+    phone_number: '',
+    services: [],
+    team: [],
     _demo: true
   };
 }

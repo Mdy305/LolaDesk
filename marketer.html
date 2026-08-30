@@ -121,7 +121,7 @@
     <!-- TAB 1: ANALYZE -->
     <div class="pane active" id="pane-analyze">
       <div class="url-row">
-        <input class="url-input" id="urlInput" placeholder="Paste any URL — your site, a competitor, an Instagram bio link…" value="https://www.mmasalon.com"/>
+        <input class="url-input" id="urlInput" placeholder="Paste any URL — your site, a competitor, an Instagram bio link…" value=""/>
         <button class="url-btn" id="analyzeBtn" onclick="runAnalyze()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
           Analyze
@@ -332,7 +332,7 @@ async function runStrategy(){
       body: JSON.stringify({
         action:'strategy',
         analysis: lastAnalysis,
-        salon: { name: 'MMΛ Salon', location: 'Miami Beach' },
+        salon: { name: '', location: '' },
         goals
       })
     });
@@ -435,7 +435,7 @@ async function draftCampaign(type, audience, channel){
       body: JSON.stringify({
         action:'campaign',
         type, audience, channel,
-        tenant: { name:'MMΛ Salon', location:'Miami Beach' }
+        tenant: { name:'', location:'' }
       })
     });
     const d = await r.json();

@@ -38,12 +38,11 @@ const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOIC
 
 function buildAgents(tenant){
   const t = tenant || {};
-  const salon = t.name || 'MMΛ Salon';
-  const services = (t.services||[]).map(s=>`${s.name} $${s.price}${s.duration?' ('+s.duration+')':''}`).join('; ')
-                 || 'Balayage $395 (2h30); Extensions $800 (consult); Hair Botox $325 (2h); Cut & Gloss $225 (1h15); Blowout $95 (1h)';
-  const hours = t.hours || 'Tuesday to Saturday, noon to 8pm';
-  const team = (t.team||[]).map(m=>m.name+(m.role?' ('+m.role+')':'')).join(', ') || 'Meddy (Master Colorist), Michelle (Color Specialist), Alice (Senior Stylist), Samantha (Stylist)';
-  const owner = t.owner || 'Meddy';
+  const salon = t.name || 'your salon';
+  const services = (t.services||[]).map(s=>`${s.name} $${s.price}${s.duration?' ('+s.duration+')':''}`).join('; ') || '';
+  const hours = t.hours || '';
+  const team = (t.team||[]).map(m=>m.name+(m.role?' ('+m.role+')':'')).join(', ') || '';
+  const owner = t.owner || 'Owner';
 
   // ── 1. LOLA — The Unified Master Brain ──
   const lola = {

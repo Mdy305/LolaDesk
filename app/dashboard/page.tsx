@@ -113,7 +113,7 @@ export default function CentralLolaDashboard() {
         </div>
 
         <p className="text-xl font-light text-neutral-300 tracking-tight text-center max-w-md">
-          {isListening ? '"Lola is listening to MMA Salon..."' : '"Tap Lola or type below to direct your front desk."' }
+          {isListening ? '"Lola is listening to your salon..."' : '"Tap Lola or type below to direct your front desk."' }
         </p>
       </main>
 

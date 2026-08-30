@@ -8,10 +8,7 @@
     {"source":"/start","destination":"/onboarding","permanent":false},
     {"source":"/get-started","destination":"/onboarding","permanent":false},
     {"source":"/sign-in","destination":"/login","permanent":false},
-    {"source":"/demo","destination":"/dashboard","permanent":false},
-    {"source":"/brain","destination":"/brain-os","permanent":false},
-    {"source":"/operations","destination":"/operations-os","permanent":false},
-    {"source":"/growth","destination":"/growth-os","permanent":false}
+    {"source":"/demo","destination":"/dashboard","permanent":false}
   ],
   "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}],
   "crons":[

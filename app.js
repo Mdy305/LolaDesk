@@ -11,36 +11,24 @@
    This object is everything that makes LolaDesk white-label / multi-tenant.
    ───────────────────────────────────────────────────────────── */
 const DEFAULT_TENANT = {
-  id: 'mma-salon',
-  name: 'MMΛ Salon',
-  owner: 'Meddy',
-  location: '1500 Alton Road, Miami Beach',
-  hours: 'Tue–Sat, Noon–8pm. Appointment only.',
-  phone: '+17864497058',
-  bookingUrl: 'https://www.mmasalon.com/book',
-  whatsapp: 'https://wa.me/17864497058',
+  id: 'demo-salon',
+  name: 'Demo Salon',
+  owner: 'Owner',
+  location: '',
+  hours: '',
+  phone: '',
+  bookingUrl: '',
+  whatsapp: '',
   currency: 'USD',
   // Lola persona — tunable per salon
   persona: {
     name: 'Lola',
-    energy: 'warm, intelligent, lightly playful Valley Girl confidence',
+    energy: 'warm, intelligent, lightly playful',
     voice: 'lola'  // Lola's ONE canonical voice — never a picker, never a substitute
   },
-  // Services drive Lola's booking knowledge
-  services: [
-    { name: 'Luxury French Balayage', price: 395, duration: '2h 30m' },
-    { name: 'Hair Extensions', price: 800, duration: 'consult', note: 'Hairdreams certified, from $800' },
-    { name: 'Hair Botox Repair', price: 325, duration: '2h' },
-    { name: 'Keratin Smoothing', price: 450, duration: '2h 30m' },
-    { name: 'Precision Cut + Gloss', price: 225, duration: '1h 15m' },
-    { name: 'Signature Blowout', price: 95, duration: '1h' }
-  ],
-  team: [
-    { name: 'Meddy', role: 'Owner', revenue: 22800, change: 18, img: '' },
-    { name: 'Alice', role: 'Senior Stylist', revenue: 13200, change: 14, img: '' },
-    { name: 'Michelle', role: 'Color Specialist', revenue: 9400, change: 11, img: '' },
-    { name: 'Samantha', role: 'Stylist', revenue: 7800, change: 9, img: '' }
-  ]
+  // Services drive Lola's booking knowledge — loaded from the tenant backend
+  services: [],
+  team: []
 };
 
 /* Resolve the active tenant: injected config > onboarding handoff > demo default */
