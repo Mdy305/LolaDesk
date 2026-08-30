@@ -3,7 +3,12 @@ import { db } from './lib/db.js';
 const REQUIRED_TABLES=[
   'tenants','tenant_config','booking_settings','clients','services','staff','staff_services','staff_schedules','staff_time_off',
   'bookings','availability_holds','booking_services','booking_status_history','resources','service_resources',
-  'integrations','provider_mappings','external_appointments','booking_sync_log','telnyx_call_sessions','telnyx_messages'
+  'integrations','provider_mappings','external_appointments','booking_sync_log','telnyx_call_sessions','telnyx_messages',
+  // 20260901_inventory_ops.sql — the inventory + blocked-time + notes features
+  // read these; a missing table silently disables them (products read returns
+  // empty, blocked slots vanish from availability), so the health gate must
+  // cover them or 'ready' lies.
+  'products','blocked_slots','appointment_notes'
 ];
 
 export default async function handler(req,res){

@@ -94,12 +94,23 @@ export class FakeSupabase {
     this.tables.clear();
     this._seq = 0;
     this._failWrites = new Map();
+    this._failReads = new Map();
   }
   // Test hook: make the next write (update/upsert) to a table return an error
   // instead of applying — simulates a DB rejection like a missing column.
   failWrite(table, message) {
     this._failWrites = this._failWrites || new Map();
     this._failWrites.set(table, message);
+  }
+  // Test hook: make a select on a table return an error — simulates a missing
+  // table (health gates rely on this to fail loudly instead of lying).
+  failRead(table, message) {
+    this._failReads = this._failReads || new Map();
+    this._failReads.set(table, message);
+  }
+  clearFailures() {
+    this._failWrites = new Map();
+    this._failReads = new Map();
   }
   nextId(table) {
     this._seq += 1;
@@ -219,6 +230,8 @@ class FakeQueryBuilder {
 
     switch (this._action) {
       case 'select': {
+        const failRead = this.client._failReads?.get(this.table);
+        if (failRead) { result = { data: null, error: { message: failRead } }; break; }
         let out = this.rows.filter(r => this._match(r));
         if (this._order) {
           const { col, dir } = this._order;
