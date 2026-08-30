@@ -14,9 +14,9 @@
  * without TELNYX_ASSISTANT_ID there is no assistant to talk to, so we fail
  * loudly rather than hand the browser a token that can never connect.
  */
-import { getUserFromToken, bearer } from '../lib/auth.js';
-import { resolveTenantForUser } from '../lib/tenant-access.js';
-import { issueVoiceToken } from '../lib/voice-session-token.js';
+import { getUserFromToken, bearer } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
+import { issueVoiceToken } from './lib/voice-session-token.js';
 
 const ASSISTANT_ID = process.env.TELNYX_ASSISTANT_ID;
 
