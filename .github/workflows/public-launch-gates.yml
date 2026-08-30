@@ -67,6 +67,31 @@ jobs:
       - name: Run complete launch-readiness journey
         run: npm run test:e2e
 
+  apply-migrations:
+    name: Apply pending migrations + health gate (production)
+    # The automated "apply pending migrations" step every deploy runs.
+    # Applies ONLY migrations that are new since the DB's baseline (see
+    # api/lib/migrate-all.js), then verifies every schema-gate table exists,
+    # so /api/calendar-health can never report 'ready' about a missing table.
+    # Safe no-op: if the two Supabase secrets are not configured the applier
+    # prints SKIP and exits 0, so this job never blocks a deploy from a repo
+    # without DB credentials — that fact is surfaced explicitly instead.
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Apply pending migrations + verify health gate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/apply-migrations.mjs
+
   onboarding-smoke:
     name: Onboarding smoke (staging)
     # Manual, opt-in: only runs when dispatched AND a staging URL is configured.

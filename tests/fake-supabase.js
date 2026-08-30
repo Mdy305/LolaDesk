@@ -95,6 +95,7 @@ export class FakeSupabase {
     this._seq = 0;
     this._failWrites = new Map();
     this._failReads = new Map();
+    this._rpcImpl = null;
   }
   // Test hook: make the next write (update/upsert) to a table return an error
   // instead of applying — simulates a DB rejection like a missing column.
@@ -116,11 +117,11 @@ export class FakeSupabase {
     this._seq += 1;
     return `fake-${table}-${this._seq}`;
   }
-  // Stand-in for supabase.rpc(). The migration runner only calls
-  // rpc('exec_sql', …) when a table is MISSING, which the seeded fake never
-  // simulates; return an error so an accidental call fails loudly instead of
-  // silently doing nothing.
-  async rpc() {
+  // Stand-in for supabase.rpc(). Tests may install `_rpcImpl(fnName, args)`
+  // (used by migrate-apply.test to simulate exec_sql applying DDL). Without it,
+  // return an error so an accidental call fails loudly instead of doing nothing.
+  async rpc(fnName, args) {
+    if (this._rpcImpl) return this._rpcImpl(fnName, args);
     return { data: null, error: { message: 'rpc() not supported by FakeSupabase' } };
   }
 }
