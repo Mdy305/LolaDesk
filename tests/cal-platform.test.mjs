@@ -222,6 +222,57 @@ test('unconfigured node degrades gracefully (no crash, no silent undefined)', as
   await assert.rejects(() => cal.listAppointments({}), /not configured/);
 });
 
+// ── service <-> event type matching (auto-seed) ────────────────────────
+test('matchEventTypesToServices matches exact, fuzzy, and word-overlap names', () => {
+  const services = [
+    { id: 's1', name: 'Balayage' },
+    { id: 's2', name: 'Haircut & Style' },
+    { id: 's3', name: 'Botox' }
+  ];
+  const eventTypes = [
+    { id: 7, slug: 'balayage', title: 'Balayage' },
+    { id: 8, slug: 'haircut-style', title: 'Haircut & Style 60 min' },
+    { id: 9, slug: 'keratin', title: 'Keratin Treatment' }
+  ];
+  const m = cal.matchEventTypesToServices(services, eventTypes);
+  assert.equal(m.length, 2, 'Botox has no matching event type');
+  assert.deepEqual(m.map(x => x.service_id).sort(), ['s1', 's2']);
+  const bal = m.find(x => x.service_id === 's1');
+  assert.equal(bal.event_type_id, 7);
+  assert.equal(bal.reason, 'exact');
+  const cut = m.find(x => x.service_id === 's2');
+  assert.equal(cut.event_type_id, 8);
+  assert.equal(cut.reason, 'fuzzy', 'containment match');
+});
+
+test('matchEventTypesToServices normalizes case and diacritics', () => {
+  const m = cal.matchEventTypesToServices(
+    [{ id: 's1', name: 'BALAYAGE' }, { id: 's2', name: 'Manicure' }],
+    [{ id: 7, slug: 'balayage', title: 'Balayage' }, { id: 8, slug: 'manicure', title: 'Manicure' }]
+  );
+  assert.equal(m.length, 2);
+  assert.equal(m[0].event_type_id, 7);
+});
+
+test('matchEventTypesToServices uses each event type at most once and requires a threshold', () => {
+  const services = [
+    { id: 's1', name: 'Balayage' },
+    { id: 's2', name: 'Balayage Touch Up' }
+  ];
+  const eventTypes = [{ id: 7, slug: 'balayage', title: 'Balayage' }];
+  const m = cal.matchEventTypesToServices(services, eventTypes);
+  assert.equal(m.length, 1, 'second service must not steal the used event type');
+  assert.equal(m[0].service_id, 's1', 'exact match wins');
+});
+
+test('matchEventTypesToServices returns empty on no overlap', () => {
+  const m = cal.matchEventTypesToServices(
+    [{ id: 's1', name: 'Botox' }],
+    [{ id: 9, slug: 'keratin', title: 'Keratin Treatment' }]
+  );
+  assert.equal(m.length, 0);
+});
+
 // ── mesh write routing through the aggregator ───────────────────────────
 test('writeAppointment routes to cal_platform when explicitly selected', async () => {
   process.env.CAL_COM_API_KEY = 'cal_test_key';

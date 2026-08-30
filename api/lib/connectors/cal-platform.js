@@ -148,8 +148,56 @@ export async function provisionManagedUser({ email, name, timeZone = DEFAULT_TZ 
   };
 }
 
+/**
+ * Match a tenant's services to Cal.com event types by normalized name.
+ * Pure + deterministic (no I/O): exact matches score 100, containment 80,
+ * word overlap 40 + 10/word — threshold 50, mirroring booking-resolver.
+ * Each event type maps to at most one service (first-best wins).
+ */
+export function matchEventTypesToServices(services, eventTypes){
+  const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const out = [];
+  const used = new Set();
+  for (const svc of services || []){
+    const label = norm(svc.name);
+    if (!label) continue;
+    let best = null, bestScore = 0;
+    for (const et of eventTypes || []){
+      if (used.has(et.id)) continue;
+      const cand = norm(et.title || et.slug || '');
+      if (!cand) continue;
+      let s = 0;
+      if (cand === label) s = 100;
+      else if (cand.includes(label) || label.includes(cand)) s = 80;
+      else {
+        const sw = new Set(label.split(' '));
+        const ew = new Set(cand.split(' '));
+        let o = 0;
+        for (const w of ew) if (sw.has(w)) o++;
+        s = o ? 40 + o * 10 : 0;
+      }
+      if (s > bestScore){ bestScore = s; best = et; }
+    }
+    if (best && bestScore >= 50){
+      used.add(best.id);
+      out.push({
+        service_id: svc.id,
+        service_name: svc.name,
+        event_type_id: best.id,
+        event_type_slug: best.slug,
+        event_type_title: best.title || best.slug,
+        score: bestScore,
+        reason: bestScore === 100 ? 'exact' : bestScore >= 80 ? 'fuzzy' : 'word_overlap'
+      });
+    }
+  }
+  return out;
+}
+
 /** List the connected account's event types (Lola service <-> Cal event type mesh). */
 export async function listEventTypes(integration){
+  const token = bearerToken(integration);
+  if (!token) throw new Error('Cal.com mesh node is not configured: set CAL_COM_API_KEY or CAL_COM_CLIENT_ID/CAL_COM_CLIENT_SECRET + a per-tenant managed-user token.');
   const r = await fetch(`${API_BASE}/event-types`, { headers: headers(integration) });
   const data = await parse(r, 'event-types');
   return (data || []).map(e => ({
@@ -163,6 +211,8 @@ export async function listEventTypes(integration){
 /** Create a Cal.com event type for a Lola service. */
 export async function createEventType(integration, { title, slug, lengthInMinutes = 30, description = '' } = {}){
   if (!title) throw new Error('createEventType requires a title');
+  const token = bearerToken(integration);
+  if (!token) throw new Error('Cal.com mesh node is not configured: set CAL_COM_API_KEY or CAL_COM_CLIENT_ID/CAL_COM_CLIENT_SECRET + a per-tenant managed-user token.');
   const r = await fetch(`${API_BASE}/event-types`, {
     method: 'POST',
     headers: headers(integration),
@@ -183,6 +233,8 @@ export async function createEventType(integration, { title, slug, lengthInMinute
  */
 export async function getAvailability(integration, { eventTypeId, from, to, timeZone = DEFAULT_TZ } = {}){
   if (!eventTypeId) throw new Error('getAvailability requires eventTypeId');
+  const token = bearerToken(integration);
+  if (!token) throw new Error('Cal.com mesh node is not configured: set CAL_COM_API_KEY or CAL_COM_CLIENT_ID/CAL_COM_CLIENT_SECRET + a per-tenant managed-user token.');
   const q = new URLSearchParams({ eventTypeId: String(eventTypeId), startTime: from, endTime: to, timeZone });
   const r = await fetch(`${API_BASE}/slots/available?${q}`, { headers: headers(integration) });
   const data = await parse(r, 'slots');
