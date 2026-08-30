@@ -5,10 +5,11 @@
  *   node tests/autopilot.test.mjs
  *
  * Exercises the REAL handler against the in-memory fake DB with Telnyx
- * stubbed via global fetch: CRON_SECRET gating, a full four-agent run
- * (routing-heal reconciles a rejected-legacy row, missed-call-recovery texts
- * a caller who rang without booking, rebooking invites a cancelled client
- * back, sync-self-heal re-runs an erroring sync), and the agent_runs ledger.
+ * stubbed via global fetch: CRON_SECRET gating, a full run of all seven
+ * agents (routing-heal reconciles a rejected-legacy row, missed-call-recovery
+ * texts a caller who rang without booking, rebooking invites a cancelled
+ * client back, sync-self-heal re-runs an erroring sync, proactive-outreach
+ * no-ops on the schedule-less seed), and the agent_runs ledger.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -141,7 +142,7 @@ test('disabled without CRON_SECRET, rejects wrong secret', async () => {
   } finally { globalThis.fetch = t.realFetch; }
 });
 
-test('full run: all six agents act, ledger rows written, opt-outs respected', async () => {
+test('full run: all seven agents act, ledger rows written, opt-outs respected', async () => {
   seed();
   const t = stubTelnyx();
   try {
@@ -196,10 +197,16 @@ test('full run: all six agents act, ledger rows written, opt-outs respected', as
     assert.equal(byAgent['callback-recovery'].status, 'success');
     assert.equal(byAgent['callback-recovery'].actions, 1);
 
-    // Ledger: 6 rows, one per agent, none failed.
+    // 7 · proactive-outreach: t1 has no staff_schedules seeded, so the yield
+    // engine records a per-tenant skip and sends nothing (partial, 0 SMS).
+    assert.equal(byAgent['proactive-outreach'].status, 'partial');
+    assert.equal(byAgent['proactive-outreach'].actions, 1);
+    assert.equal(byAgent['proactive-outreach'].summary.includes('No proactive offers sent'), true);
+
+    // Ledger: 7 rows, one per agent, none failed.
     const runs = fake.all('agent_runs');
-    assert.equal(runs.length, 6);
-    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery']) {
+    assert.equal(runs.length, 7);
+    for (const a of ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery', 'proactive-outreach']) {
       const row = runs.find(r => r.agent === a);
       assert.ok(row, `ledger row for ${a}`);
       assert.notEqual(row.status, 'failed');

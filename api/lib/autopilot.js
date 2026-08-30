@@ -28,6 +28,11 @@
  *        served; Lola ORIGINATES a call back from the salon's line within the
  *        window so nobody waits on Lola's voicemail. Cooldown via
  *        tenants.callback_sent_at; reuses the shared originate core.
+ *   7. proactive-outreach     (per tenant)    — the YIELD ENGINE. Lola scans
+ *        the next 48h for open schedule gaps and proactively texts clients
+ *        due for service (last visit > 6 weeks ago) to fill dead slots
+ *        before they go unsold. Cooldown via client memory, so nobody is
+ *        offered twice in the same week.
  *
  * Per-tenant agents respect tenants.autopilot_enabled (owners can pause
  * autonomy from Settings). Every SMS respects the client's 10DLC opt-out.
@@ -37,6 +42,8 @@ import { db, e164, isOptedOut, getClientMemory, setClientMemory, listTenantNumbe
 import { syncTenantConnections } from './connection-sync.js';
 import { syncTenantAvailability } from './booking-sync.js';
 import { originateCallback } from './call-callback.js';
+import { getBookingSettings } from './booking-repository.js';
+import { localDateKey, dayBoundsUtc, localWeekday, zonedLocalToUtc, localTimeLabel } from './timezone.js';
 
 // The dead 'upgrade' connection Telnyx rejects for origination. Kept in sync
 // with admin/numbers.js (REJECTED_LEGACY_CONNECTION_ID).
@@ -72,10 +79,15 @@ export const AUTOPILOT_AGENTS = {
     label: 'Missed-call callback',
     scope: 'tenant',
     description: 'Calls back callers who rang and weren\'t served, so nobody waits on Lola\'s voicemail.'
+  },
+  'proactive-outreach': {
+    label: 'Proactive outreach',
+    scope: 'tenant',
+    description: 'Scans the next 48h for open slots and texts clients due for service to fill dead gaps.'
   }
 };
 
-export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery'];
+export const AUTOPILOT_AGENT_ORDER = ['routing-heal', 'missed-call-recovery', 'rebooking', 'sync-self-heal', 'review-request', 'callback-recovery', 'proactive-outreach'];
 
 const RECOVERY_COOLDOWN_MS = 6 * 3600 * 1000;   // one recovery burst per tenant per 6h
 const RECENT_WINDOW_MS = 24 * 3600 * 1000;      // look back 24h for missed calls
@@ -83,6 +95,11 @@ const REBOOK_WINDOW_MS = 7 * 24 * 3600 * 1000;  // look back 7d for cancellation
 const STALE_AFTER_MS = 2 * 3600 * 1000;         // sync older than 2h is stale
 const RECENT_SYNC_MS = 7 * 24 * 3600 * 1000;    // sync log lookback
 const REVIEW_WINDOW_MS = 6 * 3600 * 1000;       // appointments that ended in the last 6h
+const YIELD_LOOKAHEAD_MS = 48 * 3600 * 1000;     // scan the next 48h for open gaps
+const YIELD_DUE_AFTER_MS = 42 * 24 * 3600 * 1000; // last visit older than 6 weeks => due for service
+const YIELD_COOLDOWN_MS = 7 * 24 * 3600 * 1000;  // don't offer the same client twice in a week
+const YIELD_MIN_GAP_MIN = 45;                    // only chase gaps >= 45 min
+const YIELD_MAX_PER_TENANT = 3;                  // cap offers per tenant per run
 
 // ── shared helpers ────────────────────────────────────────────────────────
 
@@ -506,13 +523,195 @@ async function callbackRecovery({ client, now }){
   };
 }
 
+// ── AGENT 7 · proactive-outreach (per tenant) ────────────────────────────
+// THE YIELD ENGINE. For each enabled tenant, compute the open schedule gaps
+// over the next 48h (schedule windows minus confirmed bookings and active
+// holds), then text the clients most overdue for service (last visit > 6
+// weeks ago, no upcoming booking, phone on file, not opted out, not offered
+// in the last week) offering the earliest gap. Fills dead chairs before they
+// go unsold — the revenue engine from the product blueprint.
+async function proactiveOutreach({ client, now }){
+  const tenants = await enabledTenants(client, 'id,slug,name,phone_number,autopilot_enabled');
+  const actions = [];
+  for (const t of tenants){
+    const settings = await getBookingSettings(t.id).catch(() => null);
+    const timeZone = settings?.timezone || 'America/New_York';
+    const minNoticeMs = Number(settings?.minimum_notice_minutes || 120) * 60000;
+    const horizonMs = now + YIELD_LOOKAHEAD_MS;
+    const startCutMs = now + minNoticeMs;
+
+    const [schedules, staff, bookings, holds] = await Promise.all([
+      client.from('staff_schedules').select('*').eq('tenant_id', t.id).limit(200).then(r => r).catch(() => ({ data: [] })),
+      client.from('staff').select('id,name').eq('tenant_id', t.id).limit(200).then(r => r).catch(() => ({ data: [] })),
+      client.from('bookings').select('staff_id,start_time,end_time')
+        .eq('tenant_id', t.id).eq('status', 'confirmed')
+        .lt('end_time', new Date(horizonMs).toISOString()).gt('end_time', new Date(now - 3600 * 1000).toISOString())
+        .limit(500).then(r => r).catch(() => ({ data: [] })),
+      client.from('availability_holds').select('staff_id,starts_at,ends_at')
+        .eq('tenant_id', t.id).eq('status', 'active')
+        .gt('expires_at', new Date(now).toISOString())
+        .limit(200).then(r => r).catch(() => ({ data: [] }))
+    ]);
+    if (!(schedules?.data || []).length) {
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no staff schedules' });
+      continue;
+    }
+    const staffName = new Map((staff?.data || []).map(s => [s.id, s.name]));
+
+    // Build per-staff busy segments (confirmed bookings + active holds).
+    const busyByStaff = new Map();
+    for (const b of (bookings?.data || [])){
+      if (!b.staff_id) continue;
+      if (!busyByStaff.has(b.staff_id)) busyByStaff.set(b.staff_id, []);
+      busyByStaff.get(b.staff_id).push({ start: new Date(b.start_time).getTime(), end: new Date(b.end_time).getTime() });
+    }
+    for (const h of (holds?.data || [])){
+      if (!h.staff_id) continue;
+      if (!busyByStaff.has(h.staff_id)) busyByStaff.set(h.staff_id, []);
+      busyByStaff.get(h.staff_id).push({ start: new Date(h.starts_at).getTime(), end: new Date(h.ends_at).getTime() });
+    }
+
+    // Walk the next 3 local days, compute free windows per staff schedule.
+    const gaps = [];
+    let cursorDay = localDateKey(new Date(now), timeZone);
+    for (let d = 0; d < 3; d++){
+      const bounds = dayBoundsUtc(cursorDay, timeZone);
+      const dayOfWeek = localWeekday(new Date(bounds.start), timeZone);
+      const daySchedules = (schedules?.data || []).filter(s => Number(s.day_of_week) === dayOfWeek);
+      for (const sched of daySchedules){
+        const openStart = new Date(zonedLocalToUtc(bounds.key, sched.start_time, timeZone)).getTime();
+        const openEnd = new Date(zonedLocalToUtc(bounds.key, sched.end_time, timeZone)).getTime();
+        if (openEnd - openStart < YIELD_MIN_GAP_MIN * 60000) continue;
+        const busy = (busyByStaff.get(sched.staff_id) || [])
+          .filter(b => b.end > openStart && b.start < openEnd)
+          .sort((a, b) => a.start - b.start);
+        // Merge busy segments, then collect free windows >= MIN_GAP that
+        // start after the notice window and within the 48h horizon.
+        let prevEnd = openStart;
+        for (const seg of busy){
+          if (seg.start > prevEnd){
+            const freeStart = prevEnd, freeEnd = Math.min(seg.start, openEnd);
+            if (freeEnd - freeStart >= YIELD_MIN_GAP_MIN * 60000 && freeStart >= startCutMs && freeStart < horizonMs){
+              gaps.push({ starts_at: new Date(freeStart).toISOString(), staff_id: sched.staff_id, staff_name: staffName.get(sched.staff_id) || 'our team' });
+            }
+          }
+          prevEnd = Math.max(prevEnd, seg.end);
+        }
+        if (openEnd - prevEnd >= YIELD_MIN_GAP_MIN * 60000 && prevEnd >= startCutMs && prevEnd < horizonMs){
+          gaps.push({ starts_at: new Date(prevEnd).toISOString(), staff_id: sched.staff_id, staff_name: staffName.get(sched.staff_id) || 'our team' });
+        }
+      }
+      const next = new Date(new Date(bounds.start).getTime() + 24 * 3600 * 1000);
+      cursorDay = localDateKey(next, timeZone);
+    }
+    gaps.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    const topGaps = gaps.slice(0, YIELD_MAX_PER_TENANT);
+    if (!topGaps.length){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no open gaps in 48h' });
+      continue;
+    }
+
+    // Find clients due for service: last confirmed visit > 6 weeks ago, no
+    // upcoming booking, phone on file, not opted out.
+    const { data: past } = await client.from('bookings')
+      .select('client_id,end_time')
+      .eq('tenant_id', t.id).eq('status', 'confirmed')
+      .lt('end_time', new Date(now).toISOString())
+      .order('end_time', { ascending: false }).limit(500)
+      .then(r => r).catch(() => ({ data: [] }));
+    const lastVisit = new Map();
+    for (const b of (past || [])) if (b.client_id && !lastVisit.has(b.client_id)) lastVisit.set(b.client_id, b.end_time);
+    const dueIds = [...lastVisit.entries()]
+      .filter(([, end]) => now - new Date(end).getTime() >= YIELD_DUE_AFTER_MS)
+      .map(([id]) => id);
+    if (!dueIds.length){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no clients due for service' });
+      continue;
+    }
+    const { data: clients } = await client.from('clients').select('id,first_name,last_name,phone,opted_out')
+      .in('id', dueIds).limit(200).then(r => r).catch(() => ({ data: [] }));
+    const dueClients = (clients || []).filter(c => c.phone && !c.opted_out);
+    if (!dueClients.length){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no contactable due clients' });
+      continue;
+    }
+    // Drop anyone who already has an upcoming confirmed booking.
+    const { data: upcoming } = await client.from('bookings')
+      .select('client_id').eq('tenant_id', t.id).eq('status', 'confirmed')
+      .gt('start_time', new Date(now).toISOString())
+      .in('client_id', dueClients.map(c => c.id)).limit(200)
+      .then(r => r).catch(() => ({ data: [] }));
+    const hasUpcoming = new Set((upcoming || []).map(b => b.client_id));
+    const targets = dueClients.filter(c => !hasUpcoming.has(c.id));
+    if (!targets.length){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'due clients already booked' });
+      continue;
+    }
+
+    const fromNumber = await primaryNumber(client, t);
+    if (!fromNumber){
+      actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no primary number' });
+      continue;
+    }
+    const mem = await getClientMemory(t.id, 'autopilot:').catch(() => []);
+    // Cooldown: skip any client offered within the last week, so the same
+    // person is never nagged twice — but CAN be re-offered after the window
+    // if a gap is still open.
+    const offeredAt = new Map();
+    for (const m of (mem || [])){
+      if (String(m.key || '').startsWith('yield:')){
+        const cid = String(m.key).slice('yield:'.length);
+        const at = m.value ? new Date(m.value).getTime() : (m.created_at ? new Date(m.created_at).getTime() : 0);
+        offeredAt.set(cid, at);
+      }
+    }
+
+    let sent = 0;
+    for (const gap of topGaps){
+      if (sent >= YIELD_MAX_PER_TENANT) break;
+      // Skip clients offered earlier IN THIS RUN too (offeredAt is only
+      // updated from memory before the loop, so track sends as we go).
+      const target = targets.find(c => {
+        const at = offeredAt.get(c.id);
+        return !at || (now - at) >= YIELD_COOLDOWN_MS;
+      });
+      if (!target) break;
+      const when = localTimeLabel(gap.starts_at, timeZone);
+      const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' }).format(new Date(gap.starts_at));
+      const first = String(target.first_name || 'there').split(' ')[0];
+      const text = `Hi ${first}, this is Lola at ${t.name}. I noticed it's been a while since your last visit — we have an opening ${day} at ${when} with ${gap.staff_name}. Want me to hold it for you? Just reply and I'll take care of it.`;
+      const r = await sendAutopilotSms({ from: fromNumber, to: target.phone, text, tenantId: t.id });
+      if (r.sent){
+        sent++;
+        offeredAt.set(target.id, now); // don't offer the same client twice this run
+        try{ await setClientMemory(t.id, 'autopilot:', `yield:${target.id}`, new Date(now).toISOString()); }catch{}
+        try{ await logUsage(t.id, 'proactive_outreach', 1, { client_id: target.id, slot: gap.starts_at }); }catch{}
+        actions.push({ tenant_id: t.id, client_id: target.id, to: target.phone, slot: gap.starts_at, status: 'sent' });
+      } else {
+        actions.push({ tenant_id: t.id, client_id: target.id, status: 'skipped', reason: r.reason });
+      }
+    }
+    if (!sent) actions.push({ tenant_id: t.id, status: 'skipped', reason: 'no eligible targets' });
+  }
+  const sentCount = actions.filter(a => a.status === 'sent').length;
+  return {
+    status: sentCount ? 'success' : (actions.length ? 'partial' : 'skipped'),
+    summary: sentCount
+      ? `Offered ${sentCount} open slot(s) to clients due for service, filling dead gaps in the next 48h`
+      : (actions.length ? 'No proactive offers sent (all skipped)' : 'No open gaps or due clients in the window'),
+    details: { actions: actions.slice(0, 50) },
+    actions
+  };
+}
+
 const RUNNERS = {
   'routing-heal': routingHeal,
   'missed-call-recovery': missedCallRecovery,
   'rebooking': rebooking,
   'sync-self-heal': syncSelfHeal,
   'review-request': reviewRequest,
-  'callback-recovery': callbackRecovery
+  'callback-recovery': callbackRecovery,
+  'proactive-outreach': proactiveOutreach
 };
 
 // ── ledger ────────────────────────────────────────────────────────────────
