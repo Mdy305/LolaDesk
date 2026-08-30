@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Inventory — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<style>
+.inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:18px}
+.inv-card{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:border-color .25s var(--spring),transform .25s var(--spring)}
+.inv-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.inv-card.low{border-color:rgba(255,129,120,.45);background:linear-gradient(180deg,rgba(255,129,120,.05),transparent)}
+.inv-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.inv-name{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+.inv-brand{font-size:11px;color:var(--text3);margin-top:2px}
+.inv-meta{display:flex;flex-wrap:wrap;gap:6px}
+.stock-pill{padding:5px 10px;border-radius:10px;font-size:11.5px;font-weight:650;background:rgba(204,255,0,.08);color:#ccff00}
+.stock-pill.low{background:rgba(255,129,120,.12);color:#ff8178}
+.stock-pill.out{background:rgba(255,129,120,.2);color:#ff8178}
+.price-line{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text2)}
+.price-line b{color:var(--text);font-weight:650}
+.inv-actions{display:flex;gap:8px;margin-top:auto;padding-top:6px}
+.inv-actions .btn{flex:1;padding:9px;font-size:12.5px}
+.sku-tag{font-family:var(--ff-mono,ui-monospace,monospace);font-size:10.5px;color:var(--text3);background:var(--surface2);padding:3px 8px;border-radius:7px}
+.alert-banner{display:none;align-items:center;gap:12px;padding:13px 16px;border-radius:14px;background:rgba(255,129,120,.08);border:.5px solid rgba(255,129,120,.35);margin-bottom:16px;font-size:13px}
+.alert-banner.show{display:flex}
+.alert-banner b{color:#ff8178}
+.empty{padding:44px;text-align:center;color:var(--text3);font-size:13.5px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:11px;color:var(--text2)}
+.field input,.field select{width:100%;padding:12px 13px;border-radius:11px;border:1px solid #2a2a30;background:#080809;color:#fff;outline:0}
+.modal-shell{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.72);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;padding:20px}
+.modal-shell.open{display:flex}
+.modal-card{width:min(560px,100%);max-height:90vh;overflow:auto;background:#101012;border:1px solid #29292f;border-radius:22px;padding:24px;box-shadow:0 30px 100px rgba(0,0,0,.55)}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start}
+.modal-head h2{margin:0;font-size:21px}
+.modal-head p{margin:5px 0 0;color:var(--text2);font-size:12.5px}
+.modal-close{width:36px;height:36px;border-radius:50%;background:#1b1b1f;color:#fff;border:0;font-size:20px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.status-msg{min-height:20px;margin-top:12px;font-size:12px;color:var(--text2)}
+.status-msg.ok{color:#ccff00}
+.status-msg.err{color:#ff8178}
+.stock-edit{display:flex;gap:8px;align-items:center}
+.stock-edit input{width:74px;text-align:center}
+@media(max-width:650px){.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topbar{flex-wrap:wrap}}
+</style>
+</head>
+<body data-page="inventory"><div class="app"><main class="main">
+<div class="topbar"><div class="page-head"><h1 class="page-title">Inventory</h1><p class="page-sub">Retail products with live stock levels — low stock alerts Lola and your team.</p></div><div class="topbar-actions"><button class="btn btn-ghost" id="editBtn" style="display:none">Edit selected</button><button class="btn btn-primary" id="addBtn">＋ Add product</button></div></div>
+<div class="kpis"><div class="kpi"><div class="kpi-val" id="kProducts">—</div><div class="kpi-label">Products</div><div class="kpi-sub">Active catalog</div></div><div class="kpi"><div class="kpi-val pink" id="kLow">—</div><div class="kpi-label">Low stock</div><div class="kpi-sub">At or below alert level</div></div><div class="kpi"><div class="kpi-val mono" id="kValue">—</div><div class="kpi-label">Retail value</div><div class="kpi-sub">Price × stock</div></div><div class="kpi"><div class="kpi-val" id="kCost">—</div><div class="kpi-label">Cost at risk</div><div class="kpi-sub">Cost × stock on hand</div></div></div>
+<div class="alert-banner" id="alertBanner"><span>⚠</span><span id="alertText"></span></div>
+<div class="search-row"><div class="search-box"><span>⌕</span><input id="search" placeholder="Search products by name, brand, category, or SKU…"/></div><button class="filter-pill active" data-filter="all">All</button><button class="filter-pill" data-filter="low">Low stock</button><button class="filter-pill" data-filter="out">Out of stock</button></div>
+<div class="inv-grid" id="grid"><div class="empty">Loading inventory…</div></div>
+</main></div>
+
+<div class="modal-shell" id="prodModal"><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><h2 id="modalTitle">Add product</h2><p>Retail you sell at the front desk. Lola can reference stock during calls.</p></div><button class="modal-close" id="closeModal" aria-label="Close">×</button></div>
+<div class="form-grid" style="margin-top:18px">
+<div class="field full"><label>Product name *</label><input id="pName" placeholder="e.g. Olaplex No. 3 Hair Perfector"/></div>
+<div class="field"><label>Brand</label><input id="pBrand" placeholder="e.g. Olaplex"/></div>
+<div class="field"><label>Category</label><input id="pCategory" placeholder="e.g. Hair care"/></div>
+<div class="field"><label>SKU</label><input id="pSku" placeholder="e.g. OLA-3-100"/></div>
+<div class="field"><label>Price ($)</label><input id="pPrice" type="number" min="0" step="0.01" placeholder="0.00"/></div>
+<div class="field"><label>Cost ($)</label><input id="pCost" type="number" min="0" step="0.01" placeholder="0.00"/></div>
+<div class="field"><label>Stock on hand</label><input id="pStock" type="number" min="0" step="1" value="0"/></div>
+<div class="field"><label>Low-stock alert at</label><input id="pLow" type="number" min="0" step="1" value="5"/></div>
+</div>
+<div class="modal-actions"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" id="saveProduct">Save product</button></div>
+<div id="modalStatus" class="status-msg"></div></section></div>
+
+<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+<script>
+let PRODUCTS=[],activeFilter='all',editId=null;
+const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(url,options={}){const auth=await window.LolaAuth.ready;options.headers={...(options.headers||{}),Authorization:'Bearer '+auth.token};const r=await fetch(url,options),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('Request failed '+r.status));return d}
+const money=v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+function stockClass(p){if(p.stock<=0)return'out';if(p.stock<=p.low_stock_alert)return'low';return''}
+function stockLabel(p){if(p.stock<=0)return'Out of stock';if(p.stock<=p.low_stock_alert)return'Low · '+p.stock+' left';return p.stock+' in stock'}
+function render(){
+  const q=($('search').value||'').toLowerCase(),rows=PRODUCTS.filter(p=>{
+    if(activeFilter==='low'&&p.stock>p.low_stock_alert)return false;
+    if(activeFilter==='out'&&p.stock>0)return false;
+    return [p.name,p.brand,p.category,p.sku].some(v=>String(v||'').toLowerCase().includes(q));
+  });
+  $('grid').innerHTML=rows.length?rows.map(p=>{
+    const cls=stockClass(p),lowFlag=cls!=='';
+    return '<article class="inv-card'+(lowFlag?' low':'')+'" data-id="'+esc(p.id)+'">'
+      +'<div class="inv-top"><div><div class="inv-name">'+esc(p.name)+'</div>'
+      +(p.brand?'<div class="inv-brand">'+esc(p.brand)+'</div>':'')
+      +'</div>'+(p.sku?'<span class="sku-tag">'+esc(p.sku)+'</span>':'')+'</div>'
+      +(p.category?'<div class="cell-sub" style="font-size:11px;color:var(--text3)">'+esc(p.category)+'</div>':'')
+      +'<div class="inv-meta"><span class="stock-pill '+cls+'">'+stockLabel(p)+'</span>'
+      +(p.low_stock_alert>0?'<span class="stock-pill" style="background:var(--surface2);color:var(--text2)">Alert ≤ '+p.low_stock_alert+'</span>':'')
+      +'</div>'
+      +'<div class="price-line"><span>Selling price</span><b>'+money(p.price)+'</b></div>'
+      +(p.cost>0?'<div class="price-line"><span>Cost</span><b>'+money(p.cost)+'</b></div>':'')
+      +'<div class="inv-actions"><button class="btn btn-ghost" data-edit="'+esc(p.id)+'">Edit</button>'
+      +'<button class="btn btn-ghost" data-stock="'+esc(p.id)+'">＋ Stock</button>'
+      +'<button class="btn btn-ghost" data-del="'+esc(p.id)+'" style="color:#ff8178">Remove</button></div>'
+      +'</article>';
+  }).join(''):'<div class="empty">'+(PRODUCTS.length?'No products match your search.':'No products yet. Add your first retail product — Lola can reference it when clients ask what you sell.')+'</div>';
+  const low=PRODUCTS.filter(p=>p.stock<=p.low_stock_alert);
+  const out=PRODUCTS.filter(p=>p.stock<=0);
+  $('kProducts').textContent=PRODUCTS.length.toLocaleString();
+  $('kLow').textContent=low.length.toLocaleString();
+  $('kValue').textContent=money(PRODUCTS.reduce((s,p)=>s+p.price*p.stock,0));
+  $('kCost').textContent=money(PRODUCTS.reduce((s,p)=>s+p.cost*p.stock,0));
+  const b=$('alertBanner');
+  if(low.length){
+    b.classList.add('show');
+    $('alertText').innerHTML='<b>'+low.length+' product'+(low.length===1?'':'s')+' low on stock</b> — '+(out.length?out.length+' out entirely. ':'')+'Reorder before the front desk runs out.';
+  }else b.classList.remove('show');
+}
+async function load(){const d=await api('/api/salon?resource=products');PRODUCTS=(d.products||[]).map(p=>({...p,stock:Number(p.stock||0),low_stock_alert:Number(p.low_stock_alert??5)}));render()}
+function openModal(p){editId=p?.id||null;$('modalTitle').textContent=editId?'Edit product':'Add product';$('pName').value=p?.name||'';$('pBrand').value=p?.brand||'';$('pCategory').value=p?.category||'';$('pSku').value=p?.sku||'';$('pPrice').value=p?.price??'';$('pCost').value=p?.cost??'';$('pStock').value=p?.stock??0;$('pLow').value=p?.low_stock_alert??5;$('modalStatus').textContent='';$('prodModal').classList.add('open');$('pName').focus()}
+function closeModal(){$('prodModal').classList.remove('open')}
+function status(msg,kind=''){$('modalStatus').className='status-msg '+kind;$('modalStatus').textContent=msg}
+$('addBtn').onclick=()=>openModal(null);
+$('closeModal').onclick=closeModal;
+document.querySelectorAll('[data-cancel]').forEach(x=>x.onclick=closeModal);
+$('prodModal').onclick=e=>{if(e.target===$('prodModal'))closeModal()};
+$('search').oninput=render;
+document.querySelectorAll('[data-filter]').forEach(x=>x.onclick=()=>{document.querySelectorAll('[data-filter]').forEach(y=>y.classList.remove('active'));x.classList.add('active');activeFilter=x.dataset.filter;render()});
+$('saveProduct').onclick=async()=>{
+  const btn=$('saveProduct');
+  if(!$('pName').value.trim()){status('Product name is required.','err');return}
+  btn.disabled=true;status('Saving product…');
+  try{
+    const d=await api('/api/salon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      resource:'product',id:editId,name:$('pName').value,brand:$('pBrand').value,category:$('pCategory').value,
+      sku:$('pSku').value,price:$('pPrice').value,cost:$('pCost').value,stock:$('pStock').value,low_stock_alert:$('pLow').value
+    })});
+    status('Product saved.','ok');await load();setTimeout(closeModal,550);
+  }catch(e){status(e.message,'err')}finally{btn.disabled=false}
+};
+$('grid').addEventListener('click',async e=>{
+  const edit=e.target.closest('[data-edit]'),stock=e.target.closest('[data-stock]'),del=e.target.closest('[data-del]');
+  if(edit){const p=PRODUCTS.find(x=>x.id===edit.dataset.edit);if(p)openModal(p);return}
+  if(del){
+    const p=PRODUCTS.find(x=>x.id===del.dataset.del);
+    if(!p||!confirm('Remove "'+p.name+'" from inventory?'))return;
+    try{await api('/api/salon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource:'product',action:'delete',id:p.id})});await load()}catch(err){alert(err.message)}
+    return;
+  }
+  if(stock){
+    const p=PRODUCTS.find(x=>x.id===stock.dataset.stock);
+    if(!p)return;
+    const v=prompt('Stock on hand for "'+p.name+'":',p.stock);
+    if(v===null)return;
+    const n=Number(v);
+    if(!Number.isFinite(n)||n<0){alert('Enter a valid quantity.');return}
+    try{await api('/api/salon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource:'product',id:p.id,name:p.name,brand:p.brand,category:p.category,sku:p.sku,price:p.price,cost:p.cost,stock:n,low_stock_alert:p.low_stock_alert})});await load()}catch(err){alert(err.message)}
+  }
+});
+load();
+</script>
+</body>
+</html>

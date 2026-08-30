@@ -106,9 +106,16 @@ export default async function handler(req,res){
 
       if(resource==='products'){
         const {data}=await c.from('products').select('*').eq('tenant_id',T).eq('is_active',true).order('name');
-        // products has no stock/low_stock_alert columns in the canonical schema;
-        // low-stock is derived from nothing until inventory tracking lands.
-        return res.json({ok:true,products:data||[],low_stock:[]});
+        // Inventory tracking: low_stock is derived from the real stock vs
+        // low_stock_alert columns (20260901_inventory_ops.sql). Guard for
+        // pre-migration rows that predate the columns.
+        const products=(data||[]).map(p=>({
+          ...p,
+          stock:Number(p.stock??0),
+          low_stock_alert:Number(p.low_stock_alert??5)
+        }));
+        const low_stock=products.filter(p=>p.stock<=p.low_stock_alert);
+        return res.json({ok:true,products,low_stock});
       }
 
       if(resource==='catalog'){
