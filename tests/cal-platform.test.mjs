@@ -28,6 +28,7 @@ function mockFetch(handler){
 function restoreFetch(){ globalThis.fetch = realFetch; }
 
 const cal = await import('../api/lib/connectors/cal-platform.js');
+const aggregator = await import('../api/lib/aggregator.js');
 
 const NORMALIZED_KEYS = ['id', 'starts_at', 'ends_at', 'duration_min', 'client', 'stylist', 'status'];
 
@@ -219,6 +220,55 @@ test('unconfigured node degrades gracefully (no crash, no silent undefined)', as
   assert.equal(ref.ok, false);
   // listAppointments fails loudly with a config message, not a network error
   await assert.rejects(() => cal.listAppointments({}), /not configured/);
+});
+
+// ── mesh write routing through the aggregator ───────────────────────────
+test('writeAppointment routes to cal_platform when explicitly selected', async () => {
+  process.env.CAL_COM_API_KEY = 'cal_test_key';
+  mockFetch((u, opts) => {
+    assert.equal(u, 'https://api.cal.com/v2/bookings');
+    assert.equal(JSON.parse(opts.body).eventTypeId, 7);
+    return { status: 'success', data: { uid: 'bk-cal1', start: '2026-09-01T10:00:00Z', end: '2026-09-01T10:45:00Z', duration: 45, status: 'accepted', attendees: [{ name: 'Jane' }] } };
+  });
+  try {
+    const out = await aggregator.writeAppointment(
+      [{ provider: 'cal_platform', access_token: 'x' }, { provider: 'vagaro', access_token: 'y' }],
+      { starts_at: '2026-09-01T10:00:00Z', duration_min: 45, service_id: 7, client: { name: 'Jane' } },
+      { provider: 'cal_platform' }
+    );
+    assert.equal(out.id, 'bk-cal1');
+  } finally { restoreFetch(); delete process.env.CAL_COM_API_KEY; }
+});
+
+test('writeAppointment treats cal_platform as a default write-eligible provider', async () => {
+  process.env.CAL_COM_API_KEY = 'cal_test_key';
+  mockFetch((u) => {
+    assert.equal(u, 'https://api.cal.com/v2/bookings');
+    return { status: 'success', data: { uid: 'bk-cal2', start: '2026-09-01T10:00:00Z', end: '2026-09-01T10:45:00Z', duration: 45, status: 'accepted', attendees: [{ name: 'Jane' }] } };
+  });
+  try {
+    const out = await aggregator.writeAppointment(
+      [{ provider: 'cal_platform', access_token: 'x' }],
+      { starts_at: '2026-09-01T10:00:00Z', duration_min: 45, service_id: 7, client: { name: 'Jane' } }
+    );
+    assert.equal(out.id, 'bk-cal2');
+  } finally { restoreFetch(); delete process.env.CAL_COM_API_KEY; }
+});
+
+test('writeAppointment falls back to a connected provider when the preferred one is missing', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /vagaro/);
+    return { ok: true, status: 200, json: async () => ({ appointment: { id: 'VAG-1', startDateTime: '2026-09-01T10:00:00Z', duration: 45 } }) };
+  };
+  try {
+    const out = await aggregator.writeAppointment(
+      [{ provider: 'vagaro', access_token: 'y' }],
+      { starts_at: '2026-09-01T10:00:00Z', duration_min: 45, client: { name: 'Jane' } },
+      { provider: 'cal_platform' }
+    );
+    assert.equal(out.id, 'VAG-1');
+  } finally { globalThis.fetch = realFetch; }
 });
 
 console.log('\ncal-platform: Cal.com mesh node conforms to the adapter contract ✅');

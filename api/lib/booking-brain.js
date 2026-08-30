@@ -25,7 +25,7 @@ import * as repo from './booking-repository.js';
 import { resolveBookingRequest } from './booking-resolver.js';
 import { getAvailability, holdAvailability } from './availability-engine-v2.js';
 import * as crm from './lola-crm.js';
-import { writeAppointment } from './aggregator.js';
+import { writeAppointment, getConnector } from './aggregator.js';
 import { listBookings, enrichBookings, resolveDate, to24, moveBooking } from './operator-db.js';
 import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
 import { offerFreedSlot } from './booking-reminders.js';
@@ -33,7 +33,18 @@ import { offerFreedSlot } from './booking-reminders.js';
 // Providers Lola can WRITE appointments to. boulevard (partner sandbox) and
 // shopify (retail only) deliberately excluded; google_calendar is a sync
 // target, not a booking source of truth, so committing there would duplicate.
-const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha', 'booksy'];
+// cal_platform is a first-class write target when the owner selects it as
+// booking_provider — the Cal.com mesh node takes the appointment.
+const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha', 'booksy', 'cal_platform'];
+
+// Normalize the owner's booking_provider choice ("cal" -> "cal_platform").
+async function preferredBookingProvider(tenantId){
+  try{
+    const { data: t } = await db().from('tenants').select('booking_provider, booking_platform').eq('id', tenantId).maybeSingle();
+    const raw = String(t?.booking_provider || t?.booking_platform || '').toLowerCase();
+    return raw === 'cal' ? 'cal_platform' : raw;
+  }catch{ return ''; }
+}
 
 // ── external commit ("bookings land on Square/Vagaro") ──────────────
 // After the LOCAL hold is taken, push the appointment to the tenant's
@@ -52,7 +63,14 @@ async function commitToExternalProvider(tenantId, ctx){
   catch(e){ return { ok:false, skipped:true, error:`integrations unavailable: ${e?.message||e}` }; }
   const targets = integrations.filter(i => BOOKING_PROVIDERS.includes(i.provider));
   if(!targets.length) return { ok:false, skipped:true };
-  const provider = targets[0].provider;
+  // Honor the owner's selected booking provider (e.g. cal_platform) over the
+  // first-connected default, so a Cal.com tenant's bookings land on Cal.com.
+  let provider = targets[0].provider;
+  const pref = await preferredBookingProvider(tenantId);
+  if(pref){
+    const preferred = targets.find(i => i.provider === pref);
+    if(preferred) provider = preferred.provider;
+  }
 
   const mapId = async (entityType, localId) => {
     if(!localId) return null;
@@ -227,12 +245,49 @@ async function resolveServiceAndStaff(tenant, params){
 }
 
 // ── the actions ─────────────────────────────────────────────────────
+// Provider-aware availability: when the owner selected Cal.com as the booking
+// provider, slot truth comes from the Cal.com mesh node via getAvailability
+// (service -> eventTypeId through provider_mappings). Any missing config,
+// mapping, or outage falls back to the local smart-calendar engine so Lola
+// never stalls on a Cal.com hiccup.
+async function availabilityWithProvider(tenant, { serviceId, date, staffId, limit }){
+  const local = () => getAvailability({ tenantId: tenant.id, serviceId, date, staffId, limit });
+  const pref = await preferredBookingProvider(tenant.id);
+  if(pref !== 'cal_platform') return local();
+  try{
+    const integrations = await getTenantIntegrations(tenant.id);
+    const cal = (integrations || []).find(i => i.provider === 'cal_platform');
+    if(!cal) return local();
+    const mapping = await repo.getProviderMapping(tenant.id, 'cal_platform', 'service', serviceId);
+    const eventTypeId = mapping?.external_id;
+    if(!eventTypeId) return local();
+    const from = new Date(date); from.setHours(0, 0, 0, 0);
+    const to = new Date(from); to.setDate(to.getDate() + 14);
+    const slots = await getConnector('cal_platform').getAvailability(cal, {
+      eventTypeId, from: from.toISOString(), to: to.toISOString()
+    });
+    const svc = (await repo.listServices(tenant.id)).find(s => s.id === serviceId);
+    const dur = Number(svc?.duration_minutes || 60);
+    const norm = (slots || []).map(s => ({
+      starts_at: s.time,
+      ends_at: new Date(new Date(s.time).getTime() + dur * 60000).toISOString(),
+      duration_minutes: dur,
+      staff_name: null,
+      provider: 'cal_platform'
+    }));
+    return { ok: true, slots: norm, service: svc || null, settings: null };
+  }catch(e){
+    console.warn('[booking-brain] cal_platform availability failed — using local engine:', e?.message || e);
+    return local();
+  }
+}
+
 export async function checkAvailability(tenant, params){
   const resolved = await resolveServiceAndStaff(tenant, params);
   if(!resolved.ok) return resolved;
   if(resolved.jsonService) return { ok: false, error: 'json_service', speak: "That service isn't on the smart calendar yet." };
-  const av = await getAvailability({
-    tenantId: tenant.id, serviceId: resolved.service.id,
+  const av = await availabilityWithProvider(tenant, {
+    serviceId: resolved.service.id,
     date: params.date || params.starts_at || new Date().toISOString(),
     staffId: params.staff_id || resolved.staff?.id || null,
     limit: Number(params.limit || 12)

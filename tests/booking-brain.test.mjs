@@ -284,3 +284,108 @@ test('tenant memory is isolated per tenant', async () => {
   assert.match(blockA, /remembered/);
   assert.equal(blockB, '');
 });
+
+// ── Cal.com mesh node as booking_provider ──────────────────────────
+// cal_platform is a first-class write target AND availability source when the
+// owner selects it as booking_provider. provider_mappings resolve the Lola
+// service -> Cal.com event type id.
+function seedCalPlatform({ vagaroToo = false } = {}){
+  fake.seed('tenants', [{ id: tenantA.id, slug: 'salon-a', booking_provider: 'cal_platform' }]);
+  const integrations = [
+    { tenant_id: tenantA.id, provider: 'cal_platform', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null }
+  ];
+  if(vagaroToo) integrations.push({ tenant_id: tenantA.id, provider: 'vagaro', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null });
+  fake.seed('integrations', integrations);
+  fake.seed('provider_mappings', [
+    { tenant_id: tenantA.id, provider: 'cal_platform', entity_type: 'service', local_id: 'srv-1', external_id: '7' }
+  ]);
+}
+
+function calBookingResponse(startsAt, uid){
+  return { status: 'success', data: {
+    uid, start: new Date(startsAt).toISOString(),
+    end: new Date(new Date(startsAt).getTime() + 60 * 60000).toISOString(),
+    duration: 60, status: 'accepted', attendees: [{ name: 'Sarah', email: 'sarah@example.com' }],
+    eventType: { slug: 'balayage' }
+  } };
+}
+
+test('bookAppointment routes the write to the Cal.com mesh node when it is booking_provider', async () => {
+  const { startsAt } = seedStandard();
+  seedCalPlatform();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    assert.equal(String(url), 'https://api.cal.com/v2/bookings');
+    const body = JSON.parse(opts.body);
+    assert.equal(body.eventTypeId, 7, 'eventTypeId resolved from provider_mappings');
+    assert.equal(body.start, new Date(startsAt).toISOString());
+    return { ok: true, status: 200, json: async () => calBookingResponse(startsAt, 'CAL-123') };
+  };
+  try{
+    const r = await quietAsync(() => brain.bookAppointment(tenantA, bookParams({ starts_at: startsAt }), { channel: 'voice' }));
+    assert.equal(r.ok, true);
+    const booking = fake.all('bookings')[0];
+    assert.equal(booking.external_id, 'CAL-123');
+    assert.equal(booking.external_provider, 'cal_platform');
+  }finally{ globalThis.fetch = realFetch; }
+});
+
+test('tenant booking_provider preference wins over the first connected provider', async () => {
+  const { startsAt } = seedStandard();
+  seedCalPlatform({ vagaroToo: true });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.ok(String(url).includes('cal.com'), `expected cal.com write, got ${url}`);
+    return { ok: true, status: 200, json: async () => calBookingResponse(startsAt, 'CAL-PREF') };
+  };
+  try{
+    const r = await quietAsync(() => brain.bookAppointment(tenantA, bookParams({ starts_at: startsAt }), { channel: 'voice' }));
+    assert.equal(r.ok, true);
+    const booking = fake.all('bookings')[0];
+    assert.equal(booking.external_provider, 'cal_platform');
+  }finally{ globalThis.fetch = realFetch; }
+});
+
+test('checkAvailability surfaces Cal.com slots when cal_platform is booking_provider', async () => {
+  seedStandard();
+  seedCalPlatform();
+  const dateKey = futureDateKey(14);
+  const date = zonedLocalToUtc(dateKey, '00:00:00', TZ);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.ok(String(url).includes('/v2/slots/available'), `expected cal slots call, got ${url}`);
+    return { ok: true, status: 200, json: async () => ({ status: 'success', data: { slots: {
+      '2026-09-01': [{ time: '2026-09-01T14:00:00Z' }, { time: '2026-09-01T15:00:00Z' }]
+    } } }) };
+  };
+  try{
+    const r = await brain.checkAvailability(tenantA, { service_id: 'srv-1', staff_id: 'stf-1', date });
+    assert.equal(r.ok, true);
+    assert.ok(r.slots.length >= 1, 'cal slots returned');
+    assert.equal(r.slots[0].provider, 'cal_platform');
+    assert.equal(r.slots[0].starts_at, '2026-09-01T14:00:00Z', 'raw Cal slot time preserved');
+    assert.equal(r.slots[0].duration_minutes, 60);
+    assert.match(r.speak, /2 openings/);
+  }finally{ globalThis.fetch = realFetch; }
+});
+
+test('checkAvailability falls back to the local engine when the Cal mapping is missing', async () => {
+  seedStandard();
+  fake.seed('tenants', [{ id: tenantA.id, slug: 'salon-a', booking_provider: 'cal_platform' }]);
+  fake.seed('integrations', [
+    { tenant_id: tenantA.id, provider: 'cal_platform', status: 'connected', access_token: 'legacy-plaintext', refresh_token: null }
+  ]);
+  // no provider_mappings row -> the overlay must skip Cal and use local math
+  const dateKey = futureDateKey(14);
+  const date = zonedLocalToUtc(dateKey, '00:00:00', TZ);
+  const realFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async (url) => { called = true; throw new Error('no network expected: ' + url); };
+  try{
+    const r = await brain.checkAvailability(tenantA, { service_id: 'srv-1', staff_id: 'stf-1', date });
+    assert.equal(r.ok, true);
+    assert.ok(r.slots.length >= 1, 'local engine still produces slots');
+    assert.notEqual(r.slots[0].provider, 'cal_platform');
+    assert.equal(called, false);
+  }finally{ globalThis.fetch = realFetch; }
+});

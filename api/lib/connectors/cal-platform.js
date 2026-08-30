@@ -214,8 +214,12 @@ export async function listAppointments(integration, { from, to } = {}){
 export async function createAppointment(integration, appt){
   const token = bearerToken(integration);
   if (!token) throw new Error('Cal.com mesh node is not configured: set CAL_COM_API_KEY or CAL_COM_CLIENT_ID/CAL_COM_CLIENT_SECRET + a per-tenant managed-user token.');
-  const eventTypeId = appt.event_type_id || appt.eventTypeId || appt.event_type;
+  // The mesh passes the mapped external id via service_id (booking-brain's
+  // provider_mappings resolution), so accept both naming conventions.
+  const eventTypeId = appt.event_type_id || appt.eventTypeId || appt.event_type || appt.service_id;
   if (!eventTypeId) throw new Error('Cal.com createAppointment requires event_type_id (map the Lola service to a Cal.com event type via provider_mappings)');
+  const etid = Number(eventTypeId);
+  if (!Number.isFinite(etid)) throw new Error(`Cal.com event_type_id must be the numeric Cal.com event type id (got ${JSON.stringify(eventTypeId)} — check the provider_mappings external_id)`);
   if (!appt.starts_at) throw new Error('Cal.com createAppointment requires starts_at');
   const client = appt.client || {};
   const email = client.email || (client.phone ? `${String(client.phone).replace(/\D/g, '')}@guest.loladesk.com` : 'guest@loladesk.com');

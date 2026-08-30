@@ -27,8 +27,16 @@ export async function listAllAppointments(tenantIntegrations, range){
   }
   return all.sort((a,b) => new Date(a.starts_at) - new Date(b.starts_at));
 }
+// Providers the mesh can WRITE appointments to. cal_platform joins the
+// traditional salon systems as a first-class write target — when a tenant
+// selects it as booking_provider, writes route to Cal.com.
+const WRITE_PROVIDERS = ['square','boulevard','vagaro','mindbody','fresha','booksy','cal_platform'];
 export async function writeAppointment(tenantIntegrations, appointment, { provider } = {}){
-  const target = provider ? tenantIntegrations.find(i => i.provider === provider) : tenantIntegrations.find(i => ['square','boulevard','vagaro','mindbody','fresha','booksy'].includes(i.provider)) || tenantIntegrations[0];
+  let target = provider ? tenantIntegrations.find(i => i.provider === provider) : null;
+  // Explicit provider that isn't connected falls back to any write-eligible
+  // provider rather than failing the booking (tenant pref is honored when it
+  // exists and is connected).
+  if(!target) target = tenantIntegrations.find(i => WRITE_PROVIDERS.includes(i.provider)) || tenantIntegrations[0];
   if(!target) throw new Error('No booking provider connected');
   const c = getConnector(target.provider);
   return c.createAppointment(target, appointment);

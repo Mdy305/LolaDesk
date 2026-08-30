@@ -261,10 +261,16 @@ async function book_appointment(tenant, body){
     try{
       const integrations = await getTenantIntegrations(tenant.id);
       if(integrations.length){
+        // Honor the owner's booking_provider choice (e.g. cal_platform) so the
+        // write targets the selected mesh node; writeAppointment falls back to
+        // any connected provider when that one isn't connected.
+        const prefRaw = String(tenant?.booking_provider || tenant?.booking_platform || '').toLowerCase();
+        const pref = prefRaw === 'cal' ? 'cal_platform' : prefRaw;
+        const writeOpts = ['square','vagaro','mindbody','fresha','booksy','cal_platform'].includes(pref) ? { provider: pref } : {};
         external = await writeAppointment(integrations, {
           starts_at: startsAt, duration_min: durationMin,
           service: s?.name || service, client: { name: client_name, phone: client_phone }
-        });
+        }, writeOpts);
       }
     }catch(e){ /* fall back to internal booking */ }
 
