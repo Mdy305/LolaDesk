@@ -4,10 +4,12 @@ import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { getAvailability, holdAvailability } from './lib/availability-engine-v2.js';
 import {
   addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
-  listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking
+  listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking,
+  upsertProviderMapping
 } from './lib/booking-repository.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
 import { offerFreedSlot } from './lib/booking-reminders.js';
+import { commitToExternalProvider } from './lib/booking-brain.js';
 
 function jsonBody(req){
   if(typeof req.body==='string') { try{return JSON.parse(req.body||'{}')}catch{return {}} }
@@ -166,13 +168,33 @@ export default async function handler(req,res){
       const service=services.find(x=>x.id===serviceId);
       const start=hold.starts_at;
       const end=hold.ends_at || addMinutes(start,service?.duration_minutes||60);
+      // Best-effort mesh write: when a booking provider is connected (incl.
+      // cal_platform as booking_provider), the dashboard/widget booking also
+      // lands upstream. Never fails the local booking — any outage or 409
+      // keeps it local, exactly like the voice path's "caller never loses".
+      let externalRef=null;
+      try{
+        const commit=await commitToExternalProvider(tenant.id,{
+          client:{ id:clientId, name:body.client_name||null, phone:body.client_phone||null, email:body.client_email||null },
+          service, staff:{ id:staffId },
+          startsAt:start, endsAt:end, durationMin:service?.duration_minutes||60,
+          notes:body.notes||'Booked from the LolaDesk calendar',
+          price:body.total_amount ?? service?.price ?? 0, timezone:body.timezone||'America/New_York'
+        });
+        if(commit?.ok) externalRef=commit.external;
+        else if(commit && !commit.skipped) console.warn('[calendar] external commit failed — booking kept local:', commit.error);
+      }catch(e){ console.warn('[calendar] external write skipped — booking kept local:', e?.message||e); }
       const booking=await createCanonicalBooking({
         tenantId:tenant.id,clientId,serviceId,staffId,locationId:body.location_id||null,
         startTime:start,endTime:end,status:'confirmed',totalAmount:body.total_amount ?? service?.price ?? 0,
-        notes:body.notes||null,source:body.channel||body.source||'dashboard',conversationId:body.conversation_id||null,holdId:hold.id
+        notes:body.notes||null,source:body.channel||body.source||'dashboard',conversationId:body.conversation_id||null,holdId:hold.id,
+        externalId:externalRef?.id||null, externalSource:externalRef?.provider||null
       });
+      if(externalRef){
+        try{ await upsertProviderMapping({ tenantId:tenant.id, provider:externalRef.provider, entityType:'booking', localId:booking.id, externalId:externalRef.id, metadata:{ starts_at: booking.start_time } }); }catch{}
+      }
       await releaseHold(tenant.id,hold.hold_token,'converted');
-      return res.json({ok:true,status:'confirmed',booking_id:booking.id,booking});
+      return res.json({ok:true,status:'confirmed',booking_id:booking.id,booking,external:externalRef||null});
     }
 
     if(action==='lookup'){

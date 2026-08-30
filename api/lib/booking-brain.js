@@ -57,7 +57,7 @@ async function preferredBookingProvider(tenantId){
 //   { ok:false, conflict:false }          -> transient failure (auth/network)
 const CONFLICT_RE = /(conflict|409|already (booked|taken|reserved)|(not|no longer) available|unavailable|double.?book|slot.*(taken|filled|gone)|taken|filled up)/i;
 
-async function commitToExternalProvider(tenantId, ctx){
+export async function commitToExternalProvider(tenantId, ctx){
   let integrations = [];
   try{ integrations = await getTenantIntegrations(tenantId); }
   catch(e){ return { ok:false, skipped:true, error:`integrations unavailable: ${e?.message||e}` }; }
