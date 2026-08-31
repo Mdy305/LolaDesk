@@ -50,7 +50,9 @@ const REQUIRED = [
   'tenants','tenant_config','booking_settings','clients','services','staff','staff_services','staff_schedules','staff_time_off',
   'bookings','availability_holds','booking_services','booking_status_history','resources','service_resources',
   'integrations','provider_mappings','external_appointments','booking_sync_log','telnyx_call_sessions','telnyx_messages',
-  'products','blocked_slots','appointment_notes','platform_settings'
+  'products','blocked_slots','appointment_notes','platform_settings',
+  // 20260831_mfa_totp.sql — owner/operator two-factor auth (TOTP)
+  'mfa_registrations'
 ];
 
 function seedAll() {

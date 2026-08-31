@@ -31,5 +31,8 @@ export const REQUIRED_TABLES = [
   'products', 'blocked_slots', 'appointment_notes',
   // 20260901_customer_care.sql — platform_settings KV for the company-level
   // customer-care line (assistant id + number + TeXML app, not tenant-scoped).
-  'platform_settings'
+  'platform_settings',
+  // 20260831_mfa_totp.sql — owner/operator two-factor auth (TOTP). A missing
+  // table makes MFA enrollment and verification fail, so the gate must cover it.
+  'mfa_registrations'
 ];
