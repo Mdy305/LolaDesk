@@ -26,10 +26,12 @@ import {
   isEstablished,
   isForcedMigration,
   loadMigrations,
+  migrateAndVerify,
   probeColumnPresence,
   verifyRequiredColumns,
   verifyRequiredTables,
 } from '../api/lib/migrate-all.js';
+import { runApplyMigrations } from '../scripts/apply-migrations.mjs';
 import { REQUIRED_COLUMNS, REQUIRED_TABLES } from '../api/lib/schema-gate.js';
 
 // A stand-in migration set (order matters). Includes the inventory migration
@@ -216,6 +218,67 @@ test('probeColumnPresence classifies head-query errors precisely', async () => {
   assert.equal((await probeColumnPresence(fake, 'tenants', 'activation_status')).missing, true);
   assert.equal((await probeColumnPresence(fake, 'tenants', 'website_url')).missing, false, 'unfailed column is present');
   assert.equal((await probeColumnPresence(fake, 'tenants', 'activation_status', { tolerant: true })).missing, true);
+});
+
+test('migrateAndVerify passes when tables and columns are all present', async () => {
+  const fake = new FakeSupabase();
+  const exec = async () => {};
+  const r = await migrateAndVerify({ client: fake, migrations: MIGRATIONS, established: true, exec });
+  assert.equal(r.ok, true);
+  assert.equal(r.gate.ok, true);
+  assert.equal(r.columns.ok, true);
+  assert.deepEqual(r.columns.missing, []);
+  assert.equal(r.columns.required, 33);
+});
+
+test('migrateAndVerify fails red when a required column is missing', async () => {
+  const fake = new FakeSupabase();
+  fake.failColumn('tenants', 'activation_status', 'column tenants.activation_status does not exist');
+  const r = await migrateAndVerify({ client: fake, migrations: MIGRATIONS, established: true, exec: async () => {} });
+  assert.equal(r.ok, false, 'the combined gate must fail');
+  assert.equal(r.gate.ok, true, 'the table gate alone still reads fine');
+  assert.equal(r.columns.ok, false);
+  assert.ok(r.columns.missing.includes('tenants.activation_status'), 'names the missing column');
+});
+
+test('CI apply path (runApplyMigrations) exits red when a required column is missing', async () => {
+  const fake = new FakeSupabase();
+  fake.failColumn('tenants', 'activation_status', 'column tenants.activation_status does not exist');
+  const execCalls = [];
+  const exec = async ({ filename }) => { execCalls.push(filename); };
+  const r = await runApplyMigrations({ client: fake, exec, established: false, migrations: MIGRATIONS });
+  assert.equal(r.exitCode, 1, 'CI job must fail on a missing column');
+  assert.equal(r.ready, false);
+  assert.ok(r.missing.includes('tenants.activation_status'));
+  const appliedNames = execCalls.filter((f) => f !== '__ledger__');
+  assert.deepEqual(appliedNames, MIGRATIONS.map((m) => m.filename), 'fresh DB still applies the full baseline first');
+});
+
+test('CI apply path (runApplyMigrations) passes when everything is present', async () => {
+  const fake = new FakeSupabase();
+  const r = await runApplyMigrations({ client: fake, exec: async () => {}, established: false, migrations: MIGRATIONS });
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.ready, true);
+  assert.deepEqual(r.missing, []);
+  assert.equal(r.columns.required, 33);
+  assert.equal(r.tables.required, 26);
+});
+
+test('CI --verify path fails red on a genuine column miss but tolerates RLS denial', async () => {
+  // genuine missing column -> exit 1
+  const fake = new FakeSupabase();
+  fake.failColumn('bookings', 'confirmation_code', "Could not find the 'confirmation_code' column of 'bookings' in the schema cache");
+  const r = await runApplyMigrations({ client: fake, exec: async () => {}, verifyOnly: true, established: true, migrations: MIGRATIONS });
+  assert.equal(r.exitCode, 1);
+  assert.ok(r.missing.includes('bookings.confirmation_code'));
+
+  // RLS denial is NOT a column miss -> never a false red (exit 0)
+  const fake2 = new FakeSupabase();
+  fake2.failColumn('tenants', 'phone_number', 'permission denied for function auth_tenant');
+  fake2.failColumn('tenants', 'slug', 'permission denied for function auth_tenant');
+  const r2 = await runApplyMigrations({ client: fake2, exec: async () => {}, verifyOnly: true, established: true, migrations: MIGRATIONS });
+  assert.equal(r2.exitCode, 0, 'RLS denial must not false-red the CI gate');
+  assert.deepEqual(r2.missing, []);
 });
 
 test('a failing migration fails loudly (never silently skipped)', async () => {

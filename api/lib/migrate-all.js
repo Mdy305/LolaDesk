@@ -199,10 +199,17 @@ export async function verifyRequiredColumns(client, columns = REQUIRED_COLUMNS) 
   return { required, missing, ok: missing.length === 0 };
 }
 
-/** Convenience: apply pending migrations, then verify the health gate. */
+/** Convenience: apply pending migrations, then verify the health gate —
+ * required tables AND the critical columns the product writes (a table can
+ * exist while a swallowed migration left a column absent, turning signups
+ * into 500s while the table gate still read READY). `columns` keeps the
+ * tolerant classification: only a genuine "column does not exist" miss is
+ * reported; RLS denial / missing table / transient never false-red.
+ */
 export async function migrateAndVerify({ client, migrations, established, ...opts }) {
   const isEst = established ?? (await isEstablished(client));
   const applied = await applyPendingMigrations({ client, migrations, established: isEst, ...opts });
   const gate = await verifyRequiredTables(client, opts.required || REQUIRED_TABLES);
-  return { established: isEst, ...applied, gate };
+  const columns = await verifyRequiredColumns(client, opts.columns || REQUIRED_COLUMNS);
+  return { established: isEst, ...applied, gate, columns, ok: gate.ok && columns.ok };
 }
