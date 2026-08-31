@@ -141,3 +141,52 @@ export async function checkHealth({ timeoutMs = 8000, listVoices: _list = listVo
   }
   return { ok:true, configured:true, voiceIdValid:true, voice: voice.name, voices: voices.length };
 }
+
+/**
+ * Billing-safe quota probe for health gates. Uses GET /v1/user/subscription —
+ * an account-metadata READ that consumes NO characters/credits (unlike any
+ * TTS call). Reports remaining monthly characters so a gate can turn Lola's
+ * voice row RED the moment the ElevenLabs account is at quota_exceeded.
+ *
+ * Returns { ok, characterCount, characterLimit, tier, remaining, quotaExhausted,
+ *           nextResetAt? } — and NEVER returns or echoes the API key.
+ *
+ * - characterLimit is the string "unlimited" on uncapped plans → remaining null,
+ *   quotaExhausted false (a capped plan is the only case we can call "out").
+ * - ok:false → the subscription endpoint itself failed (e.g. 401 bad key), with
+ *   a short status+detail reason — still no key.
+ */
+export async function getUserSubscription({ timeoutMs = 8000, fetch: ff = globalThis.fetch } = {}){
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await ff('https://api.elevenlabs.io/v1/user/subscription', {
+      headers: { 'xi-api-key': apiKey },
+      signal: ctrl.signal
+    });
+    if(!r.ok){
+      let detail = '';
+      try{ detail = await r.text(); }catch{}
+      throw new Error(`ElevenLabs subscription ${r.status}: ${detail.slice(0, 200)}`);
+    }
+    const j = await r.json();
+    const count = Number(j?.character_count) || 0;
+    const rawLimit = j?.character_limit;
+    const finiteLimit = (typeof rawLimit === 'number') && Number.isFinite(rawLimit);
+    const limit = finiteLimit ? rawLimit : null;
+    const remaining = finiteLimit ? Math.max(0, limit - count) : null;
+    return {
+      ok: true,
+      characterCount: count,
+      characterLimit: limit,
+      tier: (typeof j?.tier === 'string' && j.tier) || '',
+      remaining,
+      quotaExhausted: finiteLimit ? (remaining <= 0) : false,
+      nextResetAt: Number(j?.next_character_count_reset_unix) || null
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}

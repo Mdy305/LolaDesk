@@ -96,7 +96,9 @@ const SECTIONS = [
       return [
         ok('Telnyx', !!(s.telnyx && s.telnyx.ok), 'TELNYX_API_KEY'),
         ok('Supabase', !!(s.supabase && s.supabase.ok), 'database project'),
-        ok('ElevenLabs', !!(s.elevenlabs && s.elevenlabs.ok), 'TELNYX voice engine key + voice id'),
+        ok('ElevenLabs', !!(s.elevenlabs && s.elevenlabs.ok), (s.elevenlabs && s.elevenlabs.reason === 'out-of-credit')
+            ? 'OUT OF CREDITS — top up elevenlabs.io to hear Lola speak (calls still work via Telnyx)'
+            : (s.elevenlabs && s.elevenlabs.message) || 'TELNYX voice engine key + voice id'),
         ok('Database', !!(d.database && d.database.ok), d.database && d.database.ok ? (d.database.latency_ms + 'ms round trip') : (d.database && d.database.error) || 'unreachable'),
       ];
     },
