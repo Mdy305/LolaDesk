@@ -96,6 +96,16 @@
         </div>
 
         <div class="panel" style="margin-top:16px">
+          <div class="panel-title"><span class="dot-live" style="background:var(--accent,#8ab4ff);box-shadow:0 0 12px rgba(138,180,255,.5)"></span>Whisper to Lola</div>
+          <div class="cc-sub" style="margin-bottom:12px">Steer her mid-call — the owner's note lands as a system message in the live conversation ("this is a VIP, comp the blowout").</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input id="whisperMsg" type="text" placeholder="What should Lola know right now?" style="flex:1;min-width:220px;background:var(--surface2);border:0.5px solid var(--border);border-radius:11px;color:var(--text);padding:11px 14px;font:inherit"/>
+            <button class="btn" id="btnWhisper" onclick="sendWhisper()">Whisper</button>
+          </div>
+          <div class="test-result" id="whisperOut"></div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
           <div class="panel-title">Recent calls</div>
           <div id="callList" style="min-height:120px">
             <div class="cc-sub" style="padding:10px 2px">Loading your calls…</div>
@@ -181,9 +191,13 @@ function callRow(c, i, list){
   const rid = (list || 'rec') + '-' + i;
   const live = isLive(c);
   const phone = esc(c.from || '');
+  const whisper = live && c.callControlId
+    ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();whisperTo('${c.callControlId}','${phone}')">Whisper</button>`
+    : '';
   const actions = phone
     ? `<div class="call-actions">
         <button class="btn btn-xs" onclick="event.stopPropagation();callBack('${phone}','${rid}')" id="cbbtn-${rid}">↩ Call back</button>
+        ${whisper}
         <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();toggleMemory('${phone}','${rid}')" id="membtn-${rid}">Lola remembers</button>
       </div>`
     : '';
@@ -242,6 +256,41 @@ async function callBack(phone, rid){
     if(out) out.innerHTML = '<div class="cb-err">Couldn\'t place the callback.</div>';
   }finally{
     if(btn){ btn.disabled = false; btn.textContent = '↩ Call back'; }
+  }
+}
+
+async function whisperTo(callControlId, phone){
+  const input = document.getElementById('whisperMsg');
+  if(input) input.focus();
+  if(callControlId) window.__WHISPER_TARGET__ = callControlId;
+  if(input && phone) input.placeholder = 'Whisper to the live call with ' + phone + '…';
+  if(input) input.value = '';
+}
+async function sendWhisper(){
+  const input = document.getElementById('whisperMsg');
+  const out = document.getElementById('whisperOut');
+  const btn = document.getElementById('btnWhisper');
+  const message = (input.value || '').trim();
+  const target = window.__WHISPER_TARGET__ || '';
+  if(!message){ if(out) out.innerHTML = '<div class="cb-err">Type what Lola should know first.</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Whispering…';
+  try{
+    const t = await authToken();
+    const r = await fetch('/api/whisper',{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+t },
+      body: JSON.stringify({ message, call_control_id: target })
+    });
+    if(r.status === 401){ location.href = '/login'; return; }
+    const j = await r.json();
+    if(!r.ok || !j.ok){ if(out) out.innerHTML = '<div class="cb-err">'+esc(j.error||('Whisper failed '+r.status))+'</div>'; return; }
+    if(out) out.innerHTML = `<div class="cb-note">✓ Whispered to the live call <code>${esc(j.call_control_id||'—')}</code> — Lola sees it now. ${j.result==='ok'?'':esc(j.result)}</div>`;
+    window.__WHISPER_TARGET__ = '';
+    input.value = '';
+  }catch(e){
+    if(out) out.innerHTML = '<div class="cb-err">Couldn\'t reach Lola\'s live call.</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Whisper';
   }
 }
 

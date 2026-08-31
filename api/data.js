@@ -76,6 +76,7 @@ export default async function handler(req,res){
           outcome:x.outcome||x.status||'handled', // insight outcome first, then call state
           durationSec:x.duration_seconds||x.duration_sec||x.duration||0,
           summary:x.summary||x.recording_url||'', // post-call insight summary, fallback recording_url
+          callControlId:x.telnyx_call_control_id||null, // whisper target: Telnyx call-control id on this leg
           transcript:x.transcript||null,          // [{role,content}] from the transcript insight
           booked:(x.outcome==='booked')||(x.status==='booked')||!!x.booked
         })) });
