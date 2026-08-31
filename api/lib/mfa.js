@@ -120,6 +120,16 @@ export async function mfaRequiredFor(userEmail, client) {
   return !!(reg && reg.verified);
 }
 
+export async function removeRegistration(userEmail, client) {
+  const c = client || db();
+  if (!c) return { removed: false };
+  const { error } = await c.from(TABLE)
+    .delete()
+    .eq('user_identifier', String(userEmail || '').trim().toLowerCase());
+  if (error) throw new Error(error.message);
+  return { removed: true };
+}
+
 // ── Stateless challenge envelope (AES-256-GCM) ───────────────────────────────
 // Carries the "password correct, awaiting code" pending session so a Vercel
 // serverless function can verify the second factor on a later, stateless call.

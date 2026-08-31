@@ -143,6 +143,28 @@
     <div class="btn-row"><button class="btn-p" onclick="saveOperator()">Save voice command</button></div>
     <div class="msg" id="opMsg"></div>
   </div>
+
+  <!-- TWO-FACTOR -->
+  <div class="card">
+    <h3>Two-factor authentication</h3>
+    <div class="desc">Protect owner sign-in with an authenticator-app code. When it's on, logging in requires your password <em>plus</em> a 6-digit code from your phone.</div>
+    <div class="status" id="mfaStatus"><span class="dot off"></span><div class="status-txt"><b>Checking…</b><small>Loading two-factor status</small></div></div>
+    <div class="btn-row" id="mfaStartBtn"><button class="btn-p" onclick="mfaStart()">Turn on two-factor</button></div>
+    <div id="mfaEnrollWrap" style="display:none">
+      <div class="cc-sub" style="margin-top:6px;margin-bottom:10px">Open your authenticator app (Google Authenticator, Authy, 1Password, etc.), scan the QR — or add the secret manually — then enter a current code to finish.</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+        <img id="mfaQr" alt="Scan this QR with your authenticator app" style="width:180px;height:180px;border-radius:12px;border:.5px solid var(--border);background:#fff;padding:8px"/>
+        <div style="flex:1;min-width:220px">
+          <div class="fld"><label>Secret key</label><div class="copy-box" style="display:flex;align-items:center;gap:8px;justify-content:space-between"><code id="mfaSecret" style="font-size:12px;word-break:break-all"></code><button onclick="copyMfa('mfaSecret')">Copy</button></div></div>
+          <div class="fld"><label>otpauth link</label><div class="copy-box" style="display:flex;align-items:center;gap:8px;justify-content:space-between"><code id="mfaUri" style="font-size:10px;word-break:break-all"></code><button onclick="copyMfa('mfaUri')">Copy</button></div></div>
+          <div class="fld"><label>Current code</label><input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="123456" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
+          <div class="btn-row"><button class="btn-p" onclick="mfaConfirm()">Turn on two-factor</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row" id="mfaDisableWrap" style="display:none"><button class="btn-p" onclick="mfaDisable()" style="background:transparent;border:.5px solid #ff6b6b;color:#ff8a8a">Turn off two-factor</button></div>
+    <div class="msg" id="mfaMsg"></div>
+  </div>
 </div>
 
 <!-- MESSAGING -->
@@ -345,6 +367,7 @@ async function load(){
     setVal('forwardNumber',SETTINGS.forward_number||'');
   }catch(e){console.warn(e);}
   loadCredit();
+  loadMfa();
 
   try{
     const r=await fetch('/api/booking-settings',{headers:H()});
@@ -372,6 +395,73 @@ async function load(){
     if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);
     if(TENANT.google_review_url) setVal('googleReviewUrl',TENANT.google_review_url);
   }catch(e){}
+}
+
+function copyMfa(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const txt=el.textContent||el.innerText;
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).catch(()=>{}); }
+  else { const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} document.body.removeChild(ta); }
+}
+function renderMfa(enabled){
+  const st=document.getElementById('mfaStatus');
+  const start=document.getElementById('mfaStartBtn');
+  const enroll=document.getElementById('mfaEnrollWrap');
+  const disable=document.getElementById('mfaDisableWrap');
+  if(st) st.innerHTML = enabled
+    ? '<span class="dot live"></span><div class="status-txt"><b>Two-factor is on</b><small>Owner sign-in requires your authenticator code</small></div>'
+    : '<span class="dot off"></span><div class="status-txt"><b>Two-factor is off</b><small>Turn it on to protect owner sign-in</small></div>';
+  if(start) start.style.display = enabled ? 'none' : 'block';
+  if(enroll) enroll.style.display = 'none';
+  if(disable) disable.style.display = enabled ? 'block' : 'none';
+}
+async function loadMfa(){
+  try{
+    const r=await fetch('/api/auth/mfa',{method:'POST',headers:H(),body:JSON.stringify({action:'status'})});
+    if(r.status===401){ return; }
+    const j=await r.json();
+    renderMfa(!!(j&&j.mfa_enabled));
+  }catch(e){}
+}
+async function mfaStart(){
+  msg('mfaMsg','','');
+  try{
+    const r=await fetch('/api/auth/mfa',{method:'POST',headers:H(),body:JSON.stringify({action:'enroll'})});
+    if(r.status===401){ location.href='/login'; return; }
+    const j=await r.json();
+    if(!r.ok||!j.ok){ msg('mfaMsg',j.error||('Enroll failed '+r.status),false); return; }
+    document.getElementById('mfaSecret').textContent=j.secret||'';
+    document.getElementById('mfaUri').textContent=j.otpauth_uri||'';
+    const qr=document.getElementById('mfaQr');
+    if(qr){ if(j.qr_data_url){ qr.src=j.qr_data_url; qr.style.display=''; } else qr.style.display='none'; }
+    document.getElementById('mfaCode').value='';
+    document.getElementById('mfaEnrollWrap').style.display='block';
+    document.getElementById('mfaStartBtn').style.display='none';
+  }catch(e){ msg('mfaMsg','Could not start enrollment.',false); }
+}
+async function mfaConfirm(){
+  const code=document.getElementById('mfaCode').value.trim();
+  if(!/^\d{6}$/.test(code)){ msg('mfaMsg','Enter the 6-digit code from your authenticator.',false); return; }
+  try{
+    const r=await fetch('/api/auth/mfa',{method:'POST',headers:H(),body:JSON.stringify({action:'confirm',code})});
+    if(r.status===401){ location.href='/login'; return; }
+    const j=await r.json();
+    if(!r.ok||!j.ok){ msg('mfaMsg',j.error||('Confirm failed '+r.status),false); return; }
+    renderMfa(true);
+    msg('mfaMsg','Two-factor is on. Next time you sign in, you\u2019ll enter a code from your authenticator.',true);
+  }catch(e){ msg('mfaMsg','Could not confirm code.',false); }
+}
+async function mfaDisable(){
+  msg('mfaMsg','','');
+  try{
+    const r=await fetch('/api/auth/mfa',{method:'POST',headers:H(),body:JSON.stringify({action:'disable'})});
+    if(r.status===401){ location.href='/login'; return; }
+    const j=await r.json();
+    if(!r.ok||!j.ok){ msg('mfaMsg',j.error||('Could not disable'),false); return; }
+    renderMfa(false);
+    msg('mfaMsg','Two-factor is off.',true);
+  }catch(e){ msg('mfaMsg','Could not disable two-factor.',false); }
 }
 
 async function saveSalon(){

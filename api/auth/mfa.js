@@ -18,8 +18,9 @@ import { db } from '../lib/db.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import {
   generateSecret, validTOTP, otpauthUri,
-  getRegistration, upsertRegistration, readChallenge
+  getRegistration, upsertRegistration, removeRegistration, readChallenge
 } from '../lib/mfa.js';
+import QRCode from 'qrcode';
 
 async function requireUser(req) {
   const user = await getUserFromToken(bearer(req));
@@ -46,11 +47,19 @@ export default async function handler(req, res) {
       if (!user) return res.status(401).json({ ok: false, error: 'Not authenticated' });
       const secret = generateSecret();
       await upsertRegistration(user.email, { secret, verified: false }, c);
+      const otpauth_uri = otpauthUri(secret, user.email || user.id);
+      // QR is generated on OUR server (the qrcode package) so the TOTP secret
+      // never leaves LolaDesk — the owner's authenticator scans it directly.
+      let qr_data_url = null;
+      try {
+        qr_data_url = await QRCode.toDataURL(otpauth_uri, { width: 220, margin: 1 });
+      } catch { /* manual entry (secret + otpauth URI) still works if QR fails */ }
       return res.json({
         ok: true,
         secret,
-        otpauth_uri: otpauthUri(secret, user.email || user.id),
-        tip: 'Scan the QR / add this secret to your authenticator app, then confirm with a current code.'
+        otpauth_uri,
+        qr_data_url,
+        tip: 'Scan the QR (or add the secret manually) in your authenticator app, then confirm with a current code.'
       });
     }
 
@@ -63,6 +72,23 @@ export default async function handler(req, res) {
       if (!validTOTP(reg.secret, b.code)) return res.status(401).json({ ok: false, error: 'Invalid code' });
       await upsertRegistration(user.email, { secret: reg.secret, verified: true }, c);
       return res.json({ ok: true, mfa_enabled: true });
+    }
+
+    // ── STATUS: what does this owner currently have? (Settings panel renders state) ──
+    if (action === 'status') {
+      const user = await requireUser(req);
+      if (!user) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+      const reg = await getRegistration(user.email, c);
+      const enabled = !!(reg && reg.verified);
+      return res.json({ ok: true, mfa_enabled: enabled, enrolled: !!reg, verified: enabled });
+    }
+
+    // ── DISABLE: turn two-factor off for this owner ──
+    if (action === 'disable') {
+      const user = await requireUser(req);
+      if (!user) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+      await removeRegistration(user.email, c);
+      return res.json({ ok: true, mfa_enabled: false });
     }
 
     // ── VERIFY: second factor for a pending login (no Bearer — identity is in the ticket) ──

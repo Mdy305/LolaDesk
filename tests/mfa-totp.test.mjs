@@ -9,8 +9,9 @@ import assert from 'node:assert/strict';
 import {
   generateSecret, totp, validTOTP, otpauthUri,
   createChallenge, readChallenge, getRegistration, upsertRegistration,
-  mfaRequiredFor, CHALLENGE_TTL_MS
+  removeRegistration, mfaRequiredFor, CHALLENGE_TTL_MS
 } from '../api/lib/mfa.js';
+import { FakeSupabase } from './fake-supabase.js';
 
 // Minimal fake supabase client returning a single registration row.
 function fakeClient(reg) {
@@ -118,4 +119,23 @@ test('a live code from the enrolled secret completes the second factor; a wrong 
 
   // a real code from a DIFFERENT secret must not pass
   assert.equal(validTOTP(reg.secret, totp(generateSecret(), Date.now())), false);
+});
+
+
+// ── Settings panel contract: disable / QR ─────────────────────────────────────
+test('disable removes a verified registration so login is no longer gated', async () => {
+  const fake = new FakeSupabase();
+  const secret = generateSecret();
+  fake.seed('mfa_registrations', [{ user_identifier: 'owner@salon.com', secret, verified: true }]);
+  assert.equal((await getRegistration('owner@salon.com', fake))?.verified, true);
+  const res = await removeRegistration('owner@salon.com', fake);
+  assert.deepEqual(res, { removed: true });
+  assert.equal(await getRegistration('owner@salon.com', fake), null, 'registration gone after disable');
+  assert.equal(await mfaRequiredFor('owner@salon.com', fake), false, 'login gate opens again');
+});
+
+test('qrcode dependency renders the otpauth URI to a scannable data URL', async () => {
+  const QRCode = (await import('qrcode')).default;
+  const url = await QRCode.toDataURL('otpauth://totp/LolaDesk:owner@salon.com?secret=JBSWY3DPEHPK3PXP', { width: 220, margin: 1 });
+  assert.ok(String(url).startsWith('data:image/png;base64,'), 'enroll can return a PNG data URL');
 });
