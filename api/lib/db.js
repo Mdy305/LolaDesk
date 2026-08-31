@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { encrypt, decrypt } from './crypto.js';
 
 let _client = null;
@@ -16,7 +17,11 @@ export function db(){
     return null;
   }
   _client = createClient(url, key, {
-    auth: { persistSession: false }
+    auth: { persistSession: false },
+    // supabase-js 2.108's realtime client requires a WebSocket transport on
+    // Node < 22 (no native WebSocket) — without this every createClient call
+    // throws on Node 20, which is what CI runs. `ws` is already a dependency.
+    realtime: { transport: WebSocket }
   });
   return _client;
 }

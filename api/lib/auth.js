@@ -12,6 +12,7 @@
  * ENV: SUPABASE_URL, SUPABASE_SERVICE_KEY (already set for db.js)
  */
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 let _admin = null;
 export function admin(){
@@ -19,7 +20,7 @@ export function admin(){
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if(!url || !key) return null;
-  _admin = createClient(url, key, { auth: { autoRefreshToken:false, persistSession:false } });
+  _admin = createClient(url, key, { auth: { autoRefreshToken:false, persistSession:false }, realtime: { transport: WebSocket } });
   return _admin;
 }
 
