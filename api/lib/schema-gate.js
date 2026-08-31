@@ -28,5 +28,8 @@ export const REQUIRED_TABLES = [
   // A missing one silently disables the feature (products read returns empty,
   // blocked slots vanish from availability), so the gate MUST cover them or
   // 'ready' lies.
-  'products', 'blocked_slots', 'appointment_notes'
+  'products', 'blocked_slots', 'appointment_notes',
+  // 20260901_customer_care.sql — platform_settings KV for the company-level
+  // customer-care line (assistant id + number + TeXML app, not tenant-scoped).
+  'platform_settings'
 ];

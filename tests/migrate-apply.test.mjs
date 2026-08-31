@@ -40,7 +40,7 @@ test('schema-gate manifest covers the three new inventory tables', () => {
   for (const t of ['products', 'blocked_slots', 'appointment_notes']) {
     assert.ok(REQUIRED_TABLES.includes(t), t + ' must be part of the gate');
   }
-  assert.equal(REQUIRED_TABLES.length, 24, 'gate tracks exactly 24 required tables');
+  assert.equal(REQUIRED_TABLES.length, 25, 'gate tracks exactly 25 required tables');
 });
 
 test('isEstablished reflects whether the base tenants table exists', async () => {

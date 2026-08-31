@@ -1720,3 +1720,18 @@ do $$ begin
     create policy tenant_appointment_notes on public.appointment_notes for all using (is_tenant_member(tenant_id));
   end if;
 end $$;
+
+
+-- 20260901_customer_care.sql — platform_settings KV (company-level state)
+-- =========================================================================
+-- The customer-care line (/api/customer-care) provisions a LolaDesk company
+-- support assistant on Telnyx + attaches one of the owner's owned numbers to
+-- it, and must remember that pair across deploys so it's idempotent and the
+-- health surfaces can read it. Platform-level (NOT tenant-scoped) KV.
+-- =========================================================================
+
+create table if not exists public.platform_settings (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
