@@ -71,7 +71,15 @@ export async function getUserFromToken(token){
   // as a real owner). Only honor it when explicitly enabled. Never set
   // ALLOW_DEMO_TOKEN in production once real owners exist.
   if(token === 'demo_token'){
-    if(process.env.ALLOW_DEMO_TOKEN === '1') return { email: 'meddy@mmasalon.com', user_metadata: { name: 'Meddy' } };
+    // demo_token is a dev convenience AND a true production backdoor — it
+    // authenticates as the real owner, meddy@mmasalon.com, with ZERO
+    // credentials. Honor it ONLY when explicitly enabled AND we are NOT a
+    // production deployment. Vercel sets VERCEL_ENV=production for prod;
+    // NODE_ENV is the local fallback. This stays enforced even if
+    // ALLOW_DEMO_TOKEN is misconfigured into the prod env — in production the
+    // backdoor simply does not authenticate anyone.
+    const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    if(process.env.ALLOW_DEMO_TOKEN === '1' && !isProd) return { email: 'meddy@mmasalon.com', user_metadata: { name: 'Meddy' } };
     return null;
   }
   const a = admin(); if(!a || !token) return null;
