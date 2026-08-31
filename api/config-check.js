@@ -19,7 +19,11 @@ export default async function handler(req, res) {
     optional: {
       telnyx_public_key: !!process.env.TELNYX_PUBLIC_KEY,
       integration_encryption_key: !!process.env.INTEGRATION_ENCRYPTION_KEY,
-      stripe_api_key: !!process.env.STRIPE_API_KEY,
+      // Stripe billing uses STRIPE_SECRET_KEY everywhere (api/billing.js, api/lib/stripe.js).
+      // A legacy config-check checked STRIPE_API_KEY, which nothing ever sets — that made the
+      // launch gate report billing as unconfigured even when it is live. Check the real vars.
+      stripe_api_key: !!process.env.STRIPE_SECRET_KEY,
+      stripe_webhook_secret: !!process.env.STRIPE_WEBHOOK_SECRET,
       app_url: process.env.APP_URL || 'NOT SET'
     },
     issues: [],
@@ -49,6 +53,11 @@ export default async function handler(req, res) {
   // Check optional but recommended
   if (!config.optional.app_url || config.optional.app_url === 'NOT SET') {
     config.issues.push('⚠️  APP_URL not set — Telnyx webhooks may not callback correctly');
+  }
+  if (!config.optional.stripe_api_key) {
+    config.issues.push('⚠️  STRIPE_SECRET_KEY not set — subscription billing is disabled');
+  } else if (!config.optional.stripe_webhook_secret) {
+    config.issues.push('⚠️  STRIPE_WEBHOOK_SECRET not set — Stripe events (payments/subscriptions) will not sync');
   }
 
   // Test Telnyx connectivity (if key exists)
