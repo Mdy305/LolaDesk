@@ -241,6 +241,21 @@ export function start(port = 54321){
       res.writeHead(200, {'Content-Type':'application/json'});
       return res.end(JSON.stringify(publicUser(u)));
     }
+    if(url.pathname === '/auth/v1/signup' && req.method === 'POST'){
+      // Standard client sign-up path (supabase.auth.signUp). Hosted semantics
+      // with "Confirm email" on: the user is created UNCONFIRMED, the mailer
+      // dispatched the link (confirmation_sent_at set) and NO session is
+      // returned — sign-in stays blocked until the owner confirms. The
+      // emulator's token route below stays lenient on purpose so the journey
+      // exercises the app-level pending -> active gate end to end.
+      const b = await jsonBody(req);
+      const u = makeUser(b.email, b.password, b.data || b.user_metadata);
+      u.email_confirmed_at = null;
+      u.emailConfirmedAt = null;
+      u.confirmation_sent_at = new Date().toISOString();
+      res.writeHead(200, {'Content-Type':'application/json'});
+      return res.end(JSON.stringify({ user: publicUser(u), session: null }));
+    }
     if(url.pathname === '/auth/v1/token' && req.method === 'POST'){
       const b = await jsonBody(req);
       const u = [...users.values()].find(x=>x.email === b.email && x.password === b.password);

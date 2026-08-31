@@ -24,16 +24,34 @@ export function admin(){
   return _admin;
 }
 
-// Create an auth user and return it. The email is NOT auto-confirmed: sending
-// the confirmation email is Supabase's job, and sign-in stays blocked until the
-// owner clicks the link (closes the open-signup surface — a random address can't
-// get a working session/tenant). Activation happens on the first confirmed login.
+let _client = null;
+// Public (anon) client — the SAME key the browser receives. Supabase's anon
+// role can only create users / start sign-ins; it cannot read or write tenant
+// data, so embedding it server-side is safe. signUp below MUST use this path:
+// admin.createUser never dispatches a confirmation email (email_confirm only
+// marks a user confirmed) — which silently locks the owner out, the bug this
+// replaced.
+export function client(){
+  if(_client) return _client;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if(!url || !key) return null;
+  _client = createClient(url, key, { auth: { autoRefreshToken:false, persistSession:false }, realtime: { transport: WebSocket } });
+  return _client;
+}
+
+// Create an auth user and return it — through the STANDARD sign-up path
+// (auth.signUp, the same call a browser client makes). On hosted Supabase the
+// project's "Confirm email" setting is on, so the returned user arrives
+// UNCONFIRMED with confirmation_sent_at set — the confirmation email genuinely
+// dispatched — and sign-in stays blocked until the owner clicks the link. That
+// closes the open-signup surface (a random address can't get a working
+// session/tenant); activation happens on the first confirmed login.
 export async function createUser({ email, password, name }){
-  const a = admin(); if(!a) throw new Error('Auth not configured');
-  const { data, error } = await a.auth.admin.createUser({
-    email, password, email_confirm: false, user_metadata: { name }
-  });
+  const c = client(); if(!c) throw new Error('Auth not configured');
+  const { data, error } = await c.auth.signUp({ email, password, options: { data: { name } } });
   if(error) throw new Error(error.message);
+  if(!data?.user) throw new Error('Could not create account');
   return data.user;
 }
 

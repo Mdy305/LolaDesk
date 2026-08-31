@@ -56,6 +56,7 @@ const signup = (await import('../api/auth/signup.js')).default;
 let r = makeRes();
 await signup(post({ email:'e2e@salon.com', password:'sup3r-secret', name:'Eve', salonName:'E2E Beauty Bar', location:'Miami', hours:'9-6', plan:'pro', websiteUrl:'https://e2e.bar', businessMode:'medspa' }), r);
 check('signup returns 200 + requires email confirmation (no instant session)', r.code===200 && r.body?.requires_email_confirmation===true && !r.body?.session, `code=${r.code}`);
+check('confirmation email was dispatched by Supabase (confirmation_sent_at)', r.code===200 && r.body?.email_dispatched===true, `dispatched=${r.body?.email_dispatched}`);
 const t = (await sql.query(`select * from tenants where owner_email='e2e@salon.com'`)).rows[0];
 check('tenant row created with website_url/business_mode', !!t && t.website_url==='https://e2e.bar' && t.business_mode==='medspa');
 check('tenant parked as pending_email until the email is confirmed', !!(t && t.activation_status==='pending_email'));

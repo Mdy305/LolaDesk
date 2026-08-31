@@ -56,6 +56,11 @@ export default async function handler(req, res){
     return res.status(200).json({
       ok: true,
       requires_email_confirmation: true,
+      // Truthful signal from Supabase: confirmation_sent_at is set the moment
+      // the mailer dispatches the link, so the page can tell "on its way in
+      // 5 minutes — check spam" from "resend". Never a session at signup: the
+      // pending tenant only becomes live on the owner's first confirmed login.
+      email_dispatched: !!(user.confirmation_sent_at),
       email,
       detail: `We emailed a confirmation link to ${email} — click it to activate your salon, then sign in.`,
       tenant: { slug: tenant.slug }

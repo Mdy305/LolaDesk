@@ -40,6 +40,7 @@ const fake = new FakeSupabase();
 globalThis.__LOLA_FAKE_SUPABASE__ = fake;
 process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
+process.env.SUPABASE_ANON_KEY = 'fake-anon-key';
 process.env.TELNYX_API_KEY = 'k-test';
 process.env.TELNYX_VOICE_APP_ID = 'voice-app-1';
 process.env.TELNYX_MESSAGING_PROFILE_ID = 'msg-prof-1';
@@ -199,9 +200,13 @@ function resMock(){
 }
 
 function authMock(){
-  fake.auth.admin = {
-    createUser: async ({ email, password }) => ({ data: { user: { id: 'u-1', email, user_metadata: { name: 'Owner' } } }, error: null })
-  };
+  // The STANDARD sign-up path now: auth.signUp dispatches the confirmation
+  // email (confirmation_sent_at present) and returns no session until the
+  // owner confirms — never the admin createUser API, which sends no email.
+  fake.auth.signUp = async ({ email, password, options }) => ({
+    data: { user: { id: 'u-1', email, confirmation_sent_at: new Date().toISOString(), user_metadata: { name: options?.data?.name || 'Owner' } } },
+    session: null, error: null
+  });
   fake.auth.signInWithPassword = async ({ email }) => ({ data: { user: { id: 'u-1', email }, session: { access_token: 'tok-1', refresh_token: 'ref-1' } }, error: null });
 }
 
@@ -218,6 +223,7 @@ test('signup creates a PENDING tenant and asks for email confirmation — no ses
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ok, true);
     assert.equal(res.body.requires_email_confirmation, true);
+    assert.equal(res.body.email_dispatched, true, 'Supabase dispatched the confirmation email');
     assert.equal(res.body.email, 'new@salon.com');
     assert.equal(res.body.session, undefined, 'no session for an unconfirmed email');
     assert.equal(res.body.autoProvisioned, undefined, 'no number assigned at signup');
@@ -241,6 +247,7 @@ test('signup succeeds (200) even if Telnyx is down — no provisioning happens a
     await signup(req, res);
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.requires_email_confirmation, true);
+    assert.equal(res.body.email_dispatched, true, 'email dispatch is not swallowed by a Telnyx outage');
     assert.equal(res.body.session, undefined);
   }finally{ globalThis.fetch = realFetch; }
 });

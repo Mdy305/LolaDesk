@@ -506,9 +506,13 @@ export async function upsertTenant(p = {}){
   if(services) row.services = services;
   if(team) row.team = team;
   if(p.activation_status || p.activationStatus) row.activation_status = p.activation_status ?? p.activationStatus;
-  const { data } = await c.from('tenants')
+  // Fail LOUD: a swallowed insert error used to make signup report a generic
+  // "Could not create workspace" while the real cause (e.g. a missing column)
+  // stayed invisible — the auth user was created and the owner left locked out.
+  const { data, error } = await c.from('tenants')
     .upsert(row, { onConflict: 'slug' })
     .select().maybeSingle();
+  if(error) throw new Error('tenants save failed: ' + error.message);
   return data;
 }
 
