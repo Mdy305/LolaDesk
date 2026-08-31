@@ -33,12 +33,25 @@ export function migrationFiles(dir = 'migrations') {
     .sort();
 }
 
-/** Load migrations as [{ filename, sql }] in apply order. */
+/**
+ * A migration can opt out of the legacy established-db baseline: files that
+ * carry the header marker `-- force: always` declare themselves IDEMPOTENT
+ * repairs that MUST run on every apply. They are never recorded by the
+ * baseline, and even a stale ledger entry (e.g. one written by the buggy
+ * baseline that recorded migrations WITHOUT executing them) cannot suppress
+ * them. Ship a force migration under a NEW filename so a swallowed filename
+ * can never hide it again.
+ */
+export function isForcedMigration(sql) {
+  return /--\s*force:\s*always/i.test(sql || '');
+}
+
+/** Load migrations as [{ filename, sql, force }] in apply order. */
 export function loadMigrations(dir = 'migrations') {
-  return migrationFiles(dir).map((filename) => ({
-    filename,
-    sql: fs.readFileSync(path.join(dir, filename), 'utf8'),
-  }));
+  return migrationFiles(dir).map((filename) => {
+    const sql = fs.readFileSync(path.join(dir, filename), 'utf8');
+    return { filename, sql, force: isForcedMigration(sql) };
+  });
 }
 
 /** True when the base `tenants` table exists → the DB is already established. */
@@ -73,22 +86,52 @@ export async function applyPendingMigrations({
   if (readErr) throw new Error('migrations_ledger unreadable: ' + (readErr.message || String(readErr)));
   const done = new Set((rows || []).map((r) => r.filename));
 
-  // Baseline: an established DB records the CURRENT set as applied so legacy
-  // data-bearing migrations are never re-run.
+  // Baseline: an established DB records the CURRENT NON-FORCED set as applied
+  // so legacy data-bearing migrations are never re-run. This is the safety the
+  // baseline was designed for — but it MUST NEVER swallow a force-marked
+  // migration: those run for real below, and the baseline itself is logged so
+  // a presumed-applied migration can never hide silently again (the exact way
+  // 20260831_email_verify.sql once vanished and signups 500'd while CI stayed
+  // green).
+  let baselined = [];
   if (established && done.size === 0) {
-    for (const m of migrations) done.add(m.filename);
-    for (const filename of done) {
-      await client.from('migrations_ledger').insert({ filename });
+    baselined = migrations.filter((m) => !m.force).map((m) => m.filename);
+    for (const filename of baselined) {
+      const ins = await client.from('migrations_ledger').insert({ filename });
+      if (ins?.error) {
+        throw new Error('baseline record failed for ' + filename + ': ' + (ins.error?.message || String(ins.error)));
+      }
+      done.add(filename);
+    }
+    if (baselined.length || migrations.some((m) => m.force)) {
+      console.log(
+        '[apply-pending] established DB: baselined ' + baselined.length + ' legacy migration(s) as already-applied (not re-run); ' +
+        migrations.filter((m) => m.force).length + ' force-marked migration(s) will be APPLIED.'
+      );
     }
   }
 
-  const pending = migrations.filter((m) => !done.has(m.filename));
+  // Determinism rules:
+  //   1. Absent from the ledger ⇒ MUST be applied (a baseline can never swallow
+  //      a migration that appeared after it — and force files are excluded from
+  //      the baseline entirely).
+  //   2. Force-marked ⇒ MUST run even if a stale ledger entry already names the
+  //      file (idempotent by contract; a recorded-but-never-run swallow must
+  //      not be able to hide the repair).
+  const pending = migrations.filter((m) => (m.force ? true : !done.has(m.filename)));
+
   for (const m of pending) {
+    // A failure here throws and fails the apply job loudly — never a silent skip.
     await exec({ filename: m.filename, sql: m.sql });
-    await client.from('migrations_ledger').insert({ filename: m.filename });
-    done.add(m.filename);
+    if (!done.has(m.filename)) {
+      const ins = await client.from('migrations_ledger').insert({ filename: m.filename });
+      if (ins?.error) {
+        throw new Error('applied ' + m.filename + ' but its ledger record failed: ' + (ins.error?.message || String(ins.error)));
+      }
+      done.add(m.filename);
+    }
   }
-  return { pending: pending.map((m) => m.filename), ledger: [...done] };
+  return { pending: pending.map((m) => m.filename), ledger: [...done], baselined };
 }
 
 /**

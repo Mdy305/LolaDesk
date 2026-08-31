@@ -24,6 +24,8 @@ import { FakeSupabase } from './fake-supabase.js';
 import {
   applyPendingMigrations,
   isEstablished,
+  isForcedMigration,
+  loadMigrations,
   verifyRequiredTables,
 } from '../api/lib/migrate-all.js';
 import { REQUIRED_TABLES } from '../api/lib/schema-gate.js';
@@ -108,6 +110,58 @@ test('verifyRequiredTables fails loudly, naming the missing table', async () => 
   const gate = await verifyRequiredTables(fake, REQUIRED_TABLES);
   assert.equal(gate.ok, false);
   assert.deepEqual(gate.missing, ['products']);
+});
+
+test('isForcedMigration detects the -- force: always header marker', () => {
+  assert.equal(isForcedMigration('-- force: always -- idempotent repair\nalter table ...'), true);
+  assert.equal(isForcedMigration('-- 20260901_force_tenant_activation_status.sql — repair'), false);
+  assert.equal(loadMigrations('migrations').some((m) => m.force), true,
+    'the shipped force migration carries the marker (loadMigrations sets force)');
+});
+
+test('established-db baseline NEVER swallows a force-marked migration', async () => {
+  const fake = new FakeSupabase();
+  const execCalls = [];
+  const exec = async ({ filename }) => { execCalls.push(filename); };
+  const MIGS = [
+    { filename: '20260812_calendar_core.sql', sql: '-- legacy 1' },
+    { filename: '20260901_inventory_ops.sql', sql: '-- legacy 2' },
+    { filename: '20260901_force_tenant_activation_status.sql', sql: '-- force: always\nalter table tenants add column if not exists activation_status text;', force: true },
+  ];
+  const res = await applyPendingMigrations({ client: fake, migrations: MIGS, established: true, exec });
+
+  // Legacy files are baselined (presumed applied, never re-run)…
+  assert.deepEqual(res.baselined, ['20260812_calendar_core.sql', '20260901_inventory_ops.sql']);
+  // …but the force-marked repair is NOT baselined and IS applied for real.
+  assert.deepEqual(res.pending, ['20260901_force_tenant_activation_status.sql']);
+  assert.ok(execCalls.includes('20260901_force_tenant_activation_status.sql'), 'force migration executed');
+  assert.ok(!execCalls.includes('20260812_calendar_core.sql'), 'legacy migration not re-run');
+  const ledger = fake.all('migrations_ledger');
+  assert.ok(ledger.some((r) => r.filename === '20260901_force_tenant_activation_status.sql'), 'force migration recorded');
+});
+
+test('force-marked migration runs even when a STALE ledger entry names it (recorded-but-never-run swallow)', async () => {
+  // Exact replay of the defect: a past baseline recorded the filename WITHOUT
+  // executing it, so the ledger lies about it being applied. The force marker
+  // must override the stale entry (the migration is idempotent by contract).
+  const fake = new FakeSupabase();
+  fake.seed('migrations_ledger', [
+    { filename: '20260812_calendar_core.sql' },
+    { filename: '20260901_force_tenant_activation_status.sql' }, // swallow entry, never executed
+  ]);
+  const execCalls = [];
+  const exec = async ({ filename }) => { execCalls.push(filename); };
+  const MIGS = [
+    { filename: '20260812_calendar_core.sql', sql: '-- legacy 1' },
+    { filename: '20260901_force_tenant_activation_status.sql', sql: '-- force: always\nalter table tenants add column if not exists activation_status text;', force: true },
+    { filename: '20260902_future_feature.sql', sql: '-- future', force: false },
+  ];
+  const res = await applyPendingMigrations({ client: fake, migrations: MIGS, established: true, exec });
+  assert.deepEqual(res.pending, ['20260901_force_tenant_activation_status.sql', '20260902_future_feature.sql'],
+    'force file despite stale ledger + genuinely-new file both applied');
+  assert.ok(execCalls.includes('20260901_force_tenant_activation_status.sql'), 'stale ledger cannot hide the repair');
+  assert.ok(execCalls.includes('20260902_future_feature.sql'), 'absent migration is applied, never baselined');
+  assert.ok(!execCalls.includes('20260812_calendar_core.sql'), 'real legacy migration never re-run');
 });
 
 test('a failing migration fails loudly (never silently skipped)', async () => {

@@ -1,4 +1,5 @@
 -- 20260901_force_tenant_activation_status.sql — repair: activation_status must exist.
+-- force: always — idempotent repair; MUST run on every apply (see api/lib/migrate-all.js).
 -- =============================================================================
 -- ROOT CAUSE FOUND LIVE: on an established database the migration applier
 -- (api/lib/migrate-all.js) records the whole current migration set as its
