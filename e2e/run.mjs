@@ -21,6 +21,9 @@
  */
 process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 process.env.SUPABASE_SERVICE_KEY = 'e2e-service-key';
+// The standard sign-up path (auth.signUp) runs through the anon client — same
+// key the browser would use; the emulator accepts any value.
+process.env.SUPABASE_ANON_KEY = 'e2e-anon-key';
 process.env.APP_URL = 'https://www.loladesk.com';
 delete process.env.TELNYX_API_KEY; delete process.env.TELNYX_PUBLIC_KEY;
 // The voice path (operator-voice / telnyx-voice) REFUSES to run without Lola's

@@ -54,6 +54,16 @@ on conflict (phone_number) do nothing;
 
 alter table tenant_numbers enable row level security;`;
 
+// Keep in sync with migrations/20260901_force_tenant_activation_status.sql.
+// The email-verification gate writes activation_status on every new tenant; the
+// CI applier once ledgered the column migration as applied WITHOUT executing it,
+// so production's tenants table lacked the column and real signups 500'd with a
+// swallowed "column does not exist". Ensuring it HERE at runtime (with the
+// platform's own service key) closes that blind spot deterministically.
+const ACTIVATION_STATUS_DDL = `alter table public.tenants add column if not exists activation_status text not null default 'active';
+
+create index if not exists idx_tenants_activation_status on public.tenants(activation_status) where activation_status is not null;`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -85,24 +95,43 @@ async function runMigrations() {
   const c = db();
   if (!c) return 'no-db';
 
+  const applied = [];
+
   // Cheap probe: if the table exists this returns rows (or an empty array)
   // with error:null. If it's missing, PostgREST returns a non-null error.
   const probe = await c.from('tenant_numbers').select('id').limit(1);
-  if (!probe.error) return 'up-to-date';
-
-  try {
-    const res = await c.rpc('exec_sql', { p_sql: TENANT_NUMBERS_DDL });
-    if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
-    console.log('[migrate] applied tenant_numbers (routing table was missing)');
-    return 'applied';
-  } catch (e) {
-    const msg = String(e?.message || e);
-    const missingFn = /could not find the function|function .*exec_sql.* does not exist|PGRST202/i.test(msg);
-    console.warn(
-      '[migrate] tenant_numbers missing; auto-apply unavailable' +
-        (missingFn ? ' — run migrations/20260815_tenant_number_routing.sql once to bootstrap exec_sql' : '') +
-        ': ' + msg.slice(0, 160)
-    );
-    return 'unavailable';
+  if (!probe.error) {
+    // Table present — still verify the email-verification column below.
+  } else {
+    try {
+      const res = await c.rpc('exec_sql', { p_sql: TENANT_NUMBERS_DDL });
+      if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+      console.log('[migrate] applied tenant_numbers (routing table was missing)');
+      applied.push('tenant_numbers');
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const missingFn = /could not find the function|function .*exec_sql.* does not exist|PGRST202/i.test(msg);
+      console.warn(
+        '[migrate] tenant_numbers missing; auto-apply unavailable' +
+          (missingFn ? ' — run migrations/20260815_tenant_number_routing.sql once to bootstrap exec_sql' : '') +
+          ': ' + msg.slice(0, 160)
+      );
+    }
   }
+
+  // tenants.activation_status — the column the email-verification gate writes.
+  // Idempotent ALTER; only fires when PostgREST reports the column missing.
+  try {
+    const tcol = await c.from('tenants').select('activation_status').limit(1);
+    if (tcol.error && /activation_status/i.test(String(tcol.error?.message || tcol.error))) {
+      const res = await c.rpc('exec_sql', { p_sql: ACTIVATION_STATUS_DDL });
+      if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+      console.log('[migrate] applied tenants.activation_status (email-verification gate column)');
+      applied.push('activation_status');
+    }
+  } catch (e) {
+    console.warn('[migrate] activation_status ensure failed:', String(e?.message || e).slice(0, 160));
+  }
+
+  return applied.length ? 'applied' : 'up-to-date';
 }
