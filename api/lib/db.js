@@ -125,6 +125,17 @@ export async function getTenantBySlug(slug){
 // number to a different tenant re-points the existing row instead of
 // creating an ambiguous duplicate. Degrades safely (warn + null) when the
 // migration hasn't been applied yet, so provisioning never hard-fails.
+// Flip a pending-email tenant to active on the owner's first confirmed login.
+// Idempotent: active tenants pass through untouched. Accepts an injected client
+// (FakeSupabase in tests) so the gate is unit-testable.
+export async function activateTenant(client, tenant){
+  if(!client || !tenant?.id) return { ok:false };
+  if((tenant.activation_status || 'active') !== 'pending_email') return { ok:true, already_active:true };
+  const { error } = await client.from('tenants').update({ activation_status: 'active' }).eq('id', tenant.id);
+  if(error) throw new Error(error.message);
+  return { ok:true, activated:true };
+}
+
 export async function upsertTenantNumber(tenantId, phoneNumber, opts = {}){
   const c = db();
   if(!c || !tenantId) return null;
@@ -437,7 +448,8 @@ export async function provisionTenantForUser(user, opts = {}){
     slug, name: salonName, owner_name: ownerName, owner_email: email,
     location: opts.location || '', hours: opts.hours || '', plan: opts.plan || 'starter',
     website_url: opts.websiteUrl || '', business_mode: opts.businessMode || 'salon',
-    trial_ends_at: trialEnds
+    trial_ends_at: trialEnds,
+    activation_status: opts.activationStatus
   });
   if(!tenant?.id) return null;
 
@@ -493,6 +505,7 @@ export async function upsertTenant(p = {}){
   if(trialEndsAt) row.trial_ends_at = trialEndsAt;
   if(services) row.services = services;
   if(team) row.team = team;
+  if(p.activation_status || p.activationStatus) row.activation_status = p.activation_status ?? p.activationStatus;
   const { data } = await c.from('tenants')
     .upsert(row, { onConflict: 'slug' })
     .select().maybeSingle();

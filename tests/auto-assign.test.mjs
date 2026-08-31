@@ -205,24 +205,32 @@ function authMock(){
   fake.auth.signInWithPassword = async ({ email }) => ({ data: { user: { id: 'u-1', email }, session: { access_token: 'tok-1', refresh_token: 'ref-1' } }, error: null });
 }
 
-test('signup returns 200 with autoProvisioned and the live number on the tenant', async () => {
+test('signup creates a PENDING tenant and asks for email confirmation — no session, no number', async () => {
   fresh();
   authMock();
-  const spy = telnyxStub();
+  let telnyxHit = false;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { telnyxHit = true; return { ok: true, status: 200, json: async () => ({}) }; };
   try{
     const req = { method: 'POST', body: JSON.stringify({ email: 'new@salon.com', password: 'password123', name: 'Owner', salonName: 'Brand New Salon' }) };
     const res = resMock();
     await signup(req, res);
     assert.equal(res.statusCode, 200);
-    assert.ok(res.body.autoProvisioned);
-    assert.equal(res.body.autoProvisioned.assigned, true);
-    assert.equal(res.body.autoProvisioned.phoneNumber, '+15550000002');
-    assert.equal(res.body.tenant.phone_number, '+15550000002');
-    assert.equal(res.body.session.access_token, 'tok-1');
-  }finally{ spy.restore(); }
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.requires_email_confirmation, true);
+    assert.equal(res.body.email, 'new@salon.com');
+    assert.equal(res.body.session, undefined, 'no session for an unconfirmed email');
+    assert.equal(res.body.autoProvisioned, undefined, 'no number assigned at signup');
+    assert.equal(telnyxHit, false, 'signup never touches Telnyx — number wiring waits for confirmation');
+    // the tenant exists but is NOT live: pending_email + no number yet
+    const saved = fake.all('tenants').find(t => t.owner_email === 'new@salon.com');
+    assert.ok(saved, 'tenant provisioned at signup');
+    assert.equal(saved.activation_status, 'pending_email');
+    assert.equal(saved.phone_number, null);
+  }finally{ globalThis.fetch = realFetch; }
 });
 
-test('signup still succeeds (200) when Telnyx is down — assignment never blocks onboarding', async () => {
+test('signup succeeds (200) even if Telnyx is down — no provisioning happens at signup', async () => {
   fresh();
   authMock();
   const realFetch = globalThis.fetch;
@@ -232,7 +240,7 @@ test('signup still succeeds (200) when Telnyx is down — assignment never block
     const res = resMock();
     await signup(req, res);
     assert.equal(res.statusCode, 200);
-    assert.equal(res.body.autoProvisioned.assigned, false);
-    assert.equal(res.body.tenant.phone_number, null);
+    assert.equal(res.body.requires_email_confirmation, true);
+    assert.equal(res.body.session, undefined);
   }finally{ globalThis.fetch = realFetch; }
 });

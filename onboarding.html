@@ -357,6 +357,18 @@ function next1(){
 }
 
 // ── STEP 2 · ACCOUNT ─────────────────────────────────────────────
+function showEmailVerify(email){
+  const _e=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:#0a0a0c;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px';
+  ov.innerHTML='<div style="font-size:34px;margin-bottom:14px">\u2709\ufe0f</div>'
+    +'<h2 style="margin:0 0 12px;font-size:24px;font-weight:600">Check your email</h2>'
+    +'<p style="max-width:440px;color:rgba(255,255,255,.72);line-height:1.6;margin:0 0 4px">We sent a confirmation link to <strong>'+(email?_e(email):'your inbox')+'</strong>.</p>'
+    +'<p style="max-width:440px;color:rgba(255,255,255,.55);line-height:1.6;margin:0 0 8px">Click it to activate your salon, then come back and sign in.</p>'
+    +'<a href="login.html" style="margin-top:18px;padding:12px 26px;border-radius:12px;background:#fff;color:#0a0a0c;font-weight:600;text-decoration:none">Go to sign in</a>'
+    +'<div style="margin-top:22px;font-size:12px;color:rgba(255,255,255,.38)">Didn\u2019t get it? Check spam, or try another email address.</div>';
+  document.body.appendChild(ov);
+}
 async function createAccount(){
   const err=document.getElementById('err2'),btn=document.getElementById('createBtn');
   const email=v('email').trim(),password=v('password');
@@ -366,6 +378,10 @@ async function createAccount(){
   try{
     const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
     const d=r.b;
+    // Email verification: the account is created but NOT live until the owner
+    // confirms their email. Show the check-your-email checkpoint instead of a
+    // session so a random address can't reach the provisioning steps.
+    if(d&&d.requires_email_confirmation){ showEmailVerify(email); return; }
     if(!r.ok&&!d?.token&&!d?.session)throw new Error(d?.error||'Signup failed');
     S.token=d.token||d.session?.access_token||'';
     S.slug=d.tenant?.slug||'';

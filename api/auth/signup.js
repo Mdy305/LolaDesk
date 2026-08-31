@@ -4,21 +4,12 @@
  * Creates the auth user + a tenant + starts a 14-day trial.
  * Returns { session, tenant }.
  */
-import { createUser, signIn } from '../lib/auth.js';
+import { createUser } from '../lib/auth.js';
 import { provisionTenantForUser } from '../lib/db.js';
-import { autoAssignOwnedNumber } from '../lib/telnyx-provision.js';
 
 // Auto-assignment must never slow down or break signup. Cap it at 6s (the
 // parallel Telnyx links usually finish in ~2s, but cold starts need margin);
 // on timeout the tenant simply keeps no number and can wire one in the wizard.
-const AUTO_ASSIGN_CAP_MS = 6000;
-function withCap(promise){
-  let timer;
-  const cap = new Promise(r => { timer = setTimeout(() => r({ assigned:false, reason:'timeout' }), AUTO_ASSIGN_CAP_MS); });
-  // clearTimeout on either outcome so a won race doesn't hold the event loop
-  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
-}
-
 // Signup must never burn the serverless invocation budget on a hanging
 // upstream (e.g. Supabase Auth). Each critical step is time-bound; if it
 // can't finish in time the promise rejects with a recognizable error instead
@@ -51,22 +42,23 @@ export default async function handler(req, res){
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
     const user = await withBudget(createUser({ email, password, name }), 'create-user');
+    // Create the workspace immediately so the confirmation link has a tenant to
+    // activate, but leave it PENDING — no session, no live number — until the
+    // owner confirms their email. That closes the open-signup surface: a random
+    // address can't log in or burn a Telnyx number. Activation + number
+    // auto-assign happen on the owner's first confirmed login (/api/auth/login).
     const tenant = await withBudget(provisionTenantForUser(user, {
-      name, salonName, location, hours, plan, websiteUrl, businessMode
+      name, salonName, location, hours, plan, websiteUrl, businessMode,
+      activationStatus: 'pending_email'
     }), 'workspace');
     if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
 
-    const sess = await withBudget(signIn({ email, password }), 'sign-in');
-
-    // Instant Telnyx wiring: give this fresh tenant a live number from the
-    // owned pool (voice + SMS + LolaBrain + routing row) with zero friction.
-    // Best-effort only — the wizard remains the manual path.
-    const auto = await withCap(autoAssignOwnedNumber(tenant));
-
     return res.status(200).json({
-      session: sess.session, user: sess.user,
-      tenant: { ...tenant, phone_number: auto?.assigned ? auto.phoneNumber : tenant.phone_number },
-      autoProvisioned: auto
+      ok: true,
+      requires_email_confirmation: true,
+      email,
+      detail: `We emailed a confirmation link to ${email} — click it to activate your salon, then sign in.`,
+      tenant: { slug: tenant.slug }
     });
   }catch(e){
     if(e?.code === AUTH_TIMEOUT_CODE){

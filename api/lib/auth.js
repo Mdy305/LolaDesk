@@ -24,14 +24,23 @@ export function admin(){
   return _admin;
 }
 
-// Create an auth user (email confirmed) and return it
+// Create an auth user and return it. The email is NOT auto-confirmed: sending
+// the confirmation email is Supabase's job, and sign-in stays blocked until the
+// owner clicks the link (closes the open-signup surface — a random address can't
+// get a working session/tenant). Activation happens on the first confirmed login.
 export async function createUser({ email, password, name }){
   const a = admin(); if(!a) throw new Error('Auth not configured');
   const { data, error } = await a.auth.admin.createUser({
-    email, password, email_confirm: true, user_metadata: { name }
+    email, password, email_confirm: false, user_metadata: { name }
   });
   if(error) throw new Error(error.message);
   return data.user;
+}
+
+// Has this owner confirmed their email? The canonical field Supabase sets once
+// the confirmation link is clicked.
+export function isEmailConfirmed(user){
+  return !!(user && (user.email_confirmed_at || user.emailConfirmedAt));
 }
 
 // Sign in with email+password -> returns session (access + refresh tokens)

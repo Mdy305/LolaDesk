@@ -55,10 +55,10 @@ const TEST_PHONE = '+13055559999';
 const signup = (await import('../api/auth/signup.js')).default;
 let r = makeRes();
 await signup(post({ email:'e2e@salon.com', password:'sup3r-secret', name:'Eve', salonName:'E2E Beauty Bar', location:'Miami', hours:'9-6', plan:'pro', websiteUrl:'https://e2e.bar', businessMode:'medspa' }), r);
-const signupTok = r.body?.session?.access_token || r.body?.token || r.body?.access_token;
-check('signup returns 200 + session', r.code===200 && !!signupTok, `code=${r.code}`);
+check('signup returns 200 + requires email confirmation (no instant session)', r.code===200 && r.body?.requires_email_confirmation===true && !r.body?.session, `code=${r.code}`);
 const t = (await sql.query(`select * from tenants where owner_email='e2e@salon.com'`)).rows[0];
 check('tenant row created with website_url/business_mode', !!t && t.website_url==='https://e2e.bar' && t.business_mode==='medspa');
+check('tenant parked as pending_email until the email is confirmed', !!(t && t.activation_status==='pending_email'));
 const link = (await sql.query(`select * from tenant_users where tenant_id=$1`, [t?.id])).rows[0];
 check('tenant_users owner link created', !!link && link.role==='owner');
 await sql.query(`update tenants set phone_number=$1, services='[{"name":"Balayage","price":395,"duration":"2h30"}]'::jsonb where id=$2`, [TEST_PHONE, t.id]);
@@ -69,6 +69,8 @@ r = makeRes();
 await login(post({ email:'e2e@salon.com', password:'sup3r-secret' }), r);
 const tok = r.body?.session?.access_token || r.body?.token || r.body?.access_token;
 check('login returns session token', r.code===200 && !!tok, `code=${r.code}`);
+const tA = (await sql.query(`select activation_status from tenants where id=$1`, [t.id])).rows[0];
+check('first confirmed login activates the tenant ', !!(tA && tA.activation_status==='active'), JSON.stringify(tA));
 
 /* 3 — DASHBOARD DATA (tenant isolation) */
 const data = (await import('../api/data.js')).default;
