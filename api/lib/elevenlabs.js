@@ -73,17 +73,71 @@ export async function synthesize(text, { modelId, outputFormat, signal } = {}) {
  * page can render a real voice picker (id + name). Returns a small, safe
  * subset of fields — never the full provider payload.
  */
-export async function listVoices(){
+export async function listVoices({ timeoutMs = 8000 } = {}){
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
-  const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-    headers: { 'xi-api-key': apiKey }
-  });
-  if(!r.ok) throw new Error(`ElevenLabs ${r.status}`);
-  const j = await r.json();
-  return (j?.voices || []).map(v => ({
-    id: v.voice_id,
-    name: v.name,
-    category: v.category || ''
-  }));
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey },
+      signal: ctrl.signal
+    });
+    if(!r.ok) {
+      let detail = '';
+      try{ detail = await r.text(); }catch{}
+      // Include the status + short body (never the key) so a health gate can
+      // tell the operator WHY synthesis is failing — bad key vs out of credit.
+      throw new Error(`ElevenLabs ${r.status}: ${detail.slice(0, 200)}`);
+    }
+    const j = await r.json();
+    return (j?.voices || []).map(v => ({
+      id: v.voice_id,
+      name: v.name,
+      category: v.category || ''
+    }));
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * Truthful liveness probe for health gates. Never returns/leaks the API key.
+ *
+ *   { ok, message, configured, voiceIdValid?, voice?, voices?, status? }
+ *
+ * - ok:false + configured:false  → env missing
+ * - ok:false + status:401/403    → API key invalid
+ * - ok:false + status:402/429    → billing / rate (out of credit) — owner action
+ * - ok:false + voiceIdValid:false→ the configured voice isn't on this account
+ * - ok:true                      → key valid AND the canonical voice resolves
+ *
+ * A single GET /v1/voices is the cost (billing-safe; no characters consumed).
+ */
+export async function checkHealth({ timeoutMs = 8000, listVoices: _list = listVoices } = {}){
+  // Capture the config ONCE, before any await — re-reading process.env across
+  // an async boundary is race-prone (env can change, e.g. between the guard
+  // and the voice lookup making the probe report a phantom mismatch).
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  const vid = process.env.ELEVENLABS_VOICE_ID;
+  if(!apiKey || !vid){
+    return { ok:false, configured:false, message:'ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID are both required' };
+  }
+  let voices;
+  try{
+    voices = await _list({ timeoutMs });
+  }catch(e){
+    const m = String(e?.message || e);
+    const status = /ElevenLabs (\d{3})/.exec(m)?.[1] || null;
+    return { ok:false, configured:true, status: status ? Number(status) : null, message: m.slice(0, 220) };
+  }
+  const voice = voices.find(v => v.id === vid) || null;
+  if(!voice){
+    return {
+      ok:false, configured:true, voiceIdValid:false,
+      message:'The configured ELEVENLABS_VOICE_ID is not on this ElevenLabs account',
+      voices: voices.length
+    };
+  }
+  return { ok:true, configured:true, voiceIdValid:true, voice: voice.name, voices: voices.length };
 }

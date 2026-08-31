@@ -40,9 +40,13 @@ export default async function handler(req, res) {
     const aborted = error?.name === 'AbortError';
     console.error('[SPEAK-LOLA]', aborted ? 'timeout-or-client-abort' : error);
     if (res.headersSent) return;
-    return res.status(aborted ? 504 : 502).json({
-      error: aborted ? 'Lola voice timed out' : 'Lola voice provider failed'
-    });
+    // Surface the sanitized provider reason (status + short body, never the
+    // key) so the exact cause — out of credit vs bad voice ID — is visible
+    // to the operator instead of an opaque 502.
+    const reason = aborted
+      ? 'Lola voice timed out'
+      : 'Lola voice provider failed' + (error?.message ? ': ' + String(error.message).slice(0, 220) : '');
+    return res.status(aborted ? 504 : 502).json({ error: reason, voice: 'elevenlabs' });
   } finally {
     clearTimeout(timeout);
   }
