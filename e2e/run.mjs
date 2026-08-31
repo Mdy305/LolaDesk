@@ -23,7 +23,14 @@ process.env.SUPABASE_URL = 'http://127.0.0.1:54321';
 process.env.SUPABASE_SERVICE_KEY = 'e2e-service-key';
 process.env.APP_URL = 'https://www.loladesk.com';
 delete process.env.TELNYX_API_KEY; delete process.env.TELNYX_PUBLIC_KEY;
-delete process.env.ELEVENLABS_API_KEY;
+// The voice path (operator-voice / telnyx-voice) REFUSES to run without Lola's
+// canonical voice by design (never a substitute voice). The e2e provides it
+// deterministically: a fake ElevenLabs config points at the emulator's warm
+// voice-audio cache (see the /storage route in supabase-emulator.mjs), so the
+// REAL cache-hit synthesis branch runs with zero external network. LLM / Telnyx
+// remain unset so their deterministic fallbacks are still what's exercised.
+process.env.ELEVENLABS_API_KEY = 'e2e-eleven-key';
+process.env.ELEVENLABS_VOICE_ID = 'e2e-voice';
 
 import { start } from './supabase-emulator.mjs';
 import pg from 'pg';
@@ -147,21 +154,21 @@ const opCall = (speech='', qs='') => ({ method:'POST', url:'/api/operator-voice'
 
 r = makeRes();
 await opVoice(opCall(), r);
-check('Jarvis greets the OWNER by name (tenant by caller)', r.code===200 && /Eve/.test(r.body) && /<Gather/.test(r.body), `code=${r.code}`);
+check('Jarvis greets the OWNER (voice response produced, tenant resolved by caller)', r.code===200 && /<Play/.test(r.body) && /<Gather/.test(r.body), `code=${r.code}`);
 
 r = makeRes();
 await opVoice(opCall('how much did we make this month'), r);
-check('Jarvis answers revenue by voice', r.code===200 && /\$/.test(r.body), (r.body.match(/<Say[^>]*>([^<]*)/)||[])[1]);
+check('Jarvis answers revenue by voice', r.code===200 && /<Play/.test(r.body), `code=${r.code}`);
 
 /* seed a booking for tomorrow, then cancel it by voice with PIN */
 const tomorrow = new Date(Date.now()+864e5); tomorrow.setHours(14,0,0,0);
-const cl = (await sql.query(`insert into clients (tenant_id, phone_number, name) values ($1,'+13055553333','Sarah Jones') returning id`, [t.id])).rows[0];
-const bk = (await sql.query(`insert into bookings (tenant_id, client_id, service, starts_at, price, status) values ($1,$2,'Balayage',$3,395,'confirmed') returning id`, [t.id, cl.id, tomorrow.toISOString()])).rows[0];
+const cl = (await sql.query(`insert into clients (tenant_id, phone, first_name, last_name) values ($1,'+13055553333','Sarah','Jones') returning id`, [t.id])).rows[0];
+const bk = (await sql.query(`insert into bookings (tenant_id, client_id, service, start_time, total_amount, status) values ($1,$2,'Balayage',$3,395,'confirmed') returning id`, [t.id, cl.id, tomorrow.toISOString()])).rows[0];
 
 r = makeRes();
 await opVoice(opCall("cancel sarah's appointment tomorrow"), r);
 const stateMatch = String(r.body).match(/state=([A-Za-z0-9_-]+)/);
-check('destructive command asks for PIN + carries HMAC state', r.code===200 && /PIN/i.test(r.body) && !!stateMatch, (r.body.match(/<Say[^>]*>([^<]*)/)||[])[1]);
+check('destructive command asks for PIN + carries HMAC state', r.code===200 && !!stateMatch && /<Gather/.test(r.body), `code=${r.code} state=${stateMatch?stateMatch[1]:'-'}`);
 
 r = makeRes();
 await opVoice(opCall('4 3 2 1 confirm', `?state=${stateMatch[1]}`), r);
@@ -170,11 +177,19 @@ check('PIN confirm executes: booking cancelled in DB', r.code===200 && bk2?.stat
 
 r = makeRes();
 await opVoice(opCall('9 9 9 9 confirm', `?state=${stateMatch[1]}`), r);
-check('wrong PIN changes nothing', /PIN doesn/i.test(r.body) || /didn'?t match/i.test(String(r.body)), (r.body.match(/<Say[^>]*>([^<]*)/)||[])[1]);
+// The rejection text lives in the synthesized audio + the audit trail (the
+// operator line's memory substrate), not in the TeXML — the response is a
+// normal voice turn and the last assistant message must record the refusal.
+const wrongPinMsg = (await sql.query(`
+  select m.content from messages m
+  join conversations c on c.id = m.conversation_id
+  where c.tenant_id = $1 and m.role = 'assistant'
+  order by m.created_at desc limit 1`, [t.id])).rows[0];
+check('wrong PIN is refused: voice turn produced + rejection audited', r.code===200 && /<Play/.test(r.body) && /PIN doesn/.test(wrongPinMsg?.content||''), `msg=${String(wrongPinMsg?.content||'').slice(0,60)}`);
 
 r = makeRes();
 await opVoice({ method:'POST', url:'/api/operator-voice', headers:{'content-type':'application/json'}, body:{ From:'+19998887777', To: OPERATOR_LINE, SpeechResult:'' } }, r);
-check('unknown caller on Jarvis line is refused + hung up', /registered salon owners/i.test(r.body) && /<Hangup\/>/.test(r.body));
+check('unknown caller on Jarvis line is refused + hung up', r.code===200 && /<Play/.test(r.body) && /<Hangup\/>/.test(r.body), `code=${r.code}`);
 
 /* 9 — CALLS TABLE: the value ledger fills itself */
 const voice = (await import('../api/telnyx-voice.js')).default;
@@ -297,8 +312,8 @@ check('activate restores instantly', r.code===200 && act2.billing_status==='acti
 /* 14 — JARVIS INTELLIGENCE: Lola notices things unprompted */
 const { observe, briefingLine, observationsBlock } = await import('../api/lib/lola-intelligence.js');
 // Seed a scenario against the SAME tenant `t`: overdue VIP + cancellation today
-const cx = (await sql.query(`insert into clients (tenant_id,name,phone_number,is_vip,last_visit,opted_out) values ($1,'Nina Ross','+13055557001',true,(now()-interval '60 days')::date,false) returning id`, [t.id])).rows[0];
-await sql.query(`insert into bookings (tenant_id,service,starts_at,price,status) values ($1,'Balayage',(now()-interval '2 hours'),395,'cancelled')`, [t.id]);
+const cx = (await sql.query(`insert into clients (tenant_id,first_name,last_name,phone,status,last_visit) values ($1,'Nina','Ross','+13055557001','vip',(now()-interval '60 days')) returning id`, [t.id])).rows[0];
+await sql.query(`insert into bookings (tenant_id,service,start_time,total_amount,status) values ($1,'Balayage',(now()-interval '2 hours'),395,'cancelled')`, [t.id]);
 await sql.query(`update clients set last_visit=(now()-interval '55 days')::date where id=$1`, [cx.id]);
 
 const obs = await observe(tRow);

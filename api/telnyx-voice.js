@@ -472,9 +472,13 @@ export default async function handler(req, res){
           const call = await getCallByTelnyxId(tenant.id, telnyxCallId);
           if(call){
             const line = `Caller: ${speech}\nLola: ${reply}\n`;
-            const patch = { transcript: String(call.transcript || '') + line };
+            // Canonical call contract: the rolling transcript rides in
+            // recording_url and the outcome in status (legacy transcript/
+            // outcome columns are generated aliases — never writable).
+            const base = String(call.recording_url || call.transcript || '');
+            const patch = { recording_url: base + line };
             const booked = /\b(book(ed)?|confirmed|see you (on|at))\b/i.test(reply) && /\b(book|appointment|come in|schedule)\b/i.test(speech);
-            if(booked && call.outcome !== 'booked') patch.outcome = 'booked';
+            if(booked && call.status !== 'booked' && call.outcome !== 'booked') patch.status = 'booked';
             await updateCallByTelnyxId(tenant.id, telnyxCallId, patch);
           }
         }

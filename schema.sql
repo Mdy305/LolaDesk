@@ -33,32 +33,120 @@ create index if not exists idx_tenants_phone on tenants(phone_number);
 
 -- ── CLIENTS ──
 -- People who call/text/visit a salon
+-- CANONICAL shape: the API writes first_name/last_name/phone/status and
+-- reads the legacy aliases (name, phone_number, is_vip, opted_out) as STORED
+-- GENERATED columns (see 20260818_clients_schema_compat.sql for the same
+-- reconciliation on legacy databases). schema.sql must create THIS shape so a
+-- fresh DB matches production — the old shape (real phone_number/name/opted_out
+-- columns) made every client write fail on a new database.
 create table if not exists clients (
-  id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references tenants(id) on delete cascade,
-  phone_number    text,                                 -- caller's number, E.164
-  name            text,
-  email           text,
-  is_vip          boolean default false,
-  last_service    text,
-  last_visit      date,
-  preferred_stylist text,
-  lifetime_value  numeric default 0,
-  notes           text,
-  tags            text[] default '{}',
-  opted_out       boolean default false,        -- STOP keyword received; never text again
-  opted_out_at    timestamptz,
-  created_at      timestamptz default now(),
-  updated_at      timestamptz default now(),
-  unique(tenant_id, phone_number)
+  id                  uuid primary key default gen_random_uuid(),
+  tenant_id           uuid not null references tenants(id) on delete cascade,
+  first_name          text,
+  last_name           text,
+  phone               text,                          -- caller's number, E.164 (canonical)
+  email               text,
+  status              text not null default 'active',-- active | opted_out | vip
+  preferred_service   text,
+  preferred_staff_id  uuid,
+  profile_picture_url text,
+  lifetime_value      numeric default 0,
+  last_visit          timestamptz,
+  notes               text,
+  tags                text[] default '{}',
+  preferences         jsonb default '{}'::jsonb,
+  whatsapp_enabled    boolean default false,
+  opted_out_at        timestamptz,
+  created_at          timestamptz default now(),
+  updated_at          timestamptz default now(),
+  -- Legacy aliases (generated, immutable expressions — never writable)
+  name text generated always as (
+    nullif(btrim(coalesce(first_name,'') || ' ' || coalesce(last_name,'')), '')
+  ) stored,
+  phone_number text generated always as (phone) stored,
+  last_service text generated always as (preferred_service) stored,
+  is_vip boolean generated always as (
+    lower(coalesce(status, '')) = 'vip' or coalesce(lifetime_value, 0) >= 1000
+  ) stored,
+  opted_out boolean generated always as (
+    lower(coalesce(status, '')) = 'opted_out'
+  ) stored,
+  unique(tenant_id, phone)
 );
 create index if not exists idx_clients_tenant on clients(tenant_id);
-create index if not exists idx_clients_phone on clients(tenant_id, phone_number);
+create index if not exists idx_clients_phone on clients(tenant_id, phone);
 
--- Migration safety net: add opted_out columns if this schema was already
--- run before SMS compliance was added (idempotent — safe to re-run).
-alter table clients add column if not exists opted_out boolean default false;
-alter table clients add column if not exists opted_out_at timestamptz;
+-- ── SERVICES ──
+-- The salon's bookable menu. Referenced by every booking layer (calendar,
+-- availability, operator voice, lola tools) — part of the canonical booking
+-- contract. (Production predates this repo's schema snapshot; these tables
+-- must exist here too or a fresh DB cannot run the booking stack.)
+create table if not exists services (
+  id               uuid primary key default gen_random_uuid(),
+  tenant_id        uuid not null references tenants(id) on delete cascade,
+  name             text not null,
+  description      text,
+  duration_minutes int not null default 60,
+  price            numeric not null default 0,
+  category         text,
+  is_active        boolean not null default true,
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now()
+);
+create index if not exists idx_services_tenant on services(tenant_id);
+
+-- ── STAFF ──
+create table if not exists staff (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  name       text not null,
+  role       text,
+  email      text,
+  phone      text,
+  color      text,
+  is_active  boolean not null default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_staff_tenant on staff(tenant_id);
+
+-- which staff can perform which service
+create table if not exists staff_services (
+  staff_id   uuid not null references staff(id) on delete cascade,
+  service_id uuid not null references services(id) on delete cascade,
+  primary key (staff_id, service_id)
+);
+
+-- weekly availability per staff member (day_of_week: 0 = Sunday)
+create table if not exists staff_schedules (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  staff_id   uuid not null references staff(id) on delete cascade,
+  day_of_week int not null check (day_of_week between 0 and 6),
+  start_time time not null,
+  end_time   time not null
+);
+create index if not exists idx_staff_schedules_tenant on staff_schedules(tenant_id, staff_id);
+
+-- time off / blocked days per staff member
+create table if not exists staff_time_off (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  staff_id   uuid references staff(id) on delete cascade,
+  starts_at  timestamptz not null,
+  ends_at    timestamptz not null,
+  reason     text,
+  created_at timestamptz default now()
+);
+
+-- ── LOCATIONS ──
+create table if not exists locations (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  name       text not null,
+  address    text,
+  created_at timestamptz default now()
+);
 
 -- ── CONVERSATIONS ──
 -- A logical conversation thread (phone call, SMS thread, IG DM, WhatsApp)
@@ -99,37 +187,62 @@ create table if not exists calls (
   tenant_id       uuid not null references tenants(id) on delete cascade,
   conversation_id uuid references conversations(id),
   client_id       uuid references clients(id),
-  telnyx_call_id  text,
   from_number     text,
   to_number       text,
   direction       text,                                 -- inbound | outbound
-  duration_sec    int,
-  outcome         text,
+  -- canonical contract (what the app reads/writes): status / duration_seconds /
+  -- telnyx_call_control_id / recording_url (transcript rides in recording_url).
+  duration_seconds int,
+  status          text,
   booking_probability int,
   recording_url   text,
-  transcript      text,
-  created_at      timestamptz default now()
+  telnyx_call_control_id text,
+  created_at      timestamptz default now(),
+  -- Legacy aliases (canonical real, legacy generated — same rule as bookings):
+  telnyx_call_id  text generated always as (telnyx_call_control_id) stored,
+  duration_sec    int generated always as (duration_seconds) stored,
+  outcome         text generated always as (status) stored,
+  transcript      text generated always as (recording_url) stored
 );
 create index if not exists idx_calls_tenant on calls(tenant_id, created_at desc);
 
 -- ── BOOKINGS ──
 -- Appointments Lola actually booked (will sync with Square/Vagaro/etc later)
 create table if not exists bookings (
-  id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references tenants(id) on delete cascade,
-  client_id       uuid references clients(id) on delete set null,
-  conversation_id uuid references conversations(id),
-  service         text not null,
-  stylist         text,
-  starts_at       timestamptz not null,
-  duration_min    int,
-  price           numeric,
-  status          text default 'confirmed',             -- confirmed | cancelled | completed | no-show
-  external_id     text,                                 -- Square/Vagaro/etc booking id
-  external_source text,                                 -- 'square' | 'vagaro' | etc
-  created_at      timestamptz default now()
+  id                uuid primary key default gen_random_uuid(),
+  tenant_id         uuid not null references tenants(id) on delete cascade,
+  client_id         uuid references clients(id) on delete set null,
+  conversation_id   uuid references conversations(id),
+  -- canonical booking contract (what the calendar/booking/operator layers
+  -- read and write): service_id/staff_id/start_time/end_time/total_amount
+  service_id        uuid references services(id) on delete set null,
+  staff_id          uuid references staff(id) on delete set null,
+  location_id       uuid references locations(id) on delete set null,
+  service           text,
+  stylist           text,
+  start_time        timestamptz not null,
+  end_time          timestamptz,
+  duration_min      int,
+  total_amount      numeric default 0,
+  status            text default 'confirmed',           -- confirmed | cancelled | completed | no-show
+  notes             text,
+  source            text default 'lola',                -- 'lola' | 'dashboard' | 'square' | 'public_widget' | ...
+  external_id       text,                               -- Square/Vagaro/etc booking id
+  external_provider text,                               -- 'square' | 'vagaro' | etc
+  external_source   text,                               -- legacy alias kept for older readers
+  hold_id           uuid,
+  deposit_status    text default 'none',
+  confirmation_code text,
+  created_at        timestamptz default now(),
+  updated_at        timestamptz default now(),
+  -- Legacy aliases: canonical shape is start_time/end_time/total_amount.
+  -- Mirrors 20260818_clients_schema_compat.sql (canonical real, legacy
+  -- generated) so a fresh DB matches production and older readers keep
+  -- working. starts_at/price are read-only.
+  starts_at         timestamptz generated always as (start_time) stored,
+  price             numeric generated always as (total_amount) stored
 );
-create index if not exists idx_bk_tenant on bookings(tenant_id, starts_at);
+create index if not exists idx_bk_tenant on bookings(tenant_id, start_time);
 
 -- ── USAGE EVENTS ──
 -- What Lola did (for billing + analytics)

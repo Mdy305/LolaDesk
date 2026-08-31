@@ -46,27 +46,28 @@ function publicUser(u){ const { password, ...rest } = u; return rest; }
 /* ── PostgREST subset ── */
 const OPS = { eq:'=', neq:'<>', gt:'>', gte:'>=', lt:'<', lte:'<=' };
 
-function parseFilters(sp){
+function parseFilters(sp, table){
   const where = [], params = [];
+  const qcol = (s) => `"${table}"."${s.replace(/"/g,'')}"`;
   for(const [col, raw] of sp.entries()){
     if(['select','order','limit','offset','on_conflict','columns'].includes(col)) continue;
     const dot = raw.indexOf('.');
     const op = dot === -1 ? 'eq' : raw.slice(0, dot);
     const val = dot === -1 ? raw : raw.slice(dot + 1);
     const q = (s)=>'"' + s.replace(/"/g,'') + '"';
-    if(OPS[op]){ params.push(val); where.push(`${q(col)} ${OPS[op]} $${params.length}`); }
-    else if(op === 'is'){ where.push(`${q(col)} IS ${val === 'null' ? 'NULL' : val.toUpperCase()}`); }
+    if(OPS[op]){ params.push(val); where.push(`${qcol(col)} ${OPS[op]} $${params.length}`); }
+    else if(op === 'is'){ where.push(`${qcol(col)} IS ${val === 'null' ? 'NULL' : val.toUpperCase()}`); }
     else if(op === 'not'){ // e.g. not.is.null
       const [op2, v2] = [val.slice(0, val.indexOf('.')), val.slice(val.indexOf('.')+1)];
-      if(op2 === 'is') where.push(`${q(col)} IS NOT ${v2 === 'null' ? 'NULL' : v2.toUpperCase()}`);
-      else if(OPS[op2]){ params.push(v2); where.push(`NOT (${q(col)} ${OPS[op2]} $${params.length})`); }
+      if(op2 === 'is') where.push(`${qcol(col)} IS NOT ${v2 === 'null' ? 'NULL' : v2.toUpperCase()}`);
+      else if(OPS[op2]){ params.push(v2); where.push(`NOT (${qcol(col)} ${OPS[op2]} $${params.length})`); }
     }
     else if(op === 'in'){
       const vals = val.replace(/^\(|\)$/g,'').split(',').map(v=>v.replace(/^"|"$/g,''));
       const ph = vals.map(v=>{ params.push(v); return '$'+params.length; });
-      where.push(`${q(col)} IN (${ph.join(',')})`);
+      where.push(`${qcol(col)} IN (${ph.join(',')})`);
     }
-    else if(op === 'ilike'){ params.push(val.replace(/\*/g,'%')); where.push(`${q(col)} ILIKE $${params.length}`); }
+    else if(op === 'ilike'){ params.push(val.replace(/\*/g,'%')); where.push(`${qcol(col)} ILIKE $${params.length}`); }
   }
   return { where: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
 }
@@ -93,6 +94,65 @@ function pgVal(v){
   return v;
 }
 
+/* PostgREST select subset: "alias:column", "column", "alias:table(col1,col2)".
+   Embedded resources resolve through the parent's "<table>_id" FK column —
+   the exact shape every LolaDesk select uses (service:services(name),
+   stylist:staff(name), starts_at:start_time, price:total_amount). Without
+   this the harness would 400 on aliased selects and the journey would pass
+   on silent empty results instead of real data. */
+function parseSelect(raw, table){
+  const toks = [];
+  let depth = 0, cur = '';
+  for(const ch of raw){
+    if(ch === '('){ depth++; cur += ch; }
+    else if(ch === ')'){ depth--; cur += ch; }
+    else if(ch === ',' && depth === 0){ toks.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  if(cur.trim()) toks.push(cur.trim());
+  const select = [], embeds = [];
+  for(const tok of toks){
+    if(!tok) continue;
+    const colon = tok.indexOf(':');
+    if(colon === -1){ select.push(`"${table}"."${tok.replace(/"/g,'')}"`); continue; }
+    const alias = tok.slice(0, colon).trim().replace(/"/g,'');
+    const target = tok.slice(colon + 1).trim();
+    const m = target.match(/^([a-z_]+)\(([^)]*)\)$/);
+    if(m){
+      const rel = m[1];
+      const cols = m[2].split(',').map(c=>c.trim()).filter(Boolean);
+      embeds.push({ alias, rel, cols });
+      for(const c of cols) select.push(`"${rel}"."${c.replace(/"/g,'')}" AS "${alias}.${c.replace(/"/g,'')}"`);
+    } else {
+      select.push(`"${target.replace(/"/g,'')}" AS "${alias}"`);
+    }
+  }
+  let joins = '';
+  for(const e of embeds){
+    const fk = `${e.rel.replace(/s$/,'')}_id`;
+    joins += ` LEFT JOIN "${e.rel}" ON "${table}"."${fk}" = "${e.rel}"."id"`;
+  }
+  return { select: select.length ? select.join(', ') : '*', joins, embeds };
+}
+function assembleEmbeds(row, embeds){
+  if(!embeds.length) return row;
+  const out = { ...row };
+  for(const e of embeds){
+    const obj = {};
+    let any = false;
+    for(const c of e.cols){
+      const k = `${e.alias}.${c}`;
+      if(k in out){
+        obj[c] = out[k];
+        delete out[k];
+        if(obj[c] !== null && obj[c] !== undefined) any = true;
+      }
+    }
+    out[e.alias] = any ? obj : null;
+  }
+  return out;
+}
+
 async function handleRest(req, res, url){
   const table = url.pathname.replace('/rest/v1/','').replace(/\/$/,'');
   if(!/^[a-z_]+$/.test(table)) { res.writeHead(404); return res.end('{}'); }
@@ -100,9 +160,9 @@ async function handleRest(req, res, url){
   const prefer = String(req.headers['prefer']||'');
   const wantObject = String(req.headers['accept']||'').includes('vnd.pgrst.object');
   const wantCount = prefer.includes('count=exact');
-  const cols = (sp.get('select') && sp.get('select') !== '*')
-    ? sp.get('select').split(',').map(c=>'"'+c.trim().replace(/"/g,'')+'"').join(',') : '*';
-  const { where, params } = parseFilters(sp);
+  const sel = (sp.get('select') && sp.get('select') !== '*')
+    ? parseSelect(sp.get('select'), table) : { select: '*', joins: '', embeds: [] };
+  const { where, params } = parseFilters(sp, table);
   const order = parseOrder(sp);
   const limit = sp.get('limit') ? ` LIMIT ${parseInt(sp.get('limit'),10)}` : '';
 
@@ -121,10 +181,11 @@ async function handleRest(req, res, url){
 
   try{
     if(req.method === 'GET'){
-      const r = await pool.query(`SELECT ${cols} FROM ${table}${where}${order}${limit}`, params);
+      const r = await pool.query(`SELECT ${sel.select} FROM ${table}${sel.joins}${where}${order}${limit}`, params);
+      const rows = r.rows.map(row => assembleEmbeds(row, sel.embeds));
       let count;
       if(wantCount){ const cr = await pool.query(`SELECT count(*)::int AS n FROM ${table}${where}`, params); count = cr.rows[0].n; }
-      return send(r.rows, count);
+      return send(rows, count);
     }
     if(req.method === 'POST'){
       const body = await jsonBody(req);
@@ -153,7 +214,7 @@ async function handleRest(req, res, url){
       const body = await jsonBody(req);
       const sets = [], vals = [];
       for(const [k,v] of Object.entries(body)){ vals.push(pgVal(v)); sets.push(`"${k.replace(/"/g,'')}"=$${vals.length}`); }
-      const { where: w2, params: p2 } = parseFilters(sp);
+      const { where: w2, params: p2 } = parseFilters(sp, table);
       const shifted = w2.replace(/\$(\d+)/g, (_,n)=>'$'+(Number(n)+vals.length));
       const r = await pool.query(`UPDATE ${table} SET ${sets.join(',')}${shifted} RETURNING *`, [...vals, ...p2]);
       return send(r.rows);
@@ -197,6 +258,14 @@ export function start(port = 54321){
     }
     // PostgREST
     if(url.pathname.startsWith('/rest/v1/')) return handleRest(req, res, url);
+    // Warm voice-audio cache: the voice path (operator-voice / telnyx-voice)
+    // refuses to run without Lola's canonical voice, so the e2e serves the
+    // cached audio HEAD/GET it checks (speakCached) — the real cache-hit branch,
+    // zero external network.
+    if(url.pathname.startsWith('/storage/v1/object/public/')){
+      res.writeHead(200, { 'Content-Type':'audio/mpeg', 'Content-Length':'0' });
+      return res.end();
+    }
     res.writeHead(404); res.end('{}');
   });
   return new Promise(r=>server.listen(port, '127.0.0.1', ()=>r(server)));

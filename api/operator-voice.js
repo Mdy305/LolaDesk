@@ -147,6 +147,11 @@ export default async function handler(req, res){
   const xmlOut = (xml)=>{ res.setHeader('Content-Type','application/xml'); return res.status(200).send(xml); };
 
   // ── Who runs this salon? ──
+  // NOTE: VOICE_BUCKET must be initialized BEFORE the tenant gate below —
+  // the unknown-caller refusal calls speakCached(), which reads it. Declaring
+  // it after the early return put it in the TDZ and turned a graceful hangup
+  // into a 500 (and a swallowed ReferenceError on the e2e path).
+  const VOICE_BUCKET = 'voice-audio';
   const tenant = await getTenantByOperatorPhone(from);
   if(!tenant){
     return xmlOut(texml({
@@ -155,9 +160,6 @@ export default async function handler(req, res){
       hangup: true
     }));
   }
-
-  // Supabase Storage-backed TTS cache — same bucket as telnyx-voice.js.
-  const VOICE_BUCKET = 'voice-audio';
 
   // Cached synthesis for repeated owner-line phrases (greeting, prompts) —
   // same Supabase Storage-backed cache as telnyx-voice.js: synthesize once

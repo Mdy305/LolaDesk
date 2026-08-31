@@ -93,7 +93,7 @@ export async function updateCallByTelnyxId(tenantId, telnyxCallId, patch = {}){
   const { data } = await c.from('calls')
     .update(patch)
     .eq('tenant_id', tenantId)
-    .eq('telnyx_call_id', telnyxCallId)
+    .eq('telnyx_call_control_id', telnyxCallId)
     .select().maybeSingle();
   return data;
 }

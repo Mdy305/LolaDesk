@@ -427,7 +427,7 @@ export async function rescheduleAppointment(tenant, params, opts = {}){
     if(serviceId && staffId){
       const held = await holdAvailability({ tenantId, clientId: current.client_id, serviceId, staffId, startsAt: newStart, channel, conversationId, ttlSeconds: 120 });
       if(held.ok){
-        const patch = { start_time: held.slot.starts_at, end_time: held.slot.ends_at, starts_at: held.slot.starts_at, duration_min: held.slot.duration_minutes };
+        const patch = { start_time: held.slot.starts_at, end_time: held.slot.ends_at, duration_min: held.slot.duration_minutes };
         if(params.staff_id) patch.staff_id = params.staff_id;
         const booking = await repo.updateCanonicalBooking(tenantId, current.id, patch, { source: channel, reason: 'rescheduled' });
         await repo.appendBookingHistory({ tenantId, bookingId: current.id, fromStatus: current.status, toStatus: 'confirmed', source: channel, reason: 'rescheduled' });

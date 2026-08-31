@@ -64,6 +64,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Load schema + migrations (Supabase-coupled statements tolerated)
+        run: node scripts/bootstrap-e2e-db.mjs
       - name: Run complete launch-readiness journey
         run: npm run test:e2e
 
