@@ -269,6 +269,56 @@
     }
   }
 
+  /* ── Owner directive: Lola NEVER stays silent ──
+     If her premium (ElevenLabs) voice can't be produced — no credit,
+     provider down, empty audio — speak the reply with the browser's
+     built-in speech synthesis instead. This is a last-resort backup only:
+     whenever /api/speak-lola returns her real voice audio, that plays
+     first and this never runs. Returns true if the browser actually spoke. */
+  function speakViaBrowser(text, turnId) {
+    if (turnId !== state.turnId) return Promise.resolve(false);
+    var synth = (typeof window !== 'undefined') ? window.speechSynthesis : null;
+    if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return Promise.resolve(false);
+    var speaking = cleanSpeechText(text) || text;
+    if (!speaking) return Promise.resolve(false);
+    return new Promise(function (resolve) {
+      try { synth.cancel(); } catch (e) {}
+      if (turnId !== state.turnId) return resolve(false);
+      state.speaking = true;
+      setOrb('speaking', { label: 'Speaking…' });
+      var settled = false;
+      var done = function (ok) { if (settled) return; settled = true; resolve(ok); };
+      var u;
+      try { u = new SpeechSynthesisUtterance(speaking); } catch (e) { done(false); return; }
+      u.rate = 1.04; u.pitch = 1.0; u.lang = 'en-US';
+      try {
+        var voices = synth.getVoices();
+        var preferred = voices.find(function (v) {
+          return /^en[-_]/i.test(v.lang) && /(samantha|siri|aria|google us english|zira|natural)/i.test(v.name);
+        }) || voices.find(function (v) { return /^en[-_]/i.test(v.lang); });
+        if (preferred) u.voice = preferred;
+      } catch (e) {}
+      u.onend = function () { done(true); };
+      u.onerror = function () { done(true); };
+      try { synth.speak(u); } catch (e) { done(false); return; }
+      // Some browsers/engines never fire onend for long lines — bound it.
+      setTimeout(function () { done(true); }, Math.min(60000, 4000 + speaking.length * 45));
+    }).then(function (spoke) {
+      try { synth.cancel(); } catch (e) {}
+      if (spoke && turnId === state.turnId) {
+        metric('voice_fallback_browser', 1, { provider: 'speech_synthesis' });
+        releaseAudio();
+        state.speaking = false;
+        state.awake = true;
+        setOrb(state.ambientOn ? 'ambient' : 'idle', {
+          label: state.ambientOn ? 'Listening for “Lola”…' : 'Tap to speak or type a command'
+        });
+        scheduleRestart(180);
+      }
+      return spoke;
+    });
+  }
+
   /* ── SPEAK: Lola's canonical ElevenLabs voice ONLY ──
      If her voice can't be produced, she stays silent but her reply
      still renders — a silent Lola is honest, a fake voice is not her. */
@@ -294,8 +344,10 @@
     } catch (error) {
       if (error && (error.name === 'AbortError' || turnId !== state.turnId)) return;
       metric('voice_provider_error', 0, { provider: 'elevenlabs', error: String(error && error.message || error) });
-      // ONE LOLA, ONE VOICE: no browser-TTS substitute — text already shows.
-      setOrb('degraded', { label: 'Voice unavailable — reply shown below' });
+      // Owner directive: stay silent ONLY if even the browser voice can't
+      // play — otherwise the reply still renders AND she audibly speaks.
+      var spoke = await speakViaBrowser(text, turnId);
+      if (!spoke) setOrb('degraded', { label: 'Voice unavailable — reply shown below' });
     }
   }
 
@@ -327,6 +379,7 @@
       let gotDone = false;
       const audioQueue = [];
       let audioPlaying = false;
+      let gotAudio = false;
 
       const finish = (handled) => {
         if (settled) return;
@@ -335,7 +388,7 @@
         try { if (ws) ws.close(); } catch (e) {}
         if (state.ws === ws) state.ws = null;
         if (!handled) state.wsTurnId = 0;
-        resolve({ handled, reply });
+        resolve({ handled, reply, audio: gotAudio });
       };
 
       const drainAudio = () => {
@@ -376,6 +429,7 @@
             reply = (reply ? reply + ' ' : '') + String(msg.delta || '').trim();
             setTranscript(reply);
           } else if (msg.type === 'audio' && msg.chunk) {
+            gotAudio = true;
             audioQueue.push(msg);
             drainAudio();
           } else if (msg.type === 'done') {
@@ -423,6 +477,7 @@
 
     let reply = '';
     let directSession = false;
+    let voicePlayed = false;
 
     // ── 1) STREAMING VOICE SESSION (WebSocket) — reply + voice incrementally ──
     // Opens wss://…/api/voice/session-ws, authenticates, and streams: reply
@@ -436,6 +491,7 @@
     if (streamedTurn) {
       reply = streamed.reply || '';
       directSession = true;
+      voicePlayed = !!streamed.audio;
     } else {
       // ── 2) DIRECT VOICE SESSION (JSON) — one round trip: brain + canonical voice ──
       try {
@@ -459,6 +515,7 @@
         reply = cleanText(data.reply);
         directSession = true;
         if (data.engine === 'elevenlabs' && data.audio) {
+          voicePlayed = true;
           try { await playAudioBlob(b64ToBlob(data.audio, data.mime || 'audio/mpeg'), turnId); } catch (e) {}
         }
       } catch (error) {
@@ -502,8 +559,12 @@
     // The direct session already played Lola's canonical voice in-band (or
     // declared it unavailable — text stays rendered). The two-step path
     // speaks via the classic endpoint.
-    if (!directSession) await speak(reply, turnId);
-    else if (turnId === state.turnId) {
+    if (!directSession) {
+      await speak(reply, turnId);  // speak() falls back to the browser voice on quota/errors
+    } else if (turnId === state.turnId) {
+      // Brain replied but produced no voice audio (e.g. ElevenLabs 0 credit) —
+      // fall back to the browser's built-in voice so Lola is NEVER silent.
+      if (!voicePlayed) await speakViaBrowser(reply, turnId);
       releaseAudio();
       state.speaking = false;
       state.awake = true;
