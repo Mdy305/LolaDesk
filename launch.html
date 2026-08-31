@@ -120,11 +120,17 @@ const SECTIONS = [
   {
     id: 'schema', title: 'Database schema', endpoint: '/api/calendar-health', auth: false,
     build(d) {
-      const missing = Array.isArray(d.missing) ? d.missing : [];
-      return [
-        { label: 'Required tables', status: d.ready ? 'ok' : 'fail', detail: missing.length ? ('missing: ' + missing.join(', ')) : ('all ' + (d.required ?? '') + ' present') },
-        ...missing.map((t) => ({ label: t, status: 'fail', detail: 'table missing' })),
+      const missing = (Array.isArray(d.missing) ? d.missing : []).concat(
+        Array.isArray(d.missing_columns) ? d.missing_columns : []);
+      const rows = [
+        {
+          label: 'Required tables',
+          status: d.ready ? 'ok' : 'fail',
+          detail: missing.length ? ('missing: ' + missing.join(', ')) : ('all ' + (d.required ?? '') + ' tables, ' + (d.required_columns ?? d.passed_columns ?? '') + ' columns present'),
+        },
+        ...missing.map((t) => ({ label: t, status: 'fail', detail: t.includes('.') ? 'column missing' : 'table missing' })),
       ];
+      return rows;
     },
   },
   {

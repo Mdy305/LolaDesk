@@ -19,7 +19,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { REQUIRED_TABLES } from './schema-gate.js';
+import { REQUIRED_TABLES, REQUIRED_COLUMNS } from './schema-gate.js';
 
 const LEDGER_DDL = `create table if not exists migrations_ledger (
   filename   text primary key,
@@ -152,6 +152,51 @@ export async function verifyRequiredTables(client, required = REQUIRED_TABLES) {
     if (error) missing.push(table);
   }
   return { required: required.length, missing, ok: missing.length === 0 };
+}
+
+/**
+ * Probe one critical column with the SAME head-query pattern the table gate
+ * uses. Returns { ok, missing, error }:
+ *   • missing=true  — PostgREST clearly says the column does not exist
+ *                     (400 "column <table>.<col> does not exist", or the
+ *                     PGRST204 schema-cache phrasing). The health surface
+ *                     reports it exactly like a missing table.
+ *   • missing=false — the probe succeeded, or the error is NOT a column miss
+ *                     (RLS denial on a policy-gated table, missing table, or
+ *                     a transient) — tolerant by design so the gate never
+ *                     false-reds an environment it cannot fully see.
+ */
+export async function probeColumnPresence(client, table, column) {
+  let res;
+  try {
+    res = await client.from(table).select(column, { count: 'exact', head: true });
+  } catch (e) {
+    res = { error: { message: String(e?.message || e) } };
+  }
+  if (!res?.error) return { ok: true, missing: false, error: null };
+  const msg = String(res.error?.message || res.error || '');
+  const missing =
+    new RegExp('column[\\s\\S]{0,60}' + column + '[\\s\\S]{0,40}does not exist', 'i').test(msg) ||
+    /could not find the ['"][^'"]+['"] column of ['"][^'"]+['"] in the schema cache/i.test(msg);
+  return { ok: !missing, missing, error: missing ? msg : null };
+}
+
+/**
+ * Verify every critical column in the manifest exists. Mirrors
+ * verifyRequiredTables: { required, missing, ok }. `missing` entries use the
+ * "table.column" form the health endpoints surface as red rows.
+ */
+export async function verifyRequiredColumns(client, columns = REQUIRED_COLUMNS) {
+  const missing = [];
+  let required = 0;
+  for (const [table, cols] of Object.entries(columns)) {
+    for (const column of cols) {
+      required += 1;
+      const r = await probeColumnPresence(client, table, column);
+      if (r.missing) missing.push(table + '.' + column);
+    }
+  }
+  return { required, missing, ok: missing.length === 0 };
 }
 
 /** Convenience: apply pending migrations, then verify the health gate. */

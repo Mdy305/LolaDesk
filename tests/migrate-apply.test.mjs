@@ -26,9 +26,11 @@ import {
   isEstablished,
   isForcedMigration,
   loadMigrations,
+  probeColumnPresence,
+  verifyRequiredColumns,
   verifyRequiredTables,
 } from '../api/lib/migrate-all.js';
-import { REQUIRED_TABLES } from '../api/lib/schema-gate.js';
+import { REQUIRED_COLUMNS, REQUIRED_TABLES } from '../api/lib/schema-gate.js';
 
 // A stand-in migration set (order matters). Includes the inventory migration
 // that adds the three tables the gate depends on.
@@ -43,6 +45,15 @@ test('schema-gate manifest covers the gate tables it must own', () => {
     assert.ok(REQUIRED_TABLES.includes(t), t + ' must be part of the gate');
   }
   assert.equal(REQUIRED_TABLES.length, 26, 'gate tracks exactly 26 required tables');
+  for (const t of ['tenants', 'clients', 'calls', 'bookings', 'services', 'staff', 'booking_settings']) {
+    assert.ok(REQUIRED_COLUMNS[t]?.length > 0, t + ' has critical columns in the manifest');
+  }
+  assert.equal(REQUIRED_COLUMNS.tenants.includes('activation_status'), true,
+    'the activation_status-class column is part of the gate');
+  assert.equal(
+    Object.values(REQUIRED_COLUMNS).reduce((n, c) => n + c.length, 0), 33,
+    'gate tracks exactly 33 required columns'
+  );
 });
 
 test('isEstablished reflects whether the base tenants table exists', async () => {
@@ -162,6 +173,49 @@ test('force-marked migration runs even when a STALE ledger entry names it (recor
   assert.ok(execCalls.includes('20260901_force_tenant_activation_status.sql'), 'stale ledger cannot hide the repair');
   assert.ok(execCalls.includes('20260902_future_feature.sql'), 'absent migration is applied, never baselined');
   assert.ok(!execCalls.includes('20260812_calendar_core.sql'), 'real legacy migration never re-run');
+});
+
+test('verifyRequiredColumns: all critical columns present -> ok', async () => {
+  const fake = new FakeSupabase();
+  const gate = await verifyRequiredColumns(fake, REQUIRED_COLUMNS);
+  assert.equal(gate.ok, true);
+  assert.deepEqual(gate.missing, []);
+  assert.equal(gate.required, 33);
+});
+
+test('verifyRequiredColumns reports a missing column loudly, naming it', async () => {
+  const fake = new FakeSupabase();
+  // Exact PostgREST phrasing observed live when tenants.activation_status was
+  // swallowed by the baseline — the class of incident this gate exists for.
+  fake.failColumn('tenants', 'activation_status', 'column tenants.activation_status does not exist');
+  const gate = await verifyRequiredColumns(fake, REQUIRED_COLUMNS);
+  assert.equal(gate.ok, false);
+  assert.deepEqual(gate.missing, ['tenants.activation_status']);
+
+  // PGRST204 schema-cache phrasing is also recognized.
+  const fake2 = new FakeSupabase();
+  fake2.failColumn('bookings', 'confirmation_code', "Could not find the 'confirmation_code' column of 'bookings' in the schema cache");
+  const gate2 = await verifyRequiredColumns(fake2, REQUIRED_COLUMNS);
+  assert.ok(gate2.missing.includes('bookings.confirmation_code'));
+});
+
+test('verifyRequiredColumns is TOLERANT of RLS-blocked probes (never a false red)', async () => {
+  const fake = new FakeSupabase();
+  // A policy-gated table returns a permission error for the anon/limited role
+  // even when the column exists — the probe must treat that as present.
+  fake.failColumn('tenants', 'phone_number', 'permission denied for function auth_tenant');
+  fake.failColumn('tenants', 'slug', 'permission denied for function auth_tenant');
+  const gate = await verifyRequiredColumns(fake, REQUIRED_COLUMNS);
+  assert.equal(gate.ok, true, 'RLS denial is not a column miss');
+  assert.deepEqual(gate.missing, []);
+});
+
+test('probeColumnPresence classifies head-query errors precisely', async () => {
+  const fake = new FakeSupabase();
+  fake.failColumn('tenants', 'activation_status', 'column tenants.activation_status does not exist');
+  assert.equal((await probeColumnPresence(fake, 'tenants', 'activation_status')).missing, true);
+  assert.equal((await probeColumnPresence(fake, 'tenants', 'website_url')).missing, false, 'unfailed column is present');
+  assert.equal((await probeColumnPresence(fake, 'tenants', 'activation_status', { tolerant: true })).missing, true);
 });
 
 test('a failing migration fails loudly (never silently skipped)', async () => {

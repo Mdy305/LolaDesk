@@ -1,5 +1,6 @@
 import { db } from './lib/db.js';
-import { REQUIRED_TABLES } from './lib/schema-gate.js';
+import { REQUIRED_TABLES, REQUIRED_COLUMNS } from './lib/schema-gate.js';
+import { probeColumnPresence } from './lib/migrate-all.js';
 
 export default async function handler(req, res) {
   const c = db();
@@ -14,12 +15,32 @@ export default async function handler(req, res) {
     }
   }
   const missing = checks.filter((x) => !x.ok);
-  return res.status(missing.length ? 503 : 200).json({
-    ok: missing.length === 0,
-    ready: missing.length === 0,
+
+  // Column gate: a table can exist while the columns the product WRITES are
+  // missing (the tenants.activation_status incident of 20260901 — swallowed
+  // migration, green table gate, signups 500ing). Same head-query pattern,
+  // same "missing list" treatment: a missing column turns this endpoint red.
+  const columnChecks = [];
+  for (const [table, cols] of Object.entries(REQUIRED_COLUMNS)) {
+    for (const column of cols) {
+      const r = await probeColumnPresence(c, table, column);
+      columnChecks.push({ table, column, ok: r.ok, missing: r.missing, error: r.error });
+    }
+  }
+  const missingColumns = columnChecks.filter((x) => x.missing);
+  const columnRequired = Object.values(REQUIRED_COLUMNS).reduce((n, cols) => n + cols.length, 0);
+
+  const unhealthy = missing.length > 0 || missingColumns.length > 0;
+  return res.status(unhealthy ? 503 : 200).json({
+    ok: !unhealthy,
+    ready: !unhealthy,
     required: REQUIRED_TABLES.length,
     passed: checks.length - missing.length,
     missing: missing.map((x) => x.table),
     checks,
+    required_columns: columnRequired,
+    passed_columns: columnRequired - missingColumns.length,
+    missing_columns: missingColumns.map((x) => x.table + '.' + x.column),
+    column_checks: columnChecks,
   });
 }

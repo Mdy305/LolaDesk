@@ -109,6 +109,15 @@ export class FakeSupabase {
     this._failReads = this._failReads || new Map();
     this._failReads.set(table, message);
   }
+  // Test hook: make a single-column probe on a table return an error —
+  // simulates a MISSING COLUMN (PostgREST: "column <table>.<col> does not
+  // exist") while leaving the table-level existence probe untouched. The
+  // schema gate's column checks rely on this to fail loudly, exactly like
+  // failRead does for tables.
+  failColumn(table, column, message) {
+    this._failColumns = this._failColumns || new Map();
+    this._failColumns.set(table + '.' + column, message);
+  }
   clearFailures() {
     this._failWrites = new Map();
     this._failReads = new Map();
@@ -231,6 +240,10 @@ class FakeQueryBuilder {
 
     switch (this._action) {
       case 'select': {
+        const stringCols = Array.isArray(this._selectCols) ? this._selectCols.filter((c) => typeof c === 'string') : [];
+        const selectCol = stringCols.length === 1 ? stringCols[0] : null;
+        const failColumn = selectCol ? this.client._failColumns?.get(this.table + '.' + selectCol) : null;
+        if (failColumn) { result = { data: null, error: { message: failColumn } }; break; }
         const failRead = this.client._failReads?.get(this.table);
         if (failRead) { result = { data: null, error: { message: failRead } }; break; }
         let out = this.rows.filter(r => this._match(r));
