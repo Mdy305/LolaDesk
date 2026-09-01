@@ -228,3 +228,66 @@ test('POST whisper rejects empty / oversized text', async () => {
   await handler({ ...authReq(), method: 'POST', body: { conversation_id: 'c', text: 'x'.repeat(401) } }, res2);
   assert.equal(out2.code, 400);
 });
+
+test('GET closes a call whose insights already landed (insight_at) — panel returns to Standing by', async () => {
+  setupTenant([{
+    id: 'c-stuck', tenant_id: 't1', from_number: '+14155550123', to_number: '+14155550999',
+    direction: 'inbound', status: 'in_progress', created_at: new Date(Date.now() - 60000).toISOString(),
+    telnyx_call_control_id: 'ctrl-stuck', call_session_id: 'sess-stuck',
+    insight_at: new Date().toISOString() // insights delivered, but status never flipped
+  }]);
+  delete process.env.TELNYX_API_KEY;
+  delete process.env.TELNYX_ASSISTANT_ID;
+  const [res, out] = makeRes();
+  await handler(authReq(), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.active_calls.length, 0, 'a call with landed insights can no longer be live');
+  assert.equal(fake.all('calls')[0].status, 'completed', 'self-heal closed the stuck row');
+});
+
+test('GET closes a stale live call (>2h, no end signal) instead of streaming a ghost', async () => {
+  setupTenant([{
+    id: 'c-ghost', tenant_id: 't1', from_number: '+14155550777', direction: 'inbound', status: 'in_progress',
+    created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3h old, still "live"
+    telnyx_call_control_id: 'ctrl-ghost'
+  }]);
+  delete process.env.TELNYX_API_KEY;
+  delete process.env.TELNYX_ASSISTANT_ID;
+  const [res, out] = makeRes();
+  await handler(authReq(), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.active_calls.length, 0, 'ghost call is not streamed');
+  assert.equal(fake.all('calls')[0].status, 'completed', 'stale live row closed best-effort');
+});
+
+test('GET keeps a fresh live call streaming after the self-heal sweep (no false close)', async () => {
+  setupTenant([{
+    id: 'c-fresh', tenant_id: 't1', from_number: '+14155550123', to_number: '+14155550999',
+    direction: 'inbound', status: 'in_progress', created_at: new Date(Date.now() - 30000).toISOString(),
+    telnyx_call_control_id: 'ctrl-fresh', call_session_id: 'sess-fresh'
+  }]);
+  delete process.env.TELNYX_API_KEY;
+  delete process.env.TELNYX_ASSISTANT_ID;
+  const [res, out] = makeRes();
+  await handler(authReq(), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.active_calls.length, 1, 'fresh live call still streams');
+  assert.equal(out.body.active_calls[0].callSessionId, 'sess-fresh');
+  assert.equal(fake.all('calls')[0].status, 'in_progress', 'fresh row untouched by the sweep');
+});
+
+test('GET marks an ended Telnyx conversation correctly while a DB row stays non-active statuses-only', async () => {
+  // Regression guard: rows matching neither the live filter nor the sweep's
+  // closed shapes must behave exactly as before (list only active statuses).
+  setupTenant([
+    { id: 'c-done', tenant_id: 't1', from_number: '+14155550001', direction: 'inbound', status: 'completed', created_at: new Date().toISOString() },
+    { id: 'c-ring', tenant_id: 't1', from_number: '+14155550002', direction: 'inbound', status: 'ringing', created_at: new Date().toISOString() }
+  ]);
+  delete process.env.TELNYX_API_KEY;
+  delete process.env.TELNYX_ASSISTANT_ID;
+  const [res, out] = makeRes();
+  await handler(authReq(), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.active_calls.length, 1);
+  assert.equal(out.body.active_calls[0].status, 'ringing', 'non-live rows are excluded, ring state included');
+});

@@ -64,6 +64,13 @@ export default async function handler(req, res){
     // number is known. Best-effort: never let this break the 1s response.
     if(tenant?.id){
       const callControlId = body?.data?.payload?.call_control_id || body?.call_control_id || null;
+      // The assistant event family carries the session ids under
+      // data.payload.* (same shape as call.conversation.ended / the
+      // insights webhook). Parse defensively — call_control_id is the
+      // authoritative correlation key; the session id, when present, rides
+      // along and backfills at call end if this webhook lacked it.
+      const callSessionId = body?.data?.payload?.call_session_id || body?.data?.call_session_id || body?.call_session_id || null;
+      const callLegId = body?.data?.payload?.call_leg_id || body?.data?.call_leg_id || body?.call_leg_id || null;
       if(callControlId){
         try{
           const c2 = db();
@@ -73,6 +80,42 @@ export default async function handler(req, res){
             from_number: fromNumber || null,
             to_number: toNumber || null
           }, { onConflict: 'call_control_id' });
+        }catch(e){ /* never block the variable fetch */ }
+
+        // LIVE CALL ROW: persist the calls row at conversation start so the
+        // operator dashboard's Lola Live panel streams this call WHILE Lola
+        // is talking — not only after post-call insights land. Best-effort,
+        // exactly like call_sessions: a DB hiccup here must never break the
+        // 1s dynamic-variables response Telnyx is waiting on.
+        try{
+          const c3 = db();
+          if(c3){
+            const existing = await c3.from('calls')
+              .select('id,status,call_session_id')
+              .eq('telnyx_call_control_id', callControlId)
+              .maybeSingle()
+              .catch(() => ({ data: null }));
+            if(existing?.data?.id){
+              // Same call reconnecting (Telnyx retries the variable fetch)
+              // → bring the row back to live and backfill a session id if
+              // this request carries one the row never got.
+              const patch = { status: 'in_progress' };
+              if(callSessionId) patch.call_session_id = callSessionId;
+              if(callLegId) patch.call_leg_id = callLegId;
+              await c3.from('calls').update(patch).eq('id', existing.data.id);
+            } else {
+              await c3.from('calls').insert({
+                tenant_id: tenant.id,
+                from_number: fromNumber || null,
+                to_number: toNumber || null,
+                direction: 'inbound',
+                status: 'in_progress',
+                telnyx_call_control_id: callControlId,
+                call_session_id: callSessionId || null,
+                call_leg_id: callLegId || null
+              });
+            }
+          }
         }catch(e){ /* never block the variable fetch */ }
       }
     }

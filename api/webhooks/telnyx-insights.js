@@ -17,7 +17,7 @@
  * TELNYX_PUBLIC_KEY is set (production), skipped in non-production.
  */
 import { db } from '../lib/db.js';
-import { parseInsightsEvent, classifyResults, persistCallInsights } from '../lib/call-insights.js';
+import { parseInsightsEvent, classifyResults, persistCallInsights, markConversationEnded } from '../lib/call-insights.js';
 import { rawBody, verifyTelnyxSignature } from '../lib/telnyx-webhook-verify.js';
 
 export default async function handler(req, res) {
@@ -37,6 +37,16 @@ export default async function handler(req, res) {
   catch { return res.status(400).json({ error: 'Invalid JSON payload' }); }
 
   const parsed = parseInsightsEvent(event);
+
+  // call.conversation.ended — the assistant's hangup signal: close the live
+  // calls row (and backfill the session id / duration) so the operator's
+  // Lola Live panel returns to Standing by the moment the call ends.
+  if (parsed.eventType === 'call.conversation.ended') {
+    const result = await markConversationEnded(db(), parsed);
+    if (result.mode === 'error') console.error('[telnyx-insights] end-persist failed:', result.error);
+    return res.status(200).json({ ok: true, ...result });
+  }
+
   if (parsed.eventType && parsed.eventType !== 'call.conversation_insights.generated') {
     return res.status(200).json({ ok: true, ignored: 'unexpected event type', event: parsed.eventType });
   }

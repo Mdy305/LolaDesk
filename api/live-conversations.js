@@ -24,6 +24,10 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 const ACTIVE_STATUS = ['ringing', 'in_progress', 'processing', 'dialing', 'connected'];
+// A calls row can only stay live for so long. Past this, no webhook can have
+// legitimately missed it twice — close it best-effort so the panel returns to
+// Standing by instead of streaming a ghost call forever.
+const LIVE_MAX_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function telnyxKey() { return process.env.TELNYX_API_KEY || ''; }
 function assistantId() { return process.env.TELNYX_ASSISTANT_ID || ''; }
@@ -132,13 +136,32 @@ export default async function handler(req, res) {
   try {
     const { data = [] } = await c
       .from('calls')
-      .select('id,from_number,to_number,direction,status,started_at,created_at,duration_seconds,telnyx_call_control_id,call_session_id,transcript,summary')
+      .select('id,from_number,to_number,direction,status,started_at,created_at,duration_seconds,telnyx_call_control_id,call_session_id,transcript,summary,insight_at')
       .eq('tenant_id', tid)
       .in('status', ACTIVE_STATUS)
       .order('created_at', { ascending: false })
       .limit(25);
 
-    const activeCalls = (data || []).map((x) => {
+    // Self-heal: with the call-start/ended webhooks this row normally flips
+    // to completed itself — but if a webhook delivery drops, close the two
+    // provably-dead shapes here (best-effort) instead of streaming forever:
+    //  • insights already landed (insight_at) but the status stuck live, or
+    //  • the row has outlived LIVE_MAX_MS with no end signal at all.
+    const nowMs = Date.now();
+    const closedIds = new Set();
+    for (const x of (data || [])) {
+      const live = ACTIVE_STATUS.includes(String(x.status || ''));
+      if (!live) continue;
+      const insightLanded = !!x.insight_at;
+      const t = new Date(x.created_at || x.started_at || 0).getTime();
+      const stale = Number.isFinite(t) && t > 0 && (nowMs - t) > LIVE_MAX_MS;
+      if (insightLanded || stale) {
+        closedIds.add(x.id);
+        try { await c.from('calls').update({ status: 'completed' }).eq('id', x.id); } catch { /* non-fatal */ }
+      }
+    }
+
+    const activeCallsRaw = (data || []).map((x) => {
       const startedAt = x.started_at || x.created_at || null;
       return {
         id: x.id,
@@ -158,6 +181,10 @@ export default async function handler(req, res) {
         summary: x.summary || null
       };
     });
+
+    // The select ran BEFORE the self-heal sweep — re-filter so a call that
+    // was just closed this poll never renders as active.
+    const activeCalls = activeCallsRaw.filter((x) => ACTIVE_STATUS.includes(x.status) && !closedIds.has(x.id));
 
     const assistant = assistantId();
     const { configured, conversations } = await listConversations(assistant);

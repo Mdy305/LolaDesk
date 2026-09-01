@@ -323,3 +323,152 @@ test('agent-variables with no last_call memory stays neutral (no phantom brief)'
   const vars = res.body.dynamic_variables;
   assert.ok(!String(vars.caller_brief || '').includes('Last call:'), 'no memory → no last-call tail');
 });
+
+// ── Lola Live: call-start persistence + end cycle ──────────────────────────
+// agent-variables (the pre-speech webhook) now persists a live calls row so
+// the operator dashboard can stream the conversation while Lola talks, and
+// the call.conversation.ended webhook closes it so the panel returns to
+// Standing by. These tests prove the full start → live → end cycle.
+
+function avReq(payload = {}) {
+  return {
+    method: 'POST',
+    body: JSON.stringify({ data: { payload: { to: '+14107848940', from: '+19294568227', ...payload } } })
+  };
+}
+function seedSalon() {
+  fake.seed('tenant_numbers', [{ tenant_id: TENANT, phone_number: '+14107848940', status: 'active' }]);
+  fake.seed('tenants', [{ id: TENANT, name: 'MMΛ Salon', slug: 'mmsalon', phone_number: '+14107848940' }]);
+}
+
+test('agent-variables persists the calls row at call start (status in_progress + session ids)', async () => {
+  fresh();
+  seedSalon();
+  const { default: av } = await import('../api/agent-variables.js');
+  const res = resMock();
+  await av(avReq({ call_control_id: 'v3:ctrl-live1', call_session_id: 'sess-live1', call_leg_id: 'leg-live1' }), res);
+  assert.equal(res.statusCode, 200);
+  const calls = fake.all('calls');
+  assert.equal(calls.length, 1);
+  const row = calls[0];
+  assert.equal(row.tenant_id, TENANT);
+  assert.equal(row.telnyx_call_control_id, 'v3:ctrl-live1');
+  assert.equal(row.call_session_id, 'sess-live1');
+  assert.equal(row.call_leg_id, 'leg-live1');
+  assert.equal(row.status, 'in_progress', 'call row is live while Lola talks');
+  assert.equal(row.direction, 'inbound');
+  assert.equal(row.from_number, '+19294568227');
+  assert.equal(row.to_number, '+14107848940');
+});
+
+test('agent-variables persists the calls row even when the payload lacks a session id (control-id keyed)', async () => {
+  fresh();
+  seedSalon();
+  const { default: av } = await import('../api/agent-variables.js');
+  const res = resMock();
+  await av(avReq({ call_control_id: 'v3:ctrl-nosess' }), res);
+  assert.equal(res.statusCode, 200);
+  const calls = fake.all('calls');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].telnyx_call_control_id, 'v3:ctrl-nosess');
+  assert.equal(calls[0].call_session_id, null, 'session id unknown at start; backfills at end');
+  assert.equal(calls[0].status, 'in_progress');
+});
+
+test('agent-variables brings a previously-closed call row back to in_progress on reconnect', async () => {
+  fresh();
+  seedSalon();
+  fake.seed('calls', [{
+    id: 'call-re', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-re',
+    status: 'completed', call_session_id: null, from_number: '+19294568227', to_number: '+14107848940'
+  }]);
+  const { default: av } = await import('../api/agent-variables.js');
+  const res = resMock();
+  // Telnyx retries the variable fetch — same control id, now with a session id.
+  await av(avReq({ call_control_id: 'v3:ctrl-re', call_session_id: 'sess-re' }), res);
+  assert.equal(res.statusCode, 200);
+  const rows = fake.all('calls');
+  assert.equal(rows.length, 1, 'no duplicate row on reconnect');
+  assert.equal(rows[0].status, 'in_progress', 'reconnect flips the row back live');
+  assert.equal(rows[0].call_session_id, 'sess-re', 'backfills the session id the row never got');
+});
+
+test('call.conversation.ended webhook closes the live calls row and backfills ids + duration', async () => {
+  fresh();
+  fake.seed('tenant_numbers', [{ tenant_id: TENANT, phone_number: '+14107848940', status: 'active' }]);
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-end1', tenant_id: TENANT, from_number: '+19294568227', to_number: '+14107848940' }]);
+  fake.seed('calls', [
+    { id: 'call-end1', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-end1', status: 'in_progress', call_session_id: null, duration_seconds: null }
+  ]);
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({
+      data: {
+        event_type: 'call.conversation.ended',
+        id: 'evt-end1',
+        occurred_at: '2026-08-31T12:00:00Z',
+        payload: {
+          call_control_id: 'v3:ctrl-end1', call_session_id: 'sess-end1', call_leg_id: 'leg-end1', duration_sec: 95
+        }
+      }
+    })
+  };
+  const res = resMock();
+  await handler(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.mode, 'closed');
+  assert.equal(res.body.closed, 1);
+  const row = fake.all('calls')[0];
+  assert.equal(row.status, 'completed', 'hangup closes the call → panel returns to Standing by');
+  assert.equal(row.call_session_id, 'sess-end1');
+  assert.equal(row.call_leg_id, 'leg-end1');
+  assert.equal(row.duration_seconds, 95);
+});
+
+test('call.conversation.ended never rewrites a terminal call row', async () => {
+  fresh();
+  fake.seed('call_sessions', [{ call_control_id: 'v3:ctrl-term', tenant_id: TENANT, from_number: '+19294568227', to_number: '+14107848940' }]);
+  fake.seed('calls', [
+    { id: 'call-live', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-term', status: 'in_progress' },
+    { id: 'call-booked', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-term', status: 'booked' }
+  ]);
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({
+      data: { event_type: 'call.conversation.ended', id: 'evt-term', payload: { call_control_id: 'v3:ctrl-term' } }
+    })
+  };
+  const res = resMock();
+  await handler(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.mode, 'closed');
+  assert.equal(res.body.closed, 1, 'only the live row is closed');
+  const rows = fake.all('calls');
+  assert.equal(rows.find(r => r.id === 'call-live').status, 'completed');
+  assert.equal(rows.find(r => r.id === 'call-booked').status, 'booked', 'terminal row untouched');
+});
+
+test('call.conversation.ended acknowledges events with no call ids (no crash, 200)', async () => {
+  fresh();
+  const req = {
+    method: 'POST',
+    body: JSON.stringify({ data: { event_type: 'call.conversation.ended', id: 'evt-void' } })
+  };
+  const res = resMock();
+  await handler(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.mode, 'ignored');
+});
+
+test('persistCallInsights closes a LIVE calls row when insights land (status → completed)', async () => {
+  fresh();
+  fake.seed('calls', [{ id: 'call-lv', tenant_id: TENANT, telnyx_call_control_id: 'v3:ctrl-1', status: 'in_progress' }]);
+  const parsed = parseInsightsEvent(eventBody());
+  const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
+  assert.equal(r.mode, 'updated');
+  const row = fake.all('calls')[0];
+  assert.equal(row.status, 'completed', 'insights fire at conversation end — a live row must never stay live');
+  assert.equal(row.summary, 'Booked a balayage for Friday at 2pm.');
+});

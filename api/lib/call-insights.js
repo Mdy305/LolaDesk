@@ -25,6 +25,7 @@ export function parseInsightsEvent(body) {
     callControlId: payload.call_control_id || null,
     callSessionId: payload.call_session_id || null,
     callLegId: payload.call_leg_id || null,
+    durationSec: payload.duration_sec || null,
     results: Array.isArray(payload.results)
       ? payload.results.map(r => ({ insightId: r?.insight_id || null, result: r?.result ?? null }))
       : []
@@ -115,6 +116,10 @@ export async function persistCallInsights(client, parsed, classified) {
   if (eventId) patch.insight_id = eventId;
   patch.insight_at = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
 
+  // The insights event fires at conversation end — an existing live row
+  // must be closed too, or the Lola Live panel would stream it forever.
+  if (existing?.id && !patch.status) patch.status = 'completed';
+
   let callId = null;
   try {
     if (existing?.id) {
@@ -167,4 +172,43 @@ export async function persistCallInsights(client, parsed, classified) {
   }
 
   return { mode: existing?.id ? 'updated' : 'created', callId };
+}
+
+// ── end ─────────────────────────────────────────────────────────────────
+// call.conversation.ended — the assistant's hangup signal. Payload carries the
+// full id trio (call_control_id / call_session_id / call_leg_id) plus duration.
+// Gracefully closes matching live calls rows so the operator's Lola Live panel
+// returns to Standing by the moment the call ends. Never crashes and never
+// rewrites rows that are already terminal (completed / answered / booked / …).
+export async function markConversationEnded(client, parsed) {
+  if (!client) return { mode: 'ignored', reason: 'no database' };
+  const { callControlId, callSessionId, callLegId, durationSec } = parsed;
+  if (!callControlId && !callSessionId) return { mode: 'ignored', reason: 'no call identifiers' };
+
+  try {
+    const q = client.from('calls').select('id,status');
+    if (callControlId && callSessionId) q.or(`telnyx_call_control_id.eq.${callControlId},call_session_id.eq.${callSessionId}`);
+    else if (callControlId) q.eq('telnyx_call_control_id', callControlId);
+    else q.eq('call_session_id', callSessionId);
+    const { data = [], error } = await q.limit(25);
+    if (error) return { mode: 'error', error: String(error.message || error) };
+    if (!data.length) return { mode: 'ignored', reason: 'no matching call row' };
+
+    const LIVE_STATUS = ['ringing', 'in_progress', 'processing', 'dialing', 'connected'];
+    const patch = { status: 'completed' };
+    if (callSessionId) patch.call_session_id = callSessionId;
+    if (callLegId) patch.call_leg_id = callLegId;
+    if (durationSec != null) patch.duration_seconds = Number(durationSec) || null;
+
+    let closed = 0;
+    for (const row of data) {
+      const st = String(row.status || '');
+      if (st && !LIVE_STATUS.includes(st)) continue; // already terminal — never touch
+      await client.from('calls').update(patch).eq('id', row.id);
+      closed += 1;
+    }
+    return { mode: closed ? 'closed' : 'ignored', closed, reason: closed ? undefined : 'already terminal' };
+  } catch (e) {
+    return { mode: 'error', error: String(e && e.message || e) };
+  }
 }
