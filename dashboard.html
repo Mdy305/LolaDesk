@@ -713,6 +713,68 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   .desk-item{grid-template-columns:auto 1fr}
   .desk-actions{grid-column:2}
 }
+
+/* Lola Live — live call state + whisper steering (lola-live.js) */
+.lola-live{
+  padding:16px 18px;margin-bottom:18px;
+  background:linear-gradient(135deg,rgba(255,255,255,.02),rgba(140,255,190,.04));
+  border:.5px solid var(--border);border-radius:var(--r-md,14px);
+}
+.lola-live-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.lola-live-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.lola-live-pill{font-size:10px;padding:4px 9px;border-radius:999px;background:var(--surface2);color:var(--text3);border:.5px solid var(--border)}
+.lola-live-pill[data-tone="live"]{background:rgba(204,255,0,.12);color:var(--accent2);border-color:rgba(204,255,0,.35)}
+.lola-live-pill[data-tone="ready"]{background:rgba(140,255,190,.1);color:#c8ffe4;border-color:rgba(140,255,190,.3)}
+.lola-live-meta{font-size:11px;color:var(--text3)}
+.lola-live-body{display:grid;grid-template-columns:minmax(0,300px) 1fr;gap:14px}
+.lola-live-calls{display:flex;flex-direction:column;gap:6px;min-height:64px}
+.lola-live-empty{font-size:12px;color:var(--text3);padding:6px 2px}
+.live-call{
+  display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:11px;
+  background:var(--surface2);border:.5px solid var(--border);cursor:pointer;
+  transition:border-color .15s;
+}
+.live-call:hover{border-color:rgba(204,255,0,.4)}
+.live-call.active{border-color:var(--accent)}
+.live-call-dir{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex:0 0 auto}
+.live-call-dir.inbound{background:rgba(140,255,190,.12);color:#c8ffe4}
+.live-call-dir.outbound{background:rgba(204,255,0,.1);color:var(--accent2)}
+.live-call-who{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-call-dur{font-variant-numeric:tabular-nums;font-size:12px;color:var(--text2)}
+.live-call-status{font-size:10px;text-transform:capitalize;color:var(--text3)}
+.lola-live-feed{
+  border:.5px solid var(--border);border-radius:12px;background:rgba(0,0,0,.22);
+  display:flex;flex-direction:column;min-height:170px;overflow:hidden;
+}
+.live-feed-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:.5px solid var(--border);font-size:12px;font-weight:500}
+.live-feed-hint{font-size:10.5px;color:var(--text3);font-weight:400}
+.live-feed-scroll{flex:1;padding:10px 12px;overflow-y:auto;max-height:210px;display:flex;flex-direction:column;gap:7px}
+.live-feed-silent{font-size:12px;color:var(--text3);margin:auto;text-align:center}
+.live-msg{max-width:78%;display:flex;flex-direction:column;gap:2px}
+.live-msg.client{align-self:flex-start}
+.live-msg.lola{align-self:flex-end;align-items:flex-end}
+.live-msg-who{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}
+.live-msg-body{
+  font-size:12.5px;line-height:1.45;padding:7px 10px;border-radius:11px;
+  background:var(--surface2);border:.5px solid var(--border);color:var(--text1);
+}
+.live-msg.lola .live-msg-body{background:rgba(204,255,0,.1);border-color:rgba(204,255,0,.3);color:var(--accent2)}
+.live-msg.client .live-msg-body{background:rgba(255,255,255,.05)}
+.live-whisper{display:flex;gap:8px;padding:9px 12px;border-top:.5px solid var(--border)}
+.live-whisper input{
+  flex:1;background:var(--surface2);border:.5px solid var(--border);border-radius:9px;
+  padding:8px 11px;font-size:12.5px;color:var(--text1);outline:none;
+}
+.live-whisper input:focus{border-color:var(--accent)}
+.live-whisper input:disabled{opacity:.45}
+.live-whisper button{
+  background:var(--accent);color:#08121a;border:none;border-radius:9px;padding:0 14px;
+  font-size:12px;font-weight:650;cursor:pointer;
+}
+.live-whisper button:disabled{opacity:.45;cursor:default}
+.live-whisper-hint{font-size:10.5px;color:var(--text3);padding:0 12px 9px;line-height:1.4}
+@media(max-width:720px){.lola-live-body{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -982,6 +1044,34 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       <div class="desk-queue" id="deskQueue"></div>
     </section>
 
+    <section class="lola-live" id="lolaLivePanel">
+      <div class="lola-live-head">
+        <div class="lola-live-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="19" cy="18" r="3"/><path d="M19 15v1m0 4v1"/></svg>
+          Lola Live
+          <span class="lola-live-pill" id="liveStatePill" data-tone="idle">Connecting…</span>
+        </div>
+        <div class="lola-live-meta" id="liveMeta">Live call state</div>
+      </div>
+      <div class="lola-live-body">
+        <div class="lola-live-calls" id="liveCalls">
+          <div class="lola-live-empty" id="liveEmpty">No active calls — Lola is standing by on your lines.</div>
+        </div>
+        <div class="lola-live-feed" id="liveFeed">
+          <div class="live-feed-head">
+            <span>Conversation</span>
+            <span class="live-feed-hint">Live transcript + steering</span>
+          </div>
+          <div class="live-feed-scroll" id="liveTranscript"></div>
+          <div class="live-whisper">
+            <input id="whisperInput" placeholder="Whisper to Lola mid-call…" aria-label="Whisper to Lola" />
+            <button id="whisperBtn" onclick="window.lolaLive && lolaLive.whisper()">Whisper</button>
+          </div>
+          <div class="live-whisper-hint" id="whisperHint" style="display:none"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="res-panel">
       <div class="res-head">
         <div class="res-title">
@@ -1144,6 +1234,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 <script src="lola-voice.js"></script>
 <script src="lola-voice-router.js"></script>
 <script src="lola-data.js"></script>
+<script src="lola-live-conversation.js"></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
 (async function(){
