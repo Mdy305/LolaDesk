@@ -14,20 +14,38 @@
 import { synthesize as elevenSynthesize, isConfigured as elevenConfigured } from './lib/elevenlabs.js';
 
 const TELNYX_TTS_URL = 'https://api.telnyx.com/v2/text-to-speech/speech';
+const TELNYX_VOICES_URL = 'https://api.telnyx.com/v2/text-to-speech/voices';
 
 function telnyxTtsConfigured() {
   return !!process.env.TELNYX_API_KEY;
 }
 
-/** Telnyx standalone TTS. Returns an audio Buffer (binary_output). */
-async function telnyxSynthesize(text, { signal } = {}) {
-  const apiKey = process.env.TELNYX_API_KEY;
-  if (!apiKey) throw new Error('Missing TELNYX_API_KEY');
-  const body = {
-    text: String(text).slice(0, 2500),
-    voice: process.env.TELNYX_TTS_VOICE || 'Telnyx.Ultra.Clara',
-    output_type: 'binary_output'
-  };
+/**
+ * Telnyx standalone TTS. Returns { audio: Buffer, contentType }.
+ * Self-healing voice: if the configured/default voice id is rejected, we
+ * ask Telnyx for its valid voice list once and retry with a real English
+ * voice — the id is then cached for the life of the lambda instance.
+ */
+let cachedTelnyxVoice = null;
+
+async function pickTelnyxVoice(apiKey, signal) {
+  if (cachedTelnyxVoice) return cachedTelnyxVoice;
+  const r = await fetch(TELNYX_VOICES_URL + '?provider=telnyx', {
+    signal,
+    headers: { Authorization: 'Bearer ' + apiKey, Accept: 'application/json' }
+  });
+  if (!r.ok) return null;
+  const data = await r.json().catch(() => null);
+  const voices = Array.isArray(data?.voices) ? data.voices : [];
+  const english = voices.filter(v => /^en/i.test(String(v.language || 'en')));
+  const pick = english.find(v => /clara|female|woman/i.test(String(v.name || v.voice_id || '')))
+    || english[0] || voices[0];
+  if (!pick?.voice_id) return null;
+  cachedTelnyxVoice = pick.voice_id;
+  return cachedTelnyxVoice;
+}
+
+async function telnyxPost(text, voice, apiKey, signal) {
   const r = await fetch(TELNYX_TTS_URL, {
     method: 'POST',
     signal,
@@ -36,14 +54,31 @@ async function telnyxSynthesize(text, { signal } = {}) {
       'Content-Type': 'application/json',
       Accept: 'audio/mpeg'
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ text: String(text).slice(0, 2500), voice, output_type: 'binary_output' })
   });
   if (!r.ok) {
     let detail = '';
     try { detail = await r.text(); } catch {}
-    throw new Error(`Telnyx TTS ${r.status}: ${detail.slice(0, 300)}`);
+    const err = new Error(`Telnyx TTS ${r.status}: ${detail.slice(0, 300)}`);
+    err.status = r.status;
+    throw err;
   }
   return { audio: Buffer.from(await r.arrayBuffer()), contentType: (r.headers && r.headers.get && r.headers.get('content-type')) || 'audio/mpeg' };
+}
+
+async function telnyxSynthesize(text, { signal } = {}) {
+  const apiKey = process.env.TELNYX_API_KEY;
+  if (!apiKey) throw new Error('Missing TELNYX_API_KEY');
+  const primary = process.env.TELNYX_TTS_VOICE || 'Telnyx.Ultra.Clara';
+  try {
+    return await telnyxPost(text, primary, apiKey, signal);
+  } catch (e) {
+    if (e.name === 'AbortError' || ![400, 404, 422, 500].includes(e.status)) throw e;
+    // Voice id rejected / provider hiccup — resolve a real voice and retry once.
+    const resolved = await pickTelnyxVoice(apiKey, signal).catch(() => null);
+    if (!resolved || resolved === primary) throw e;
+    return telnyxPost(text, resolved, apiKey, signal);
+  }
 }
 
 export default async function handler(req, res) {
