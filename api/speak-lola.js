@@ -27,27 +27,60 @@ function telnyxTtsConfigured() {
  * voice — the id is then cached for the life of the lambda instance.
  */
 let cachedTelnyxVoice = null;
+let cachedTelnyxVoiceEmpty = false;
 
-async function pickTelnyxVoice(apiKey, signal) {
-  if (cachedTelnyxVoice) return cachedTelnyxVoice;
-  const r = await fetch(TELNYX_VOICES_URL + '?provider=telnyx', {
+function extractVoices(data) {
+  if (Array.isArray(data?.voices)) return data.voices;
+  if (Array.isArray(data?.data)) return data.data; // some list endpoints wrap in data
+  return [];
+}
+
+async function listVoicesOnce(apiKey, providerFilter, signal) {
+  const url = TELNYX_VOICES_URL + (providerFilter ? '?provider=' + providerFilter : '');
+  const r = await fetch(url, {
     signal,
     headers: { Authorization: 'Bearer ' + apiKey, Accept: 'application/json' }
   });
   if (!r.ok) {
     let detail = '';
     try { detail = await r.text(); } catch {}
-    const err = new Error(`Telnyx voices list ${r.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`Telnyx voices list${providerFilter ? ' (' + providerFilter + ')' : ''} ${r.status}: ${detail.slice(0, 200)}`);
     err.status = r.status;
     throw err;
   }
   const data = await r.json().catch(() => null);
-  const voices = Array.isArray(data?.voices) ? data.voices : [];
-  const english = voices.filter(v => /^en/i.test(String(v.language || 'en')));
-  const pick = english.find(v => /clara|female|woman/i.test(String(v.name || v.voice_id || '')))
-    || english[0] || voices[0];
-  if (!pick?.voice_id) return null;
-  cachedTelnyxVoice = pick.voice_id;
+  return extractVoices(data);
+}
+
+async function pickTelnyxVoice(apiKey, signal) {
+  if (cachedTelnyxVoice) return cachedTelnyxVoice;
+  if (cachedTelnyxVoiceEmpty) return null;
+  // Prefer the Telnyx provider, but any provider on the account works —
+  // AWS/Azure/Minimax voices are on the same key.
+  let voices = [];
+  try {
+    voices = await listVoicesOnce(apiKey, 'telnyx', signal);
+  } catch (e) {
+    if (![404, 400].includes(e.status)) throw e;
+  }
+  if (!voices.length) {
+    try {
+      voices = await listVoicesOnce(apiKey, '', signal);
+    } catch (e) {
+      e.message = '[telnyx filter empty; all-provider list failed] ' + e.message;
+      throw e;
+    }
+  }
+  if (!voices.length) {
+    cachedTelnyxVoiceEmpty = true; // account has zero TTS voices — don't re-ask every request
+    return null;
+  }
+  const english = voices.filter(v => /^en/i.test(String(v.language || 'en-US')));
+  const pool = english.length ? english : voices;
+  const pick = pool.find(v => /clara|female|woman|amy|joanna|salli|nova/i.test(String(v.name || v.voice_id || '')))
+    || pool[0];
+  if (!pick?.voice_id && !pick?.name) return null;
+  cachedTelnyxVoice = String(pick.voice_id || pick.name);
   return cachedTelnyxVoice;
 }
 
@@ -89,7 +122,9 @@ async function telnyxSynthesize(text, { signal } = {}) {
       throw listErr;
     }
     if (!resolved || resolved === primary) {
-      e.message = `[voice=${primary}; no alternative resolved] ` + e.message;
+      e.message = cachedTelnyxVoiceEmpty
+        ? `[voice=${primary}; account has zero TTS voices listed] ` + e.message
+        : `[voice=${primary}; no alternative resolved] ` + e.message;
       throw e;
     }
     try {
