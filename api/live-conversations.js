@@ -18,7 +18,7 @@
  * call degrades gracefully: if the key or assistant isn't configured we
  * still report the live call state from the DB with telnyx_ready:false.
  */
-import { db, logMessage } from './lib/db.js';
+import { db, logMessage, e164 } from './lib/db.js';
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 
@@ -88,6 +88,62 @@ async function whisper(conversationId, text) {
   return r.json();
 }
 
+/**
+ * Take over an active call: transfer the live Telnyx leg to the owner's
+ * phone via Call Control, so the owner can talk to the client directly
+ * while Lola steps back. The AI leg is released by Telnyx when the
+ * transfer completes; the existing end webhooks then close the calls row.
+ */
+async function takeoverCall({ c, tenant, body }) {
+  const key = telnyxKey();
+  if (!key) return { error: 'telnyx_not_configured', status: 503 };
+
+  const callId = String(body.call_id || '').trim();
+  let row = null;
+  try {
+    if (callId) {
+      const { data } = await c.from('calls').select('*').eq('id', callId).eq('tenant_id', tenant.id).limit(1);
+      row = data?.[0] || null;
+    } else {
+      const { data } = await c.from('calls')
+        .select('*').eq('tenant_id', tenant.id)
+        .in('status', ACTIVE_STATUS)
+        .order('created_at', { ascending: false }).limit(1);
+      row = data?.[0] || null;
+    }
+  } catch (e) { return { error: 'call_lookup_failed', status: 500, detail: String(e?.message || e) }; }
+  if (!row || !ACTIVE_STATUS.includes(String(row.status || ''))) {
+    return { error: 'no_active_call', status: 409 };
+  }
+  const controlId = row.telnyx_call_control_id;
+  if (!controlId) {
+    return { error: 'no_call_control', status: 409, detail: 'This call has no Telnyx call-control id yet — try again in a second.' };
+  }
+
+  const rawTarget = String(body.to_number || '').trim();
+  const to = e164(rawTarget || tenant.operator_phone || '');
+  if (!to) {
+    return { error: 'no_owner_phone', status: 409, detail: 'Set your operator phone in Settings (Call handling) to take over calls.' };
+  }
+
+  const r = await fetch(`${TELNYX}/calls/${encodeURIComponent(controlId)}/actions/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ to, from: tenant.phone_number || row.to_number || undefined })
+  });
+  if (!r.ok) {
+    let detail = '';
+    try { detail = (await r.json()).error?.message || ''; } catch { /* ignore */ }
+    const err = new Error(`telnyx_rejected:${r.status}`);
+    err.data = { status: r.status, detail };
+    throw err;
+  }
+  try {
+    await logMessage({ tenantId: tenant.id, role: 'owner', agent: 'lola', content: `Owner took over the call with ${row.from_number || 'the caller'} — transferred to ${to}.` });
+  } catch { /* non-fatal */ }
+  return { ok: true, transferred: { callId: row.id, to, callControlId: controlId } };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -105,6 +161,16 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = (typeof req.body === 'string') ? (() => { try { return JSON.parse(req.body); } catch { return {}; } })() : (req.body || {});
+    if (String(body.action || '').trim() === 'takeover') {
+      try {
+        const out = await takeoverCall({ c, tenant, body });
+        if (out.error) return res.status(out.status || 400).json({ ok: false, error: out.error, detail: out.detail });
+        return res.status(200).json(out);
+      } catch (e) {
+        return res.status(e?.data?.status && e.data.status >= 400 && e.data.status < 500 ? 502 : 503)
+          .json({ ok: false, error: 'takeover_failed', detail: e?.data?.detail || String(e?.message || e) });
+      }
+    }
     const text = String(body.text || '').trim();
     if (!text || text.length > 400) return res.status(400).json({ error: 'text (1–400 chars) is required' });
     if (!telnyxKey() || !assistantId()) return res.status(503).json({ error: 'telnyx_not_configured', ok: false });

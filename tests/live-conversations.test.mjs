@@ -55,10 +55,10 @@ function okFetch(jsonBody, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => jsonBody };
 }
 
-function setupTenant(calls = []) {
+function setupTenant(calls = [], tenantExtra = {}) {
   fake.reset();
   fake.auth.users.set('tok-1', { id: 'u1', email: 'owner@x.com', user_metadata: {} });
-  fake.seed('tenants', [{ id: 't1', name: 'Salon One', slug: 'salon-one', owner_email: 'owner@x.com' }]);
+  fake.seed('tenants', [{ id: 't1', name: 'Salon One', slug: 'salon-one', owner_email: 'owner@x.com', ...tenantExtra }]);
   fake.seed('calls', calls);
 }
 
@@ -290,4 +290,103 @@ test('GET marks an ended Telnyx conversation correctly while a DB row stays non-
   assert.equal(out.code, 200);
   assert.equal(out.body.active_calls.length, 1);
   assert.equal(out.body.active_calls[0].status, 'ringing', 'non-live rows are excluded, ring state included');
+});
+
+test('POST takeover without a session -> 401 (tenant-scoped)', async () => {
+  setupTenant();
+  process.env.TELNYX_API_KEY = 'test-key';
+  const [res, out] = makeRes();
+  await handler({ ...anonReq, method: 'POST', body: { action: 'takeover', call_id: 'c1' } }, res);
+  assert.equal(out.code, 401);
+});
+
+test('POST takeover transfers the live call to the owner phone via Call Control and audits it', async () => {
+  setupTenant([{
+    id: 'c1', tenant_id: 't1', from_number: '+14155550123', to_number: '+14155550999',
+    direction: 'inbound', status: 'in_progress', created_at: new Date().toISOString(),
+    telnyx_call_control_id: 'ctrl-1'
+  }], { operator_phone: '+16505550100' });
+  process.env.TELNYX_API_KEY = 'test-key';
+  let hit = null;
+  stubFetch(async (url, opts = {}) => {
+    hit = { url: String(url), opts };
+    assert.ok(String(url).endsWith('/v2/calls/ctrl-1/actions/transfer'), 'POSTs to the Telnyx transfer action');
+    assert.equal(opts.method, 'POST');
+    const body = JSON.parse(opts.body);
+    assert.equal(body.to, '+16505550100', 'targets the owner operator phone');
+    assert.equal(body.from, '+14155550999', 'from is the call dialed number');
+    assert.ok(String(opts.headers?.Authorization || '').startsWith('Bearer '));
+    return okFetch({ data: {} });
+  });
+  const [res, out] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'c1' } }, res);
+  restoreFetch();
+  assert.equal(out.code, 200);
+  assert.equal(out.body.ok, true);
+  assert.equal(out.body.transferred.callId, 'c1');
+  assert.equal(out.body.transferred.to, '+16505550100');
+  assert.equal(out.body.transferred.callControlId, 'ctrl-1');
+  const audited = fake.all('messages').filter((m) => m.role === 'owner');
+  assert.equal(audited.length, 1);
+  assert.match(audited[0].content, /took over the call/);
+});
+
+test('POST takeover without call_id picks the newest active call', async () => {
+  setupTenant([
+    { id: 'old', tenant_id: 't1', from_number: '+14155550100', to_number: '+14155550999', direction: 'inbound', status: 'in_progress', created_at: '2026-08-30T10:00:00Z', telnyx_call_control_id: 'ctrl-old' },
+    { id: 'new', tenant_id: 't1', from_number: '+14155550101', to_number: '+14155550999', direction: 'inbound', status: 'in_progress', created_at: '2026-08-31T10:00:00Z', telnyx_call_control_id: 'ctrl-new' }
+  ], { operator_phone: '+16505550100' });
+  process.env.TELNYX_API_KEY = 'test-key';
+  stubFetch(async (url) => {
+    assert.ok(String(url).endsWith('/actions/transfer'));
+    return okFetch({ data: {} });
+  });
+  const [res, out] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover' } }, res);
+  restoreFetch();
+  assert.equal(out.code, 200);
+  assert.equal(out.body.transferred.callId, 'new');
+});
+
+test('POST takeover -> 409 no_active_call, no_call_control, and no_owner_phone', async () => {
+  setupTenant([
+    { id: 'done', tenant_id: 't1', from_number: '+14155550123', status: 'completed', created_at: new Date().toISOString(), telnyx_call_control_id: 'ctrl-done' },
+    { id: 'nolc', tenant_id: 't1', from_number: '+14155550124', status: 'in_progress', created_at: new Date().toISOString() }
+  ], { operator_phone: '+16505550100' });
+  process.env.TELNYX_API_KEY = 'test-key';
+  const [res, out] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'done' } }, res);
+  assert.equal(out.code, 409);
+  assert.equal(out.body.error, 'no_active_call');
+
+  const [res2, out2] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'nolc' } }, res2);
+  assert.equal(out2.code, 409);
+  assert.equal(out2.body.error, 'no_call_control');
+
+  setupTenant([{ id: 'c9', tenant_id: 't1', from_number: '+14155550125', status: 'in_progress', created_at: new Date().toISOString(), telnyx_call_control_id: 'ctrl-9' }]);
+  process.env.TELNYX_API_KEY = 'test-key';
+  const [res3, out3] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'c9' } }, res3);
+  assert.equal(out3.code, 409);
+  assert.equal(out3.body.error, 'no_owner_phone');
+});
+
+test('POST takeover -> 503 when Telnyx is not configured; 502 on Telnyx reject (no key leak)', async () => {
+  setupTenant([{ id: 'c1', tenant_id: 't1', from_number: '+14155550123', status: 'in_progress', created_at: new Date().toISOString(), telnyx_call_control_id: 'ctrl-1' }], { operator_phone: '+16505550100' });
+  delete process.env.TELNYX_API_KEY;
+  const [res, out] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'c1' } }, res);
+  assert.equal(out.code, 503);
+  assert.equal(out.body.error, 'telnyx_not_configured');
+
+  process.env.TELNYX_API_KEY = 'test-key';
+  stubFetch(async () => ({ ok: false, status: 422, json: async () => ({ error: { message: 'call control id not found' } }) }));
+  const [res2, out2] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { action: 'takeover', call_id: 'c1' } }, res2);
+  restoreFetch();
+  assert.equal(out2.code, 502);
+  assert.equal(out2.body.error, 'takeover_failed');
+  assert.equal(out2.body.detail, 'call control id not found');
+  assert.ok(!JSON.stringify(out2.body).includes('test-key'), 'the Telnyx key must never appear in a response');
 });

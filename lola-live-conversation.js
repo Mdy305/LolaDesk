@@ -16,9 +16,10 @@
   const POLL_MS = 8000;
 
   let auth = null;
-  let state = { calls: [], conversations: [], whisper: null, ready: false, tenant: '', paused: false, signedOut: false };
+  let state = { calls: [], conversations: [], whisper: null, ready: false, tenant: '', paused: false, signedOut: false, note: null };
   let focused = null;   // focused call id
   let ticker = null;
+  let pendingTakeover = null; // call id awaiting a confirm click
 
   function el(id) { return document.getElementById(id); }
   function fmtDuration(sec) {
@@ -68,6 +69,7 @@
         '<span class="live-call-who">' + esc(who) + '</span>' +
         '<span class="live-call-dur" data-dur="' + esc(call.id) + '">' + fmtDuration(liveSecs(call)) + '</span>' +
         '<span class="live-call-status">' + esc(call.status) + '</span>' +
+        '<button class="live-takeover' + (pendingTakeover === call.id ? ' armed' : '') + '" data-call="' + esc(call.id) + '" onclick="event.stopPropagation(); window.lolaLive && lolaLive.takeOver(\'' + esc(call.id) + '\')">' + (pendingTakeover === call.id ? 'Confirm?' : 'Take over') + '</button>' +
         '</div>';
     }).join('');
   }
@@ -111,6 +113,14 @@
     input.disabled = !canWhisper;
     btn.disabled = !canWhisper;
     if (hint) {
+      // Transient feedback (takeover / whisper result) outlives one render
+      // tick; the 8s poll must never clobber it while it is still fresh.
+      if (state.note && Date.now() < state.note.until) {
+        hint.style.display = '';
+        hint.textContent = state.note.text;
+        return;
+      }
+      state.note = null;
       const activeCall = state.calls.length > 0;
       hint.style.display = canWhisper ? 'none' : '';
       hint.textContent = state.ready
@@ -199,11 +209,34 @@
       window.__lolaLiveOwnerNotes.push({ text: 'Owner note · ' + text });
       if (window.__lolaLiveOwnerNotes.length > 40) window.__lolaLiveOwnerNotes.shift();
       if (input) input.value = '';
+      state.note = { text: 'Whispered — Lola will act on it in her next turn.', until: Date.now() + 4000 };
       renderTranscript();
-      if (hint) { hint.style.display = ''; hint.textContent = 'Whispered — Lola will act on it in her next turn.'; setTimeout(() => { if (hint) hint.style.display = 'none'; }, 4000); }
+      renderWhisper();
     } else {
-      if (hint) { hint.style.display = ''; hint.textContent = data?.error === 'whisper_failed' ? ('Whisper rejected by Telnyx: ' + (data.detail || 'unknown')) : (data?.error || 'Whisper failed'); }
+      state.note = { text: data?.error === 'whisper_failed' ? ('Whisper rejected by Telnyx: ' + (data.detail || 'unknown')) : (data?.error || 'Whisper failed'), until: Date.now() + 6000 };
+      renderWhisper();
     }
+  }
+
+  async function takeOver(id) {
+    // First click arms a two-step confirm so a stray tap can't yank a live
+    // call off Lola; second click fires the Telnyx transfer.
+    if (pendingTakeover !== id) {
+      pendingTakeover = id;
+      renderCalls();
+      setTimeout(() => { if (pendingTakeover === id) { pendingTakeover = null; renderCalls(); } }, 6000);
+      return;
+    }
+    pendingTakeover = null;
+    renderCalls();
+    const { status, data } = await api('/api/live-conversations', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'takeover', call_id: id })
+    });
+    state.note = status === 200 && data.ok
+      ? { text: 'Transferring to ' + (data.transferred?.to || 'your phone') + ' — answer when it rings.', until: Date.now() + 8000 }
+      : { text: data?.detail || data?.error || 'Takeover failed', until: Date.now() + 6000 };
+    renderWhisper();
   }
 
   function focusCall(id) {
@@ -221,7 +254,7 @@
       if (el('liveEmpty')) el('liveEmpty').textContent = 'Sign in to see live calls and steer Lola.';
       return;
     }
-    window.lolaLive = { focusCall, whisper, refresh };
+    window.lolaLive = { focusCall, whisper, takeOver, refresh };
     refresh();
     setInterval(refresh, POLL_MS);
     startTicker();
