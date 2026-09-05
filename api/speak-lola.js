@@ -13,21 +13,20 @@
 // 'elevenlabs' | 'telnyx'.
 import { synthesize as elevenSynthesize, isConfigured as elevenConfigured } from './lib/elevenlabs.js';
 
-const TELNYX_TTS_URL = 'https://api.telnyx.com/v2/audio/speech';
+const TELNYX_TTS_URL = 'https://api.telnyx.com/v2/text-to-speech/speech';
 
 function telnyxTtsConfigured() {
   return !!process.env.TELNYX_API_KEY;
 }
 
-/** Telnyx standalone TTS (OpenAI-audio-compatible). Returns MP3 Buffer. */
+/** Telnyx standalone TTS. Returns an audio Buffer (binary_output). */
 async function telnyxSynthesize(text, { signal } = {}) {
   const apiKey = process.env.TELNYX_API_KEY;
   if (!apiKey) throw new Error('Missing TELNYX_API_KEY');
   const body = {
-    model: process.env.TELNYX_TTS_MODEL || 'tts-1-hd',
-    voice: process.env.TELNYX_TTS_VOICE || 'astra',
-    input: String(text).slice(0, 2500),
-    response_format: 'mp3'
+    text: String(text).slice(0, 2500),
+    voice: process.env.TELNYX_TTS_VOICE || 'Telnyx.Ultra.Clara',
+    output_type: 'binary_output'
   };
   const r = await fetch(TELNYX_TTS_URL, {
     method: 'POST',
@@ -44,7 +43,7 @@ async function telnyxSynthesize(text, { signal } = {}) {
     try { detail = await r.text(); } catch {}
     throw new Error(`Telnyx TTS ${r.status}: ${detail.slice(0, 300)}`);
   }
-  return Buffer.from(await r.arrayBuffer());
+  return { audio: Buffer.from(await r.arrayBuffer()), contentType: (r.headers && r.headers.get && r.headers.get('content-type')) || 'audio/mpeg' };
 }
 
 export default async function handler(req, res) {
@@ -92,8 +91,8 @@ export default async function handler(req, res) {
     }
 
     if (telnyxTtsConfigured()) {
-      const audio = await telnyxSynthesize(text, { signal: controller.signal });
-      res.setHeader('Content-Type', 'audio/mpeg');
+      const { audio, contentType } = await telnyxSynthesize(text, { signal: controller.signal });
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', String(audio.length));
       res.setHeader('Cache-Control', 'private, no-store, max-age=0');
       res.setHeader('X-Lola-Voice', 'telnyx');

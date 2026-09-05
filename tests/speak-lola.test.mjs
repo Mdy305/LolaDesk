@@ -67,7 +67,7 @@ test('ElevenLabs quota_exceeded -> falls back to Telnyx, X-Lola-Voice: telnyx, n
   globalThis.fetch = async (url) => {
     seen.push(String(url));
     if (String(url).includes('api.elevenlabs.io')) return err(401, '{"detail":{"code":"quota_exceeded"}}');
-    if (String(url).includes('api.telnyx.com/v2/audio/speech')) return mp3();
+    if (String(url).includes('api.telnyx.com/v2/text-to-speech/speech')) return mp3();
     throw new Error('unexpected fetch ' + url);
   };
   try {
@@ -109,7 +109,7 @@ test('ElevenLabs not configured + Telnyx up -> telnyx speaks', async () => {
   delete process.env.ELEVENLABS_API_KEY;
   delete process.env.ELEVENLABS_VOICE_ID;
   globalThis.fetch = async (url) => {
-    if (String(url).includes('api.telnyx.com/v2/audio/speech')) return mp3();
+    if (String(url).includes('api.telnyx.com/v2/text-to-speech/speech')) return mp3();
     throw new Error('unexpected fetch ' + url);
   };
   try {
