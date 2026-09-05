@@ -34,7 +34,13 @@ async function pickTelnyxVoice(apiKey, signal) {
     signal,
     headers: { Authorization: 'Bearer ' + apiKey, Accept: 'application/json' }
   });
-  if (!r.ok) return null;
+  if (!r.ok) {
+    let detail = '';
+    try { detail = await r.text(); } catch {}
+    const err = new Error(`Telnyx voices list ${r.status}: ${detail.slice(0, 200)}`);
+    err.status = r.status;
+    throw err;
+  }
   const data = await r.json().catch(() => null);
   const voices = Array.isArray(data?.voices) ? data.voices : [];
   const english = voices.filter(v => /^en/i.test(String(v.language || 'en')));
@@ -75,9 +81,23 @@ async function telnyxSynthesize(text, { signal } = {}) {
   } catch (e) {
     if (e.name === 'AbortError' || ![400, 404, 422, 500].includes(e.status)) throw e;
     // Voice id rejected / provider hiccup — resolve a real voice and retry once.
-    const resolved = await pickTelnyxVoice(apiKey, signal).catch(() => null);
-    if (!resolved || resolved === primary) throw e;
-    return telnyxPost(text, resolved, apiKey, signal);
+    let resolved = '';
+    try {
+      resolved = (await pickTelnyxVoice(apiKey, signal)) || '';
+    } catch (listErr) {
+      listErr.message = `[voice=${primary}; voices-list failed] ` + listErr.message;
+      throw listErr;
+    }
+    if (!resolved || resolved === primary) {
+      e.message = `[voice=${primary}; no alternative resolved] ` + e.message;
+      throw e;
+    }
+    try {
+      return await telnyxPost(text, resolved, apiKey, signal);
+    } catch (retryErr) {
+      retryErr.message = `[voice=${primary}->${resolved}] ` + retryErr.message;
+      throw retryErr;
+    }
   }
 }
 
