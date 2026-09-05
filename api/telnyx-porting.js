@@ -22,7 +22,7 @@ async function resolveAuthTenant(req){
   if(!user) return { error: 'not authenticated', status: 401 };
   const tenant = await resolveTenantForUser(user);
   if(!tenant) return { error: 'no tenant mapped to this account', status: 404 };
-  return { tenant };
+  return { tenant, user };
 }
 
 async function findAndBuyTemporaryNumber(tenant, requestedNumber){
@@ -71,11 +71,20 @@ async function findAndBuyTemporaryNumber(tenant, requestedNumber){
   return candidate;
 }
 
-async function createPortOrder({ tenant, body }){
+async function createPortOrder({ tenant, user, body }){
   const requested = e164(body.requested_phone_number || body.phone_number || '');
   if(!requested) return { error: 'requested_phone_number is required', status: 400 };
-  if(!body.authorized_contact_name || !body.authorized_contact_email) {
-    return { error: 'authorized_contact_name and authorized_contact_email are required', status: 400 };
+
+  // Tolerate the legacy Settings form shape (carrier/account_number/pin) and
+  // auto-fill the authorized contact from the signed-in owner so "Port your
+  // existing number" actually submits instead of failing a 400.
+  const currentCarrier = body.current_carrier || body.carrier || null;
+  const accountPin = body.account_pin !== undefined && body.account_pin !== '' ? body.account_pin : (body.pin || null);
+  const authorizedName = String(body.authorized_contact_name || '').trim()
+    || String(user?.user_metadata?.full_name || user?.user_metadata?.name || '').trim() || '';
+  const authorizedEmail = String(body.authorized_contact_email || '').trim() || String(user?.email || '').trim();
+  if(!authorizedName || !authorizedEmail){
+    return { error: 'authorized_contact_name and authorized_contact_email are required — add your name in account settings or include them in the port request', status: 400 };
   }
 
   const payload = {
@@ -103,13 +112,13 @@ async function createPortOrder({ tenant, body }){
   const row = await createTenantPortRequest(tenant.id, {
     requested_phone_number: requested,
     status: 'submitted',
-    current_carrier: body.current_carrier,
-    account_number: body.account_number,
-    account_pin: body.account_pin,
-    billing_name: body.billing_name,
-    billing_address: body.billing_address,
-    authorized_contact_name: body.authorized_contact_name,
-    authorized_contact_email: body.authorized_contact_email,
+    current_carrier: currentCarrier,
+    account_number: body.account_number || null,
+    account_pin: accountPin,
+    billing_name: body.billing_name || null,
+    billing_address: body.billing_address || null,
+    authorized_contact_name: authorizedName,
+    authorized_contact_email: authorizedEmail,
     telnyx_order_id: portData?.data?.id || null,
     temporary_phone_number: tempNumber,
     metadata: {
@@ -162,7 +171,7 @@ export default async function handler(req, res){
   try{
     const auth = await resolveAuthTenant(req);
     if(auth.error) return res.status(auth.status).json({ error: auth.error });
-    const { tenant } = auth;
+    const { tenant, user } = auth;
 
     if(req.method === 'GET'){
       const out = await listPortOrders({ tenant });
@@ -171,7 +180,7 @@ export default async function handler(req, res){
 
     if(req.method === 'POST'){
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const out = await createPortOrder({ tenant, body });
+      const out = await createPortOrder({ tenant, user, body });
       if(out.error) return res.status(out.status || 400).json({ error: out.error });
       return res.status(200).json(out);
     }

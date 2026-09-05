@@ -533,8 +533,8 @@ async function startPort(){
   msg('portMsg','Submitting port request...',true);
   try{
     const r=await fetch('/api/telnyx-porting',{method:'POST',headers:H(),body:JSON.stringify({
-      phone_number:val('portNumber'),carrier:val('portCarrier'),
-      account_number:val('portAccount'),pin:val('portPin')})});
+      phone_number:val('portNumber'),current_carrier:val('portCarrier'),
+      account_number:val('portAccount'),account_pin:val('portPin')})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Port request failed');
     msg('portMsg','Port started. Typically completes in 7-10 business days. We will text you updates.',true);
