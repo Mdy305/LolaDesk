@@ -421,6 +421,7 @@ function bookForm(staffId='',hour=10){
     +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
     +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff">'+stfOpts+'</select></div>'
     +'<div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div>'
+    +'<div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><option value="4">Weekly · 4 weeks</option><option value="6">Weekly · 6 weeks</option><option value="8">Weekly · 8 weeks</option><option value="12">Weekly · 12 weeks</option></select></div>'
     +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
     +'<div class="mstatus" id="mstatus"></div>';
@@ -466,7 +467,7 @@ async function removeWaitlist(id){
   }catch(e){toast(e.message||'Failed','error');}
 }
 function openNew(prefill){
-  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
+  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><option value="4">Weekly · 4 weeks</option><option value="6">Weekly · 6 weeks</option><option value="8">Weekly · 8 weeks</option><option value="12">Weekly · 12 weeks</option></select></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
   hydrateForm();
   if(prefill){
     if(prefill.client_name){const el=document.getElementById('bkClient');if(el)el.value=prefill.client_name;}
@@ -544,19 +545,22 @@ async function saveBooking(){
   if(!name&&!phone){st.textContent='Please enter client name or phone.';st.className='mstatus err';return;}
   if(!svcIds.length){st.textContent='Pick at least one service.';st.className='mstatus err';return;}
   const starts=new Date(isoDay(cursor)+'T'+time+':00');
+  const repeatWeeks=parseInt((document.getElementById('bkRepeat')||{}).value,10)||1;
   try{
-    // Single service → the canonical booking path (holds, waitlist, external
-    // mesh write). Two or more → the salon path, which persists per-service
-    // booking_services line items.
-    const multi=svcIds.length>1;
+    // Single service, no recurrence → the canonical booking path (holds,
+    // waitlist, external mesh write). Multi-service OR a weekly series →
+    // the salon path, which persists per-service line items and generates
+    // each occurrence through the same availability rules (one SMS total).
+    const multi=svcIds.length>1||repeatWeeks>1;
     const url=multi?'/api/salon':'/api/calendar';
     const payload=multi
-      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'}
+      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard',repeat_weeks:repeatWeeks}
       :{action:'book',service_id:svcIds[0],staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'};
     const r=await fetch(url,{method:'POST',headers:hdr(),body:JSON.stringify(payload)});
     const d=await r.json();
-    if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');st.className='mstatus err';return;}
-    closeModal();toast('Booking confirmed — Lola will text the client.');
+    if(!d.ok){st.textContent=d.conflict?(d.error||'That time is already booked — try another time.'):(d.error||'Failed');st.className='mstatus err';return;}
+    closeModal();
+    toast(d.series?('Series created — '+d.series.total+' weekly appointments, one confirmation text sent.'):'Booking confirmed — Lola will text the client.','success');
     if(WL.lastPrefill){const pid=WL.lastPrefill.id;WL.lastPrefill=null;fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id:pid,status:'offered'})}).catch(()=>{});}
     await load();loadWaitlist();
   }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
@@ -567,6 +571,7 @@ function showDetail(idOrBk){
   if(!b)return;
   const color=svcColor(b.service_id);
   const st=(b.status||'confirmed');
+  const recurTag=/\[recurring series (\d+)\/(\d+)\]/.exec(b.notes||'');
   const when=new Date(b.start_time).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   openModal(st==='cancelled'?'Cancelled appointment':(b.service?.name||'Appointment'),
     when+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60)),
@@ -582,6 +587,7 @@ function showDetail(idOrBk){
     +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||b.service?.price||0).toLocaleString()+'</div></div>'
     +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
+    +(recurTag?('<div class="detail-row"><div class="dr-l">Repeats</div><div class="dr-v">Weekly — occurrence '+esc(recurTag[1])+' of '+esc(recurTag[2])+'</div></div>'):'')
     +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
     +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
     +(st==='confirmed'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'in_progress\')">Start service</button>':'')

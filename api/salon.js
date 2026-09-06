@@ -16,6 +16,7 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
+import { createCanonicalBooking, makeConfirmationCode } from './lib/booking-repository.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -322,7 +323,7 @@ export default async function handler(req,res){
         tenant_id:T,client_id:clientId,service_id:ids[0],staff_id:body.staff_id||null,
         start_time:startDt.toISOString(),end_time:endDt.toISOString(),
         status:'confirmed',total_amount:price,notes:body.notes||null,
-        source:body.channel||body.source||'dashboard'}).select().single();
+        source:body.channel||body.source||'dashboard',confirmation_code:makeConfirmationCode()}).select().single();
       if(error)throw error;
       for(const [i,sid] of ids.entries()){
         const sv=(svcs||[]).find(x=>x.id===sid);
@@ -334,7 +335,52 @@ export default async function handler(req,res){
         if(svcErr)throw new Error('booking_services write failed (sequence '+
           (i+1)+'): '+(svcErr.message||JSON.stringify(svcErr)));
       }
-      confirmSMS(c,T,booking.id).catch(()=>{});
+      // Awaited so the response reflects the confirmation; confirmSMS never throws.
+      await confirmSMS(c,T,booking.id);
+
+      // ── Recurring series (OpenSalon parity): repeat_weeks 2..12 clones the
+      // appointment weekly through the SAME booking path, so availability,
+      // holds, buffers, and staff schedules apply per occurrence. Only the
+      // FIRST occurrence confirms by SMS — a standing series must not spam
+      // the client with N Telnyx messages. Each occurrence is an ordinary
+      // booking row, so per-instance edit/cancel stays natural.
+      const weeks=Math.min(12,Math.max(0,parseInt(body.repeat_weeks,10)||0));
+      if(weeks>1){
+        const seriesTag=' [recurring series 1/'+weeks+']';
+        if(!String(booking.notes||'').includes('[recurring series')){
+          await c.from('bookings').update({notes:(booking.notes||'')+seriesTag})
+            .eq('id',booking.id).eq('tenant_id',T).catch(()=>{});
+        }
+        for(let w=2;w<=weeks;w++){
+          const occStart=new Date(startDt.getTime()+(w-1)*7*86400000);
+          const occEnd=new Date(endDt.getTime()+(w-1)*7*86400000);
+          // availability check for this occurrence: staff bookings + blocked slots
+          if(body.staff_id){
+            const {data:cf2}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',body.staff_id)
+              .neq('status','cancelled').lt('start_time',occEnd.toISOString()).gt('end_time',occStart.toISOString());
+            if(cf2?.length){
+              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_week:w,
+                error:'Week '+w+' ('+occStart.toISOString().slice(0,10)+') is already booked — the first '+(w-1)+' occurrences were created.'});
+            }
+            const ds2=occStart.toISOString().slice(0,10);
+            const {data:bk2}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds2);
+            const rs2=occStart.getHours()*60+occStart.getMinutes();
+            if((bk2||[]).some(b=>(!b.staff_id||b.staff_id===body.staff_id)&&
+              overlaps(rs2,rs2+dur,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60))){
+              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_week:w,
+                error:'Week '+w+' ('+ds2+') falls in blocked time — the first '+(w-1)+' occurrences were created.'});
+            }
+          }
+          await createCanonicalBooking({
+            tenantId:T,clientId,serviceId:ids[0],staffId:body.staff_id||null,
+            startTime:occStart.toISOString(),endTime:occEnd.toISOString(),
+            status:'confirmed',totalAmount:price,
+            notes:(body.notes||'')+' [recurring series '+w+'/'+weeks+']',
+            source:body.channel||body.source||'dashboard',sendConfirmation:false});
+        }
+        return res.json({ok:true,appointment:booking,booking,series:{total:weeks,sms_sent:1}});
+      }
+
       return res.json({ok:true,appointment:booking,booking});
     }
 
