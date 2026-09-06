@@ -77,10 +77,16 @@ async function pickTelnyxVoice(apiKey, signal) {
   }
   const english = voices.filter(v => /^en/i.test(String(v.language || 'en-US')));
   const pool = english.length ? english : voices;
-  const pick = pool.find(v => /clara|female|woman|amy|joanna|salli|nova/i.test(String(v.name || v.voice_id || '')))
+  const pick = pool.find(v => /clara|female|woman|amy|joanna|salli|nova|heart|bella|sky|sarah|kore|astra/i.test(String(v.name || v.voice_id || '')))
     || pool[0];
-  if (!pick?.voice_id && !pick?.name) return null;
-  cachedTelnyxVoice = String(pick.voice_id || pick.name);
+  const raw = pick?.voice_id || pick?.name || '';
+  if (!raw) return null;
+  // Normalize to Provider.Model.VoiceId. The list sometimes returns bare
+  // model-internal ids (e.g. af_nova); those are KokoroTTS voices.
+  if (String(raw).includes('.')) cachedTelnyxVoice = String(raw);
+  else if (pick?.provider && pick?.model) cachedTelnyxVoice = `${pick.provider}.${pick.model}.${raw}`;
+  else if (/^a[fm]_/.test(String(raw))) cachedTelnyxVoice = `Telnyx.KokoroTTS.${raw}`;
+  else cachedTelnyxVoice = `Telnyx.NaturalHD.${raw}`;
   return cachedTelnyxVoice;
 }
 
@@ -108,7 +114,10 @@ async function telnyxPost(text, voice, apiKey, signal) {
 async function telnyxSynthesize(text, { signal } = {}) {
   const apiKey = process.env.TELNYX_API_KEY;
   if (!apiKey) throw new Error('Missing TELNYX_API_KEY');
-  const primary = process.env.TELNYX_TTS_VOICE || 'Telnyx.Ultra.Clara';
+  // Voice ids MUST be Provider.Model.VoiceId (e.g. Telnyx.NaturalHD.astra,
+  // Telnyx.KokoroTTS.af_nova). A bare or nonexistent id makes Telnyx
+  // return 500, not a clean 4xx.
+  const primary = process.env.TELNYX_TTS_VOICE || 'Telnyx.NaturalHD.astra';
   try {
     return await telnyxPost(text, primary, apiKey, signal);
   } catch (e) {
