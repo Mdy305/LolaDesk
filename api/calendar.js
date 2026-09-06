@@ -62,6 +62,23 @@ export default async function handler(req,res){
       return res.json({ ok:true,notes:data||[] });
     }
 
+    if(action==='booking_services'){
+      const bookingId=req.query?.booking_id || body.booking_id;
+      if(!bookingId) return res.status(400).json({ ok:false,error:'booking_id required' });
+      // booking_services has no tenant_id column — scope through the booking.
+      const client=db();
+      const { data:bk }=await client.from('bookings').select('id').eq('id',bookingId).eq('tenant_id',tenant.id).maybeSingle();
+      if(!bk) return res.json({ ok:true,items:[] });
+      const { data:items,error }=await client.from('booking_services').select('*').eq('booking_id',bookingId).order('sequence_no');
+      if(error) return res.status(500).json({ ok:false,error:error.message });
+      const svcIds=[...new Set((items||[]).map(i=>i.service_id).filter(Boolean))];
+      const { data:svcs }=svcIds.length
+        ?await client.from('services').select('id,name,duration_minutes,price').in('id',svcIds)
+        :{data:[]};
+      const sM=Object.fromEntries((svcs||[]).map(s=>[s.id,s]));
+      return res.json({ ok:true,items:(items||[]).map(i=>({ ...i,service:sM[i.service_id]||null })) });
+    }
+
     if(action==='day' || action==='week'){
       const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();

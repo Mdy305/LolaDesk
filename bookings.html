@@ -58,6 +58,13 @@
 .appt .st.in_progress{background:rgba(96,165,250,.14);color:#60a5fa}
 .appt .st.no_show{background:rgba(255,115,105,.2);color:#ff9c96}
 .appt.no_show{opacity:.6;border-left-color:#ff7369}
+.svc-list{display:flex;flex-direction:column;gap:2px;max-height:168px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px}
+.svc-opt{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12px}
+.svc-opt:hover{background:rgba(255,255,255,.04)}
+.svc-opt input{accent-color:#ccff00}
+.svc-nm{flex:1}
+.svc-meta{color:var(--text3);font-size:11px}
+.svc-summary{font-size:11px;color:#ccff00;margin-top:6px;min-height:14px}
 .appt.cancelled{opacity:.45;border-left-color:#ff7369}
 .appt.completed{opacity:.6}
 
@@ -305,7 +312,9 @@ function renderDay(){
     if(!cell)return;
     const start=new Date(b.start_time);
     const mins=(start.getHours()-START)*60+start.getMinutes();
-    const dur=b.service?.duration_minutes||60;
+    // Multi-service bookings span the summed duration — use the actual
+    // timespan (start→end) so the grid block covers every service.
+    const dur=Math.round((new Date(b.end_time)-start)/60000)||(b.service?.duration_minutes||60);
     const top=(mins/60)*SLOT_H,height=Math.max(30,(dur/60)*SLOT_H-5);
     const el=document.createElement('div');
     const color=svcColor(b.service_id);
@@ -366,7 +375,7 @@ function renderWeek(){
       const color=svcColor(b.service_id);
       const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':(b.status==='in_progress'?'in_progress':(b.status==='no_show'?'no_show':'confirmed')));
       html+='<div class="wk-appt" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
-        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(b.service?.duration_minutes)+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</span></div>'
+        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</span></div>'
         +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
         +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'—')+'</div></div>';
     });
@@ -406,11 +415,10 @@ function openModal(title,sub,body){
 }
 function closeModal(){document.getElementById('modal').classList.remove('open');}
 function bookForm(staffId='',hour=10){
-  const svcOpts=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');
   const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===staffId?' selected':'')+'>'+esc(s.name)+'</option>').join('');
   return '<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div>'
     +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
-    +'<div class="fld"><label>Service</label><select id="bkSvc">'+svcOpts+'</select></div>'
+    +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
     +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff">'+stfOpts+'</select></div>'
     +'<div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div>'
     +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
@@ -458,17 +466,27 @@ async function removeWaitlist(id){
   }catch(e){toast(e.message||'Failed','error');}
 }
 function openNew(prefill){
-  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
+  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
   hydrateForm();
   if(prefill){
     if(prefill.client_name){const el=document.getElementById('bkClient');if(el)el.value=prefill.client_name;}
     if(prefill.client_phone){const el=document.getElementById('bkPhone');if(el)el.value=prefill.client_phone;}
-    if(prefill.service_id){const el=document.getElementById('bkSvc');if(el&&[...el.options].some(o=>o.value===prefill.service_id))el.value=prefill.service_id;}
+    if(prefill.service_id){const box=document.querySelector('#bkSvcList input[value="'+prefill.service_id+'"]');if(box){box.checked=true;updSvcSummary();}}
   }
 }
 function hydrateForm(){
-  const svc=document.getElementById('bkSvc');if(svc){svc.innerHTML=STATE.services.map(s=>'<option value="'+s.id+'">'+esc(s.name)+(s.price?' · $'+Number(s.price).toLocaleString():'')+' ('+fmtDur(s.duration_minutes)+')</option>').join('');}
+  const list=document.getElementById('bkSvcList');
+  if(list){list.innerHTML=STATE.services.map(s=>'<label class="svc-opt"><input type="checkbox" value="'+s.id+'" onchange="updSvcSummary()"/><span class="svc-nm">'+esc(s.name)+'</span><span class="svc-meta">'+(s.price?'$'+Number(s.price).toLocaleString():'—')+' · '+fmtDur(s.duration_minutes)+'</span></label>').join('');updSvcSummary();}
   const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');}
+}
+function svcSel(){return [...document.querySelectorAll('#bkSvcList input:checked')].map(i=>i.value);}
+function updSvcSummary(){
+  const ids=svcSel();
+  const picked=STATE.services.filter(s=>ids.includes(s.id));
+  const dur=picked.reduce((t,s)=>t+Number(s.duration_minutes||60),0);
+  const price=picked.reduce((t,s)=>t+Number(s.price||0),0);
+  const el=document.getElementById('bkSvcSummary');
+  if(el)el.textContent=picked.length?(picked.length+' service'+(picked.length>1?'s':'')+' · '+fmtDur(dur)+(price?' · $'+price.toLocaleString():'')):'Pick one or more services';
 }
 /* ── Blocked time (lunch, breaks, days off) ── */
 function openBlock(){
@@ -514,19 +532,28 @@ async function deleteBlock(b){
   if(window.LolaUX){window.LolaUX.confirm({title:'Remove this block?',message:label+' — the time becomes bookable again.',confirmLabel:'Remove block',danger:true}).then(ok=>{if(ok)go();});}
   else if(confirm('Remove '+label+'?'))go();
 }
-function quickBook(staffId,hour){openModal('New booking','Book '+esc(STATE.staff.find(s=>s.id===staffId)?.name||'')+' at '+String(hour).padStart(2,'0')+':00.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Service</label><select id="bkSvc"></select></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();if(staffId)document.getElementById('bkStaff').value=staffId;}
+function quickBook(staffId,hour){openModal('New booking','Book '+esc(STATE.staff.find(s=>s.id===staffId)?.name||'')+' at '+String(hour).padStart(2,'0')+':00.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();if(staffId)document.getElementById('bkStaff').value=staffId;}
 async function saveBooking(){
   const st=document.getElementById('mstatus');st.textContent='Saving...';st.className='mstatus';
   const name=document.getElementById('bkClient').value.trim();
   const phone=document.getElementById('bkPhone').value.trim();
-  const svcId=document.getElementById('bkSvc').value;
+  const svcIds=svcSel();
   const staffId=document.getElementById('bkStaff').value;
   const time=document.getElementById('bkTime').value||'10:00';
   const notes=document.getElementById('bkNotes').value.trim();
   if(!name&&!phone){st.textContent='Please enter client name or phone.';st.className='mstatus err';return;}
+  if(!svcIds.length){st.textContent='Pick at least one service.';st.className='mstatus err';return;}
   const starts=new Date(isoDay(cursor)+'T'+time+':00');
   try{
-    const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'book',service_id:svcId,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'})});
+    // Single service → the canonical booking path (holds, waitlist, external
+    // mesh write). Two or more → the salon path, which persists per-service
+    // booking_services line items.
+    const multi=svcIds.length>1;
+    const url=multi?'/api/salon':'/api/calendar';
+    const payload=multi
+      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'}
+      :{action:'book',service_id:svcIds[0],staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'};
+    const r=await fetch(url,{method:'POST',headers:hdr(),body:JSON.stringify(payload)});
     const d=await r.json();
     if(!d.ok){st.textContent=d.conflict?'That time is already booked — try another time.':(d.error||'Failed');st.className='mstatus err';return;}
     closeModal();toast('Booking confirmed — Lola will text the client.');
@@ -542,17 +569,18 @@ function showDetail(idOrBk){
   const st=(b.status||'confirmed');
   const when=new Date(b.start_time).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   openModal(st==='cancelled'?'Cancelled appointment':(b.service?.name||'Appointment'),
-    when+' · '+fmtDur(b.service?.duration_minutes),
+    when+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60)),
     '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">'
     +'<div class="detail-av" style="background:linear-gradient(135deg,'+color+',#2a2a2a)">'+esc(initials(clientName(b.client)))+'</div>'
     +'<div><div style="font-size:16px;font-weight:650">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:#ccff00">★ VIP</span>':'')+'</div>'
     +'<div style="font-size:12px;color:var(--text3)">'+esc(clientPhone(b.client)||'no phone on file')+'</div></div>'
     +'<div class="st '+st+'" style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Service</div><div class="dr-v">'+esc(b.service?.name||'—')+(b.service?.price?' · $'+Number(b.service.price).toLocaleString():'')+'</div></div>'
+    +'<div id="bkLineItems"></div>'
     +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'—')+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Time</div><div class="dr-v">'+when+'</div></div>'
-    +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(b.service?.duration_minutes)+'</div></div>'
-    +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||0).toLocaleString()+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||b.service?.price||0).toLocaleString()+'</div></div>'
     +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
     +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
     +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
@@ -566,6 +594,18 @@ function showDetail(idOrBk){
     +'<div style="display:flex;gap:8px;margin-top:10px"><input id="bkNote" placeholder="Add an internal note…" style="flex:1" onkeydown="if(event.key===\'Enter\')addNote(\''+b.id+'\')"/><button class="ghost" onclick="addNote(\''+b.id+'\')">Add</button></div></div>'
     +'<div class="mstatus" id="mstatus"></div>');
   loadNotes(b.id);
+  loadLineItems(b.id);
+}
+async function loadLineItems(bookingId){
+  const el=document.getElementById('bkLineItems');if(!el)return;
+  try{
+    const r=await fetch('/api/calendar?action=booking_services&booking_id='+bookingId,{headers:hdr()});
+    const d=await r.json();
+    if(!d.ok||!d.items?.length){el.innerHTML='';return;}
+    el.innerHTML='<div class="detail-row"><div class="dr-l">Services ('+d.items.length+')</div><div class="dr-v">'
+      +d.items.map(i=>esc(i.service?.name||'Service')+' — $'+Number(i.price||0).toLocaleString()+' · '+fmtDur(i.active_duration_1_min||i.service?.duration_minutes||60)).join('<br/>')
+      +'</div></div>';
+  }catch(e){el.innerHTML='';}
 }
 async function setStatus(id,status){
   try{

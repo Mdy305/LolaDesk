@@ -140,6 +140,44 @@ test('POST appointment update persists the status workflow (no_show)', async () 
   assert.equal(now.status, 'no_show', 'status persisted');
 });
 
+test('GET calendar booking_services returns line items enriched with service names, tenant-scoped', async () => {
+  const store = fake.all('bookings');
+  const booking = store[store.length - 1];
+  const req = getReq({ action: 'booking_services', booking_id: booking.id });
+  const [res, out] = makeRes();
+  await calendarHandler(req, res);
+  assert.equal(out.code, 200, 'booking_services GET must succeed — got: ' + JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.ok, true);
+  assert.equal(out.body.items.length, 2, 'both line items returned');
+  assert.ok(out.body.items.every(i => i.service?.name), 'each item carries its service name');
+  assert.deepEqual(out.body.items.map(i => i.sequence_no), [1, 2], 'items ordered by sequence_no');
+});
+
+// ── dashboard-modal contract: multi-service booking via the salon path ──
+
+test('POST appointment create accepts the dashboard multi-service payload (starts_at, client_name/phone)', async () => {
+  const before = fake.all('bookings').length;
+  const req = postReq({
+    resource: 'appointment',
+    service_ids: ['svc-1', 'svc-2'],
+    staff_id: 'st-1',
+    client_name: 'Willa Ford',
+    client_phone: '+15551000002',
+    starts_at: new Date(Date.now() + 86400000).toISOString(),
+    notes: 'cut + color in one visit',
+    channel: 'dashboard'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 200, 'dashboard multi-service create must succeed — got: ' + JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.ok, true);
+  const lines = fake.all('booking_services').filter(r => r.booking_id === out.body.appointment.id);
+  assert.equal(lines.length, 2, 'both line items persist');
+  assert.equal(fake.all('bookings').length, before + 1, 'one booking row created');
+});
+
+// ── end: dashboard-modal contract ──
+
 test('POST note lands in appointment_notes and GET calendar booking_notes returns it tenant-scoped', async () => {
   const store = fake.all('bookings');
   const booking = store[store.length - 1];
