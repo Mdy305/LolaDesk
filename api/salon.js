@@ -193,7 +193,8 @@ export default async function handler(req,res){
     // ═══ POST ═══
     if(resource==='client'){
       if(action==='delete'){
-        await c.from('clients').delete().eq('id',body.id).eq('tenant_id',T);
+        const { error }=await c.from('clients').delete().eq('id',body.id).eq('tenant_id',T);
+        if(error)return res.status(409).json({ok:false,error:'Could not delete client: '+(error.message||JSON.stringify(error))+'. Cancel or reassign their appointments first.'});
         return res.json({ok:true});
       }
       // `name` is a GENERATED column (derived from first_name/last_name), so
@@ -214,7 +215,8 @@ export default async function handler(req,res){
 
     if(resource==='service'){
       if(action==='delete'){
-        await c.from('services').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        const { error }=await c.from('services').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        if(error)return res.status(500).json({ok:false,error:'Could not archive service: '+(error.message||JSON.stringify(error))});
         return res.json({ok:true});
       }
       const row={tenant_id:T,name:body.name,description:body.description||'',
@@ -228,7 +230,8 @@ export default async function handler(req,res){
 
     if(resource==='staff'){
       if(action==='delete'){
-        await c.from('staff').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        const { error }=await c.from('staff').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        if(error)return res.status(500).json({ok:false,error:'Could not archive staff member: '+(error.message||JSON.stringify(error))});
         return res.json({ok:true});
       }
       const row={tenant_id:T,name:body.name,role:body.role||'Stylist',is_active:body.is_active!==false};
@@ -241,7 +244,8 @@ export default async function handler(req,res){
 
     if(resource==='product'){
       if(action==='delete'){
-        await c.from('products').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        const { error }=await c.from('products').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
+        if(error)return res.status(500).json({ok:false,error:'Could not archive product: '+(error.message||JSON.stringify(error))});
         return res.json({ok:true});
       }
       const row={tenant_id:T,name:body.name,brand:body.brand||'',category:body.category||'',
@@ -336,7 +340,8 @@ export default async function handler(req,res){
 
     if(resource==='block'){
       if(action==='delete'){
-        await c.from('blocked_slots').delete().eq('id',body.id).eq('tenant_id',T);
+        const { error }=await c.from('blocked_slots').delete().eq('id',body.id).eq('tenant_id',T);
+        if(error)return res.status(500).json({ok:false,error:'Could not remove block: '+(error.message||JSON.stringify(error))});
         return res.json({ok:true});
       }
       const {data,error}=await c.from('blocked_slots').insert({tenant_id:T,staff_id:body.staff_id||null,

@@ -211,6 +211,55 @@ test('splitPhrases produces breath-group phrases with a cap', () => {
   assert.ok(joined.includes('blowout') && joined.includes('Friday'));
 });
 
+test('quota-dead ElevenLabs degrades to Telnyx audio on the stream (never silence)', async () => {
+  // ElevenLabs configured (key + voice present) but the account is at zero
+  // credits: every synthesis 401s with quota_exceeded. The shared chain must
+  // fall through to Telnyx TTS so the orb hears her instead of silence.
+  process.env.ELEVENLABS_API_KEY = 'test-eleven-key';
+  process.env.ELEVENLABS_VOICE_ID = 'lola-canonical-1';
+  let telnyxTtsCalls = 0;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('api.telnyx.com/v2/ai/openai/chat/completions')) {
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: LOLA_REPLY } }] }) };
+    }
+    if (u.includes('api.elevenlabs.io/v1/text-to-speech')) {
+      return { ok: false, status: 401, text: async () => JSON.stringify({ detail: { status: 'quota_exceeded', message: 'quota_exceeded' } }) };
+    }
+    if (u.includes('api.telnyx.com/v2/text-to-speech/speech')) {
+      telnyxTtsCalls += 1;
+      return {
+        ok: true, status: 200,
+        headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'audio/mpeg' : null) },
+        arrayBuffer: async () => MP3_BYTES.buffer.slice(MP3_BYTES.byteOffset, MP3_BYTES.byteOffset + MP3_BYTES.byteLength)
+      };
+    }
+    throw new Error('Unexpected fetch in test: ' + u);
+  };
+
+  const client = await open(port);
+  clients.push(client);
+  const c = collector(client);
+  client.send(JSON.stringify({ type: 'auth', token: 'token-t1' }));
+  await c.wait(m => m.type === 'ready' && m.ok);
+  client.send(JSON.stringify({ type: 'transcript', text: 'hi' }));
+
+  const done = await c.wait(m => m.type === 'done');
+  assert.equal(done.engine, 'telnyx', 'done.engine must report the Telnyx tier — got: ' + JSON.stringify(done));
+  const audios = c.all.filter(m => m.type === 'audio');
+  assert.ok(audios.length >= 1, 'audio frames streamed despite ElevenLabs quota death');
+  for (const a of audios) {
+    assert.equal(a.mime, 'audio/mpeg');
+    assert.ok(Buffer.from(a.chunk, 'base64').length > 0, 'Telnyx audio decodes to bytes');
+  }
+  assert.ok(telnyxTtsCalls >= 1, 'Telnyx TTS actually called');
+  assert.equal(c.all.filter(m => m.type === 'error').length, 0, 'no error frame leaks to the client');
+  client.close();
+  delete process.env.ELEVENLABS_API_KEY;
+  delete process.env.ELEVENLABS_VOICE_ID;
+  globalThis.fetch = realFetch;
+});
+
 test('boot cleanup', (t, done) => {
   for (const client of clients) { try { client.terminate(); } catch (e) {} }
   server.close(() => done());

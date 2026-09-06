@@ -201,3 +201,33 @@ test('POST note lands in appointment_notes and GET calendar booking_notes return
   assert.equal(out.body.notes.length, 1);
   assert.equal(out.body.notes[0].content, 'Prefers oat milk latte');
 });
+
+test('client delete fails loud (409 + real error) when the DB rejects it (FK-blocked regression)', async () => {
+  fake.seed('tenants', [{ id: 't9', slug: 'fk-salon', name: 'FK Salon' }]);
+  fake.seed('tenant_users', [{ user_id: 'u9', tenant_id: 't9', role: 'owner' }]);
+  fake.auth.getUser = async () => ({ data: { user: { id: 'u9', email: 'owner9@test.dev' } }, error: null });
+  const client = { id: 'cl-9', tenant_id: 't9', first_name: 'Fk', last_name: 'Block', phone: '+15559999999', email: '' };
+  fake.seed('clients', [client]);
+
+  // DB rejects the delete (foreign key from bookings) — the handler must
+  // surface the real error instead of reporting ok:true while the row lives.
+  fake.failDelete('clients', 'update or delete on table \"clients\" violates foreign key constraint');
+  const req = postReq({ resource: 'client', action: 'delete', id: client.id });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 409, 'FK-blocked delete must be 409 — got: ' + JSON.stringify(out.body));
+  assert.equal(out.body.ok, false, 'must NOT report success');
+  assert.match(String(out.body.error), /violates foreign key/, 'real DB error surfaced to the operator');
+  assert.equal(fake.all('clients').length, 1, 'row survives the failed delete');
+  fake.clearFailures();
+});
+
+test('client delete succeeds and removes the row when nothing blocks it', async () => {
+  fake.auth.getUser = async () => ({ data: { user: { id: 'u9', email: 'owner9@test.dev' } }, error: null });
+  const req = postReq({ resource: 'client', action: 'delete', id: 'cl-9' });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 200, 'clean delete must succeed — got: ' + JSON.stringify(out.body));
+  assert.equal(out.body.ok, true);
+  assert.equal(fake.all('clients').length, 0, 'row removed');
+});

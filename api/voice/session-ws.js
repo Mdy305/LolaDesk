@@ -25,7 +25,7 @@
  *   server → { type:'state', state:'thinking'|'speaking'|'idle'|'error' }
  *   server → { type:'text', delta, index, final }         reply phrase deltas
  *   server → { type:'audio', index, text, chunk, mime, final }   base64 MP3 per phrase
- *   server → { type:'done', reply, engine:'elevenlabs'|'text' }
+ *   server → { type:'done', reply, engine:'elevenlabs'|'telnyx'|'text' }
  *   server → { type:'error', message }
  */
 
@@ -34,7 +34,7 @@ import { WebSocketServer } from 'ws';
 import { getUserFromToken } from '../lib/auth.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { dashboardBrainReply } from '../lib/dashboard-brain.js';
-import { synthesize, isConfigured } from '../lib/elevenlabs.js';
+import { synthVoice, whichVoice } from '../lib/lola-voice-chain.js';
 
 const WS_PATH = '/api/voice/session-ws';
 
@@ -104,7 +104,7 @@ async function handleTranscript(ws, state, payload){
       return;
     }
 
-    const voiceOn = isConfigured();
+    const voiceOn = whichVoice();
     const phrases = splitPhrases(reply);
     let engine = 'text';
 
@@ -122,14 +122,13 @@ async function handleTranscript(ws, state, payload){
       const final = i === phrases.length - 1;
       send(ws, { type:'text', delta:phrase, index:i, final });
       try{
-        const audio = await synthesize(phrase, {
-          modelId: process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5',
-          outputFormat: 'mp3_44100_128',
-          signal: state.controller.signal
-        });
+        // Same chain as /api/speak-lola: ElevenLabs when credited, Telnyx
+        // TTS when the quota is exhausted — quota death degrades to Telnyx
+        // audio instead of muting the orb.
+        const { audio, contentType, engine: tier } = await synthVoice(phrase, { signal: state.controller.signal });
         if(audio && audio.length){
-          engine = 'elevenlabs';
-          send(ws, { type:'audio', index:i, text:phrase, chunk:audio.toString('base64'), mime:'audio/mpeg', final });
+          engine = tier;
+          send(ws, { type:'audio', index:i, text:phrase, chunk:audio.toString('base64'), mime:contentType, final });
         }
       }catch(e){
         if(e?.name === 'AbortError') break;
