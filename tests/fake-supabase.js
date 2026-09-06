@@ -48,6 +48,7 @@ export class FakeSupabase {
   constructor() {
     this.tables = new Map();
     this._seq = 0;
+    this._failDeletes = new Map();
     this.storage = {
       buckets: new Map(),
       from(bucket) {
@@ -95,6 +96,7 @@ export class FakeSupabase {
     this._seq = 0;
     this._failWrites = new Map();
     this._failReads = new Map();
+    this._failDeletes = new Map();
     this._rpcImpl = null;
   }
   // Test hook: make the next write (update/upsert) to a table return an error
@@ -102,6 +104,11 @@ export class FakeSupabase {
   failWrite(table, message) {
     this._failWrites = this._failWrites || new Map();
     this._failWrites.set(table, message);
+  }
+  // Test hook: make delete() on a table return an error without removing
+  // rows — simulates an FK violation (a booking still references the row).
+  failDelete(table, message) {
+    this._failDeletes.set(table, message);
   }
   // Test hook: make a select on a table return an error — simulates a missing
   // table (health gates rely on this to fail loudly instead of lying).
@@ -121,6 +128,7 @@ export class FakeSupabase {
   clearFailures() {
     this._failWrites = new Map();
     this._failReads = new Map();
+    this._failDeletes = new Map();
   }
   nextId(table) {
     this._seq += 1;
@@ -298,6 +306,11 @@ class FakeQueryBuilder {
         break;
       }
       case 'delete': {
+        const failMsg = this.client._failDeletes.get(this.table);
+        if (failMsg) {
+          result = { data: null, error: { message: failMsg } };
+          break;
+        }
         const removed = this.rows.filter(r => this._match(r));
         const keep = this.rows.filter(r => !this._match(r));
         this.client.tables.set(this.table, keep);
