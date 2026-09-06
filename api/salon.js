@@ -320,10 +320,15 @@ export default async function handler(req,res){
         status:'confirmed',total_amount:price,notes:body.notes||null,
         source:body.channel||body.source||'dashboard'}).select().single();
       if(error)throw error;
-      for(const sid of ids){
+      for(const [i,sid] of ids.entries()){
         const sv=(svcs||[]).find(x=>x.id===sid);
-        if(sv)await c.from('appointment_services').insert({booking_id:booking.id,service_id:sid,
-          price:Number(sv.price||0),duration:Number(sv.duration_minutes||60)}).catch(()=>{});
+        if(!sv)continue;
+        const {error:svcErr}=await c.from('booking_services').insert({
+          booking_id:booking.id,service_id:sid,staff_id:body.staff_id||null,
+          sequence_no:i+1,active_duration_1_min:Number(sv.duration_minutes||60),
+          price:Number(sv.price||0)});
+        if(svcErr)throw new Error('booking_services write failed (sequence '+
+          (i+1)+'): '+(svcErr.message||JSON.stringify(svcErr)));
       }
       confirmSMS(c,T,booking.id).catch(()=>{});
       return res.json({ok:true,appointment:booking,booking});

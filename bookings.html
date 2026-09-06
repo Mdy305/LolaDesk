@@ -55,6 +55,9 @@
 .appt .st.completed{background:rgba(255,255,255,.1);color:var(--text2)}
 .appt .st.pending{background:rgba(255,179,64,.14);color:#ffb340}
 .appt .st.cancelled{background:rgba(255,115,105,.14);color:#ff7369}
+.appt .st.in_progress{background:rgba(96,165,250,.14);color:#60a5fa}
+.appt .st.no_show{background:rgba(255,115,105,.2);color:#ff9c96}
+.appt.no_show{opacity:.6;border-left-color:#ff7369}
 .appt.cancelled{opacity:.45;border-left-color:#ff7369}
 .appt.completed{opacity:.6}
 
@@ -308,7 +311,7 @@ function renderDay(){
     const color=svcColor(b.service_id);
     el.className='appt '+(b.status||'confirmed');
     el.style.cssText='top:'+top+'px;height:'+height+'px;--svc:'+color;
-    const st=(b.status==='completed')?'completed':(b.status==='cancelled'?'cancelled':(b.status==='pending'?'pending':'confirmed'));
+    const st=(b.status==='completed')?'completed':(b.status==='cancelled')?'cancelled':(b.status==='pending')?'pending':(b.status==='in_progress')?'in_progress':(b.status==='no_show')?'no_show':'confirmed';
     el.innerHTML='<div class="at">'+fmtT(start)+' · '+fmtDur(dur)+'<span class="st '+st+'">'+st+'</span></div>'
       +'<div class="svc"><span class="ca" style="background:'+color+'">'+esc(initials(clientName(b.client)))+'</span>'+esc(b.service?.name||'Appointment')+'</div>'
       +'<div class="cli">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:#ccff00">★</span>':'')+'</div>';
@@ -361,7 +364,7 @@ function renderWeek(){
       +'<div class="wk-empty">'+(dayBk.length?'':'No bookings')+'</div>';
     dayBk.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time)).forEach(b=>{
       const color=svcColor(b.service_id);
-      const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':'confirmed');
+      const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':(b.status==='in_progress'?'in_progress':(b.status==='no_show'?'no_show':'confirmed')));
       html+='<div class="wk-appt" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
         +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(b.service?.duration_minutes)+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:#ccff00">'+st+'</span></div>'
         +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
@@ -553,9 +556,45 @@ function showDetail(idOrBk){
     +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
     +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
     +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
+    +(st==='confirmed'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'in_progress\')">Start service</button>':'')
+    +(st==='in_progress'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'completed\')">Mark completed</button>'
+      +'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'no_show\')">No-show</button>':'')
+    +(st==='completed'||st==='no_show'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'confirmed\')">Reopen</button>':'')
     +(st!=='cancelled'?'<button class="ghost" onclick="openReschedule(\''+b.id+'\')">Reschedule</button>':'')
     +(st!=='cancelled'?'<button class="danger" onclick="cancelBooking(\''+b.id+'\')">Cancel</button>':'')+'</div>'
+    +'<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Activity</div><div id="bkNotesList" style="font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:6px;max-height:140px;overflow:auto"><div style="color:var(--text3)">…</div></div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px"><input id="bkNote" placeholder="Add an internal note…" style="flex:1" onkeydown="if(event.key===\'Enter\')addNote(\''+b.id+'\')"/><button class="ghost" onclick="addNote(\''+b.id+'\')">Add</button></div></div>'
     +'<div class="mstatus" id="mstatus"></div>');
+  loadNotes(b.id);
+}
+async function setStatus(id,status){
+  try{
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'appointment',action:'update',id,status})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    toast(status==='completed'?'Marked completed.':(status==='no_show'?'Marked no-show.':(status==='in_progress'?'Service started.':'Reopened.')),'success');
+    await load();showDetail(id);
+  }catch(e){toast(e.message||'Could not update status.','err');}
+}
+async function loadNotes(bookingId){
+  const el=document.getElementById('bkNotesList');if(!el)return;
+  try{
+    const r=await fetch('/api/calendar?action=booking_notes&booking_id='+bookingId,{headers:hdr()});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    el.innerHTML=d.notes.length?d.notes.map(n=>'<div style="border-left:2px solid var(--line);padding-left:10px"><div style="color:var(--text3);font-size:10px">'+esc(n.author||'Staff')+' · '+new Date(n.created_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</div><div>'+esc(n.content)+'</div></div>').join(''):'<div style="color:var(--text3)">No notes yet.</div>';
+  }catch(e){el.innerHTML='<div style="color:var(--text3)">Notes unavailable.</div>';}
+}
+async function addNote(bookingId){
+  const inp=document.getElementById('bkNote');const text=(inp.value||'').trim();
+  if(!text)return;
+  inp.value='';
+  try{
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'note',booking_id:bookingId,content:text,author:'Owner'})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    loadNotes(bookingId);
+  }catch(e){toast(e.message||'Could not add note.','err');}
 }
 function openReschedule(id){
   const b=findBooking(id);if(!b)return;

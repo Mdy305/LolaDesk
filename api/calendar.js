@@ -52,6 +52,16 @@ export default async function handler(req,res){
       return res.json({ ok:true,services,staff });
     }
 
+    if(action==='booking_notes'){
+      const bookingId=req.query?.booking_id || body.booking_id;
+      if(!bookingId) return res.status(400).json({ ok:false,error:'booking_id required' });
+      const { data,error }=await db()
+        .from('appointment_notes').select('*').eq('tenant_id',tenant.id)
+        .eq('booking_id',bookingId).order('created_at',{ascending:false});
+      if(error) return res.status(500).json({ ok:false,error:error.message });
+      return res.json({ ok:true,notes:data||[] });
+    }
+
     if(action==='day' || action==='week'){
       const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();
