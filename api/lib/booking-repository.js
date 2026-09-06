@@ -176,7 +176,7 @@ export async function getHold(tenantId, holdToken){
   return data || null;
 }
 
-export async function createCanonicalBooking({ tenantId, clientId, serviceId=null, staffId=null, locationId=null, startTime, endTime, status='confirmed', totalAmount=0, notes=null, source='lola', conversationId=null, holdId=null, externalId=null, externalSource=null }){
+export async function createCanonicalBooking({ tenantId, clientId, serviceId=null, staffId=null, locationId=null, startTime, endTime, status='confirmed', totalAmount=0, notes=null, source='lola', conversationId=null, holdId=null, externalId=null, externalSource=null, sendConfirmation=true }){
   const c = db(); if(!c) throw new Error('database not configured');
   const row = {
     tenant_id: tenantId, client_id: clientId, service_id: serviceId, staff_id: staffId,
@@ -188,7 +188,9 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   const { data, error } = await c.from('bookings').insert(row).select().single();
   if(error) throw error;
   await appendBookingHistory({ tenantId, bookingId:data.id, fromStatus:null, toStatus:status, source });
-  if(status==='confirmed') sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode:row.confirmation_code}).catch(()=>{});
+  // Recurring series suppress the per-occurrence text — the first occurrence
+  // confirms once for the whole series (salon.js passes sendConfirmation:false).
+  if(status==='confirmed' && sendConfirmation) sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode:row.confirmation_code}).catch(()=>{});
   return data;
 }
 
