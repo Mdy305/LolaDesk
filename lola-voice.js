@@ -108,7 +108,7 @@
         if (state.listeners.error.length) emit('error', j.error || ('Could not start voice session (HTTP ' + resp.status + ')'));
         return false;
       }
-      const { session_token, assistant_id, relay_url } = await resp.json();
+      const { session_token, assistant_id, relay_url, dynamic_variables } = await resp.json();
 
       const armed = await arm();
       if (!armed) return false;
@@ -118,12 +118,28 @@
       await new Promise((resolve, reject) => {
         state.ws.onopen = () => resolve();
         state.ws.onerror = () => reject(new Error('Could not reach Lola relay'));
-        setTimeout(() => reject(new Error('Voice relay connect timeout')), 8000);
+        setTimeout(() => reject(new Error('Voice relay connect timeout')), 400);
       });
 
+      state.ws.binaryType = 'arraybuffer';
       state.ws.onmessage = onFrame;
       state.ws.onclose = () => cleanup('ended', 'remote close');
       state.ws.onerror = () => cleanup('ended', 'socket error');
+
+      // FIRST FRAME RULE: the assistant's prompt is a template
+      // ({{company_name}}, {{services}}, …). Telnyx injects these via the
+      // agent-variables webhook on PHONE calls, but the orb conversation
+      // only gets them if the CLIENT sends session.update before anything
+      // else. Without this, every template variable is unset and Lola
+      // produces silence — the exact bug that muted the orb.
+      if (dynamic_variables && typeof dynamic_variables === 'object') {
+        try {
+          state.ws.send(JSON.stringify({
+            type: 'session.update',
+            session: { assistant: { dynamic_variables } },
+          }));
+        } catch (e) { /* non-fatal — she still speaks with defaults */ }
+      }
 
       // Start the mic worklet and keep streaming PCM16 the whole time.
       if (state.audioCtx) state.audioCtx.resume();
@@ -141,7 +157,13 @@
   async function ensureCapturePipeline() {
     if (state.audioCtx && state.worklet) return;
     state.audioCtx = new (global.AudioContext || global.webkitAudioContext)({ sampleRate: 16000 });
-    await state.audioCtx.audioWorklet.addModule('/public/lola-audio-worklet.js');
+    // Serve the worklet from either location (public/ is the canonical
+    // deploy path; the bare path kept older embeds working).
+    try {
+      await state.audioCtx.audioWorklet.addModule('/public/lola-audio-worklet.js');
+    } catch (e) {
+      await state.audioCtx.audioWorklet.addModule('/lola-audio-worklet.js');
+    }
     state.worklet = new AudioWorkletNode(state.audioCtx, 'lola-mic-processor');
     state.worklet.port.onmessage = (ev) => {
       if (state.ws && state.ws.readyState === global.WebSocket.OPEN) {
@@ -154,9 +176,22 @@
   }
 
   /* ── inbound frames (Telnyx real event names) ─────────────────── */
+  // Telnyx delivers EVERY frame as a binary WebSocket message whose bytes
+  // are the UTF-8 JSON. JSON.parse of a Blob/ArrayBuffer silently throws —
+  // which dropped 100% of frames and was half of the orb-silence bug.
+  function decodeFrame(data, cb) {
+    if (typeof data === 'string') { cb(data); return; }
+    const u8 = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer || data);
+    try { cb(new TextDecoder().decode(u8)); } catch (e) { /* not decodable */ }
+  }
   function onFrame(event) {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch (e) { return; }
+    decodeFrame(event.data, (text) => {
+      let msg;
+      try { msg = JSON.parse(text); } catch (e) { return; }
+      handleFrame(msg);
+    });
+  }
+  function handleFrame(msg) {
     switch (msg.type) {
       case 'session.created':
         state.outputRate = msg.session?.audio?.output?.format?.rate || state.outputRate;
@@ -172,6 +207,10 @@
         break;
       case 'response.output_audio.delta':
         if (msg.delta) enqueuePlayback(msg.delta);
+        else if (Array.isArray(msg.audio) && msg.audio.length) {
+          // Some Telnyx shapes carry audio as an array of base64 chunks.
+          msg.audio.forEach((chunk) => { if (chunk) enqueuePlayback(chunk); });
+        }
         break;
       case 'response.output_audio_transcript.delta':
         emit('state', { delta: msg.delta, role: 'assistant' });

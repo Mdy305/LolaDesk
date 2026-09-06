@@ -4,7 +4,8 @@
  * speaking; we resolve which tenant owns the dialed number and return
  * that salon's real data from the database.
  */
-import { getClientByPhone, getClientMemory, tenantKnowledgePrompt, db } from './lib/db.js';
+import { getClientByPhone, getClientMemory, db } from './lib/db.js';
+import { buildTenantVariables } from './lib/tenant-variables.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 
 function pickToNumber(b){
@@ -171,46 +172,13 @@ export default async function handler(req, res){
       }
     }catch(e){}
 
-    let services = '', staffList = '', marketingContext = '';
-    try{
-      const c = db();
-      if(c && tenant?.id){
-        const [svcRes, stfRes, miRes] = await Promise.all([
-          c.from('services').select('name,price,duration_minutes').eq('tenant_id',tenant.id).eq('is_active',true).order('name'),
-          c.from('staff').select('name,role').eq('tenant_id',tenant.id).eq('is_active',true).order('name'),
-          c.from('marketing_intelligence').select('kind,title,summary').eq('tenant_id',tenant.id).order('created_at',{ascending:false}).limit(5)
-        ]);
-        services = (svcRes.data||[]).map(s => s.name + (s.price ? ' $'+s.price : '') + (s.duration_minutes ? ' ('+s.duration_minutes+'min)' : '')).join('; ');
-        staffList = (stfRes.data||[]).map(s => s.name + (s.role ? ' ('+s.role+')' : '')).join(', ');
-        marketingContext = (miRes.data||[]).map(m => m.kind + ': ' + (m.title||'') + (m.summary ? ' - '+m.summary : '')).join(' | ');
-      }
-    }catch(e){}
-
-    if(!services && tenant?.services?.length){
-      services = tenant.services.map(s => s.name + (s.price ? ' $'+s.price : '') + (s.duration ? ' ('+s.duration+')' : '')).join('; ');
-    }
-
-    const dynamic_variables = {
-      tenant_id: tenant.id || '',
-      to: toNumber || '',
-      from: fromNumber || '',
-      company_name: tenant.name || 'our salon',
-      business_type: tenant.business_mode || 'salon',
-      location: tenant.location || '',
-      hours: tenant.hours || '',
-      services: services || '',
-      staff: staffList || '',
-      marketing_context: marketingContext || '',
-      booking_url: tenant.booking_url || ('https://www.loladesk.com/book.html?t=' + (tenant.slug||'')),
-      // The salon's real web home + Google Business/Maps profile — Lola is
-      // this business's VP-marketing voice, so she cites the actual website
-      // and points clients to the Google profile for directions/reviews.
-      website_url: tenant.website_url || '',
-      gmb_url: tenant.gmb_url || tenant.google_review_url || '',
-      maps_url: tenant.gmb_url || '',
-      knowledge: tenantKnowledgePrompt(tenant),
-      ...memory
-    };
+    // ONE source of truth: the same builder the dashboard orb uses, so the
+    // phone path and the orb path can never disagree on Lola's facts.
+    const dynamic_variables = await buildTenantVariables(tenant, {
+      to: toNumber,
+      from: fromNumber,
+      memory
+    });
 
     return res.status(200).json({ dynamic_variables });
   }catch(e){
