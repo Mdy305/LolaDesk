@@ -176,14 +176,22 @@ export async function getHold(tenantId, holdToken){
   return data || null;
 }
 
-export async function createCanonicalBooking({ tenantId, clientId, serviceId=null, staffId=null, locationId=null, startTime, endTime, status='confirmed', totalAmount=0, notes=null, source='lola', conversationId=null, holdId=null, externalId=null, externalSource=null, sendConfirmation=true }){
+export async function createCanonicalBooking({ tenantId, clientId, serviceId=null, staffId=null, locationId=null, startTime, endTime, status='confirmed', totalAmount=0, notes=null, source='lola', conversationId=null, holdId=null, externalId=null, externalSource=null, sendConfirmation=true, series=null }){
   const c = db(); if(!c) throw new Error('database not configured');
   const row = {
     tenant_id: tenantId, client_id: clientId, service_id: serviceId, staff_id: staffId,
     location_id: locationId, start_time: startTime, end_time: endTime, status,
     total_amount: totalAmount || 0, notes, source, conversation_id: conversationId, hold_id: holdId,
     external_id: externalId, external_provider: externalSource,
-    confirmation_code: makeConfirmationCode()
+    confirmation_code: makeConfirmationCode(),
+    // Recurring-series identity (20260902_booking_series.sql): null for plain
+    // bookings; { id, pos, total, rule } for an occurrence.
+    ...(series ? {
+      series_id: series.id || null,
+      series_pos: Number(series.pos) || null,
+      series_total: Number(series.total) || null,
+      series_rule: String(series.rule || '') || null
+    } : {})
   };
   const { data, error } = await c.from('bookings').insert(row).select().single();
   if(error) throw error;

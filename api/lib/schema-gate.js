@@ -39,7 +39,11 @@ export const REQUIRED_COLUMNS = {
   calls: ['from_number', 'to_number', 'direction', 'duration_seconds', 'status', 'recording_url', 'telnyx_call_control_id'],
   // Booking write path (api/lib/db.js createBooking + booking-repository);
   // confirmation_code is the client-facing SMS confirmation contract.
-  bookings: ['service_id', 'staff_id', 'start_time', 'end_time', 'total_amount', 'status', 'confirmation_code'],
+  // series_* carry recurring-series identity (20260902_booking_series.sql):
+  // without them the series actions (this / following / all, cadences) have no
+  // storage and recurrence silently degrades to note-tagged clones.
+  bookings: ['service_id', 'staff_id', 'start_time', 'end_time', 'total_amount', 'status', 'confirmation_code',
+             'series_id', 'series_pos', 'series_total', 'series_rule'],
   // Bookable menu the booking stack resolves (availability/lola tools).
   services: ['name', 'price', 'duration_minutes'],
   // Bookable roster read by availability.

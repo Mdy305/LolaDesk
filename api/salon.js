@@ -17,6 +17,7 @@ import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
 import { createCanonicalBooking, makeConfirmationCode } from './lib/booking-repository.js';
+import { randomUUID } from 'node:crypto';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -35,6 +36,21 @@ async function confirmSMS(c,tenantId,bookingId){
     await sendSMS({from:t.phone_number,to:cl.phone,tenantId,
       text:'Confirmed at '+(t.name||'the salon')+': '+(sv?.name||'Appointment')+' on '+when+'. Reply STOP to opt out.'});
   }catch(e){}
+}
+
+// n-th (0-based) occurrence start for a series cadence. UTC-day math keeps the
+// same wall time across DST-adjacent weeks; monthly clamps to the month's last
+// day (Jan 31 -> Feb 28) instead of spilling into March.
+function nextOccurrence(startISO,rule,n){
+  const d=new Date(startISO);
+  if(rule==='biweekly') d.setUTCDate(d.getUTCDate()+14*n);
+  else if(rule==='monthly'){
+    const day=d.getUTCDate();
+    d.setUTCMonth(d.getUTCMonth()+n);
+    if(d.getUTCDate()!==day) d.setUTCDate(0);
+  }
+  else d.setUTCDate(d.getUTCDate()+7*n); // weekly default
+  return d;
 }
 
 export default async function handler(req,res){
@@ -275,9 +291,19 @@ export default async function handler(req,res){
         if(gate)return res.status(402).json({ok:false,...gate,error:gate.speak});
       }
       if(action==='cancel'){
-        await c.from('bookings').update({status:'cancelled',updated_at:new Date().toISOString()})
-          .eq('id',body.id).eq('tenant_id',T);
-        return res.json({ok:true});
+        // Scoped series cancel: series_scope 'this' (default) | 'following' | 'all'.
+        // Requires series_id on the target row; a plain booking ignores scope.
+        const scope=String(body.series_scope||'this').toLowerCase();
+        const {data:target}=await c.from('bookings').select('id,series_id,start_time,status').eq('id',body.id).eq('tenant_id',T).maybeSingle();
+        if(!target)return res.status(404).json({ok:false,error:'Booking not found'});
+        let q=c.from('bookings').update({status:'cancelled',updated_at:new Date().toISOString()}).eq('tenant_id',T);
+        if(scope!=='this'&&target.series_id){
+          q=q.eq('series_id',target.series_id);
+          if(scope==='following') q=q.gte('start_time',target.start_time);
+        } else q=q.eq('id',body.id);
+        const {data:cancelled,error:cancelErr}=await q.neq('status','cancelled').select('id');
+        if(cancelErr)return res.status(500).json({ok:false,error:'Could not cancel booking: '+(cancelErr.message||JSON.stringify(cancelErr))});
+        return res.json({ok:true,cancelled:cancelled?.length||0,scope:target.series_id&&scope!=='this'?scope:'this'});
       }
       if(action==='update'||action==='reschedule'){
         const patch={updated_at:new Date().toISOString()};
@@ -285,11 +311,30 @@ export default async function handler(req,res){
         if(body.staff_id)patch.staff_id=body.staff_id;
         if(body.notes!=null)patch.notes=body.notes;
         if(body.starts_at){
-          const {data:ex}=await c.from('bookings').select('start_time,end_time').eq('id',body.id).maybeSingle();
+          const {data:ex}=await c.from('bookings').select('start_time,end_time,series_id').eq('id',body.id).maybeSingle();
           const dur=ex?(new Date(ex.end_time)-new Date(ex.start_time))/60000:60;
           const ns=new Date(body.starts_at);
           patch.start_time=ns.toISOString();
           patch.end_time=new Date(ns.getTime()+dur*60000).toISOString();
+          // Reschedule on a series row: 'this' (default) moves only this
+          // occurrence; 'following' moves this + every later occurrence by
+          // the same delta, preserving the cadence between them.
+          const scope=String(body.series_scope||'this').toLowerCase();
+          if(scope==='following'&&ex?.series_id){
+            const delta=new Date(patch.start_time).getTime()-new Date(ex.start_time).getTime();
+            const {data:later,error:laterErr}=await c.from('bookings').select('id,start_time,end_time')
+              .eq('series_id',ex.series_id).eq('tenant_id',T).neq('status','cancelled')
+              .gt('start_time',ex.start_time);
+            if(laterErr)return res.status(500).json({ok:false,error:'Could not read the series: '+(laterErr.message||JSON.stringify(laterErr))});
+            for(const occ of (later||[])){
+              const {error:occErr}=await c.from('bookings').update({
+                start_time:new Date(new Date(occ.start_time).getTime()+delta).toISOString(),
+                end_time:new Date(new Date(occ.end_time).getTime()+delta).toISOString(),
+                updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',T);
+              if(occErr)return res.status(500).json({ok:false,error:'Could not move occurrence: '+(occErr.message||JSON.stringify(occErr))});
+            }
+            patch.series_moved=(later||[]).length;
+          }
         }
         const {data,error}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
         if(error)throw error;
@@ -344,41 +389,50 @@ export default async function handler(req,res){
       // FIRST occurrence confirms by SMS — a standing series must not spam
       // the client with N Telnyx messages. Each occurrence is an ordinary
       // booking row, so per-instance edit/cancel stays natural.
-      const weeks=Math.min(12,Math.max(0,parseInt(body.repeat_weeks,10)||0));
-      if(weeks>1){
-        const seriesTag=' [recurring series 1/'+weeks+']';
-        if(!String(booking.notes||'').includes('[recurring series')){
-          await c.from('bookings').update({notes:(booking.notes||'')+seriesTag})
-            .eq('id',booking.id).eq('tenant_id',T).catch(()=>{});
-        }
-        for(let w=2;w<=weeks;w++){
-          const occStart=new Date(startDt.getTime()+(w-1)*7*86400000);
-          const occEnd=new Date(endDt.getTime()+(w-1)*7*86400000);
+      // body.repeat = { rule: 'weekly'|'biweekly'|'monthly', count: 2..52 }.
+      // Every occurrence goes through the SAME booking path (staff overlap,
+      // blocked slots, booking_services, status history) and carries real
+      // series identity (series_id/pos/total/rule — 20260902_booking_series.sql),
+      // so the dashboard and the API can act on this / this-and-following /
+      // ALL occurrences. Only the FIRST occurrence confirms by SMS — a
+      // standing series must not spam the client with N Telnyx messages.
+      const rule=String(body.repeat?.rule||'').toLowerCase();
+      const count=Math.min(52,Math.max(0,parseInt(body.repeat?.count,10)||0));
+      if(count>1&&['weekly','biweekly','monthly'].includes(rule)){
+        const seriesId=randomUUID();
+        await c.from('bookings').update({
+          series_id:seriesId,series_pos:1,series_total:count,series_rule:rule,
+          notes:(booking.notes||'')+' [recurring series 1/'+count+']'})
+          .eq('id',booking.id).eq('tenant_id',T);
+        for(let w=2;w<=count;w++){
+          const occStart=nextOccurrence(startDt.toISOString(),rule,w-1);
+          const occEnd=new Date(occStart.getTime()+(endDt.getTime()-startDt.getTime()));
           // availability check for this occurrence: staff bookings + blocked slots
           if(body.staff_id){
             const {data:cf2}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',body.staff_id)
               .neq('status','cancelled').lt('start_time',occEnd.toISOString()).gt('end_time',occStart.toISOString());
             if(cf2?.length){
-              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_week:w,
-                error:'Week '+w+' ('+occStart.toISOString().slice(0,10)+') is already booked — the first '+(w-1)+' occurrences were created.'});
+              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_occurrence:w,series_id:seriesId,
+                error:'Occurrence '+w+' ('+occStart.toISOString().slice(0,10)+') is already booked — the first '+(w-1)+' were created.'});
             }
             const ds2=occStart.toISOString().slice(0,10);
             const {data:bk2}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds2);
             const rs2=occStart.getHours()*60+occStart.getMinutes();
             if((bk2||[]).some(b=>(!b.staff_id||b.staff_id===body.staff_id)&&
               overlaps(rs2,rs2+dur,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60))){
-              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_week:w,
-                error:'Week '+w+' ('+ds2+') falls in blocked time — the first '+(w-1)+' occurrences were created.'});
+              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_occurrence:w,series_id:seriesId,
+                error:'Occurrence '+w+' ('+ds2+') falls in blocked time — the first '+(w-1)+' were created.'});
             }
           }
           await createCanonicalBooking({
             tenantId:T,clientId,serviceId:ids[0],staffId:body.staff_id||null,
             startTime:occStart.toISOString(),endTime:occEnd.toISOString(),
             status:'confirmed',totalAmount:price,
-            notes:(body.notes||'')+' [recurring series '+w+'/'+weeks+']',
-            source:body.channel||body.source||'dashboard',sendConfirmation:false});
+            notes:(body.notes||'')+' [recurring series '+w+'/'+count+']',
+            source:body.channel||body.source||'dashboard',sendConfirmation:false,
+            series:{id:seriesId,pos:w,total:count,rule}});
         }
-        return res.json({ok:true,appointment:booking,booking,series:{total:weeks,sms_sent:1}});
+        return res.json({ok:true,appointment:booking,booking,series:{id:seriesId,total:count,rule,sms_sent:1}});
       }
 
       return res.json({ok:true,appointment:booking,booking});

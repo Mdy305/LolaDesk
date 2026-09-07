@@ -53,8 +53,8 @@ test('schema-gate manifest covers the gate tables it must own', () => {
   assert.equal(REQUIRED_COLUMNS.tenants.includes('activation_status'), true,
     'the activation_status-class column is part of the gate');
   assert.equal(
-    Object.values(REQUIRED_COLUMNS).reduce((n, c) => n + c.length, 0), 33,
-    'gate tracks exactly 33 required columns'
+    Object.values(REQUIRED_COLUMNS).reduce((n, c) => n + c.length, 0), 37,
+    'gate tracks exactly 37 required columns (33 + 4 series columns)'
   );
 });
 
@@ -182,7 +182,7 @@ test('verifyRequiredColumns: all critical columns present -> ok', async () => {
   const gate = await verifyRequiredColumns(fake, REQUIRED_COLUMNS);
   assert.equal(gate.ok, true);
   assert.deepEqual(gate.missing, []);
-  assert.equal(gate.required, 33);
+  assert.equal(gate.required, 37);
 });
 
 test('verifyRequiredColumns reports a missing column loudly, naming it', async () => {
@@ -228,7 +228,7 @@ test('migrateAndVerify passes when tables and columns are all present', async ()
   assert.equal(r.gate.ok, true);
   assert.equal(r.columns.ok, true);
   assert.deepEqual(r.columns.missing, []);
-  assert.equal(r.columns.required, 33);
+  assert.equal(r.columns.required, 37);
 });
 
 test('migrateAndVerify fails red when a required column is missing', async () => {
@@ -260,7 +260,7 @@ test('CI apply path (runApplyMigrations) passes when everything is present', asy
   assert.equal(r.exitCode, 0);
   assert.equal(r.ready, true);
   assert.deepEqual(r.missing, []);
-  assert.equal(r.columns.required, 33);
+  assert.equal(r.columns.required, 37);
   assert.equal(r.tables.required, 26);
 });
 

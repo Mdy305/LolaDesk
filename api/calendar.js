@@ -288,6 +288,28 @@ export default async function handler(req,res){
     const c=db();
     const { data: current }=await c.from('bookings').select('*').eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
     if(!current) return res.status(404).json({ok:false,error:'booking_not_found'});
+    // Scoped series reschedule: series_scope 'following' moves this + every
+    // later occurrence by the same delta (cadence preserved between them);
+    // 'this' (default) moves only this occurrence. Shifted occurrences keep
+    // their relative layout — per-occurrence holds are not re-run for the
+    // delta move (v1; conflicts surface on the calendar itself).
+    const seriesScope=String(body.series_scope||'this').toLowerCase();
+    let seriesMoved=0;
+    if(seriesScope==='following'&&current.series_id){
+      const { data: later, error: laterErr }=await c.from('bookings').select('id,start_time,end_time')
+        .eq('series_id',current.series_id).eq('tenant_id',tenant.id).neq('status','cancelled')
+        .gt('start_time',current.start_time);
+      if(laterErr) return res.status(500).json({ok:false,error:'series_read_failed',detail:laterErr.message||JSON.stringify(laterErr)});
+      const delta=new Date(body.starts_at).getTime()-new Date(current.start_time).getTime();
+      for(const occ of (later||[])){
+        const { error: occErr }=await c.from('bookings').update({
+          start_time:new Date(new Date(occ.start_time).getTime()+delta).toISOString(),
+          end_time:new Date(new Date(occ.end_time).getTime()+delta).toISOString(),
+          updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',tenant.id);
+        if(occErr) return res.status(500).json({ok:false,error:'series_move_failed',detail:occErr.message||JSON.stringify(occErr)});
+        seriesMoved++;
+      }
+    }
     const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120});
     if(!held.ok) return res.status(200).json(held);
     const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
@@ -297,7 +319,7 @@ export default async function handler(req,res){
       try{ dashOffer=await offerFreedSlot({tenantId:tenant.id,serviceId:current.service_id||null,serviceName:current.service||current.service_name||null,freedAt:current.start_time||current.starts_at}); }
       catch(e){ console.warn('[calendar] waitlist offer failed:',e.message); }
     }
-    return res.json({ok:true,rescheduled:true,booking:updated,waitlist_offer:dashOffer});
+    return res.json({ok:true,rescheduled:true,booking:updated,series_moved:seriesMoved,waitlist_offer:dashOffer});
   }
 
     if(action==='cancel'){
@@ -327,6 +349,37 @@ export default async function handler(req,res){
         return res.json({ok:!!updated,cancelled:!!updated,booking:updated,waitlist_offer:publicOffer});
       }
       if(!body.booking_id) return res.status(400).json({ok:false,error:'booking_id_required'});
+      // Scoped series cancel: series_scope 'this' (default) | 'following' | 'all'.
+      // 'this' keeps the single-booking path below (waitlist fires for the one
+      // freed slot); 'following'/'all' cancel every affected occurrence, then
+      // run ONE waitlist pass for the earliest freed slot.
+      const seriesScope=String(body.series_scope||'this').toLowerCase();
+      if(seriesScope!=='this'){
+        const c=db();
+        const { data: target }=await c.from('bookings').select('id,series_id,start_time')
+          .eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
+        if(!target) return res.status(404).json({ok:false,error:'booking_not_found'});
+        if(!target.series_id) return res.status(400).json({ok:false,error:'not_a_series'});
+        let sq=c.from('bookings').select('id,start_time,service_id')
+          .eq('series_id',target.series_id).eq('tenant_id',tenant.id);
+        if(seriesScope==='following') sq=sq.gte('start_time',target.start_time);
+        const { data: affected, error: seriesErr }=await sq.neq('status','cancelled');
+        if(seriesErr) return res.status(500).json({ok:false,error:'series_cancel_failed',detail:seriesErr.message||JSON.stringify(seriesErr)});
+        let lastUpdated=null;
+        for(const occ of (affected||[])){
+          const u=await updateCanonicalBooking(tenant.id,occ.id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
+          if(u) lastUpdated=u;
+        }
+        let waitlist_matches={count:0,entries:[]};
+        let waitlist_offer=null;
+        if(lastUpdated){
+          try{
+            waitlist_matches=await findWaitlistMatches(tenant.id,{serviceId:lastUpdated.service_id||null,serviceName:lastUpdated.service||lastUpdated.service_name||null});
+            waitlist_offer=await offerFreedSlot({tenantId:tenant.id,serviceId:lastUpdated.service_id||null,serviceName:lastUpdated.service||lastUpdated.service_name||null,freedAt:lastUpdated.start_time||lastUpdated.starts_at});
+          }catch(e){ console.warn('[calendar] waitlist match failed:',e.message); }
+        }
+        return res.json({ok:true,cancelled:true,cancelled_count:(affected||[]).length,scope:seriesScope,booking:lastUpdated,waitlist_matches,waitlist_offer});
+      }
       const updated=await updateCanonicalBooking(tenant.id,body.booking_id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
       let waitlist_matches={count:0,entries:[]};
       let waitlist_offer=null;

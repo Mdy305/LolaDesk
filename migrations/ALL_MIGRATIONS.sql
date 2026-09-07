@@ -1789,3 +1789,18 @@ create index if not exists idx_tenants_activation_status on public.tenants(activ
 alter table public.tenants add column if not exists activation_status text not null default 'active';
 
 create index if not exists idx_tenants_activation_status on public.tenants(activation_status) where activation_status is not null;
+
+-- =============================================================================
+-- 20260902_booking_series.sql — real recurring-series identity for bookings
+-- =============================================================================
+-- Occurrences of one series share series_id; series_pos/series_total/series_rule
+-- make the series first-class so the dashboard and API can act on "this /
+-- this and following / all" occurrences. Idempotent.
+-- =============================================================================
+alter table public.bookings add column if not exists series_id uuid;
+alter table public.bookings add column if not exists series_pos int;
+alter table public.bookings add column if not exists series_total int;
+alter table public.bookings add column if not exists series_rule text;
+
+create index if not exists idx_bookings_series_id
+  on public.bookings(series_id) where series_id is not null;
