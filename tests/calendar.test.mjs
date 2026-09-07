@@ -369,3 +369,56 @@ test('dashboard reschedule with series_scope following shifts later occurrences 
   assert.equal(new Date(r3.start_time).getTime(), orig['ser-3'] + delta, 'ser-3 shifted by the same delta');
   assert.equal(new Date(r4.start_time).getTime(), orig['ser-4'] + delta, 'ser-4 shifted by the same delta');
 });
+
+test('calendar series move rejects on a later-occurrence collision with partial apply (parity with salon.js)', async () => {
+  seed();
+  // Rival booking sits where ser-4 (+2h shift) will land; ser-3 clears, ser-4 stops.
+  const ser4 = seriesRows().find(r => r.id === 'ser-4');
+  const rivalStart = new Date(new Date(ser4.start_time).getTime() + 2 * 3600000 - 10 * 60000).toISOString();
+  const rival = { id: 'rival-c', tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1',
+    start_time: rivalStart,
+    end_time: new Date(new Date(ser4.start_time).getTime() + 2 * 3600000 + 80 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 180, source: 'dashboard' };
+  fake.seed('bookings', [...seriesRows(), rival]);
+  const target = seriesRows().find(r => r.id === 'ser-2');
+  const newStart = new Date(new Date(target.start_time).getTime() + 2 * 3600000).toISOString();
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'reschedule', booking_id: 'ser-2', starts_at: newStart, staff_id: 'st-1', series_scope: 'following', channel: 'dashboard' }), res);
+  assert.equal(out.code, 409, 'collision must be 409 — got: ' + JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.conflict, true);
+  assert.equal(out.body.moved_count, 1, 'ser-3 moved before ser-4 clashed');
+  assert.equal(out.body.failed_at_occurrence, 4, 'names the colliding position');
+  assert.match(out.body.error, /already booked/);
+  const rows = fake.all('bookings');
+  const orig = Object.fromEntries(seriesRows().map(r => [r.id, new Date(r.start_time).getTime()]));
+  assert.equal(new Date(rows.find(r => r.id === 'ser-2').start_time).getTime(), orig['ser-2'], 'target NOT moved (later-first order)');
+  assert.equal(new Date(rows.find(r => r.id === 'ser-3').start_time).getTime(), orig['ser-3'] + 2 * 3600000, 'cleared occurrence PERSISTED shifted (partial-apply contract)');
+  assert.equal(new Date(rows.find(r => r.id === 'ser-4').start_time).getTime(), orig['ser-4'], 'colliding occurrence NOT moved');
+  assert.equal(new Date(rows.find(r => r.id === 'rival-c').start_time).getTime(), new Date(rival.start_time).getTime(), 'rival untouched');
+});
+
+test('calendar series move stops at blocked time (parity with salon.js)', async () => {
+  seed();
+  const ser3 = seriesRows().find(r => r.id === 'ser-3');
+  // Blocked window around ser-3's shifted time (wall-clock HH:MM convention).
+  const shifted3 = new Date(new Date(ser3.start_time).getTime() + 2 * 3600000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtLocal = (d) => pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const block = { id: 'block-c', tenant_id: T1, staff_id: 'st-1', blocked_date: shifted3.toISOString().slice(0, 10),
+    start_time: fmtLocal(new Date(shifted3.getTime() - 10 * 60000)),
+    end_time: fmtLocal(new Date(shifted3.getTime() + 100 * 60000)), reason: 'training' };
+  fake.seed('bookings', seriesRows());
+  fake.seed('blocked_slots', [block]);
+  const target = seriesRows().find(r => r.id === 'ser-2');
+  const newStart = new Date(new Date(target.start_time).getTime() + 2 * 3600000).toISOString();
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'reschedule', booking_id: 'ser-2', starts_at: newStart, staff_id: 'st-1', series_scope: 'following', channel: 'dashboard' }), res);
+  assert.equal(out.code, 409, JSON.stringify(out.body).slice(0, 300));
+  assert.match(out.body.error, /blocked time/);
+  assert.equal(out.body.moved_count, 0);
+  assert.equal(out.body.failed_at_occurrence, 3);
+  const rows = fake.all('bookings');
+  const orig = Object.fromEntries(seriesRows().map(r => [r.id, new Date(r.start_time).getTime()]));
+  assert.equal(new Date(rows.find(r => r.id === 'ser-2').start_time).getTime(), orig['ser-2'], 'target NOT moved');
+  assert.equal(new Date(rows.find(r => r.id === 'ser-3').start_time).getTime(), orig['ser-3'], 'blocked occurrence NOT moved');
+});

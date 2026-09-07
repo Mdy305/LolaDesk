@@ -311,29 +311,68 @@ export default async function handler(req,res){
         if(body.staff_id)patch.staff_id=body.staff_id;
         if(body.notes!=null)patch.notes=body.notes;
         if(body.starts_at){
-          const {data:ex}=await c.from('bookings').select('start_time,end_time,series_id').eq('id',body.id).maybeSingle();
+          const {data:ex}=await c.from('bookings').select('start_time,end_time,series_id,staff_id').eq('id',body.id).maybeSingle();
           const dur=ex?(new Date(ex.end_time)-new Date(ex.start_time))/60000:60;
           const ns=new Date(body.starts_at);
           patch.start_time=ns.toISOString();
           patch.end_time=new Date(ns.getTime()+dur*60000).toISOString();
           // Reschedule on a series row: 'this' (default) moves only this
           // occurrence; 'following' moves this + every later occurrence by
-          // the same delta, preserving the cadence between them.
+          // the same delta, preserving the cadence between them. EVERY moved
+          // occurrence is checked first — staff overlap and blocked time,
+          // the same checks creation runs — against everything EXCEPT the
+          // moving set (they shift together, so mutual overlaps are
+          // preserved by construction). Target first, then later ones in
+          // chronological order; a collision stops the move with 409
+          // {conflict, moved_count, failed_at_occurrence} and the already-
+          // moved occurrences persist (same partial-apply contract as
+          // series creation).
           const scope=String(body.series_scope||'this').toLowerCase();
           if(scope==='following'&&ex?.series_id){
             const delta=new Date(patch.start_time).getTime()-new Date(ex.start_time).getTime();
-            const {data:later,error:laterErr}=await c.from('bookings').select('id,start_time,end_time')
+            const {data:later,error:laterErr}=await c.from('bookings').select('id,start_time,end_time,staff_id,series_pos')
               .eq('series_id',ex.series_id).eq('tenant_id',T).neq('status','cancelled')
-              .gt('start_time',ex.start_time);
+              .gt('start_time',ex.start_time).order('start_time');
             if(laterErr)return res.status(500).json({ok:false,error:'Could not read the series: '+(laterErr.message||JSON.stringify(laterErr))});
+            const moving=new Set([body.id,...(later||[]).map(o=>o.id)]);
+            const checkOcc=async(occ)=>{
+              if(!occ.staff_id)return null;
+              const st=new Date(occ.start_time),en=new Date(occ.end_time);
+              const {data:cf}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',occ.staff_id)
+                .neq('status','cancelled').lt('start_time',en.toISOString()).gt('end_time',st.toISOString());
+              if(cf&&cf.some(x=>!moving.has(x.id)))
+                return 'Occurrence '+st.toISOString().slice(0,10)+' is already booked — the first '+occ.moved+' were moved.';
+              const ds=st.toISOString().slice(0,10);
+              const {data:bk}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds);
+              const rs=st.getHours()*60+st.getMinutes(),re=en.getHours()*60+en.getMinutes();
+              if((bk||[]).some(b=>(!b.staff_id||b.staff_id===occ.staff_id)&&
+                overlaps(rs,re,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60)))
+                return 'Occurrence '+ds+' falls in blocked time — the first '+occ.moved+' were moved.';
+              return null;
+            };
+            // target first (same window the tail patch below applies)
+            const targetOcc={start_time:patch.start_time,end_time:patch.end_time,
+              staff_id:body.staff_id||ex.staff_id||null,series_pos:ex.series_pos||1,moved:0};
+            const targetConflict=await checkOcc(targetOcc);
+            if(targetConflict)return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:targetOcc.series_pos,
+              error:'The new time for occurrence '+targetOcc.series_pos+' collides — nothing was moved. '+(targetConflict.match(/falls in blocked time/)?'Blocked time in the way.':'Another booking is in the way.')});
+            const {data:movedTarget,error:movedErr}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
+            if(movedErr)throw movedErr;
+            let moved=0;
             for(const occ of (later||[])){
+              const ns=new Date(new Date(occ.start_time).getTime()+delta).toISOString();
+              const ne=new Date(new Date(occ.end_time).getTime()+delta).toISOString();
+              const conflict=await checkOcc({start_time:ns,end_time:ne,staff_id:occ.staff_id,series_pos:occ.series_pos,moved});
+              if(conflict)return res.status(409).json({ok:false,conflict:true,moved_count:moved,failed_at_occurrence:occ.series_pos||null,error:conflict});
               const {error:occErr}=await c.from('bookings').update({
-                start_time:new Date(new Date(occ.start_time).getTime()+delta).toISOString(),
-                end_time:new Date(new Date(occ.end_time).getTime()+delta).toISOString(),
-                updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',T);
+                start_time:ns,end_time:ne,updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',T);
               if(occErr)return res.status(500).json({ok:false,error:'Could not move occurrence: '+(occErr.message||JSON.stringify(occErr))});
+              moved++;
             }
-            patch.series_moved=(later||[]).length;
+            // series_moved is RESPONSE metadata, not a bookings column —
+            // writing it into the patch once made every series move fail on
+            // real Postgres (unknown column) while the fake tolerated it.
+            return res.json({ok:true,appointment:movedTarget,series_moved:moved});
           }
         }
         const {data,error}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
