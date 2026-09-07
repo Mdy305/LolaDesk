@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeSupabase } from './fake-supabase.js';
+import { zonedLocalToUtc } from '../api/lib/timezone.js';
 
 const API_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STUB_DIR = join(API_ROOT, 'node_modules', '@supabase', 'supabase-js');
@@ -40,8 +41,21 @@ writeFileSync(join(STUB_DIR, 'index.js'), [
 
 const fake = new FakeSupabase();
 globalThis.__LOLA_FAKE_SUPABASE__ = fake;
-process.env.SUPABASE_URL = 'https://fake.supabase.co';
+process.env.SUPABASE_URL = 'windows are now salon-local, see tz tests';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
+
+// Seed a booking at a SALON-LOCAL wall time on a given local date offset.
+// Uses the same tz helpers the server uses, so expectations are tz-exact.
+import { localDateKey as _ldk } from '../api/lib/timezone.js';
+const TZ = 'America/New_York';
+function todayKey(offset = 0) {
+  const noonUtc = new Date(); noonUtc.setUTCHours(16, 0, 0, 0);
+  const d = new Date(noonUtc.getTime() + offset * 86400000);
+  return _ldk(d, TZ);
+}
+function isoAtLocal(dayOffset, hh, mm) {
+  return zonedLocalToUtc(todayKey(dayOffset), String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ':00', TZ);
+}
 
 const { default: handler } = await import('../api/calendar.js');
 
@@ -421,4 +435,45 @@ test('calendar series move stops at blocked time (parity with salon.js)', async 
   const orig = Object.fromEntries(seriesRows().map(r => [r.id, new Date(r.start_time).getTime()]));
   assert.equal(new Date(rows.find(r => r.id === 'ser-2').start_time).getTime(), orig['ser-2'], 'target NOT moved');
   assert.equal(new Date(rows.find(r => r.id === 'ser-3').start_time).getTime(), orig['ser-3'], 'blocked occurrence NOT moved');
+});
+
+// ─── Salon-local day bucketing (evening-booking day-mismatch defect) ───
+// A booking at 20:00 salon-local is stored as 00:00/01:00Z the NEXT UTC day.
+// The day view must still bucket it on its own local date, and a 23:30 vs
+// 00:30 local pair must land on opposite days.
+
+test('20:00 salon-local booking lands on its own local date in the day view', async () => {
+  seed();
+  fake.seed('bookings', [{
+    id: 'bk-eve', tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1',
+    start_time: isoAtLocal(1, 20, 0), end_time: isoAtLocal(1, 21, 0),
+    status: 'confirmed', total_amount: 180, source: 'dashboard'
+  }]);
+  const [res, out] = makeRes();
+  await handler(getReq({ action: 'day', date: todayKey(1) }), res);
+  assert.equal(out.code, 200);
+  assert.equal(out.body.ok, true);
+  assert.equal(out.body.date, todayKey(1), 'day view echoes the requested local date');
+  assert.equal(out.body.bookings.length, 1, JSON.stringify(out.body.bookings.map(b => b.start_time)) + ' vs window ' + out.body.start);
+  assert.equal(out.body.bookings[0].id, 'bk-eve');
+  assert.equal(out.body.timezone, 'America/New_York');
+});
+
+test('23:30 vs 00:30 salon-local pair bucket on opposite days', async () => {
+  seed();
+  fake.seed('bookings', [
+    { id: 'bk-late', tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1',
+      start_time: isoAtLocal(0, 23, 30), end_time: isoAtLocal(1, 0, 30),
+      status: 'confirmed', total_amount: 180, source: 'dashboard' },
+    { id: 'bk-early', tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1',
+      start_time: isoAtLocal(1, 0, 30), end_time: isoAtLocal(1, 1, 30),
+      status: 'confirmed', total_amount: 180, source: 'dashboard' }
+  ]);
+  const [resToday, outToday] = makeRes();
+  await handler(getReq({ action: 'day', date: todayKey(0) }), resToday);
+  assert.deepEqual(outToday.body.bookings.map(b => b.id), ['bk-late'], '23:30 belongs to today local; 00:30 must NOT leak into today');
+  const [resTmrw, outTmrw] = makeRes();
+  await handler(getReq({ action: 'day', date: todayKey(1) }), resTmrw);
+  assert.ok(outTmrw.body.bookings.some(b => b.id === 'bk-early'), '00:30-local start buckets on its own local date (bk-late may also appear: its 00:30 tail overlaps tomorrow)');
+  assert.equal(outToday.body.timezone, outTmrw.body.timezone);
 });

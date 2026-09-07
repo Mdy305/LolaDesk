@@ -8,6 +8,7 @@ import {
   upsertProviderMapping
 } from './lib/booking-repository.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
+import { dayBoundsUtc, localDateKey, zonedLocalToUtc } from './lib/timezone.js';
 import { offerFreedSlot } from './lib/booking-reminders.js';
 import { commitToExternalProvider } from './lib/booking-brain.js';
 
@@ -15,6 +16,10 @@ function jsonBody(req){
   if(typeof req.body==='string') { try{return JSON.parse(req.body||'{}')}catch{return {}} }
   return req.body || {};
 }
+
+// Calendar-date arithmetic on a YYYY-MM-DD key — pure calendar math, no
+// timezone math; DST is handled by zonedLocalToUtc at the edges.
+function addDaysKey(key,n){const [y,m,d]=key.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);}
 
 // Compare phone numbers loosely: digits only, tolerate a leading US '1'.
 // '(555) 123-4567' and '+15551234567' both normalize to '5551234567'.
@@ -82,9 +87,18 @@ export default async function handler(req,res){
     if(action==='day' || action==='week'){
       const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();
-      const start=new Date(date); start.setUTCHours(0,0,0,0);
+      // The client sends SALON-LOCAL calendar dates (its picker renders local
+      // dates), so the window must be that local day — not a UTC-midnight
+      // window, which bucketed a 20:00-local evening booking onto the next
+      // day (a New York 8 PM is 00:00Z the following day). Same convention
+      // as the availability engine and autopilot: dayBoundsUtc on the
+      // tenant's booking_settings.timezone.
+      const settings0=await getBookingSettings(tenant.id);
+      const tz=settings0?.timezone||'America/New_York';
+      const first=dayBoundsUtc(/^\d{4}-\d{2}-\d{2}$/.test(String(date))?String(date):new Date(date),tz);
+      const start=new Date(first.start);
       const days=action==='week' ? Math.max(1,Math.min(14,Number(body.days||7))) : 1;
-      const end=new Date(start.getTime()+days*86400000);
+      const end=new Date(zonedLocalToUtc(addDaysKey(first.key,days),'00:00:00',tz));
       // Blocks (lunch, breaks, days off) ride the same payload so the calendar
       // can shade them on the staff grid. The table landed in
       // 20260829_inventory_ops.sql; pre-migration the query resolves empty.
@@ -96,8 +110,8 @@ export default async function handler(req,res){
           .gte('blocked_date',from).lte('blocked_date',to)
       ]);
       const enriched=await enrichBookings(tenant.id,bookings,services,staff);
-      const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched, blocked_slots:blocked.data||[] };
-      if(action==='day'){ out.date=start.toISOString().slice(0,10); out.settings=settings; }
+      const out={ ok:true, services, staff, start:start.toISOString(), days, bookings:enriched, blocked_slots:blocked.data||[], timezone:tz };
+      if(action==='day'){ out.date=localDateKey(start,tz); out.settings=settings; }
       return res.json(out);
     }
 

@@ -210,6 +210,13 @@ function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_t
 function hdr(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+// Bucket a booking onto the calendar day it belongs to in the SALON's
+// timezone, not the browser's. The server stores UTC instants; a New York
+// 20:00 booking is 00:00/01:00Z the next day, so a naive UTC/local read
+// pushed evening appointments onto the wrong day column. The API now keys
+// day/week windows on booking_settings.timezone — the grid must agree.
+let SALON_TZ='America/New_York';
+function localDayKey(d){try{return new Intl.DateTimeFormat('en-CA',{timeZone:SALON_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}catch{return isoDay(d);}}
 function fmtT(d){const h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM',hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;}
 function fmtDur(mins){if(!mins)return '60 min';if(mins>=60)return (mins/60>=10?Math.round(mins/60):(mins/60).toFixed(1).replace(/\.0$/,''))+'h';return mins+'m';}
 function toMin(t){const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);}
@@ -231,6 +238,7 @@ async function load(){
       const d=await r.json();
       if(!d.ok)throw new Error(d.error||'Failed');
       STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.start),days:d.days||7,blocked_slots:d.blocked_slots||[]};
+      if(d.timezone)SALON_TZ=d.timezone;
       render();
     }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
   }else{
@@ -240,6 +248,7 @@ async function load(){
       const d=await r.json();
       if(!d.ok)throw new Error(d.error||'Failed');
       STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.date+'T00:00:00'),days:1,blocked_slots:d.blocked_slots||[]};
+      if(d.timezone)SALON_TZ=d.timezone;
       render();
     }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
   }
@@ -272,7 +281,7 @@ function renderWeekStrip(){
     const d=new Date(start);d.setDate(start.getDate()+i);
     const today=d.toDateString()===new Date().toDateString();
     const sel=isoDay(d)===isoDay(cursor);
-    const count=STATE.bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===isoDay(d)).length;
+    const count=STATE.bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===isoDay(d)).length;
     html+='<div class="wday'+(today?' today':'')+(sel?' sel':'')+'" onclick="pickDay(\''+isoDay(d)+'\')">'
       +'<div class="wd">'+d.toLocaleDateString([],{weekday:'short'})+(today?'<span class="wd-dot"></span>':'')+'</div>'
       +'<div class="wn">'+d.getDate()+'</div><div class="wc">'+d.toLocaleDateString([],{month:'short'})+(count?' · '+count:'')+'</div></div>';
@@ -305,7 +314,7 @@ function renderDay(){
     staff.forEach(s=>{html+='<div class="cal-slot" data-staff="'+s.id+'" data-hour="'+hr+'" onclick="quickBook(\''+s.id+'\','+hr+')"></div>';});
   }
   g.innerHTML=html;
-  const dayBookings=bookings.filter(b=>isoDay(new Date(b.start_time))===isoDay(cursor));
+  const dayBookings=bookings.filter(b=>localDayKey(new Date(b.start_time))===isoDay(cursor));
   dayBookings.forEach(b=>{
     if(!b.staff_id)return;
     const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
@@ -365,7 +374,7 @@ function renderWeek(){
     const d=new Date(base);d.setDate(base.getDate()+i);
     const iso=isoDay(d);
     const today=d.toDateString()===new Date().toDateString();
-    const dayBk=bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===iso);
+    const dayBk=bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===iso);
     const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===iso);
     html+='<div class="wk-day'+(today?' today':'')+'">'
       +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+d.getDate()+'</div></div>'
@@ -387,7 +396,7 @@ function renderAgenda(){
   const {bookings}=STATE;
   const g=document.getElementById('calGrid');
   g.style.gridTemplateColumns='1fr';
-  const dayBk=bookings.filter(b=>b.status!=='cancelled'&&isoDay(new Date(b.start_time))===isoDay(cursor)).sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+  const dayBk=bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===isoDay(cursor)).sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
   if(!dayBk.length){
     g.innerHTML='<div class="empty-cal">Nothing on the books for '+cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'})+'.<br><a href="javascript:openNew()">Book a new appointment</a></div>';
     return;
