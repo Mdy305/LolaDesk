@@ -16,7 +16,7 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
-import { createCanonicalBooking, makeConfirmationCode } from './lib/booking-repository.js';
+import { createCanonicalBooking, makeConfirmationCode, sendConfirmationSMS } from './lib/booking-repository.js';
 import { randomUUID } from 'node:crypto';
 
 const DAY_START=8, DAY_END=21;
@@ -301,8 +301,17 @@ export default async function handler(req,res){
           q=q.eq('series_id',target.series_id);
           if(scope==='following') q=q.gte('start_time',target.start_time);
         } else q=q.eq('id',body.id);
-        const {data:cancelled,error:cancelErr}=await q.neq('status','cancelled').select('id');
+        const {data:cancelled,error:cancelErr}=await q.neq('status','cancelled').order('start_time').select('id,client_id,service_id,start_time');
         if(cancelErr)return res.status(500).json({ok:false,error:'Could not cancel booking: '+(cancelErr.message||JSON.stringify(cancelErr))});
+        // Telnyx wire: the client always hears about a cancellation — exactly
+        // ONE text per cancel action (the earliest affected occurrence
+        // represents a series), mirroring calendar.js's series contract.
+        const firstCancelled=(cancelled||[])[0];
+        if(firstCancelled && firstCancelled.client_id){
+          try{
+            await sendConfirmationSMS({tenantId:T,clientId:firstCancelled.client_id,serviceId:firstCancelled.service_id,startTime:firstCancelled.start_time,verb:'Cancelled'});
+          }catch(e){ /* a failed cancel text must never fail the cancellation */ }
+        }
         return res.json({ok:true,cancelled:cancelled?.length||0,scope:target.series_id&&scope!=='this'?scope:'this'});
       }
       if(action==='update'||action==='reschedule'){

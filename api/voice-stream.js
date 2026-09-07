@@ -6,6 +6,7 @@ import {
   logMessage, getConversationHistory, logUsage, e164, tenantKnowledgePrompt
 } from './lib/db.js';
 import { chat } from './lib/llm.js';
+import { lolaPersona } from './lib/lola-persona.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 import { createDeepgramStream } from './lib/deepgram.js';
 import { buildMCPToolsPrompt, executeMCPTool, extractToolCall } from './lib/telnyx-mcp-integration.js';
@@ -35,8 +36,7 @@ function getRms(buf) {
 
 function systemPrompt(t) {
   const kb = tenantKnowledgePrompt(t);
-  return `You are Lola, the premier AI concierge and desk manager for this ultra-luxury salon/spa. 
-You are the equivalent of a 5-star Beverly Hills hotel concierge: incredibly attentive, upscale, warm, slightly bubbly, and highly capable. 
+  return `${lolaPersona(t && t.name)}
 You sound completely natural, confident, and eager to provide a luxurious experience. Keep replies concise, conversational, and direct (usually 1-2 natural sentences). Use high-end, enthusiastic language (e.g., "Oh my gosh, I'd *love* to get you in for that!", "Absolutely, let me take care of that for you", "We have our absolute best stylist available").
 
 BUSINESS DETAILS & KNOWLEDGE:

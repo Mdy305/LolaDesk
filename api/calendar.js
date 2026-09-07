@@ -4,7 +4,7 @@ import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { getAvailability, holdAvailability } from './lib/availability-engine-v2.js';
 import {
   addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
-  listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, updateCanonicalBooking,
+  listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, sendConfirmationSMS, updateCanonicalBooking,
   upsertProviderMapping
 } from './lib/booking-repository.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
@@ -421,15 +421,24 @@ export default async function handler(req,res){
           .eq('tenant_id',tenant.id).eq('id',body.booking_id).maybeSingle();
         if(!target) return res.status(404).json({ok:false,error:'booking_not_found'});
         if(!target.series_id) return res.status(400).json({ok:false,error:'not_a_series'});
-        let sq=c.from('bookings').select('id,start_time,service_id')
+        let sq=c.from('bookings').select('id,start_time,service_id,client_id')
           .eq('series_id',target.series_id).eq('tenant_id',tenant.id);
         if(seriesScope==='following') sq=sq.gte('start_time',target.start_time);
         const { data: affected, error: seriesErr }=await sq.neq('status','cancelled');
         if(seriesErr) return res.status(500).json({ok:false,error:'series_cancel_failed',detail:seriesErr.message||JSON.stringify(seriesErr)});
         let lastUpdated=null;
         for(const occ of (affected||[])){
-          const u=await updateCanonicalBooking(tenant.id,occ.id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request'});
+          const u=await updateCanonicalBooking(tenant.id,occ.id,{status:'cancelled'},{source:body.channel||'dashboard',reason:body.reason||'client_request',sendCancellation:false});
           if(u) lastUpdated=u;
+        }
+        // Exactly ONE cancellation text for the whole series (same contract as
+        // series creation's one confirmation): the earliest affected occurrence
+        // represents it; per-occurrence texts are suppressed via sendCancellation:false.
+        const firstOcc=(affected||[]).slice().sort((a,b)=>new Date(a.start_time)-new Date(b.start_time))[0];
+        if(firstOcc && firstOcc.client_id){
+          try{
+            await sendConfirmationSMS({tenantId:tenant.id,clientId:firstOcc.client_id,serviceId:firstOcc.service_id,startTime:firstOcc.start_time,verb:'Cancelled'});
+          }catch(e){ /* a failed cancel text must never fail the cancellation */ }
         }
         let waitlist_matches={count:0,entries:[]};
         let waitlist_offer=null;

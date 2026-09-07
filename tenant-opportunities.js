@@ -10,7 +10,7 @@
     if(targetPage){try{sessionStorage.setItem('lola_pending_prompt',prompt||'');}catch{}location.href=targetPage;return;}
     if(typeof window.askLola==='function')return window.askLola(prompt);
     const input=document.getElementById('cmdInput');if(input){input.value=prompt;input.focus();return;}
-    location.href='lola-live.html?prompt='+encodeURIComponent(prompt||'');
+    location.href='brain-os.html?prompt='+encodeURIComponent(prompt||'');
   }
   function render(data,auth){
     const main=document.querySelector('.main,main');if(!main||document.getElementById('revenueOpportunityPanel'))return;
