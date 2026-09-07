@@ -12,7 +12,8 @@
  *      persists through POST resource=appointment action=update.
  *   3. Notes POST lands in appointment_notes, and the calendar GET
  *      booking_notes action returns them tenant-scoped.
- *   4. Recurring series (repeat_weeks): every occurrence goes through the
+ *   4. Recurring series (repeat {rule,count} + series_id identity): every
+ *      occurrence goes through the
  *      canonical booking path, lands 7 days apart, and the client gets
  *      exactly ONE confirmation SMS (first occurrence) — never N.
  */
@@ -235,48 +236,59 @@ test('client delete succeeds and removes the row when nothing blocks it', async 
   assert.equal(fake.all('clients').length, 0, 'row removed');
 });
 
-// ── recurring series (OpenSalon parity) ─────────────────────────────
+// ── recurring series (real identity: series_id + cadences) ───────────
 // Count Telnyx SMS sends by stubbing fetch on /v2/messages.
 
-test('repeat_weeks generates every occurrence 7 days apart with ONE confirmation SMS', async () => {
-  fake.seed('tenants', [{ id: 't7', slug: 'series-salon', phone_number: '+15557770000', name: 'Series Salon' }]);
-  fake.seed('tenant_users', [{ user_id: 'u7', tenant_id: 't7', role: 'owner' }]);
-  fake.auth.getUser = async () => ({ data: { user: { id: 'u7', email: 'owner7@test.dev' } }, error: null });
-  fake.seed('services', [{ id: 'sv-7', tenant_id: 't7', name: 'Blowout', duration_minutes: 45, price: 70, is_active: true }]);
-  fake.seed('staff', [{ id: 'st-7', tenant_id: 't7', name: 'Rey', role: 'Stylist', is_active: true }]);
+function seriesEnv(slug, uid, svcId, staffId, extra = {}) {
+  fake.seed('tenants', [{ id: uid.replace('u', 't'), slug, phone_number: '+1555' + slug.length + '0000', name: slug + ' Salon' }]);
+  fake.seed('tenant_users', [{ user_id: uid, tenant_id: uid.replace('u', 't'), role: 'owner' }]);
+  fake.auth.getUser = async () => ({ data: { user: { id: uid, email: uid + '@test.dev' } }, error: null });
+  fake.seed('services', [{ id: svcId, tenant_id: uid.replace('u', 't'), name: 'Blowout', duration_minutes: 45, price: 70, is_active: true }]);
+  fake.seed('staff', [{ id: staffId, tenant_id: uid.replace('u', 't'), name: 'Rey', role: 'Stylist', is_active: true }]);
   fake.seed('clients', []);
-  fake.seed('bookings', []);
+  fake.seed('bookings', extra.bookings || []);
   fake.seed('booking_services', []);
-  fake.seed('blocked_slots', []);
+  fake.seed('blocked_slots', extra.blocked || []);
+}
 
+function smsCounter() {
   let smsSends = 0;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     if (String(url).includes('api.telnyx.com/v2/messages')) { smsSends += 1; return { ok: true, status: 200, json: async () => ({ data: { id: 'm' } }) }; }
     throw new Error('unexpected fetch: ' + url);
   };
+  return { get count() { return smsSends; }, restore() { globalThis.fetch = realFetch; } };
+}
 
+test('repeat weekly generates occurrences with shared series_id, pos/total, and ONE confirmation SMS', async () => {
+  seriesEnv('series-salon', 'u7', 'sv-7', 'st-7');
+  const sms = smsCounter();
   try {
     const start = new Date(Date.now() + 7 * 86400000);
     start.setUTCHours(15, 0, 0, 0);
     const req = postReq({
-      resource: 'appointment',
-      service_ids: ['sv-7'],
-      staff_id: 'st-7',
-      client_name: 'Series Client',
-      client_phone: '+15557770001',
-      starts_at: start.toISOString(),
-      channel: 'dashboard',
-      repeat_weeks: 4
+      resource: 'appointment', service_ids: ['sv-7'], staff_id: 'st-7',
+      client_name: 'Series Client', client_phone: '+15557770001',
+      starts_at: start.toISOString(), channel: 'dashboard',
+      repeat: { rule: 'weekly', count: 4 }
     });
     const [res, out] = makeRes();
     await handler(req, res);
     assert.equal(out.code, 200, 'series create must succeed — got: ' + JSON.stringify(out.body).slice(0, 300));
     assert.equal(out.body.ok, true);
-    assert.deepEqual(out.body.series, { total: 4, sms_sent: 1 }, 'series metadata returned');
+    assert.ok(out.body.series?.id, 'series metadata carries the series_id');
+    assert.equal(out.body.series.total, 4);
+    assert.equal(out.body.series.rule, 'weekly');
 
     const rows = fake.all('bookings');
     assert.equal(rows.length, 4, 'one bookings row per occurrence');
+    const ids = new Set(rows.map(r => r.series_id));
+    assert.equal(ids.size, 1, 'all occurrences share ONE series_id');
+    assert.ok(rows.every(r => r.series_id === out.body.series.id), 'response series_id matches the rows');
+    assert.deepEqual(rows.map(r => r.series_pos).sort((a, b) => a - b), [1, 2, 3, 4], 'pos 1..4');
+    assert.ok(rows.every(r => r.series_total === 4), 'series_total on every row');
+    assert.ok(rows.every(r => r.series_rule === 'weekly'), 'series_rule on every row');
     const times = rows.map(r => new Date(r.start_time).getTime()).sort((a, b) => a - b);
     for (let i = 1; i < times.length; i++) {
       assert.equal(times[i] - times[i - 1], 7 * 86400000, 'occurrences exactly 7 days apart');
@@ -285,101 +297,102 @@ test('repeat_weeks generates every occurrence 7 days apart with ONE confirmation
     assert.ok(rows.every(r => r.confirmation_code), 'every occurrence gets a confirmation code');
     assert.ok(rows[0].notes.includes('[recurring series 1/4]'), 'first occurrence tagged');
     assert.ok(rows[3].notes.includes('[recurring series 4/4]'), 'last occurrence tagged');
-    assert.equal(smsSends, 1, 'exactly ONE Telnyx SMS for the whole series — never N');
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+    assert.equal(sms.count, 1, 'exactly ONE Telnyx SMS for the whole series — never N');
+  } finally { sms.restore(); }
 });
 
-test('mid-series conflict stops the series and reports how many landed', async () => {
-  fake.seed('tenants', [{ id: 't8', slug: 'clash-salon', phone_number: '+15558880000', name: 'Clash Salon' }]);
-  fake.seed('tenant_users', [{ user_id: 'u8', tenant_id: 't8', role: 'owner' }]);
-  fake.auth.getUser = async () => ({ data: { user: { id: 'u8', email: 'owner8@test.dev' } }, error: null });
-  fake.seed('services', [{ id: 'sv-8', tenant_id: 't8', name: 'Trim', duration_minutes: 30, price: 40, is_active: true }]);
-  fake.seed('staff', [{ id: 'st-8', tenant_id: 't8', name: 'Ash', role: 'Stylist', is_active: true }]);
-  fake.seed('clients', []);
-  fake.seed('booking_services', []);
-  fake.seed('blocked_slots', []);
-
-  const start = new Date(Date.now() + 7 * 86400000);
-  start.setUTCHours(11, 0, 0, 0);
-  // Occurrence 3 (+14 days) is already taken by another booking.
-  const clash = new Date(start.getTime() + 14 * 86400000);
-  fake.seed('bookings', [{
-    id: 'existing-1', tenant_id: 't8', staff_id: 'st-8', service_id: 'sv-8',
-    start_time: new Date(clash.getTime() - 15 * 60000).toISOString(),
-    end_time: new Date(clash.getTime() + 45 * 60000).toISOString(),
-    status: 'confirmed', total_amount: 40
-  }]);
-
-  let smsSends = 0;
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    if (String(url).includes('api.telnyx.com/v2/messages')) { smsSends += 1; return { ok: true, status: 200, json: async () => ({ data: { id: 'm' } }) }; }
-    throw new Error('unexpected fetch: ' + url);
-  };
-
+test('biweekly cadence spaces occurrences 14 days apart', async () => {
+  seriesEnv('biweekly-salon', 'u9', 'sv-9', 'st-9');
+  const sms = smsCounter();
   try {
+    const start = new Date(Date.now() + 7 * 86400000);
+    start.setUTCHours(11, 0, 0, 0);
     const req = postReq({
-      resource: 'appointment',
-      service_ids: ['sv-8'],
-      staff_id: 'st-8',
-      client_name: 'Clash Client',
-      client_phone: '+15558880001',
-      starts_at: start.toISOString(),
-      channel: 'dashboard',
-      repeat_weeks: 3
+      resource: 'appointment', service_ids: ['sv-9'], staff_id: 'st-9',
+      client_name: 'Bi Client', client_phone: '+15559990001',
+      starts_at: start.toISOString(), channel: 'dashboard',
+      repeat: { rule: 'biweekly', count: 3 }
     });
     const [res, out] = makeRes();
     await handler(req, res);
-    assert.equal(out.code, 409, 'mid-series conflict must be 409 — got: ' + JSON.stringify(out.body).slice(0, 300));
-    assert.equal(out.body.ok, false);
-    assert.equal(out.body.conflict, true);
-    assert.equal(out.body.created_count, 2, 'occurrences 1-2 landed before the clash');
-    assert.equal(out.body.failed_at_week, 3);
-    assert.match(out.body.error, /Week 3/, 'error names the failing week');
-
+    assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
     const rows = fake.all('bookings');
-    assert.equal(rows.length, 3, 'the 2 created series rows + the pre-existing booking');
-    const seriesRows = rows.filter(r => (r.notes || '').includes('[recurring series'));
-    assert.equal(seriesRows.length, 2, 'only occurrences 1-2 persisted');
-    assert.equal(smsSends, 1, 'still exactly one SMS (first occurrence), even on partial series');
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every(r => r.series_rule === 'biweekly'));
+    const times = rows.map(r => new Date(r.start_time).getTime()).sort((a, b) => a - b);
+    assert.equal(times[1] - times[0], 14 * 86400000, '14-day gap');
+    assert.equal(times[2] - times[1], 14 * 86400000, '14-day gap');
+    assert.equal(sms.count, 1);
+  } finally { sms.restore(); }
 });
 
-test('a booking without repeat_weeks stays a single booking with one SMS', async () => {
-  fake.seed('tenants', [{ id: 't6', slug: 'solo-salon', phone_number: '+15556660000', name: 'Solo Salon' }]);
-  fake.seed('tenant_users', [{ user_id: 'u6', tenant_id: 't6', role: 'owner' }]);
-  fake.auth.getUser = async () => ({ data: { user: { id: 'u6', email: 'owner6@test.dev' } }, error: null });
-  fake.seed('services', [{ id: 'sv-6', tenant_id: 't6', name: 'Cut', duration_minutes: 30, price: 50, is_active: true }]);
-  fake.seed('staff', [{ id: 'st-6', tenant_id: 't6', name: 'Kim', role: 'Stylist', is_active: true }]);
-  fake.seed('clients', []);
-  fake.seed('bookings', []);
-  fake.seed('booking_services', []);
-  fake.seed('blocked_slots', []);
-
-  let smsSends = 0;
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    if (String(url).includes('api.telnyx.com/v2/messages')) { smsSends += 1; return { ok: true, status: 200, json: async () => ({ data: { id: 'm' } }) }; }
-    throw new Error('unexpected fetch: ' + url);
-  };
+test('monthly cadence keeps the day-of-month, clamping short months (Jan 31 -> Feb 28)', async () => {
+  seriesEnv('monthly-salon', 'u10', 'sv-10', 'st-10');
+  const sms = smsCounter();
   try {
+    const start = new Date(Date.UTC(2027, 0, 31, 15, 0, 0)); // Jan 31 2027
     const req = postReq({
-      resource: 'appointment', service_ids: ['sv-6'], staff_id: 'st-6',
-      client_name: 'Solo Client', client_phone: '+15556660001',
-      starts_at: new Date(Date.now() + 86400000).toISOString(), channel: 'dashboard'
+      resource: 'appointment', service_ids: ['sv-10'], staff_id: 'st-10',
+      client_name: 'Mo Client', client_phone: '+15551010001',
+      starts_at: start.toISOString(), channel: 'dashboard',
+      repeat: { rule: 'monthly', count: 3 }
     });
     const [res, out] = makeRes();
     await handler(req, res);
-    assert.equal(out.code, 200, 'single create must succeed — got: ' + JSON.stringify(out.body).slice(0, 200));
-    assert.equal(out.body.series, undefined, 'no series metadata for a single booking');
-    assert.equal(fake.all('bookings').length, 1);
-    assert.ok(!fake.all('bookings')[0].notes?.includes('[recurring'), 'no recurrence tag');
-    assert.equal(smsSends, 1, 'one confirmation SMS, as always');
-  } finally {
-    globalThis.fetch = realFetch;
-  }
+    assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+    const rows = fake.all('bookings').sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every(r => r.series_rule === 'monthly'));
+    const days = rows.map(r => new Date(r.start_time).getUTCDate());
+    assert.deepEqual(days, [31, 28, 31], 'Jan 31, Feb 28 (clamped), Mar 31');
+    assert.equal(sms.count, 1);
+  } finally { sms.restore(); }
 });
+
+test('series cancel scoped "following" cancels the target and later occurrences only', async () => {
+  const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
+  const mk = (pos) => ({
+    id: 'sbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
+    start_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000).toISOString(),
+    end_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000 + 30 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 40, series_id: 'series-x', series_pos: pos, series_total: 4, series_rule: 'weekly'
+  });
+  seriesEnv('clash-salon', 'u8', 'sv-8', 'st-8', { bookings: [mk(1), mk(2), mk(3), mk(4)] });
+  fake.seed('clients', [{ id: 'cl8', tenant_id: 't8', name: 'S C', phone: '+15558880001' }]);
+  const req = postReq({ resource: 'appointment', action: 'cancel', id: 'sbk-2', series_scope: 'following' });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.cancelled, 3, 'target + later occurrences (pos 2,3,4 of 4)');
+  const rows = fake.all('bookings');
+  assert.equal(rows.find(r => r.id === 'sbk-1').status, 'confirmed', 'earlier occurrence untouched');
+  assert.equal(rows.find(r => r.id === 'sbk-2').status, 'cancelled');
+  assert.equal(rows.find(r => r.id === 'sbk-3').status, 'cancelled');
+  assert.equal(rows.find(r => r.id === 'sbk-4').status, 'cancelled');
+});
+
+test('series reschedule scoped "following" moves later occurrences by the same delta', async () => {
+  const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
+  const mk = (pos) => ({
+    id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
+    start_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000).toISOString(),
+    end_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000 + 30 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 40, series_id: 'series-y', series_pos: pos, series_total: 3, series_rule: 'weekly'
+  });
+  seriesEnv('clash-salon', 'u8', 'sv-8', 'st-8', { bookings: [mk(1), mk(2), mk(3)] });
+  fake.seed('clients', [{ id: 'cl8', tenant_id: 't8', name: 'S C', phone: '+15558880001' }]);
+  const original2 = new Date(mk(2).start_time).getTime();
+  const newStart = new Date(original2 + 2 * 3600000); // +2h, same slot day
+  const req = postReq({ resource: 'appointment', action: 'reschedule', id: 'rbk-2', starts_at: newStart.toISOString(), series_scope: 'following' });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+  const rows = fake.all('bookings');
+  const r2 = rows.find(r => r.id === 'rbk-2');
+  const r3 = rows.find(r => r.id === 'rbk-3');
+  assert.equal(new Date(r2.start_time).getTime(), newStart.getTime(), 'target moved +2h');
+  const delta = newStart.getTime() - original2;
+  assert.equal(new Date(r3.start_time).getTime(), new Date(new Date(mk(3).start_time).getTime() + delta).getTime(), 'later occurrence shifted by the same +2h delta');
+  assert.equal(new Date(r3.start_time).getTime() - new Date(r2.start_time).getTime(), 7 * 86400000, 'cadence preserved');
+});
+

@@ -421,7 +421,7 @@ function bookForm(staffId='',hour=10){
     +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
     +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff">'+stfOpts+'</select></div>'
     +'<div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div>'
-    +'<div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><option value="4">Weekly · 4 weeks</option><option value="6">Weekly · 6 weeks</option><option value="8">Weekly · 8 weeks</option><option value="12">Weekly · 12 weeks</option></select></div>'
+    +'<div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup></select></div>'
     +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
     +'<div class="mstatus" id="mstatus"></div>';
@@ -467,7 +467,7 @@ async function removeWaitlist(id){
   }catch(e){toast(e.message||'Failed','error');}
 }
 function openNew(prefill){
-  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><option value="4">Weekly · 4 weeks</option><option value="6">Weekly · 6 weeks</option><option value="8">Weekly · 8 weeks</option><option value="12">Weekly · 12 weeks</option></select></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
+  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup></select></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
   hydrateForm();
   if(prefill){
     if(prefill.client_name){const el=document.getElementById('bkClient');if(el)el.value=prefill.client_name;}
@@ -545,22 +545,26 @@ async function saveBooking(){
   if(!name&&!phone){st.textContent='Please enter client name or phone.';st.className='mstatus err';return;}
   if(!svcIds.length){st.textContent='Pick at least one service.';st.className='mstatus err';return;}
   const starts=new Date(isoDay(cursor)+'T'+time+':00');
-  const repeatWeeks=parseInt((document.getElementById('bkRepeat')||{}).value,10)||1;
+  // Repeat modes: '1' = none; 'w6' = weekly x6, 'b4' = bi-weekly x4, 'm12' = monthly x12.
+  const rv=String((document.getElementById('bkRepeat')||{}).value||'1');
+  const rm=/^([wbm])(\d+)$/.exec(rv);
+  const repeat=rm?{rule:{w:'weekly',b:'biweekly',m:'monthly'}[rm[1]],count:parseInt(rm[2],10)}:null;
   try{
     // Single service, no recurrence → the canonical booking path (holds,
-    // waitlist, external mesh write). Multi-service OR a weekly series →
-    // the salon path, which persists per-service line items and generates
-    // each occurrence through the same availability rules (one SMS total).
-    const multi=svcIds.length>1||repeatWeeks>1;
+    // waitlist, external mesh write). Multi-service OR a series → the salon
+    // path, which persists per-service line items and generates each
+    // occurrence through the same availability rules (one SMS total).
+    const multi=svcIds.length>1||!!repeat;
     const url=multi?'/api/salon':'/api/calendar';
     const payload=multi
-      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard',repeat_weeks:repeatWeeks}
+      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard',repeat}
       :{action:'book',service_id:svcIds[0],staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'};
     const r=await fetch(url,{method:'POST',headers:hdr(),body:JSON.stringify(payload)});
     const d=await r.json();
     if(!d.ok){st.textContent=d.conflict?(d.error||'That time is already booked — try another time.'):(d.error||'Failed');st.className='mstatus err';return;}
     closeModal();
-    toast(d.series?('Series created — '+d.series.total+' weekly appointments, one confirmation text sent.'):'Booking confirmed — Lola will text the client.','success');
+    const ruleLabel={weekly:'weekly',biweekly:'bi-weekly',monthly:'monthly'}[(d.series||{}).rule]||'recurring';
+    toast(d.series?('Series created — '+d.series.total+' '+ruleLabel+' appointments, one confirmation text sent.'):'Booking confirmed — Lola will text the client.','success');
     if(WL.lastPrefill){const pid=WL.lastPrefill.id;WL.lastPrefill=null;fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id:pid,status:'offered'})}).catch(()=>{});}
     await load();loadWaitlist();
   }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
@@ -572,6 +576,8 @@ function showDetail(idOrBk){
   const color=svcColor(b.service_id);
   const st=(b.status||'confirmed');
   const recurTag=/\[recurring series (\d+)\/(\d+)\]/.exec(b.notes||'');
+  const seriesRule=b.series_rule||null;
+  const seriesWhen=b.series_pos&&b.series_total?{pos:b.series_pos,total:b.series_total}:null;
   const when=new Date(b.start_time).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
   openModal(st==='cancelled'?'Cancelled appointment':(b.service?.name||'Appointment'),
     when+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60)),
@@ -587,7 +593,7 @@ function showDetail(idOrBk){
     +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||b.service?.price||0).toLocaleString()+'</div></div>'
     +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
-    +(recurTag?('<div class="detail-row"><div class="dr-l">Repeats</div><div class="dr-v">Weekly — occurrence '+esc(recurTag[1])+' of '+esc(recurTag[2])+'</div></div>'):'')
+    +((seriesWhen||recurTag)?(function(){const pos=seriesWhen?seriesWhen.pos:recurTag[1],total=seriesWhen?seriesWhen.total:recurTag[2];const lbl={weekly:'Every week',biweekly:'Every 2 weeks',monthly:'Monthly'}[seriesRule]||'Weekly';return '<div class="detail-row"><div class="dr-l">Repeats</div><div class="dr-v">'+lbl+' — occurrence '+esc(pos)+' of '+esc(total)+'</div></div>';})():'')
     +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
     +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
     +(st==='confirmed'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'in_progress\')">Start service</button>':'')
@@ -595,7 +601,7 @@ function showDetail(idOrBk){
       +'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'no_show\')">No-show</button>':'')
     +(st==='completed'||st==='no_show'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'confirmed\')">Reopen</button>':'')
     +(st!=='cancelled'?'<button class="ghost" onclick="openReschedule(\''+b.id+'\')">Reschedule</button>':'')
-    +(st!=='cancelled'?'<button class="danger" onclick="cancelBooking(\''+b.id+'\')">Cancel</button>':'')+'</div>'
+    +(st!=='cancelled'?'<button class="danger" onclick="seriesCancelChoice(\''+b.id+'\')">Cancel</button>':'')+'</div>'
     +'<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Activity</div><div id="bkNotesList" style="font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:6px;max-height:140px;overflow:auto"><div style="color:var(--text3)">…</div></div>'
     +'<div style="display:flex;gap:8px;margin-top:10px"><input id="bkNote" placeholder="Add an internal note…" style="flex:1" onkeydown="if(event.key===\'Enter\')addNote(\''+b.id+'\')"/><button class="ghost" onclick="addNote(\''+b.id+'\')">Add</button></div></div>'
     +'<div class="mstatus" id="mstatus"></div>');
@@ -684,6 +690,43 @@ function cancelBooking(id){
   if(window.LolaUX){window.LolaUX.confirm({title:'Cancel this booking?',message:esc(clientName(b.client))+' · '+esc(b.service?.name||'Appointment')+' — this frees the slot and texts the client.',confirmLabel:'Cancel booking',danger:true}).then(ok=>{if(ok)doCancel();});}
   else if(confirm('Cancel this booking?'))doCancel();
 }
+// ── Series scope handling ──────────────────────────────────────────────
+// A series occurrence (series_id present) offers this / this-and-following /
+// all at cancel time; a plain booking cancels directly. 'this' on a series
+// cancels only that occurrence — matching the API contract.
+function seriesCancelChoice(id){
+  const b=findBooking(id);if(!b)return;
+  if(!b.series_id){cancelBooking(id);return;}
+  const st=document.getElementById('mstatus');
+  const doCancel=(scope)=>{
+    fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:id,series_scope:scope,channel:'dashboard',reason:'client_request'})})
+      .then(r=>r.json()).then(d=>{
+        if(!d.ok)throw new Error(d.error||'Failed');
+        closeModal();
+        toast(scope==='this'?('Occurrence cancelled — the rest of the series stands.'):(d.cancelled_count+' occurrences cancelled ('+scope+').'),'success');
+        load();loadWaitlist();
+      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+  };
+  if(window.LolaUX){
+    window.LolaUX.confirm({title:'Cancel series',message:'This appointment is part of a recurring series. Cancel just this one, this one and every later one, or the whole series?',confirmLabel:'This occurrence only',danger:true,extraButtons:[
+      {label:'This + following',value:'following',danger:true},
+      {label:'Entire series',value:'all',danger:true}
+    ]}).then((scope)=>{
+      if(scope===true||scope===null)return cancelOne(id);
+      if(scope==='following'||scope==='all')doCancel(scope);else cancelOne(id);
+    });
+  }else{
+    const v=prompt('Cancel scope — type: this / following / all','this');
+    if(!v)return; const sc=v.trim().toLowerCase();
+    if(sc==='following'||sc==='all')doCancel(sc);else cancelOne(id);
+  }
+  function cancelOne(sid){
+    fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:sid,series_scope:'this',channel:'dashboard',reason:'client_request'})})
+      .then(r=>r.json()).then(d=>{if(!d.ok)throw new Error(d.error||'Failed');closeModal();toast('Occurrence cancelled — the rest of the series stands.','success');load();loadWaitlist();})
+      .catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+  }
+}
+
 function nav(dir){
   if(VIEW==='week'){const d=new Date(cursor);d.setDate(d.getDate()+dir*7);cursor=d;}
   else{cursor.setDate(cursor.getDate()+dir);}

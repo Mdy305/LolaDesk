@@ -9,6 +9,10 @@
  * service / staff / client objects attached (no more "Appointment"/"Client"
  * fallbacks), the week action spans a multi-day range, cancelled bookings are
  * filtered from listBookings, and a conflict still surfaces on a double-book.
+ *
+ * Series tests (20260902_booking_series.sql): scoped cancel (following/all)
+ * and scoped reschedule on the dashboard path — series_id identity required,
+ * 'this' stays the single-booking path.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -281,4 +285,87 @@ test('book action keeps the booking local when the provider is down', async () =
     assert.equal(booking.external_provider, null);
     assert.equal(fake.all('provider_mappings').filter(m => m.entity_type === 'booking').length, 0);
   }finally{ globalThis.fetch = realFetch; }
+});
+
+// ── recurring series: scoped cancel / reschedule on the dashboard path ──
+// These drive the REAL /api/calendar handler the bookings.html modal uses.
+// booking_status_history is inserted by updateCanonicalBooking on every
+// status change; the fake auto-creates unseeded tables on first write.
+
+const SERIES_ID = '44444444-4444-4444-4444-444444444444';
+
+function seriesRows() {
+  // 4 weekly occurrences, pos 1..4, 10:00Z each
+  return [1, 2, 3, 4].map((pos) => ({
+    id: 'ser-' + pos, tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1',
+    start_time: new Date(new Date(iso(7, 10)).getTime() + (pos - 1) * 7 * 86400000).toISOString(),
+    end_time: new Date(new Date(iso(7, 10)).getTime() + (pos - 1) * 7 * 86400000 + 90 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 180, source: 'dashboard',
+    series_id: SERIES_ID, series_pos: pos, series_total: 4, series_rule: 'weekly'
+  }));
+}
+
+test('dashboard cancel with series_scope following cancels target + later, spares earlier', async () => {
+  seed();
+  fake.seed('bookings', seriesRows());
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'cancel', booking_id: 'ser-2', series_scope: 'following', channel: 'dashboard' }), res);
+  assert.equal(out.body.ok, true, JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.cancelled_count, 3, 'pos 2,3,4 cancelled');
+  assert.equal(out.body.scope, 'following');
+  const rows = fake.all('bookings');
+  assert.equal(rows.find(r => r.id === 'ser-1').status, 'confirmed', 'earlier occurrence spared');
+  assert.ok(rows.filter(r => r.id !== 'ser-1').every(r => r.status === 'cancelled'));
+});
+
+test('dashboard cancel with series_scope all cancels every occurrence and reports the count', async () => {
+  seed();
+  fake.seed('bookings', seriesRows());
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'cancel', booking_id: 'ser-3', series_scope: 'all', channel: 'dashboard' }), res);
+  assert.equal(out.body.ok, true, JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.cancelled_count, 4);
+  assert.ok(fake.all('bookings').every(r => r.status === 'cancelled'));
+});
+
+test('dashboard cancel with series_scope this (default) cancels only that occurrence', async () => {
+  seed();
+  fake.seed('bookings', seriesRows());
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'cancel', booking_id: 'ser-2', channel: 'dashboard' }), res);
+  assert.equal(out.body.ok, true);
+  const rows = fake.all('bookings');
+  assert.equal(rows.find(r => r.id === 'ser-2').status, 'cancelled');
+  assert.equal(rows.filter(r => r.status === 'cancelled').length, 1, 'exactly one occurrence cancelled');
+});
+
+test('series_scope on a plain booking is rejected (not_a_series)', async () => {
+  seed();
+  const start = iso(2, 9, 0);
+  fake.seed('bookings', [{ id: 'plain-1', tenant_id: T1, client_id: 'cl-1', service_id: 'svc-1', staff_id: 'st-1', start_time: start, end_time: new Date(new Date(start).getTime() + 60 * 60000).toISOString(), status: 'confirmed', total_amount: 180, source: 'dashboard' }]);
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'cancel', booking_id: 'plain-1', series_scope: 'all', channel: 'dashboard' }), res);
+  assert.equal(out.code, 400);
+  assert.equal(out.body.error, 'not_a_series');
+  assert.equal(fake.all('bookings').find(r => r.id === 'plain-1').status, 'confirmed', 'nothing was cancelled');
+});
+
+test('dashboard reschedule with series_scope following shifts later occurrences by the same delta', async () => {
+  seed();
+  fake.seed('bookings', seriesRows());
+  const target = seriesRows().find(r => r.id === 'ser-2');
+  const delta = 2 * 3600000; // +2h
+  const newStart = new Date(new Date(target.start_time).getTime() + delta).toISOString();
+  const [res, out] = makeRes();
+  await handler(postReq({ action: 'reschedule', booking_id: 'ser-2', starts_at: newStart, staff_id: 'st-1', series_scope: 'following', channel: 'dashboard' }), res);
+  assert.equal(out.body.ok, true, JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.series_moved, 2, 'ser-3 and ser-4 shifted');
+  const rows = fake.all('bookings');
+  const r2 = rows.find(r => r.id === 'ser-2');
+  const r3 = rows.find(r => r.id === 'ser-3');
+  const r4 = rows.find(r => r.id === 'ser-4');
+  const orig = Object.fromEntries(seriesRows().map(r => [r.id, new Date(r.start_time).getTime()]));
+  assert.equal(new Date(r2.start_time).getTime(), orig['ser-2'] + delta, 'target moved +2h');
+  assert.equal(new Date(r3.start_time).getTime(), orig['ser-3'] + delta, 'ser-3 shifted by the same delta');
+  assert.equal(new Date(r4.start_time).getTime(), orig['ser-4'] + delta, 'ser-4 shifted by the same delta');
 });
