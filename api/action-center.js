@@ -62,11 +62,11 @@ export default async function handler(req,res){
     const sentIds=new Set(usage.filter(x=>x.kind==='campaign_sent').map(x=>x.metadata?.draft_id).filter(Boolean));
     for(const e of draftEvents){
       const draftId=e.metadata?.draft_id;if(!draftId||sentIds.has(draftId))continue;
-      items.push({id:actionId('campaign',draftId),type:'campaign',priority:'high',title:'Campaign waiting for approval',detail:`${e.metadata?.campaign||'Marketing'} draft · ${Number(e.metadata?.target_count||0)} recipients`,created_at:e.created_at,href:'marketing.html',cta:'Review draft'});
+      items.push({id:actionId('campaign',draftId),type:'campaign',priority:'high',title:'Campaign waiting for approval',detail:`${e.metadata?.campaign||'Marketing'} draft · ${Number(e.metadata?.target_count||0)} recipients`,created_at:e.created_at,href:'marketer.html',cta:'Review draft'});
     }
     const failedCampaigns=usage.filter(x=>x.kind==='campaign_send'&&Number(x.metadata?.failed||0)>0).slice(0,5);
     for(const e of failedCampaigns){
-      items.push({id:actionId('delivery',e.metadata?.draft_id||e.created_at),type:'delivery',priority:'medium',title:'Review campaign delivery failures',detail:`${Number(e.metadata?.failed||0)} messages failed and may need retry or correction.`,created_at:e.created_at,href:'marketing.html',cta:'Review delivery'});
+      items.push({id:actionId('delivery',e.metadata?.draft_id||e.created_at),type:'delivery',priority:'medium',title:'Review campaign delivery failures',detail:`${Number(e.metadata?.failed||0)} messages failed and may need retry or correction.`,created_at:e.created_at,href:'marketer.html',cta:'Review delivery'});
     }
 
     const open=items.filter(item=>{

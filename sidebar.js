@@ -18,7 +18,7 @@
     settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7.7 2 2 0 11-3.8 0 1.6 1.6 0 00-2.7-.7l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.3-2.7 2 2 0 010-3.8 1.6 1.6 0 001.3-2.7l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 002.7-.7 2 2 0 013.8 0 1.6 1.6 0 002.7.7l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 001.3 2.7 2 2 0 010 3.8 1.6 1.6 0 00-1.3 1z"/>'
   };icons.settings=icons.settings.slice(0,-1);
   const items=[
-    {id:'brain',label:'Lola',href:'brain-os.html'},{id:'overview',label:'Home',href:'dashboard.html'},{id:'operations',label:'Operate',href:'operations-os.html'},
+    {id:'overview',label:'Home',href:'dashboard.html'},{id:'operations',label:'Operate',href:'operations-os.html'},
     {id:'bookings',label:'Calendar',href:'bookings.html'},{id:'team',label:'Team',href:'team.html'},{id:'inbox',label:'Inbox',href:'inbox.html'},
     {id:'callcenter',label:'Call Center',href:'call-center.html'},{id:'clients',label:'Clients',href:'clients.html'},{id:'inventory',label:'Inventory',href:'inventory.html'},{id:'growth',label:'Grow',href:'growth-os.html'},{id:'reviews',label:'Reviews',href:'reviews.html'},{id:'revenue',label:'Revenue',href:'revenue.html'},
     {id:'launch',label:'Launch',href:'launch.html'},{id:'telecom',label:'Telecom',href:'telecom.html'},{id:'settings',label:'Settings',href:'settings.html'}

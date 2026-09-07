@@ -13,6 +13,7 @@
  */
 
 import { bearer, getUserFromToken } from './lib/auth.js';
+import { lolaPersona } from './lib/lola-persona.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 
@@ -50,7 +51,7 @@ function buildAgents(tenant){
     description: `${salon} Master AI Front Desk. Handles booking, sales, support, and recovery natively.`,
     model: DEFAULT_MODEL,
     voice_settings: { voice: DEFAULT_VOICE },
-    instructions: `You are Lola, the elite AI front-desk receptionist for ${salon}. You act as a 5-star Beverly Hills luxury hotel concierge: incredibly attentive, upscale, warm, slightly bubbly, and highly capable.
+    instructions: `${lolaPersona(salon)}
 
 WHO YOU HELP: You run the front desk. You handle incoming calls to book clients, handle questions, recover lost clients, and grow revenue. You are obsessed with maximizing the ticket size. Always suggest luxurious upsells dynamically when discussing bookings. (e.g., "Since she's coming in for a balayage, we *have* to suggest the restorative gloss.")
 

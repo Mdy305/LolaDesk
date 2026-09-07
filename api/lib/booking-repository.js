@@ -23,7 +23,12 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
     if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
     const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     const code = confirmationCode ? ' Your code: ' + confirmationCode + ' — use it to cancel or reschedule online.' : '';
-    const text = (verb==='Rescheduled'?'Rescheduled at ':verb+' at ') + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
+    let text;
+    if(verb==='Cancelled'){
+      text = 'Your appointment at ' + (tenant.name || 'the salon') + ' on ' + when + ' has been cancelled. Reply to this text and we\'ll get you back on the books soon.';
+    } else {
+      text = (verb==='Rescheduled'?'Rescheduled at ':verb+' at ') + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
+    }
     const r = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
     return { sent: true, text };
   }catch(e){ console.warn('[repo] SMS:', e.message); return { skipped: true, reason: String(e?.message||e) }; }
@@ -202,7 +207,7 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   return data;
 }
 
-export async function updateCanonicalBooking(tenantId, bookingId, patch, { source='lola', reason=null } = {}){
+export async function updateCanonicalBooking(tenantId, bookingId, patch, { source='lola', reason=null, sendCancellation=true } = {}){
   const c = db(); if(!c) throw new Error('database not configured');
   const { data: before } = await c.from('bookings').select('*').eq('tenant_id',tenantId).eq('id',bookingId).maybeSingle();
   if(!before) return null;
@@ -225,6 +230,24 @@ export async function updateCanonicalBooking(tenantId, bookingId, patch, { sourc
         verb: 'Rescheduled'
       });
     }catch(e){ /* a failed confirmation text must never fail a reschedule */ }
+  }
+  // A CONFIRMED booking cancelled by the salon (or the client) must reach
+  // the client — before this, cancellation was the one lifecycle moment with
+  // no Telnyx wire. Drafts/pending rows never promised the client anything,
+  // so they stay silent. Series-wide cancels pass sendCancellation:false per
+  // occurrence and send exactly ONE text at the call site (same contract as
+  // series creation's one confirmation).
+  const isCancellation = CANCELED.has(String(patch.status||'').toLowerCase())
+    && String(before.status||'').toLowerCase() === 'confirmed';
+  if(isCancellation && sendCancellation){
+    try{
+      await sendConfirmationSMS({
+        tenantId, clientId: before.client_id, serviceId: before.service_id,
+        startTime: before.start_time,
+        confirmationCode: data.confirmation_code || before.confirmation_code,
+        verb: 'Cancelled'
+      });
+    }catch(e){ /* a failed cancel text must never fail the cancellation */ }
   }
   return data;
 }

@@ -290,8 +290,12 @@ test('cancelAppointment sends the offer SMS to a consenting waitlisted client', 
     assert.equal(r.ok, true);
     assert.equal(r.waitlist_matches.count, 1);
     assert.equal(r.waitlist_offer.ok, true);
-    assert.equal(spy.calls.length, 1);
-    assert.match(spy.calls[0].body.text, /Balayage spot just opened/i);
+    // TWO texts, in order: (1) the cancellation notice to the client whose
+    // booking was cancelled (the new Telnyx wire — silence after a cancel is
+    // a defect), (2) the waitlist offer for the freed slot.
+    assert.equal(spy.calls.length, 2);
+    assert.match(spy.calls[0].body.text, /has been cancelled/i);
+    assert.match(spy.calls[1].body.text, /Balayage spot just opened/i);
     assert.match(r.speak, /texted the first person/i);
     const rows = fake.tables.get('booking_waitlist') || [];
     assert.equal(rows[0].status, 'offered');
