@@ -290,28 +290,75 @@ export default async function handler(req,res){
     if(!current) return res.status(404).json({ok:false,error:'booking_not_found'});
     // Scoped series reschedule: series_scope 'following' moves this + every
     // later occurrence by the same delta (cadence preserved between them);
-    // 'this' (default) moves only this occurrence. Shifted occurrences keep
-    // their relative layout — per-occurrence holds are not re-run for the
-    // delta move (v1; conflicts surface on the calendar itself).
+    // 'this' (default) moves only this occurrence. EVERY moved occurrence is
+    // checked first — staff overlap and blocked time, the same checks series
+    // creation runs — against everything EXCEPT the moving set (they shift
+    // together, so mutual overlaps are preserved by construction). Target
+    // first (its own hold below runs the full availability engine), then
+    // later ones chronologically; a collision stops the move with 409
+    // {conflict, moved_count, failed_at_occurrence} and the already-moved
+    // occurrences persist (same partial-apply contract as series creation).
     const seriesScope=String(body.series_scope||'this').toLowerCase();
     let seriesMoved=0;
+    let seriesConflict=null;
     if(seriesScope==='following'&&current.series_id){
-      const { data: later, error: laterErr }=await c.from('bookings').select('id,start_time,end_time')
+      const { data: later, error: laterErr }=await c.from('bookings').select('id,start_time,end_time,staff_id,series_pos')
         .eq('series_id',current.series_id).eq('tenant_id',tenant.id).neq('status','cancelled')
-        .gt('start_time',current.start_time);
+        .gt('start_time',current.start_time).order('start_time');
       if(laterErr) return res.status(500).json({ok:false,error:'series_read_failed',detail:laterErr.message||JSON.stringify(laterErr)});
+      const moving=new Set([current.id,...(later||[]).map(o=>o.id)]);
       const delta=new Date(body.starts_at).getTime()-new Date(current.start_time).getTime();
+      // Minute-window helpers mirroring salon.js's blocked-time check
+      // (DAY_START 8:00 / DAY_END 21:00 as the all-day block bounds).
+      const toMinutes=(t)=>{const [h,m]=String(t).split(':').map(Number);return (h||0)*60+(m||0);};
+      const windowsOverlap=(aS,aE,bS,bE)=>Math.max(aS,bS)<Math.min(aE,bE);
       for(const occ of (later||[])){
+        const st=new Date(new Date(occ.start_time).getTime()+delta);
+        const en=new Date(new Date(occ.end_time).getTime()+delta);
+        if(occ.staff_id){
+          const { data: cf }=await c.from('bookings').select('id').eq('tenant_id',tenant.id).eq('staff_id',occ.staff_id)
+            .neq('status','cancelled').lt('start_time',en.toISOString()).gt('end_time',st.toISOString());
+          if(cf&&cf.some(x=>!moving.has(x.id))){
+            seriesConflict={moved_count:seriesMoved,failed_at_occurrence:occ.series_pos||null,
+              error:'Occurrence '+st.toISOString().slice(0,10)+' is already booked — the first '+seriesMoved+' later occurrences were moved.'};
+            break;
+          }
+          const ds=st.toISOString().slice(0,10);
+          const { data: bk }=await c.from('blocked_slots').select('*').eq('tenant_id',tenant.id).eq('blocked_date',ds);
+          const rs=st.getHours()*60+st.getMinutes(),re=en.getHours()*60+en.getMinutes();
+          const blockedHit=(bk||[]).some(b=>(!b.staff_id||b.staff_id===occ.staff_id)&&
+            windowsOverlap(rs,re,
+              b.start_time?toMinutes(b.start_time):8*60,
+              b.end_time?toMinutes(b.end_time):21*60));
+          if(blockedHit){
+            seriesConflict={moved_count:seriesMoved,failed_at_occurrence:occ.series_pos||null,
+              error:'Occurrence '+ds+' falls in blocked time — the first '+seriesMoved+' later occurrences were moved.'};
+            break;
+          }
+        }
         const { error: occErr }=await c.from('bookings').update({
-          start_time:new Date(new Date(occ.start_time).getTime()+delta).toISOString(),
-          end_time:new Date(new Date(occ.end_time).getTime()+delta).toISOString(),
+          start_time:st.toISOString(),end_time:en.toISOString(),
           updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',tenant.id);
         if(occErr) return res.status(500).json({ok:false,error:'series_move_failed',detail:occErr.message||JSON.stringify(occErr)});
         seriesMoved++;
       }
+      if(seriesConflict){
+        return res.status(409).json({ok:false,conflict:true,...seriesConflict,
+          detail:'Target not moved; the later occurrences counted in moved_count were.'});
+      }
     }
     const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120});
-    if(!held.ok) return res.status(200).json(held);
+    if(!held.ok){
+      // Series move: the later occurrences were already shifted (they passed
+      // their checks), so a target-window collision is a partial-apply 409 —
+      // the same contract salon.js returns — never a bare failure that hides
+      // what already moved.
+      if(seriesScope==='following'&&current.series_id&&seriesMoved>0){
+        return res.status(409).json({ok:false,conflict:true,moved_count:seriesMoved,failed_at_occurrence:current.series_pos||1,
+          error:'The new time for occurrence '+(current.series_pos||1)+' collides — the first '+seriesMoved+' later occurrences were moved.'});
+      }
+      return res.status(200).json(held);
+    }
     const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
     await releaseHold(tenant.id,held.hold.hold_token,'converted');
     let dashOffer=null;

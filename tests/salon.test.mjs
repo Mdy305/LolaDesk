@@ -371,7 +371,7 @@ test('series cancel scoped "following" cancels the target and later occurrences 
   assert.equal(rows.find(r => r.id === 'sbk-4').status, 'cancelled');
 });
 
-test('series reschedule scoped "following" moves later occurrences by the same delta', async () => {
+test('series reschedule scoped "following" moves the whole series cleanly and reports moved count', async () => {
   const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
   const mk = (pos) => ({
     id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
@@ -387,6 +387,7 @@ test('series reschedule scoped "following" moves later occurrences by the same d
   const [res, out] = makeRes();
   await handler(req, res);
   assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.series_moved, 1, 'series_moved is response metadata: 1 later occurrence moved');
   const rows = fake.all('bookings');
   const r2 = rows.find(r => r.id === 'rbk-2');
   const r3 = rows.find(r => r.id === 'rbk-3');
@@ -394,5 +395,73 @@ test('series reschedule scoped "following" moves later occurrences by the same d
   const delta = newStart.getTime() - original2;
   assert.equal(new Date(r3.start_time).getTime(), new Date(new Date(mk(3).start_time).getTime() + delta).getTime(), 'later occurrence shifted by the same +2h delta');
   assert.equal(new Date(r3.start_time).getTime() - new Date(r2.start_time).getTime(), 7 * 86400000, 'cadence preserved');
+});
+
+test('series reschedule "following" re-checks every shifted occurrence and rejects on a later collision (partial apply)', async () => {
+  const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
+  const mk = (pos) => ({
+    id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
+    start_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000).toISOString(),
+    end_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000 + 30 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 40, series_id: 'series-z', series_pos: pos, series_total: 4, series_rule: 'weekly'
+  });
+  // A rival booking sits where occurrence rbk-3 will land after a +2h shift.
+  const t3 = new Date(t.getTime() + 2 * 7 * 86400000);
+  const rival = {
+    id: 'rival-1', tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
+    start_time: new Date(t3.getTime() + 2 * 3600000 - 10 * 60000).toISOString(),
+    end_time: new Date(t3.getTime() + 2 * 3600000 + 30 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 40
+  };
+  seriesEnv('clash-salon', 'u8', 'sv-8', 'st-8', { bookings: [mk(1), mk(2), mk(3), mk(4), rival] });
+  fake.seed('clients', [{ id: 'cl8', tenant_id: 't8', name: 'S C', phone: '+15558880001' }]);
+  const original2 = new Date(mk(2).start_time).getTime();
+  const newStart = new Date(original2 + 2 * 3600000);
+  const req = postReq({ resource: 'appointment', action: 'reschedule', id: 'rbk-2', starts_at: newStart.toISOString(), series_scope: 'following' });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 409, 'collision must be 409 — got: ' + JSON.stringify(out.body).slice(0, 300));
+  assert.equal(out.body.conflict, true);
+  assert.equal(out.body.moved_count, 0, 'rbk-2 moved (target), 0 later occurrences before the clash');
+  assert.equal(out.body.failed_at_occurrence, 3, 'names the colliding occurrence position');
+  assert.match(out.body.error, /already booked/, 'error says what is in the way');
+  const rows = fake.all('bookings');
+  assert.equal(new Date(rows.find(r => r.id === 'rbk-2').start_time).getTime(), newStart.getTime(), 'target persisted (partial-apply contract)');
+  assert.equal(new Date(rows.find(r => r.id === 'rbk-3').start_time).getTime(), new Date(mk(3).start_time).getTime(), 'colliding occurrence NOT moved');
+  assert.equal(new Date(rows.find(r => r.id === 'rbk-4').start_time).getTime(), new Date(mk(4).start_time).getTime(), 'later occurrence NOT moved');
+  assert.equal(new Date(rows.find(r => r.id === 'rival-1').start_time).getTime(), new Date(rival.start_time).getTime(), 'rival untouched');
+});
+
+test('series reschedule "following" stops at blocked time with partial apply', async () => {
+  const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
+  const mk = (pos) => ({
+    id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
+    start_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000).toISOString(),
+    end_time: new Date(t.getTime() + (pos - 1) * 7 * 86400000 + 30 * 60000).toISOString(),
+    status: 'confirmed', total_amount: 40, series_id: 'series-b', series_pos: pos, series_total: 3, series_rule: 'weekly'
+  });
+  // The shifted occurrence rbk-3 (+2h) lands inside a blocked window on its
+  // date. Blocked windows are wall-clock 'HH:MM' (salon-local convention,
+  // same as the creation path), so derive them from the shifted time itself
+  // — timezone-deterministic no matter where the suite runs.
+  const t3 = new Date(t.getTime() + 2 * 7 * 86400000);
+  const shifted3 = new Date(t3.getTime() + 2 * 3600000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtLocal = (d) => pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const block = { id: 'block-1', tenant_id: 't8', staff_id: 'st-8', blocked_date: t3.toISOString().slice(0, 10),
+    start_time: fmtLocal(new Date(shifted3.getTime() - 10 * 60000)),
+    end_time: fmtLocal(new Date(shifted3.getTime() + 30 * 60000)), reason: 'training' };
+  seriesEnv('clash-salon', 'u8', 'sv-8', 'st-8', { bookings: [mk(1), mk(2), mk(3)], blocked: [block] });
+  fake.seed('clients', [{ id: 'cl8', tenant_id: 't8', name: 'S C', phone: '+15558880001' }]);
+  const original2 = new Date(mk(2).start_time).getTime();
+  const req = postReq({ resource: 'appointment', action: 'reschedule', id: 'rbk-2', starts_at: new Date(original2 + 2 * 3600000).toISOString(), series_scope: 'following' });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.code, 409, JSON.stringify(out.body).slice(0, 300));
+  assert.match(out.body.error, /blocked time/, 'error names blocked time');
+  assert.equal(out.body.moved_count, 0);
+  assert.equal(out.body.failed_at_occurrence, 3);
+  const rows = fake.all('bookings');
+  assert.equal(new Date(rows.find(r => r.id === 'rbk-3').start_time).getTime(), new Date(mk(3).start_time).getTime(), 'blocked occurrence stays put');
 });
 
