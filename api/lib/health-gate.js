@@ -19,9 +19,10 @@ import { bearer, getUserFromToken } from './auth.js';
 import { resolveTenantForUser } from './tenant-access.js';
 import { REQUIRED_TABLES, REQUIRED_COLUMNS } from './schema-gate.js';
 import { probeColumnPresence } from './migrate-all.js';
+import { telnyxRequest } from './telnyx-client.js';
 
 /** Every env var the platform needs, grouped. One manifest, no per-endpoint copies. */
-export const HEALTH_ENV_MANIFEST = {
+const HEALTH_ENV_MANIFEST = {
   core: [
     'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY',
     'TELNYX_API_KEY', 'TELNYX_PUBLIC_KEY', 'APP_URL',
@@ -46,25 +47,12 @@ function withTimeout(promise, timeoutMs, onTimeout) {
   return race;
 }
 
-/** Probe every required table, each probe independent + timed. */
-function probeTables(client, timeoutMs = 5000) {
-  return Promise.all(REQUIRED_TABLES.map((table) => {
-    const probe = (async () => {
-      try {
-        const { error } = await client.from(table).select('*', { count: 'exact', head: true });
-        return { table, ok: !error, error: error?.message || null };
-      } catch (e) {
-        return { table, ok: false, error: String(e?.message || e) };
-      }
-    })();
-    return withTimeout(probe, timeoutMs, () => ({ table, ok: false, error: `probe timed out after ${timeoutMs}ms` }));
-  }));
-}
-
-/** Probe one table (select-star head-count, the style proven by the schema
- * gate), timed + isolated. Errors are stringified whatever their shape so a
- * failing row always NAMES its cause — never a bare ok:false with no reason. */
-function probeOneTable(client, table, timeoutMs = 5000) {
+/**
+ * Probe one table (select-star head-count — the style proven green against
+ * production), timed + isolated. Errors are stringified whatever their shape
+ * so a failing row always NAMES its cause — never a bare ok:false.
+ */
+function probeTable(client, table, timeoutMs) {
   const probe = (async () => {
     try {
       const { error } = await client.from(table).select('*', { count: 'exact', head: true });
@@ -136,7 +124,7 @@ export async function calendarHealth({ timeoutMs = 5000 } = {}) {
   if (!client) return { __status: 503, ok: false, error: 'database_not_configured' };
   try {
     const [checks, columnChecks] = await Promise.all([
-      probeTables(client, timeoutMs),
+      Promise.all(REQUIRED_TABLES.map((table) => probeTable(client, table, timeoutMs))),
       Promise.all(Object.entries(REQUIRED_COLUMNS).flatMap(([table, cols]) =>
         cols.map((column) => {
           // Same isolation as the table probes: a hung column probe must
@@ -190,7 +178,7 @@ export async function executionHealth() {
       if (!tables.includes(extra)) tables.push(extra);
     }
     const entries = await Promise.all(tables.map(async (table) => {
-      const r = await probeOneTable(client, table);
+      const r = await probeTable(client, table, 5000);
       return [table, r.ok ? { ok: true } : { ok: false, error: r.error }];
     }));
     const results = Object.fromEntries(entries);
@@ -202,7 +190,7 @@ export async function executionHealth() {
 }
 
 /** /api/telecom-health — Telnyx env + reachability. Shape-preserving port. */
-export async function telecomHealth({ telnyxProbe } = {}) {
+export async function telecomHealth() {
   const configuration = {
     api_key: Boolean(process.env.TELNYX_API_KEY),
     public_key: Boolean(process.env.TELNYX_PUBLIC_KEY),
@@ -214,7 +202,7 @@ export async function telecomHealth({ telnyxProbe } = {}) {
     return { ok: false, configuration, telnyx: 'not_checked' };
   }
   try {
-    if (telnyxProbe) await telnyxProbe('/phone_numbers', { query: { 'page[size]': 1 }, timeoutMs: 5000 });
+    await telnyxRequest('/phone_numbers', { query: { 'page[size]': 1 }, timeoutMs: 5000 });
     const productionSafe = process.env.NODE_ENV !== 'production' || configuration.public_key;
     return {
       ok: productionSafe,
@@ -232,6 +220,35 @@ export async function telecomHealth({ telnyxProbe } = {}) {
       error: String(error?.message || error),
     };
   }
+}
+
+/**
+ * The SMS gate: a disabled Telnyx messaging profile silently kills booking
+ * confirmations, the reminder engine, and waitlist offers while
+ * `Boolean(env)` still says "Configured" — the exact outage class we hit.
+ * Verifies the profile is actually ENABLED via the Telnyx API: key present
+ * → profile reachable → enabled. Never crashes, never green when SMS is
+ * down, never leaks the API key (it only lives in the Authorization header
+ * inside telnyx-client.js).
+ */
+export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileIds = [process.env.TELNYX_MESSAGING_PROFILE_ID, process.env.TELNYX_MESSAGING_PROFILE].filter(Boolean), timeoutMs = 4000 } = {}){
+  if(!key) return { ready:false, detail:'Missing TELNYX_API_KEY — SMS cannot send' };
+  if(!profileIds || !profileIds.length) return { ready:false, detail:'Missing TELNYX_MESSAGING_PROFILE — SMS cannot send' };
+  // The app reads messaging profiles from both env names across its code
+  // (telnyx-provision prefers _ID, legacy paths use _PROFILE). Try each until
+  // one resolves; a 404 on a stale value must not hide the real profile.
+  let lastError = null;
+  for(const profileId of profileIds){
+    try{
+      const payload = await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profileId), { timeoutMs });
+      if(payload?.data?.enabled === true) return { ready:true, detail:'Messaging profile enabled' };
+      return { ready:false, detail:'SMS degraded — messaging profile disabled (confirmations, reminders, and waitlist offers will not send)' };
+    }catch(error){
+      lastError = error;
+    }
+  }
+  const reason = String(lastError?.message || lastError);
+  return { ready:false, detail:`SMS status unknown — could not verify messaging profile (${reason})` };
 }
 
 /**
@@ -375,12 +392,7 @@ export async function integrationProviderHealth(tenant) {
  * guarantee lives here. Gate errors are plain objects tagged with __status;
  * everything else is 200 when ok, 503 when not. `head` serves status-only.
  */
-export function healthSend(res, result, { cors = true, head = false } = {}) {
-  if (cors) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-  }
+export function healthSend(res, result, { head = false } = {}) {
   res.setHeader('Cache-Control', 'no-store');
   const status = result?.__status || (result?.ok ? 200 : 503);
   if (head) return res.status(status).end();

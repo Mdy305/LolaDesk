@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 // telnyxRequest reads the key from process.env internally; the check's own
 // `key` param is the pre-flight gate. Set the env for the call paths.
 process.env.TELNYX_API_KEY = 'KEY01_TESTKEY_NOT_REAL';
-const { smsMessagingCheck } = await import('../api/launch-readiness.js');
+const { smsMessagingCheck } = await import('../api/lib/health-gate.js');
 
 const KEY = 'KEY01_TESTKEY_NOT_REAL';
 const PROFILE = '40019e2e-77be-42da-9d66-176b658cf04a';
