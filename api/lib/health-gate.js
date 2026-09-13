@@ -61,12 +61,14 @@ function probeTables(client, timeoutMs = 5000) {
   }));
 }
 
-/** Probe one table with a real column (join tables have no id), timed + isolated. */
-function probeOneTable(client, table, column = 'id', timeoutMs = 5000) {
+/** Probe one table (select-star head-count, the style proven by the schema
+ * gate), timed + isolated. Errors are stringified whatever their shape so a
+ * failing row always NAMES its cause — never a bare ok:false with no reason. */
+function probeOneTable(client, table, timeoutMs = 5000) {
   const probe = (async () => {
     try {
-      const { error } = await client.from(table).select(column, { count: 'exact', head: true });
-      return { table, ok: !error, error: error?.message || null };
+      const { error } = await client.from(table).select('*', { count: 'exact', head: true });
+      return { table, ok: !error, error: error ? String(error?.message || error) : null };
     } catch (e) {
       return { table, ok: false, error: String(e?.message || e) };
     }
@@ -188,8 +190,7 @@ export async function executionHealth() {
       if (!tables.includes(extra)) tables.push(extra);
     }
     const entries = await Promise.all(tables.map(async (table) => {
-      const col = table === 'staff_services' ? 'staff_id' : 'id';
-      const r = await probeOneTable(client, table, col);
+      const r = await probeOneTable(client, table);
       return [table, r.ok ? { ok: true } : { ok: false, error: r.error }];
     }));
     const results = Object.fromEntries(entries);
