@@ -16,6 +16,7 @@ import { chat } from './lib/llm.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 // tts-cache.js is now a stub — Supabase Storage logic is inline below
 import { sendSMS } from './telnyx-sms.js';
+import { missedCallTextbackText, smsGreeting } from './lib/lola-persona.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
@@ -262,7 +263,7 @@ export default async function handler(req, res){
       : `No worries — have a great day, and call us back any time. Bye for now!`;
     if(fromN && textbackEnabled){
       try{
-        const textback = `Hi, it's Lola from ${tenant.name} 💗 Sorry we got cut off! I can book you right here — just tell me the service and a day that works.`;
+        const textback = missedCallTextbackText(tenant.name);
         const r = await sendSMS({ from: toN, to: fromN, text: textback, tenantId: tenant.id });
         if(!r?.skipped){
           await logUsage(tenant.id, 'sms_sent', 1, { source: 'missed_call_textback' });
@@ -294,8 +295,8 @@ export default async function handler(req, res){
   const telnyxCallId = payload.callSid || payload.callControlId || '';
   if(continueText && !speech) speech = continueText; // second leg of the instant-ack flow
   if(!speech){
-    const name = client?.name ? ` ${client.name.split(' ')[0]}` : '';
-    reply = `Hi${name}, this is Lola at ${tenant.name}. How can I help you today?`;
+    const firstName = client?.name ? String(client.name).split(' ')[0] : '';
+    reply = smsGreeting(firstName, tenant.name) + ' How can I help you today?';
     // The Calls page is where owners SEE Lola earning her keep — a call
     // row per answered call, filled in turn by turn below.
     try{

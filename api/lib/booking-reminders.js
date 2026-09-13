@@ -21,6 +21,7 @@
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist } from './booking-repository.js';
+import { reminderText, waitlistOfferText } from './lola-persona.js';
 
 // Text when the appointment is 23–25h away. With an hourly cron a booking
 // lands in this band for exactly one tick (the 2h band is wider than the 1h
@@ -79,13 +80,15 @@ async function enrich(client, bookings) {
   }));
 }
 
+const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
+  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+});
+
 export function buildReminderText(b) {
-  const when = new Date(b.start_time).toLocaleString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-  });
+  const when = fmtWhen(b.start_time);
   const what = (b.service && b.service.name) || 'your appointment';
   const salon = (b.tenant && b.tenant.name) || 'the salon';
-  return `Reminder from ${salon}: ${what} on ${when}. Reply STOP to opt out.`;
+  return reminderText({ salon, what, when });
 }
 
 // Claim the reminder row BEFORE sending. Returns the row, or null when this
@@ -141,10 +144,10 @@ export async function offerFreedSlot({ tenantId, serviceId = null, serviceName =
   // Consent gate: only text clients who explicitly opted in when they joined.
   const entry = matches.entries.find((e) => e.sms_consent === true);
   if (!entry || !entry.client_phone) return { skipped: true, reason: 'no_consent' };
-  const when = new Date(freedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const when = fmtWhen(freedAt);
   const what = serviceName || entry.service_name || 'a spot';
   const salon = tenant.name || 'the salon';
-  const text = `${salon}: a ${what} spot just opened — ${when}. Reply to claim it, or reply STOP to opt out.`;
+  const text = waitlistOfferText({ salon, what, when });
   // Claim before sending: exactly-once, like booking_reminders.
   try { await markWaitlistOffered(tenantId, entry.id); }
   catch { return { skipped: true, reason: 'claim_failed' }; }

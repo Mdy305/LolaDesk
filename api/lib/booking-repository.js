@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
+import { cancelText, confirmText } from './lola-persona.js';
 
 // Short, human-friendly confirmation code for client self-cancel. 6 chars,
 // unambiguous alphabet (no 0/O/1/I/L), crypto-random.
@@ -22,13 +23,9 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
     ]);
     if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
     const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-    const code = confirmationCode ? ' Your code: ' + confirmationCode + ' — use it to cancel or reschedule online.' : '';
-    let text;
-    if(verb==='Cancelled'){
-      text = 'Your appointment at ' + (tenant.name || 'the salon') + ' on ' + when + ' has been cancelled. Reply to this text and we\'ll get you back on the books soon.';
-    } else {
-      text = (verb==='Rescheduled'?'Rescheduled at ':verb+' at ') + (tenant.name || 'the salon') + ': ' + (svc && svc.name ? svc.name : 'Appointment') + ' on ' + when + '.' + code + ' Reply STOP to opt out.';
-    }
+    const text = verb==='Cancelled'
+      ? cancelText(tenant.name, when)
+      : confirmText({ verb, salon: tenant.name, serviceName: svc && svc.name, when, code: confirmationCode });
     const r = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
     return { sent: true, text };
   }catch(e){ console.warn('[repo] SMS:', e.message); return { skipped: true, reason: String(e?.message||e) }; }
