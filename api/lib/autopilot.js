@@ -38,7 +38,7 @@
  * autonomy from Settings). Every SMS respects the client's 10DLC opt-out.
  */
 
-import { db, e164, isOptedOut, getClientMemory, setClientMemory, listTenantNumberRoutes, logUsage } from './db.js';
+import { db, isOptedOut, getClientMemory, setClientMemory, listTenantNumberRoutes, logUsage } from './db.js';
 import { syncTenantConnections } from './connection-sync.js';
 import { syncTenantAvailability } from './booking-sync.js';
 import { originateCallback } from './call-callback.js';
@@ -125,20 +125,8 @@ async function primaryNumber(client, tenant){
  * telnyx-sms.js deps) and opt-out aware. Injectable via global fetch for
  * tests, exactly like the other Telnyx libs.
  */
-export async function sendAutopilotSms({ from, to, text, tenantId }){
-  if (!process.env.TELNYX_API_KEY) return { skipped: true, reason: 'TELNYX_API_KEY not set' };
-  if (!from || !to) return { skipped: true, reason: 'missing from/to' };
-  if (tenantId){
-    try{ if (await isOptedOut(tenantId, to)) return { skipped: true, reason: 'opted_out' }; }catch{}
-  }
-  const r = await fetch('https://api.telnyx.com/v2/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.TELNYX_API_KEY}` },
-    body: JSON.stringify({ from: e164(from), to: e164(to), text })
-  });
-  if (!r.ok) return { skipped: true, reason: `telnyx ${r.status}` };
-  return { sent: true };
-}
+import { sendAutopilotSms } from './sms.js';
+export { sendAutopilotSms };
 
 // ── AGENT 1 · routing-heal (platform-wide) ────────────────────────────────
 async function routingHeal({ client }){

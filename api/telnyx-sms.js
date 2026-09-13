@@ -4,6 +4,7 @@
  */
 import { getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
+export { sendSMS } from './lib/sms.js';
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -40,29 +41,6 @@ function extract(raw){
   }
   if(raw.to&&raw.text&&raw.from&&!raw.data) return { outbound:true, ...raw };
   return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS', mediaUrls: [] };
-}
-
-export async function sendSMS({from,to,text,profileId,tenantId,skipOptOut=false,type='SMS',channel='sms'}){
-  const isWhatsApp = String(type||channel||'').toUpperCase() === 'WHATSAPP';
-  if(!skipOptOut){ try{ const t=tenantId||(await resolveInboundTenant({ to: from }))?.tenant?.id; if(t&&await isOptedOut(t,to)) return {skipped:true}; }catch{} }
-  
-  const payload = { from, to };
-  if(isWhatsApp){
-    payload.whatsapp_message = {
-      type: 'text',
-      text: { body: text }
-    };
-  } else {
-    payload.text = text;
-    if(profileId) payload.messaging_profile_id = profileId;
-  }
-
-  const r=await fetch('https://api.telnyx.com/v2/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.TELNYX_API_KEY}`},
-    body:JSON.stringify(payload)
-  });
-  return r.json();
 }
 
 export default async function handler(req,res){
