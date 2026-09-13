@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   lola-live.js — the "Lola Live" plug-in: live phone-call state and
+   lola-live-conversation.js — the "Lola Live" plug-in: live phone-call state and
    live steering of an active Telnyx AI-Assistant conversation, right
    on the operator dashboard.
 
@@ -16,7 +16,7 @@
   const POLL_MS = 8000;
 
   let auth = null;
-  let state = { calls: [], conversations: [], whisper: null, ready: false, tenant: '', paused: false, signedOut: false, note: null };
+  let state = { calls: [], ownerNotes: [], whisper: null, ready: false, tenant: '', paused: false, signedOut: false, note: null };
   let focused = null;   // focused call id
   let ticker = null;
   let pendingTakeover = null; // call id awaiting a confirm click
@@ -35,7 +35,6 @@
   function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
-  function panel() { return el('lolaLivePanel'); }
 
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
@@ -89,10 +88,9 @@
     const call = state.calls.find((c) => c.id === focused) || null;
     const t = call?.transcript;
     const msgs = Array.isArray(t) ? t : [];
-    const ownerNotes = window.__lolaLiveOwnerNotes || [];
     const all = [
       ...msgs.map((m) => ({ role: String(m.role || m.speaker || 'client').toLowerCase(), content: m.content || m.text || '' })),
-      ...ownerNotes.map((n) => ({ role: 'owner', content: n.text }))
+      ...state.ownerNotes.map((n) => ({ role: 'owner', content: n.text }))
     ];
     if (!all.length) {
       feed.innerHTML = '<div class="live-feed-silent">' +
@@ -166,7 +164,6 @@
         return;
       }
       state.calls = data.active_calls || [];
-      state.conversations = data.conversations || [];
       state.whisper = data.whisper_target || null;
       state.ready = !!data.telnyx_ready;
       state.tenant = data.tenant || '';
@@ -205,9 +202,8 @@
       body: JSON.stringify({ conversation_id: state.whisper.conversationId, text })
     });
     if (status === 200 && data.ok) {
-      window.__lolaLiveOwnerNotes = window.__lolaLiveOwnerNotes || [];
-      window.__lolaLiveOwnerNotes.push({ text: 'Owner note · ' + text });
-      if (window.__lolaLiveOwnerNotes.length > 40) window.__lolaLiveOwnerNotes.shift();
+      state.ownerNotes.push({ text: 'Owner note · ' + text });
+      if (state.ownerNotes.length > 40) state.ownerNotes.shift();
       if (input) input.value = '';
       state.note = { text: 'Whispered — Lola will act on it in her next turn.', until: Date.now() + 4000 };
       renderTranscript();
@@ -254,7 +250,7 @@
       if (el('liveEmpty')) el('liveEmpty').textContent = 'Sign in to see live calls and steer Lola.';
       return;
     }
-    window.lolaLive = { focusCall, whisper, takeOver, refresh };
+    window.lolaLive = { focusCall, whisper, takeOver };
     refresh();
     setInterval(refresh, POLL_MS);
     startTicker();
