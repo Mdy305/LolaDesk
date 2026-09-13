@@ -126,6 +126,7 @@ async function primaryNumber(client, tenant){
  * tests, exactly like the other Telnyx libs.
  */
 import { sendAutopilotSms } from './sms.js';
+import { missedCallText, bookingFailedText, reviewRequestText, gapFillText } from './lola-persona.js';
 
 // ── AGENT 1 · routing-heal (platform-wide) ────────────────────────────────
 async function routingHeal({ client }){
@@ -208,8 +209,7 @@ async function missedCallRecovery({ client, now }){
           continue;
         }
       }
-      const name = cl?.first_name ? String(cl.first_name).split(' ')[0] : 'there';
-      const text = `Hi ${name}, this is Lola at ${t.name}. I missed your call and didn't want you waiting — want me to book you in? Reply with a day and time that works, or call us back and I'll pick up.`;
+      const text = missedCallText({ firstName: cl?.first_name, salon: t.name });
       const r = await sendAutopilotSms({ from: fromNumber, to, text, tenantId: t.id });
       if (r.sent){
         sent++;
@@ -286,8 +286,7 @@ async function rebooking({ client, now }){
         actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: 'already rebooked' });
         continue;
       }
-      const name = String(cl.first_name || 'there').split(' ')[0];
-      const text = `Hi ${name}, Lola here from ${t.name}. Your ${b.service || 'appointment'} didn't go through — want me to find you the next opening? Reply with a day and time and I'll take care of it.`;
+      const text = bookingFailedText({ firstName: cl.first_name, salon: t.name, service: b.service || 'appointment' });
       const r = await sendAutopilotSms({ from: fromNumber, to: cl.phone, text, tenantId: t.id });
       if (r.sent){
         sent++;
@@ -404,11 +403,10 @@ async function reviewRequest({ client, now }){
         actions.push({ tenant_id: t.id, booking_id: b.id, status: 'skipped', reason: 'already contacted' });
         continue;
       }
-      const name = String(cl.first_name || 'there').split(' ')[0];
       const links = [];
       if (yelp) links.push(`Yelp: ${yelp}`);
       if (google) links.push(`Google: ${google}`);
-      const text = `Hi ${name}, this is Lola at ${t.name}. Hope you loved your visit! If you have a moment, a review means the world to us — ${links.join(' · ')}. Thank you!`;
+      const text = reviewRequestText({ firstName: cl.first_name, salon: t.name, links });
       const r = await sendAutopilotSms({ from: fromNumber, to: cl.phone, text, tenantId: t.id });
       if (r.sent){
         sent++;
@@ -665,8 +663,7 @@ async function proactiveOutreach({ client, now }){
       if (!target) break;
       const when = localTimeLabel(gap.starts_at, timeZone);
       const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long' }).format(new Date(gap.starts_at));
-      const first = String(target.first_name || 'there').split(' ')[0];
-      const text = `Hi ${first}, this is Lola at ${t.name}. I noticed it's been a while since your last visit — we have an opening ${day} at ${when} with ${gap.staff_name}. Want me to hold it for you? Just reply and I'll take care of it.`;
+      const text = gapFillText({ firstName: target.first_name, salon: t.name, day, when, staffName: gap.staff_name });
       const r = await sendAutopilotSms({ from: fromNumber, to: target.phone, text, tenantId: t.id });
       if (r.sent){
         sent++;

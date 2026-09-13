@@ -15,6 +15,7 @@ import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
+import { confirmText } from './lib/lola-persona.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
 import { createCanonicalBooking, makeConfirmationCode, sendConfirmationSMS } from './lib/booking-repository.js';
 import { randomUUID } from 'node:crypto';
@@ -34,7 +35,7 @@ async function confirmSMS(c,tenantId,bookingId){
     if(!cl?.phone||!t?.phone_number)return;
     const when=new Date(b.start_time).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
     await sendSMS({from:t.phone_number,to:cl.phone,tenantId,
-      text:'Confirmed at '+(t.name||'the salon')+': '+(sv?.name||'Appointment')+' on '+when+'. Reply STOP to opt out.'});
+      text:confirmText({ verb:'Confirmed', salon:t.name, serviceName:sv?.name, when })});
   }catch(e){}
 }
 
