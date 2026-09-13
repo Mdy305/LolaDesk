@@ -21,6 +21,7 @@
 
 import { runBookingAction } from './booking-brain.js';
 import { getTenantById } from './operator-db.js';
+import { sendSms } from './sms.js';
 
 // The voice/SMS transports resolve tenant.id before the LLM runs; MCP tool
 // calls receive that id and must turn it back into a tenant row before the
@@ -467,8 +468,17 @@ async function sendEmail(params, tenantId) {
 }
 
 async function sendSMS(params, tenantId) {
-  // TODO: Send via Telnyx SMS
-  return { success: true, message_id: 'sms_12345' };
+  // Routed through the ONE messaging owner (api/lib/sms.js). The previous
+  // stub returned fake success — Lola would "confirm" a text she never sent.
+  if(!tenantId) return { error: 'tenant_not_found' };
+  const to = params.to || params.phone;
+  if(!to || !params.message) return { error: 'missing to/message' };
+  const t = await tenantForMCP(tenantId);
+  if(!t?.phone_number) return { error: 'tenant has no phone number' };
+  try{
+    const r = await sendSms({ from: t.phone_number, to, text: params.message, tenantId });
+    return r && r.errors ? { error: r.errors[0]?.detail || 'telnyx rejected the send' } : { success: true, message_id: r?.data?.id || null };
+  }catch(e){ return { error: String(e?.message || e) }; }
 }
 
 async function checkInventory(params, tenantId) {
