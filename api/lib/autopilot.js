@@ -126,7 +126,6 @@ async function primaryNumber(client, tenant){
  * tests, exactly like the other Telnyx libs.
  */
 import { sendAutopilotSms } from './sms.js';
-export { sendAutopilotSms };
 
 // ── AGENT 1 · routing-heal (platform-wide) ────────────────────────────────
 async function routingHeal({ client }){

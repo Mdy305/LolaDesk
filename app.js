@@ -68,13 +68,6 @@ const DATA = {
     { icon: '🔥', cls: 'gap', text: 'Thursday has a 2pm–4pm gap', sub: 'Potential revenue $400', prompt: 'How should I fill the Thursday 2-4pm gap?' },
     { icon: '🎁', cls: 'gift', text: 'Send birthday offer to 5 clients', sub: 'This week', prompt: 'Draft a birthday offer for the 5 clients with birthdays this week' }
   ],
-  inbox: [
-    { name: 'Sarah Johnson', channel: 'instagram', chLabel: 'Instagram', time: '2m', msg: 'Hi! Do you have any availability…', unread: true, img: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&q=80' },
-    { name: '+1 (310) 555-0189', channel: 'sms', chLabel: 'SMS', time: '8m', msg: "I'm interested in booking…", unread: true, img: '' },
-    { name: 'Rachel Smith', channel: 'whatsapp', chLabel: 'WhatsApp', time: '15m', msg: 'Perfect! Thank you so much ✨', unread: true, img: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&q=80' },
-    { name: 'Jessica Brown', channel: 'instagram', chLabel: 'Instagram', time: '25m', msg: 'Do you offer extensions?', unread: false, img: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&q=80' },
-    { name: 'Olivia Davis', channel: 'email', chLabel: 'Email', time: '1h', msg: 'What are your prices for…', unread: false, img: 'https://images.unsplash.com/photo-1554151228-14d9def656e4?w=80&q=80' }
-  ]
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -115,41 +108,6 @@ function renderInsights(){
       <div class="insight-info">
         <div class="insight-text">${i.text}</div>
         <div class="insight-sub">${i.sub}</div>
-      </div>
-    </div>`).join('');
-}
-
-function renderInbox(){
-  const el = document.getElementById('inboxList');
-  if(!el) return;
-  el.innerHTML = DATA.inbox.map(m => `
-    <div class="inbox-item" onclick="askLola('Help me reply to ${m.name} who messaged: ${m.msg.replace(/'/g,"\\'")}')">
-      ${avatar(m.name, m.img, 'inbox-av')}
-      <div class="inbox-info">
-        <div class="inbox-top">
-          <span class="inbox-name">${m.name}</span>
-          <span class="inbox-channel ch-${m.channel}">${m.chLabel}</span>
-        </div>
-        <div class="inbox-msg">${m.msg}</div>
-      </div>
-      <span class="inbox-time">${m.time}</span>
-      ${m.unread ? '<span class="inbox-unread"></span>' : ''}
-    </div>`).join('');
-}
-
-function renderTeam(){
-  const el = document.getElementById('teamList');
-  if(!el) return;
-  el.innerHTML = TENANT.team.map(t => `
-    <div class="team-item">
-      ${avatar(t.name, t.img, 'team-av')}
-      <div class="team-info">
-        <div class="team-name">${t.name}</div>
-        <div class="team-role">${t.role}</div>
-      </div>
-      <div class="team-rev">
-        <div class="team-rev-val">$${t.revenue.toLocaleString()}</div>
-        <div class="team-rev-change">↑${t.change}%</div>
       </div>
     </div>`).join('');
 }
@@ -1105,8 +1063,6 @@ function drawPhoneOrb(){
 function init(){
   renderSchedule();
   renderInsights();
-  renderInbox();
-  renderTeam();
   drawRevLine();
   drawDonut();
   drawRevBars();
