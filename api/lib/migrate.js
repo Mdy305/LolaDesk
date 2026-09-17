@@ -15,6 +15,12 @@
  *   boot, so a fresh deployment can never silently skip the tenant_numbers
  *   table.
  *
+ * Bundled migrations (self-heal targets):
+ *   • tenant_numbers          — inbound routing (fires on first call/text)
+ *   • tenants.activation_status — email-verification gate (fires on resolver boot)
+ *   • mfa_registrations       — owner 2FA store (fires when /api/auth/mfa boots)
+ *   • platform_settings       — customer-care KV (fires when /api/customer-care boots)
+ *
  * Design constraints:
  *   • Idempotent — every embedded migration uses IF NOT EXISTS / ON CONFLICT,
  *     so re-running (or two cold starts racing) is harmless.
@@ -64,6 +70,28 @@ const ACTIVATION_STATUS_DDL = `alter table public.tenants add column if not exis
 
 create index if not exists idx_tenants_activation_status on public.tenants(activation_status) where activation_status is not null;`;
 
+// Keep in sync with migrations/20260831_mfa_totp.sql. The MFA table was
+// ledger-baselined on production without executing (the pre-fix applier), so
+// owner 2FA enrollment failed with "could not find the table in the schema
+// cache" while the CI apply job reported success. Self-heal at the exact
+// moment /api/auth/mfa needs the table — same repair path that saved
+// tenant_numbers and tenants.activation_status.
+const MFA_REGISTRATIONS_DDL = `create table if not exists public.mfa_registrations (
+  user_identifier text primary key,
+  secret          text not null,
+  verified        boolean not null default false,
+  created_at      timestamptz not null default now(),
+  verified_at     timestamptz
+);`;
+
+// Keep in sync with migrations/20260901_customer_care.sql. The customer-care
+// line's platform-level KV store — same ledger-baseline loss as the MFA table.
+const PLATFORM_SETTINGS_DDL = `create table if not exists public.platform_settings (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -76,9 +104,9 @@ export function resetMigrations() {
 /**
  * Ensure required schema exists. Returns a string status:
  *   'no-db'       — Supabase env vars not configured (db() is null)
- *   'up-to-date'  — tenant_numbers already exists, nothing to do
- *   'applied'     — the table was missing and was just created
- *   'unavailable' — table missing but exec_sql isn't there to fix it
+ *   'up-to-date'  — every probed table/column already exists, nothing to do
+ *   'applied'     — something was missing and was just created
+ *   'unavailable' — schema missing but exec_sql isn't there to fix it
  *   'error'       — unexpected failure (logged; degrades gracefully)
  */
 export function ensureMigrations() {
@@ -89,6 +117,21 @@ export function ensureMigrations() {
     return 'error';
   });
   return _ensured;
+}
+
+// Shared ensure step: if PostgREST reports the table missing, apply its
+// idempotent DDL through exec_sql. Returns the table name when applied.
+async function ensureTable(c, table, ddl, applied) {
+  try {
+    const probe = await c.from(table).select('*').limit(1);
+    if (!probe.error) return; // present
+    const res = await c.rpc('exec_sql', { p_sql: ddl });
+    if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+    console.log('[migrate] applied ' + table + ' (was missing)');
+    applied.push(table);
+  } catch (e) {
+    console.warn('[migrate] ' + table + ' ensure failed:', String(e?.message || e).slice(0, 160));
+  }
 }
 
 async function runMigrations() {
@@ -132,6 +175,13 @@ async function runMigrations() {
   } catch (e) {
     console.warn('[migrate] activation_status ensure failed:', String(e?.message || e).slice(0, 160));
   }
+
+  // mfa_registrations — owner 2FA enrollment/verification store; the
+  // self-heal fires when the 2FA endpoint cold-starts (see MFA_REGISTRATIONS_DDL).
+  await ensureTable(c, 'mfa_registrations', MFA_REGISTRATIONS_DDL, applied);
+  // platform_settings — customer-care line KV; self-heals when the
+  // customer-care endpoint cold-starts.
+  await ensureTable(c, 'platform_settings', PLATFORM_SETTINGS_DDL, applied);
 
   return applied.length ? 'applied' : 'up-to-date';
 }

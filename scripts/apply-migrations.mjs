@@ -79,8 +79,15 @@ if (isDirect) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    console.log('[apply-migrations] SKIP: SUPABASE_URL/SUPABASE_SERVICE_KEY not set — nothing applied.');
-    process.exit(0);
+    // Migrations can only run against a real database. A green no-op here is a
+    // lie: CI reported success for months while the target DB (whose secrets
+    // were simply not present in the environment) received NO migrations at
+    // all — mfa_registrations and platform_settings never landed and 2FA
+    // enrollment failed in production behind a green board. Fail loudly: the
+    // workflow is a no-op with placeholder secrets and must be fixed, not
+    // waved through.
+    console.error('[apply-migrations] FAILED: SUPABASE_URL/SUPABASE_SERVICE_KEY not set — cannot apply migrations. Configure the secrets (real DB URL + service key) or remove this job.');
+    process.exit(1);
   }
 
   const client = createClient(url, key, { auth: { persistSession: false } });

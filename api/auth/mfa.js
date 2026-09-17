@@ -16,6 +16,7 @@
 import { bearer, getUserFromToken } from '../lib/auth.js';
 import { db } from '../lib/db.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
+import { ensureMigrations } from '../lib/migrate.js';
 import {
   generateSecret, validTOTP, otpauthUri,
   getRegistration, upsertRegistration, removeRegistration, readChallenge
@@ -40,6 +41,10 @@ export default async function handler(req, res) {
     const action = b.action;
     const c = db();
     if (!c) return res.status(503).json({ ok: false, error: 'Database not configured' });
+    // Self-heal the registration store before first use: if the migrations
+    // ledger-baseline ever swallowed 20260831_mfa_totp.sql (it did on
+    // production), enrollment would fail with a schema-cache error forever.
+    await ensureMigrations();
 
     // ── ENROLL: generate a fresh shared secret + authenticator URI ──
     if (action === 'enroll') {

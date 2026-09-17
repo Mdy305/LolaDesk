@@ -19,6 +19,7 @@
  */
 import { bearer, getUserFromToken } from './lib/auth.js';
 import { db } from './lib/db.js';
+import { ensureMigrations } from './lib/migrate.js';
 
 const TELNYX = 'https://api.telnyx.com/v2';
 const SETTING_KEY = 'customer_care';
@@ -135,6 +136,10 @@ export default async function handler(req, res){
 
   const c = db();
   if(!c) return res.status(503).json({ ok:false, error:'Database not configured' });
+  // Self-heal the platform_settings KV before first use: the migrations
+  // ledger-baseline swallowed 20260901_customer_care.sql on production, so
+  // the care-line state had nowhere to persist.
+  await ensureMigrations();
 
   // ── GET: current state (no Telnyx calls, never secrets) ──────────────
   if(req.method === 'GET'){
