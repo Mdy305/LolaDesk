@@ -92,6 +92,22 @@ const PLATFORM_SETTINGS_DDL = `create table if not exists public.platform_settin
   updated_at timestamptz not null default now()
 );`;
 
+// Keep in sync with migrations/20260701_complete_supabase_wiring.sql. The
+// deposits table feeds the no-show protection loop (api/lib/deposits.js);
+// the wiring migration predates the CI applier ever touching production, so
+// self-heal when the deposits cron / booking seam cold-starts.
+const DEPOSITS_DDL = `create table if not exists public.deposits (
+  id                        uuid primary key default gen_random_uuid(),
+  tenant_id                 uuid not null references public.tenants(id) on delete cascade,
+  booking_id                uuid references public.bookings(id) on delete set null,
+  amount                    numeric not null default 0,
+  status                    text default 'pending',
+  stripe_payment_intent_id  text,
+  created_at                timestamptz default now()
+);
+
+create index if not exists idx_deposits_tenant on public.deposits(tenant_id, created_at desc);`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -182,6 +198,9 @@ async function runMigrations() {
   // platform_settings — customer-care line KV; self-heals when the
   // customer-care endpoint cold-starts.
   await ensureTable(c, 'platform_settings', PLATFORM_SETTINGS_DDL, applied);
+  // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
+  // the deposits cron or the booking seam cold-starts.
+  await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);
 
   return applied.length ? 'applied' : 'up-to-date';
 }

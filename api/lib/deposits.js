@@ -27,6 +27,7 @@
  */
 
 import { db } from './db.js';
+import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
 import { createPaymentLink } from './stripe.js';
 import { depositRequestText, depositKeptText, depositRefundText, depositUnpaidText } from './lola-persona.js';
@@ -66,6 +67,7 @@ const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
 // throws — a deposit failure must never fail the booking it protects.
 // Injectable `send`/`createLink` for tests. Returns { ok, skipped?/reason?, deposit? }.
 export async function requestDeposit({ tenantId, booking, policy = null, send = sendSMS, createLink = createPaymentLink } = {}){
+  ensureMigrations(); // self-heal the deposits table if the wiring migration never landed
   const c = db();
   if(!c) return { ok: false, skipped: true, reason: 'no_db' };
   if(!policy){
@@ -121,6 +123,7 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
 // overlapping cron ticks can never double-refund or double-text. Sends and
 // refunds are injectable for tests; individual failures never abort the run.
 export async function runDepositSweep(now = new Date(), { send = sendSMS, refund = refundDepositIntent } = {}){
+  ensureMigrations(); // self-heal the deposits table if the wiring migration never landed
   const c = db();
   if(!c) throw new Error('database not configured');
   const result = { checked: 0, refunded: 0, kept: 0, flagged: 0, voided: 0, failed: 0, skipped: 0 };
