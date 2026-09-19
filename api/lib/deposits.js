@@ -123,10 +123,11 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
 // overlapping cron ticks can never double-refund or double-text. Sends and
 // refunds are injectable for tests; individual failures never abort the run.
 export async function runDepositSweep(now = new Date(), { send = sendSMS, refund = refundDepositIntent } = {}){
-  ensureMigrations(); // self-heal the deposits table if the wiring migration never landed
+  // Awaited (memoized): a true cold start must not race its own DDL.
+  const migrations = await ensureMigrations();
   const c = db();
   if(!c) throw new Error('database not configured');
-  const result = { checked: 0, refunded: 0, kept: 0, flagged: 0, voided: 0, failed: 0, skipped: 0 };
+  const result = { migrations, checked: 0, refunded: 0, kept: 0, flagged: 0, voided: 0, failed: 0, skipped: 0 };
 
   const [{ data: pending }, { data: paid }] = await Promise.all([
     c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id').eq('status', 'pending').order('created_at').limit(200),
