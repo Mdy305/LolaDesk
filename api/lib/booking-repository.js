@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 import { cancelText, confirmText } from './lola-persona.js';
+import { requestDeposit } from './deposits.js';
 
 // Short, human-friendly confirmation code for client self-cancel. 6 chars,
 // unambiguous alphabet (no 0/O/1/I/L), crypto-random.
@@ -201,6 +202,13 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   // Recurring series suppress the per-occurrence text — the first occurrence
   // confirms once for the whole series (salon.js passes sendConfirmation:false).
   if(status==='confirmed' && sendConfirmation) sendConfirmationSMS({tenantId,clientId,serviceId,startTime,confirmationCode:row.confirmation_code}).catch(()=>{});
+  // No-show protection: when the salon requires deposits, a fresh confirmed
+  // booking gets its Payment Link request (same sendConfirmation contract —
+  // series occurrences and suppressed texts never request deposits either).
+  // Fire-and-forget: a deposit failure must never fail the booking.
+  if(status==='confirmed' && sendConfirmation){
+    requestDeposit({ tenantId, booking: data, policy: null }).catch(()=>{});
+  }
   return data;
 }
 

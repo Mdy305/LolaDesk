@@ -79,3 +79,23 @@ export function reminderText({ salon, what, when }){
 export function waitlistOfferText({ salon, what, when }){
   return `${salon || 'the salon'}: a ${what} spot just opened — ${when}. Reply to claim it, or reply STOP to opt out.`;
 }
+
+// Deposits · the Payment Link text sent the moment a protected booking is made.
+export function depositRequestText({ firstName, salon, serviceName, when, amount, link }){
+  return `${smsGreeting(firstName, salon)} You're booked for ${serviceName || 'your appointment'} on ${when} — just a ${amount} deposit to lock it in: ${link} See you soon! Reply STOP to opt out.`;
+}
+
+// Deposits · a paid deposit kept on a no-show or late cancellation.
+export function depositKeptText({ firstName, salon, amount }){
+  return `${smsGreeting(firstName, salon)} We missed you today, so your ${amount} deposit covered the chair. We'd love to get you back on the books — reply and I'll find a time. Reply STOP to opt out.`;
+}
+
+// Deposits · a paid deposit refunded after an in-window cancellation.
+export function depositRefundText({ firstName, salon, amount }){
+  return `${smsGreeting(firstName, salon)} Your ${amount} deposit is on its way back to your card — thanks for the heads up. Whenever you're ready, I'll find you a fresh spot. Reply STOP to opt out.`;
+}
+
+// Deposits · appointment arrived with the deposit still unpaid.
+export function depositUnpaidText({ firstName, salon, serviceName, when }){
+  return `${smsGreeting(firstName, salon)} You're on the books for ${serviceName || 'your appointment'} on ${when} — the deposit didn't go through yet. No stress, just see the front desk when you arrive. Reply STOP to opt out.`;
+}

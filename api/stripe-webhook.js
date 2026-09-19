@@ -113,6 +113,17 @@ export default async function handler(req,res){
 
     switch(event.type){
       case 'checkout.session.completed': {
+        // Booking deposit paid through a Payment Link (SaaS checkouts have no
+        // payment_link): flip the deposit row pending→paid and record the real
+        // PaymentIntent id (the row stores the link id until now; refunds need
+        // the intent). Keyed on the link id — deposit links are the only
+        // payment_links LolaDesk creates.
+        if(obj.payment_link){
+          const { error: depErr } = await c.from('deposits').update({
+            status: 'paid', stripe_payment_intent_id: obj.payment_intent || null
+          }).eq('stripe_payment_intent_id', obj.payment_link);
+          if(depErr) console.error('[stripe-webhook] deposit flip failed:', depErr.message || JSON.stringify(depErr));
+        }
         const tid=tenantIdFrom(obj);
         if(tid){
           const { data: tenant } = await c.from('tenants').select('*').eq('id', tid).maybeSingle();
