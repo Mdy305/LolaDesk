@@ -52,7 +52,9 @@ const REQUIRED = [
   'integrations','provider_mappings','external_appointments','booking_sync_log','telnyx_call_sessions','telnyx_messages',
   'products','blocked_slots','appointment_notes','platform_settings',
   // 20260831_mfa_totp.sql — owner/operator two-factor auth (TOTP)
-  'mfa_registrations'
+  'mfa_registrations',
+  // no-show protection loop ledger (api/lib/deposits.js)
+  'deposits'
 ];
 
 function seedAll() {

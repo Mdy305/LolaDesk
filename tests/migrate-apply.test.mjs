@@ -43,10 +43,10 @@ const MIGRATIONS = [
 ];
 
 test('schema-gate manifest covers the gate tables it must own', () => {
-  for (const t of ['products', 'blocked_slots', 'appointment_notes', 'mfa_registrations']) {
+  for (const t of ['products', 'blocked_slots', 'appointment_notes', 'mfa_registrations', 'deposits']) {
     assert.ok(REQUIRED_TABLES.includes(t), t + ' must be part of the gate');
   }
-  assert.equal(REQUIRED_TABLES.length, 26, 'gate tracks exactly 26 required tables');
+  assert.equal(REQUIRED_TABLES.length, 27, 'gate tracks exactly 27 required tables');
   for (const t of ['tenants', 'clients', 'calls', 'bookings', 'services', 'staff', 'booking_settings']) {
     assert.ok(REQUIRED_COLUMNS[t]?.length > 0, t + ' has critical columns in the manifest');
   }
@@ -261,7 +261,7 @@ test('CI apply path (runApplyMigrations) passes when everything is present', asy
   assert.equal(r.ready, true);
   assert.deepEqual(r.missing, []);
   assert.equal(r.columns.required, 37);
-  assert.equal(r.tables.required, 26);
+  assert.equal(r.tables.required, 27);
 });
 
 test('CI --verify path fails red on a genuine column miss but tolerates RLS denial', async () => {
