@@ -71,5 +71,10 @@ export const REQUIRED_TABLES = [
   'platform_settings',
   // 20260831_mfa_totp.sql — owner/operator two-factor auth (TOTP). A missing
   // table makes MFA enrollment and verification fail, so the gate must cover it.
-  'mfa_registrations'
+  'mfa_registrations',
+  // 20260701_complete_supabase_wiring.sql — the no-show protection loop's
+  // ledger (api/lib/deposits.js). A missing table makes the sweep and every
+  // deposit request fail, so the gate must cover it (it self-heals at the
+  // loop's entry points; the gate is the honest signal that it did).
+  'deposits'
 ];
