@@ -20,9 +20,15 @@ export default async function handler(req,res){
     if(!tenant?.id) return res.status(401).json({ok:false,error:'not_authenticated'});
     if(req.method==='GET') return res.json({ok:true,settings:await getBookingSettings(tenant.id)});
     if(req.method==='POST' || req.method==='PATCH'){
+      const c=db();
       const patch={tenant_id:tenant.id};
       for(const [k,v] of Object.entries(body)) if(WRITABLE.has(k)) patch[k]=v;
-      const c=db();
+      // metadata is a shared KV — merge the patch into what's stored so one
+      // writer (deposits) never clobbers another's keys.
+      if(patch.metadata && typeof patch.metadata==='object'){
+        const { data: cur } = await c.from('booking_settings').select('metadata').eq('tenant_id',tenant.id).maybeSingle();
+        patch.metadata={ ...(cur?.metadata||{}), ...patch.metadata };
+      }
       const {data,error}=await c.from('booking_settings').upsert(patch,{onConflict:'tenant_id'}).select().single();
       if(error) throw error;
       return res.json({ok:true,settings:data});

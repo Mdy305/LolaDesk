@@ -138,4 +138,31 @@ export async function flushMeteredTextUsageToStripe(tenantId, messageCount = 1){
   }
 }
 
+// ── Booking deposits ──
+// One primitive: a Payment Link with an on-the-fly price. The client pays on
+// Stripe's hosted page (no card data ever touches LolaDesk); checkout.session
+// .completed on that link flips the deposit row in api/stripe-webhook.js and
+// records the PaymentIntent id for later refunds.
+export async function createPaymentLink({ amountCents, description, successUrl }){
+  if(!Number.isFinite(amountCents) || amountCents <= 0) throw new Error('deposit amount must be positive');
+  const body = {
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: Math.round(amountCents),
+        product_data: { name: description || 'Booking deposit' }
+      }
+    }],
+    after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/bookings.html` } }
+  };
+  const link = await stripe('/payment_links', 'POST', body);
+  return { id: link.id, url: link.url };
+}
+
+// Refund a deposit's PaymentIntent (in-window cancellations).
+export async function stripeRefund(paymentIntentId){
+  return stripe('/refunds', 'POST', { payment_intent: paymentIntentId });
+}
+
 export { stripe };
