@@ -214,11 +214,16 @@
       <div class="toggle-row"><div><div class="tl">Clients choose their stylist</div><div class="ts">Otherwise assigned automatically</div></div><div class="sw on" id="swStaffChoice" onclick="tog(this)"></div></div>
       <div class="toggle-row"><div><div class="tl">Require phone number</div><div class="ts">Needed for confirmations</div></div><div class="sw on" id="swReqPhone" onclick="tog(this)"></div></div>
       <div class="toggle-row"><div><div class="tl">Require booking deposits</div><div class="ts">Clients pay a card deposit by text link — kept on no-shows and late cancels, refunded inside the cancellation window</div></div><div class="sw" id="swDeposit" onclick="tog(this);syncDepositFields()"></div></div>
+      <div class="toggle-row"><div><div class="tl">Auto-rebooking offers</div><div class="ts">When a visit is done, Lola texts the client one proposed time for their next visit — and reschedules the offer if the slot fills</div></div><div class="sw" id="swRebook" onclick="tog(this);syncRebookFields()"></div></div>
     </div>
     <div class="grid2" id="depositFields" style="margin-top:10px;display:none">
       <div class="fld"><label>Deposit (% of service)</label><input id="bDepositPct" type="number" min="1" max="100" value="25"/></div>
       <div class="fld"><label>Minimum deposit ($)</label><input id="bDepositMin" type="number" min="0" step="0.01" value="0"/></div>
       <div class="fld"><label>Free-cancel grace (min)</label><input id="bDepositGrace" type="number" min="0" value="0"/></div>
+    </div>
+    <div class="grid2" id="rebookFields" style="margin-top:10px;display:none">
+      <div class="fld"><label>Days until next visit</label><input id="bRebookInterval" type="number" min="1" value="42"/></div>
+      <div class="fld"><label>Offer window (days)</label><input id="bRebookWindow" type="number" min="1" max="60" value="7"/></div>
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveBooking()">Save booking rules</button></div>
     <div class="msg" id="bookMsg"></div>
@@ -397,6 +402,11 @@ async function load(){
     setVal('bDepositMin',((dep&&dep.min_cents)||0)/100);
     setVal('bDepositGrace',(dep&&dep.grace_minutes)||0);
     syncDepositFields();
+    const rb=(s.metadata&&s.metadata.rebooking)||null;
+    setSw('swRebook',!!(rb&&rb.enabled));
+    setVal('bRebookInterval',(rb&&rb.interval_days)||42);
+    setVal('bRebookWindow',(rb&&rb.window_days)||7);
+    syncRebookFields();
   }catch(e){}
   // Missed-call text-back + review requests are on by default; reflect the
   // real per-salon state from the tenants row.
@@ -599,15 +609,23 @@ function syncDepositFields(){
   const on=document.getElementById('swDeposit').classList.contains('on');
   document.getElementById('depositFields').style.display=on?'':'none';
 }
+function syncRebookFields(){
+  const on=document.getElementById('swRebook').classList.contains('on');
+  document.getElementById('rebookFields').style.display=on?'':'none';
+}
 
 async function saveBooking(){
   msg('bookMsg','Saving...',true);
   try{
     const on=document.getElementById('swDeposit').classList.contains('on');
+    const rbon=document.getElementById('swRebook').classList.contains('on');
     const metadata={deposits:{enabled:on,
       percent:Math.min(100,Math.max(1,Number(val('bDepositPct'))||25)),
       min_cents:Math.round((Number(val('bDepositMin'))||0)*100),
-      grace_minutes:Math.max(0,Math.round(Number(val('bDepositGrace'))||0))}};
+      grace_minutes:Math.max(0,Math.round(Number(val('bDepositGrace'))||0))},
+      rebooking:{enabled:rbon,
+      interval_days:Math.max(1,Math.round(Number(val('bRebookInterval'))||42)),
+      window_days:Math.min(60,Math.max(1,Math.round(Number(val('bRebookWindow'))||7)))}};
     const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
       timezone:val('bTimezone'),
       slot_interval_minutes:Number(val('bSlot')),

@@ -54,7 +54,9 @@ const REQUIRED = [
   // 20260831_mfa_totp.sql — owner/operator two-factor auth (TOTP)
   'mfa_registrations',
   // no-show protection loop ledger (api/lib/deposits.js)
-  'deposits'
+  'deposits',
+  // auto-rebooking loop ledger (api/lib/rebooking.js)
+  'rebooking_offers'
 ];
 
 function seedAll() {

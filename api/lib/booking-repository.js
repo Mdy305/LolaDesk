@@ -179,6 +179,17 @@ export async function getHold(tenantId, holdToken){
   return data || null;
 }
 
+// Auto-rebooking loop: the moment a client books a service, any open offer
+// for them on that service flips to `booked` (see api/lib/rebooking.js —
+// dynamic import avoids a static cycle through the availability engine).
+async function markRebookingAcceptedSafe({ tenantId, clientId, serviceId }){
+  if(!tenantId || !clientId || !serviceId) return;
+  try{
+    const { markRebookingAccepted } = await import('./rebooking.js');
+    await markRebookingAccepted({ tenantId, clientId, serviceId });
+  }catch{ /* offer bookkeeping never fails the booking */ }
+}
+
 export async function createCanonicalBooking({ tenantId, clientId, serviceId=null, staffId=null, locationId=null, startTime, endTime, status='confirmed', totalAmount=0, notes=null, source='lola', conversationId=null, holdId=null, externalId=null, externalSource=null, sendConfirmation=true, series=null }){
   const c = db(); if(!c) throw new Error('database not configured');
   const row = {
@@ -208,6 +219,11 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   // Fire-and-forget: a deposit failure must never fail the booking.
   if(status==='confirmed' && sendConfirmation){
     requestDeposit({ tenantId, booking: data, policy: null }).catch(()=>{});
+  }
+  // Auto-rebooking: a confirmed booking for this client+service closes any
+  // open offer (fire-and-forget — bookkeeping never fails the booking).
+  if(status==='confirmed'){
+    markRebookingAcceptedSafe({ tenantId, clientId, serviceId }).catch(()=>{});
   }
   return data;
 }
