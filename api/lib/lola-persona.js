@@ -99,3 +99,14 @@ export function depositRefundText({ firstName, salon, amount }){
 export function depositUnpaidText({ firstName, salon, serviceName, when }){
   return `${smsGreeting(firstName, salon)} You're on the books for ${serviceName || 'your appointment'} on ${when} — the deposit didn't go through yet. No stress, just see the front desk when you arrive. Reply STOP to opt out.`;
 }
+
+// Rebooking · the offer fired when a visit is completed: same service,
+// its usual refresh interval out, one concrete proposed slot.
+export function rebookingOfferText({ firstName, salon, serviceName, when, staffName }){
+  return `${smsGreeting(firstName, salon)} Loved having you in today! Your ${serviceName || 'appointment'} usually needs a refresh around ${when}${staffName ? ` — ${staffName} is ready for you` : ''}. Want me to hold it? Reply STOP to opt out.`;
+}
+
+// Rebooking · the offer window closed with no booking (seven quiet days).
+export function rebookingExpiredText({ firstName, salon, serviceName }){
+  return `${smsGreeting(firstName, salon)} Your ${serviceName || 'appointment'} refresh window came and went — no worries at all. Whenever you're ready, I'll find the perfect spot. Reply STOP to opt out.`;
+}

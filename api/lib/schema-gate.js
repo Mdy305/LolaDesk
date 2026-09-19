@@ -76,5 +76,8 @@ export const REQUIRED_TABLES = [
   // ledger (api/lib/deposits.js). A missing table makes the sweep and every
   // deposit request fail, so the gate must cover it (it self-heals at the
   // loop's entry points; the gate is the honest signal that it did).
-  'deposits'
+  'deposits',
+  // Auto-rebooking loop ledger (api/lib/rebooking.js) — one offer per
+  // completed booking; self-heals at the loop's entry points like deposits.
+  'rebooking_offers'
 ];

@@ -18,6 +18,7 @@ import { sendSMS } from './telnyx-sms.js';
 import { confirmText } from './lib/lola-persona.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
 import { createCanonicalBooking, makeConfirmationCode, sendConfirmationSMS } from './lib/booking-repository.js';
+import { offerRebooking } from './lib/rebooking.js';
 import { randomUUID } from 'node:crypto';
 
 const DAY_START=8, DAY_END=21;
@@ -387,6 +388,16 @@ export default async function handler(req,res){
         }
         const {data,error}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
         if(error)throw error;
+        // Auto-rebooking loop: a visit reaching `completed` fires ONE offer
+        // for the same service at the service's refresh interval (Loop #3).
+        // Fire-and-forget — a failed offer never fails the completion.
+        // bookings has no completed_at column, so the in-flight object
+        // carries updated_at as the completion moment; the sweep's advance
+        // path falls back to the offer's created_at (the same instant).
+        if(data && patch.status==='completed' && String(data.status||'').toLowerCase()==='completed'){
+          offerRebooking({ tenantId:T, booking:{ ...data, completed_at: data.updated_at || new Date().toISOString() } })
+            .catch(()=>{}); // never rejects, but belt-and-braces
+        }
         return res.json({ok:true,appointment:data});
       }
       // create

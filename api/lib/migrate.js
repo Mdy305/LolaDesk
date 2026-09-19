@@ -108,6 +108,31 @@ const DEPOSITS_DDL = `create table if not exists public.deposits (
 
 create index if not exists idx_deposits_tenant on public.deposits(tenant_id, created_at desc);`;
 
+// rebooking_offers — auto-rebooking loop (api/lib/rebooking.js): one offer
+// per completed booking, advanced/expired by the hourly sweep. Mirrors the
+// migration definition exactly.
+const REBOOKING_OFFERS_DDL = `create table if not exists public.rebooking_offers (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      uuid not null references public.tenants(id) on delete cascade,
+  booking_id     uuid references public.bookings(id) on delete cascade,
+  client_id      uuid references public.clients(id) on delete cascade,
+  service_id     uuid references public.services(id) on set null,
+  staff_id       uuid references public.staff(id) on set null,
+  proposed_start timestamptz,
+  window_end     timestamptz,
+  status         text not null default 'offered',
+  advanced_count int not null default 0,
+  last_texted_at timestamptz,
+  created_at     timestamptz default now(),
+  updated_at     timestamptz default now()
+);
+
+create unique index if not exists uniq_rebooking_offers_booking
+  on public.rebooking_offers(booking_id);
+
+create index if not exists idx_rebooking_offers_tenant
+  on public.rebooking_offers(tenant_id, status, created_at desc);`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -201,6 +226,9 @@ async function runMigrations() {
   // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
   // the deposits cron or the booking seam cold-starts.
   await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);
+  // rebooking_offers — auto-rebooking loop (api/lib/rebooking.js); self-heals
+  // when the rebooking seam or cron cold-starts.
+  await ensureTable(c, 'rebooking_offers', REBOOKING_OFFERS_DDL, applied);
 
   return applied.length ? 'applied' : 'up-to-date';
 }
