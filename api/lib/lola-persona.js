@@ -64,10 +64,24 @@ export function cancelText(salon, when){
 }
 
 // Booking lifecycle · confirmed / rescheduled / booked confirmation.
-export function confirmText({ verb, salon, serviceName, when, code }){
+// calendarUrl: an https add-to-calendar link (see calendarLinkFor) — client
+// OWNED fragments only (code + their own phone), so the text leaks nothing.
+export function confirmText({ verb, salon, serviceName, when, code, calendarUrl }){
   const lead = verb === 'Rescheduled' ? 'Rescheduled at ' : (verb || 'Confirmed') + ' at ';
   const codeLine = code ? ' Your code: ' + code + ' — use it to cancel or reschedule online.' : '';
-  return lead + (salon || 'the salon') + ': ' + (serviceName || 'Appointment') + ' on ' + when + '.' + codeLine + ' Reply STOP to opt out.';
+  const calLine = calendarUrl ? ` Add it to your calendar: ${calendarUrl}` : '';
+  return lead + (salon || 'the salon') + ': ' + (serviceName || 'Appointment') + ' on ' + when + '.' + codeLine + calLine + ' Reply STOP to opt out.';
+}
+
+// The add-to-calendar link a client owns. /api/calendar.ics resolves the
+// booking by code + THEIR OWN phone (the public self-service credential),
+// so the text hands over nothing a stranger could use. Never built from a
+// booking_id. Falls back to the canonical production domain when APP_URL
+// is unset, exactly like every other link builder in the repo.
+export function calendarLinkFor({ code, phone }){
+  if (!code || !phone) return null;
+  const base = (process.env.APP_URL || 'https://www.loladesk.com').replace(/\/+$/, '');
+  return `${base}/api/calendar.ics?code=${encodeURIComponent(String(code).toUpperCase())}&phone=${encodeURIComponent(String(phone))}`;
 }
 
 // Booking lifecycle · 24h reminder.

@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
-import { cancelText, confirmText } from './lola-persona.js';
+import { cancelText, confirmText, calendarLinkFor } from './lola-persona.js';
 import { requestDeposit } from './deposits.js';
 
 // Short, human-friendly confirmation code for client self-cancel. 6 chars,
@@ -24,9 +24,15 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
     ]);
     if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
     const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    // Add-to-calendar rides the Booked/Rescheduled texts (the ones that put
+    // the visit ON the calendar); the cancel text removes it, so it stays
+    // link-free. The link is client-owned (code + their phone) — never an
+    // internal booking_id. A failure here must never break the text.
+    const cal = verb!=='Cancelled'
+      ? calendarLinkFor({ code: confirmationCode, phone: client.phone }) : null;
     const text = verb==='Cancelled'
       ? cancelText(tenant.name, when)
-      : confirmText({ verb, salon: tenant.name, serviceName: svc && svc.name, when, code: confirmationCode });
+      : confirmText({ verb, salon: tenant.name, serviceName: svc && svc.name, when, code: confirmationCode, calendarUrl: cal });
     const r = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
     return { sent: true, text };
   }catch(e){ console.warn('[repo] SMS:', e.message); return { skipped: true, reason: String(e?.message||e) }; }
