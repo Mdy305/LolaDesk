@@ -56,7 +56,9 @@ const REQUIRED = [
   // no-show protection loop ledger (api/lib/deposits.js)
   'deposits',
   // auto-rebooking loop ledger (api/lib/rebooking.js)
-  'rebooking_offers'
+  'rebooking_offers',
+  // reminder engine ledger — the 24h/2h bands (api/lib/booking-reminders.js)
+  'booking_reminders'
 ];
 
 function seedAll() {

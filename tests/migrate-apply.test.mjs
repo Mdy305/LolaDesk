@@ -40,21 +40,22 @@ const MIGRATIONS = [
   { filename: '20260812_calendar_core.sql', sql: '-- bookings', table: 'bookings' },
   { filename: '20260901_inventory_ops.sql', sql: '-- products', table: 'products' },
   { filename: '20260902_future_feature.sql', sql: '-- future', table: 'future_table' },
+  { filename: '20260920_reminder_band_2h.sql', sql: '-- band', table: 'booking_reminders' },
 ];
 
 test('schema-gate manifest covers the gate tables it must own', () => {
-  for (const t of ['products', 'blocked_slots', 'appointment_notes', 'mfa_registrations', 'deposits']) {
+  for (const t of ['products', 'blocked_slots', 'appointment_notes', 'mfa_registrations', 'deposits', 'booking_reminders']) {
     assert.ok(REQUIRED_TABLES.includes(t), t + ' must be part of the gate');
   }
-  assert.equal(REQUIRED_TABLES.length, 28, 'gate tracks exactly 28 required tables');
+  assert.equal(REQUIRED_TABLES.length, 29, 'gate tracks exactly 29 required tables');
   for (const t of ['tenants', 'clients', 'calls', 'bookings', 'services', 'staff', 'booking_settings']) {
     assert.ok(REQUIRED_COLUMNS[t]?.length > 0, t + ' has critical columns in the manifest');
   }
   assert.equal(REQUIRED_COLUMNS.tenants.includes('activation_status'), true,
     'the activation_status-class column is part of the gate');
   assert.equal(
-    Object.values(REQUIRED_COLUMNS).reduce((n, c) => n + c.length, 0), 37,
-    'gate tracks exactly 37 required columns (33 + 4 series columns)'
+    Object.values(REQUIRED_COLUMNS).reduce((n, c) => n + c.length, 0), 41,
+    'gate tracks exactly 41 required columns (37 + 4 reminder columns)'
   );
 });
 
@@ -91,7 +92,7 @@ test('migrations added AFTER baseline are applied as pending, in order', async (
   const res = await applyPendingMigrations({
     client: fake, migrations: MIGRATIONS, established: true, exec,
   });
-  assert.deepEqual(res.pending, ['20260902_future_feature.sql']);
+  assert.deepEqual(res.pending, ['20260902_future_feature.sql', '20260920_reminder_band_2h.sql']);
   assert.ok(execCalls.includes('20260902_future_feature.sql'), 'new migration was applied');
   assert.ok(!execCalls.includes('20260812_calendar_core.sql'), 'baseline migrations not re-run');
   const ledger = fake.all('migrations_ledger').map((r) => r.filename);
@@ -182,7 +183,7 @@ test('verifyRequiredColumns: all critical columns present -> ok', async () => {
   const gate = await verifyRequiredColumns(fake, REQUIRED_COLUMNS);
   assert.equal(gate.ok, true);
   assert.deepEqual(gate.missing, []);
-  assert.equal(gate.required, 37);
+  assert.equal(gate.required, 41);
 });
 
 test('verifyRequiredColumns reports a missing column loudly, naming it', async () => {
@@ -228,7 +229,7 @@ test('migrateAndVerify passes when tables and columns are all present', async ()
   assert.equal(r.gate.ok, true);
   assert.equal(r.columns.ok, true);
   assert.deepEqual(r.columns.missing, []);
-  assert.equal(r.columns.required, 37);
+  assert.equal(r.columns.required, 41);
 });
 
 test('migrateAndVerify fails red when a required column is missing', async () => {
@@ -260,8 +261,8 @@ test('CI apply path (runApplyMigrations) passes when everything is present', asy
   assert.equal(r.exitCode, 0);
   assert.equal(r.ready, true);
   assert.deepEqual(r.missing, []);
-  assert.equal(r.columns.required, 37);
-  assert.equal(r.tables.required, 28);
+  assert.equal(r.columns.required, 41);
+  assert.equal(r.tables.required, 29);
 });
 
 test('CI --verify path fails red on a genuine column miss but tolerates RLS denial', async () => {

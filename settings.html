@@ -179,6 +179,7 @@
     <h3>Automatic messages</h3>
     <div class="toggle-row"><div><div class="tl">Booking confirmations</div><div class="ts">Text sent the moment an appointment is booked</div></div><div class="sw on" id="swConfirm" onclick="tog(this)"></div></div>
     <div class="toggle-row"><div><div class="tl">24-hour reminders</div><div class="ts">Reduces no-shows significantly</div></div><div class="sw on" id="swRemind" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">2-hour heads-up</div><div class="ts">A radar nudge on appointment day</div></div><div class="sw on" id="swRadar" onclick="tog(this)"></div></div>
     <div class="toggle-row"><div><div class="tl">Missed call text-back</div><div class="ts">Auto-text if a call goes unanswered</div></div><div class="sw on" id="swMissed" onclick="tog(this)"></div></div>
     <div class="toggle-row"><div><div class="tl">Review requests</div><div class="ts">Ask happy clients for a review after their visit</div></div><div class="sw" id="swReview" onclick="tog(this)"></div></div>
     <div class="btn-row"><button class="btn-p" onclick="saveMessaging()">Save messaging</button></div>
@@ -396,6 +397,7 @@ async function load(){
     setSw('swReqPhone',s.require_phone!==false);
     setSw('swConfirm',s.confirmation_sms!==false);
     setSw('swRemind',s.reminder_sms!==false);
+    setSw('swRadar',s.radar_sms!==false);
     const dep=(s.metadata&&s.metadata.deposits)||null;
     setSw('swDeposit',!!(dep&&dep.enabled));
     setVal('bDepositPct',(dep&&dep.percent)||25);
@@ -590,7 +592,7 @@ async function saveMessaging(){
   msg('msgMsg','Saving...',true);
   try{
     const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
-      confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind')})});
+      confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind'),radar_sms:on('swRadar')})});
     const s=await r.json();
     const rs=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       missed_call_textback:on('swMissed'),review_requests:on('swReview')})});

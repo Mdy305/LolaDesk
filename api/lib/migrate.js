@@ -133,6 +133,19 @@ create unique index if not exists uniq_rebooking_offers_booking
 create index if not exists idx_rebooking_offers_tenant
   on public.rebooking_offers(tenant_id, status, created_at desc);`;
 
+// booking_reminders second band — the 2h-before "radar" heads-up
+// (api/lib/booking-reminders.js): widens the exactly-once key to include
+// band. Widening a unique key never violates existing data; the old
+// constraint is dropped by guarded name.
+const REMINDER_BAND_DDL = `
+alter table public.booking_reminders add column if not exists band text not null default '24h';
+
+alter table public.booking_reminders
+  drop constraint if exists booking_reminders_booking_id_reminder_for_key;
+
+alter table public.booking_reminders
+  add constraint booking_reminders_no_double_text unique (booking_id, reminder_for, band);`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -229,6 +242,20 @@ async function runMigrations() {
   // rebooking_offers — auto-rebooking loop (api/lib/rebooking.js); self-heals
   // when the rebooking seam or cron cold-starts.
   await ensureTable(c, 'rebooking_offers', REBOOKING_OFFERS_DDL, applied);
+
+  // booking_reminders.band — second reminder band (2h radar); self-heals when
+  // the reminder engine cold-starts. Runs whenever the band column is missing.
+  try {
+    const band = await c.from('booking_reminders').select('band').limit(1);
+    if (band.error && /band/i.test(String(band.error?.message || band.error))) {
+      const res = await c.rpc('exec_sql', { p_sql: REMINDER_BAND_DDL });
+      if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+      console.log('[migrate] applied booking_reminders.band (2h radar lane)');
+      applied.push('booking_reminders.band');
+    }
+  } catch (e) {
+    console.warn('[migrate] booking_reminders.band ensure failed:', String(e?.message || e).slice(0, 160));
+  }
 
   return applied.length ? 'applied' : 'up-to-date';
 }

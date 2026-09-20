@@ -6,13 +6,18 @@
  * the whole feature with booking_settings.reminder_sms (default ON — the
  * toggle owners flip in Settings → Booking settings).
  *
- * Exactly-once semantics: a booking is reminded once per appointment time.
- * `booking_reminders` has a unique (booking_id, reminder_for) constraint and
- * the engine claims the row BEFORE sending (check-then-insert, with the DB
- * constraint as the race backstop), so two overlapping cron ticks can never
- * double-text a client. If the salon reschedules the appointment, start_time
- * changes, a new reminder_for is minted, and the new time gets its own
- * reminder. Every attempt — sent, failed, or skipped — is logged.
+ * Exactly-once semantics: a booking is reminded once per appointment time
+ * PER BAND. `booking_reminders` has a unique (booking_id, reminder_for, band)
+ * constraint and the engine claims the row BEFORE sending (check-then-insert,
+ * with the DB constraint as the race backstop), so two overlapping cron ticks
+ * can never double-text a client. If the salon reschedules the appointment,
+ * start_time changes, a new reminder_for is minted, and the new time gets its
+ * own reminder. Every attempt — sent, failed, or skipped — is logged.
+ * 
+ * Two bands, one ledger:
+ *   • '24h' — the day-before confirmation (23–25h window)
+ *   • '2h'  — the "radar" heads-up (2–4h window), each salon-gated by
+ *             booking_settings.radar_sms (default ON).
  *
  * The sender is injectable for tests (`runReminders(now, { send })`); the
  * cron uses the real Telnyx sender by default.
@@ -21,22 +26,24 @@
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist } from './booking-repository.js';
-import { reminderText, waitlistOfferText } from './lola-persona.js';
+import { reminderText, waitlistOfferText, radarText } from './lola-persona.js';
 
-// Text when the appointment is 23–25h away. With an hourly cron a booking
-// lands in this band for exactly one tick (the 2h band is wider than the 1h
-// tick, and the unique constraint absorbs any overlap).
-const WINDOW_MS = 23 * 3600e3;
-const SPAN_MS = 2 * 3600e3;
+// Bands: [claim lane, hours-before start, band span, settings gate].
+// With an hourly cron each band catches every due booking exactly once (each
+// span is wider than the 1h tick; the unique constraint absorbs overlap).
+const BANDS = [
+  { id: '24h', hours: 23, spanMs: 2 * 3600e3, gate: 'reminder_sms' },
+  { id: '2h', hours: 2, spanMs: 2 * 3600e3, gate: 'radar_sms' }
+];
 const MAX_PER_RUN = 100;
 
-export async function findDueBookings(now = new Date(), client = null) {
+export async function findDueBookings(now = new Date(), client = null, band = BANDS[0]) {
   const c = client || db();
   if (!c) throw new Error('database not configured');
-  const start = new Date(now.getTime() + WINDOW_MS).toISOString();
-  const end = new Date(now.getTime() + WINDOW_MS + SPAN_MS).toISOString();
+  const start = new Date(now.getTime() + band.hours * 3600e3).toISOString();
+  const end = new Date(now.getTime() + band.hours * 3600e3 + band.spanMs).toISOString();
   const { data, error } = await c.from('bookings')
-    .select('id,tenant_id,client_id,service_id,start_time')
+    .select('id,tenant_id,client_id,service_id,staff_id,start_time')
     .eq('status', 'confirmed')
     .gte('start_time', start)
     .lt('start_time', end)
@@ -51,17 +58,20 @@ async function enrich(client, bookings) {
   const tenantIds = [...new Set(bookings.map((b) => b.tenant_id))];
   const clientIds = [...new Set(bookings.map((b) => b.client_id).filter(Boolean))];
   const serviceIds = [...new Set(bookings.map((b) => b.service_id).filter(Boolean))];
-  const [tenants, clients, services, settings, integrations] = await Promise.all([
+  const staffIds = [...new Set(bookings.map((b) => b.staff_id).filter(Boolean))];
+  const [tenants, clients, services, settings, staff, integrations] = await Promise.all([
     tenantIds.length ? client.from('tenants').select('id,name,phone_number').in('id', tenantIds) : { data: [] },
     clientIds.length ? client.from('clients').select('id,name,phone,whatsapp_enabled').in('id', clientIds) : { data: [] },
     serviceIds.length ? client.from('services').select('id,name').in('id', serviceIds) : { data: [] },
-    tenantIds.length ? client.from('booking_settings').select('tenant_id,reminder_sms').in('tenant_id', tenantIds) : { data: [] },
+    tenantIds.length ? client.from('booking_settings').select('tenant_id,reminder_sms,radar_sms').in('tenant_id', tenantIds) : { data: [] },
+    staffIds.length ? client.from('staff').select('id,name').in('id', staffIds) : { data: [] },
     tenantIds.length ? client.from('integrations').select('tenant_id,provider,status').in('tenant_id', tenantIds) : { data: [] }
   ]);
   const by = (rows, key) => Object.fromEntries((rows || []).map((r) => [r[key], r]));
   const tMap = by(tenants.data, 'id');
   const clMap = by(clients.data, 'id');
   const svMap = by(services.data, 'id');
+  const stMap = by(staff.data, 'id');
   const sMap = by(settings.data, 'tenant_id');
   // A salon's WhatsApp is connected when it has a connected integrations row
   // (the same signal the health screen reads).
@@ -75,6 +85,7 @@ async function enrich(client, bookings) {
     tenant: tMap[b.tenant_id] || null,
     client: clMap[b.client_id] || null,
     service: svMap[b.service_id] || null,
+    staff: b.staff_id ? (stMap[b.staff_id] || null) : null,
     settings: sMap[b.tenant_id] || null,
     tenant_whatsapp: waTenantIds.has(b.tenant_id)
   }));
@@ -84,21 +95,24 @@ const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
   weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
 });
 
-export function buildReminderText(b) {
+export function buildReminderText(b, band = '24h') {
   const when = fmtWhen(b.start_time);
   const what = (b.service && b.service.name) || 'your appointment';
   const salon = (b.tenant && b.tenant.name) || 'the salon';
+  if (band === '2h') return radarText({ salon, what, when, staffName: b.staff && b.staff.name });
   return reminderText({ salon, what, when });
 }
 
 // Claim the reminder row BEFORE sending. Returns the row, or null when this
-// appointment time was already claimed (check-then-insert; in production the
-// unique constraint turns a concurrent double-claim into an error we swallow).
-async function claim(client, b, channel) {
+// appointment time was already claimed IN THIS BAND (check-then-insert; in
+// production the unique constraint turns a concurrent double-claim into an
+// error we swallow).
+async function claim(client, b, channel, band) {
   const { data: existing } = await client.from('booking_reminders')
     .select('id')
     .eq('booking_id', b.id)
     .eq('reminder_for', b.start_time)
+    .eq('band', band)
     .maybeSingle();
   if (existing) return null;
   const { data, error } = await client.from('booking_reminders').insert({
@@ -106,6 +120,7 @@ async function claim(client, b, channel) {
     booking_id: b.id,
     client_id: b.client_id || null,
     reminder_for: b.start_time,
+    band,
     status: 'pending',
     channel: channel || 'sms'
   }).select().maybeSingle();
@@ -171,41 +186,45 @@ export async function offerFreedSlot({ tenantId, serviceId = null, serviceName =
 export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
   const client = db();
   if (!client) throw new Error('database not configured');
-  const bookings = await findDueBookings(now, client);
-  const enriched = await enrich(client, bookings);
-  const result = { due: bookings.length, sent: 0, whatsapp: 0, sms: 0, failed: 0, skipped: 0, gate_off: 0 };
+  const result = { due: 0, sent: 0, whatsapp: 0, sms: 0, failed: 0, skipped: 0, gate_off: 0 };
 
-  for (const b of enriched) {
-    // Salon gate: booking_settings.reminder_sms defaults to ON; a missing
-    // settings row means the owner never touched the toggle → remind.
-    if (b.settings && b.settings.reminder_sms === false) { result.gate_off++; result.skipped++; continue; }
-    if (!b.client || !b.client.phone) { result.skipped++; continue; }
-    if (!b.tenant || !b.tenant.phone_number) { result.skipped++; continue; }
+  for (const band of BANDS) {
+    const bookings = await findDueBookings(now, client, band);
+    const enriched = await enrich(client, bookings);
+    result.due += bookings.length;
+    result[band.id] = { due: bookings.length, sent: 0, skipped: 0 };
 
-    // Channel choice: prefer WhatsApp when the salon has it connected AND the
-    // client has opted in (clients.whatsapp_enabled, set automatically from a
-    // prior WhatsApp conversation or flipped by the owner). Otherwise SMS.
-    // This respects WhatsApp's explicit-opt-in rule — a salon can never cold-
-    // WhatsApp a client who only ever texted.
-    const channel = b.tenant_whatsapp && b.client.whatsapp_enabled ? 'whatsapp' : 'sms';
+    for (const b of enriched) {
+      // Salon gate: the band's toggle defaults to ON; a missing settings row
+      // means the owner never touched it → remind. (24h: reminder_sms,
+      // 2h: radar_sms — the radar can be muted independently.)
+      if (b.settings && b.settings[band.gate] === false) { result.gate_off++; result.skipped++; result[band.id].skipped++; continue; }
+      if (!b.client || !b.client.phone) { result.skipped++; result[band.id].skipped++; continue; }
+      if (!b.tenant || !b.tenant.phone_number) { result.skipped++; result[band.id].skipped++; continue; }
 
-    const row = await claim(client, b, channel);
-    if (!row) { result.skipped++; continue; }
+      // Channel choice: prefer WhatsApp when the salon has it connected AND
+      // the client has opted in (clients.whatsapp_enabled). Otherwise SMS.
+      const channel = b.tenant_whatsapp && b.client.whatsapp_enabled ? 'whatsapp' : 'sms';
 
-    try {
-      await send({
-        from: b.tenant.phone_number,
-        to: b.client.phone,
-        text: buildReminderText(b),
-        tenantId: b.tenant_id,
-        type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS'
-      });
-      await mark(client, row.id, 'sent');
-      result.sent++;
-      result[channel]++;
-    } catch (e) {
-      await mark(client, row.id, 'failed', String(e?.message || e));
-      result.failed++;
+      const row = await claim(client, b, channel, band.id);
+      if (!row) { result.skipped++; result[band.id].skipped++; continue; }
+
+      try {
+        await send({
+          from: b.tenant.phone_number,
+          to: b.client.phone,
+          text: buildReminderText(b, band.id),
+          tenantId: b.tenant_id,
+          type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS'
+        });
+        await mark(client, row.id, 'sent');
+        result.sent++;
+        result[channel]++;
+        result[band.id].sent++;
+      } catch (e) {
+        await mark(client, row.id, 'failed', String(e?.message || e));
+        result.failed++;
+      }
     }
   }
   return result;

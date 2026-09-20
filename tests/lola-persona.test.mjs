@@ -69,7 +69,7 @@ test('the SMS/text style guide matches the persona', () => {
 const {
   smsGreeting, missedCallText, bookingFailedText, reviewRequestText,
   gapFillText, missedCallTextbackText, cancelText, confirmText,
-  reminderText, waitlistOfferText
+  reminderText, waitlistOfferText, radarText
 } = await import('../api/lib/lola-persona.js');
 
 const SMS_SOURCES = [
@@ -141,6 +141,14 @@ test('reminder and waitlist texts keep the factual fragments the tests and clien
   assert.ok(/Reply STOP to opt out\.$/.test(rem), 'reminder opt-out: ' + rem);
   const w = waitlistOfferText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu 2 PM' });
   assert.ok(w === 'MMΛ: a Balayage spot just opened — Thu 2 PM. Reply to claim it, or reply STOP to opt out.', 'waitlist shape: ' + w);
+});
+
+test('the 2h radar text keeps its facts and its opt-out', () => {
+  const r = radarText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu, Sep 17, 2:00 PM', staffName: 'Rex' });
+  assert.ok(r.startsWith('Reminder from MMΛ: Balayage is coming up at Thu, Sep 17, 2:00 PM with Rex.'), 'radar shape: ' + r);
+  assert.ok(/Reply STOP to opt out\.$/.test(r), 'radar opt-out: ' + r);
+  const bare = radarText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu 2 PM' });
+  assert.ok(!bare.includes('with'), 'no dangling stylist fragment when absent: ' + bare);
 });
 
 test('the text-back matches the voice farewell that promises it', () => {
