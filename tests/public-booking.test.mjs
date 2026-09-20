@@ -224,4 +224,89 @@ test('unknown tenant resolves to the demo tenant only — never real data', asyn
   assert.ok(!names.includes('Haircut'), 'unknown slug must not leak the real tenant\'s catalog');
 });
 
+// ── the automation chain on the public book action ───────────────────
+// The pasted route pattern (POST /api/bookings → insert → await
+// scheduleAutomations) has two defect classes: a raw-body insert with no
+// availability hold, and an awaited automation call that 500s AFTER the
+// booking row already exists. These tests pin what main actually does.
+
+test('a public booking fires the confirmation SMS with the add-to-calendar link', async () => {
+  const availReq = getReq({ action: 'availability', tenant: 'test-salon', service_id: 'svc-1', staff_id: 'st-1', date: DATE_KEY });
+  const [availRes, availOut] = makeRes();
+  await handler(availReq, availRes);
+  const slot = availOut.body.slots[0].starts_at;
+
+  // This file's seed tenant has no from-number; give her one for this test
+  // and restore it after (sendConfirmationSMS skips silently otherwise).
+  fake.seed('tenants', [{ ...TENANT, phone_number: '+13055550100' }]);
+  process.env.TELNYX_API_KEY = 'test-key';
+  const smsCalls = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (String(url).includes('/v2/messages')) {
+      smsCalls.push(JSON.parse(opts.body || '{}'));
+      return { ok: true, status: 200, json: async () => ({ data: {} }) };
+    }
+    return realFetch(url, opts);
+  };
+  try {
+    const req = postReq({
+      tenant: 'test-salon', action: 'book', channel: 'public_web',
+      service_id: 'svc-1', staff_id: 'st-1', starts_at: slot,
+      client_name: 'Jane Doe', client_phone: '+15551234567', total_amount: 80
+    });
+    const [res, out] = makeRes();
+    await handler(req, res);
+    assert.equal(out.body.ok, true, 'booking must succeed — got: ' + JSON.stringify(out.body).slice(0, 200));
+    // The confirmation SMS is fire-and-forget: flush it while the stub is
+    // still installed (the finally below restores the real fetch).
+    await new Promise(r => setImmediate(r));
+  } finally {
+    global.fetch = realFetch;
+    fake.seed('tenants', [TENANT]);
+  }
+  assert.equal(smsCalls.length, 1, 'exactly one confirmation text');
+  const text = String(smsCalls[0].text);
+  assert.ok(text.startsWith('Booked at'), 'confirmation verb: ' + text);
+  assert.ok(text.includes('Haircut'), 'names the service');
+  assert.ok(text.includes('/api/calendar.ics?code='), 'carries the live add-to-calendar link');
+  assert.ok(!text.includes('bk-'), 'never an internal booking_id');
+  assert.ok(/Reply STOP to opt out\.$/.test(text), 'opt-out last');
+});
+
+test('a raw body with an already-passed slot can never create a booking (no direct insert path)', async () => {
+  const before = fake.all('bookings').length;
+  const req = postReq({
+    tenant: 'test-salon', action: 'book', channel: 'public_web',
+    service_id: 'svc-1', staff_id: 'st-1', starts_at: '2020-01-01T10:00:00Z',
+    client_name: 'Backdoor Betty', client_phone: '+15550000000'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, false, 'past slot is refused');
+  assert.equal(fake.all('bookings').length, before, 'no row leaks in without a hold');
+});
+
+test('bookings are created through the hold pipeline even without a hold_token', async () => {
+  const availReq = getReq({ action: 'availability', tenant: 'test-salon', service_id: 'svc-1', staff_id: 'st-1', date: DATE_KEY });
+  const [availRes, availOut] = makeRes();
+  await handler(availReq, availRes);
+  const slot = availOut.body.slots[0].starts_at;
+
+  const req = postReq({
+    tenant: 'test-salon', action: 'book', channel: 'public_web',
+    service_id: 'svc-1', staff_id: 'st-1', starts_at: slot,
+    client_name: 'Hold Path', client_phone: '+15551239876'
+  });
+  const [res, out] = makeRes();
+  await handler(req, res);
+  assert.equal(out.body.ok, true);
+  // Holds live in availability_holds (the double-booking fence).
+  const holds = fake.all('availability_holds');
+  assert.ok(holds.length >= 1, 'a hold was created');
+  assert.equal(holds.filter(h => h.status === 'active').length, 0, 'and released on conversion');
+  const booking = fake.all('bookings').at(-1);
+  assert.ok(booking.hold_id, 'the booking row carries its hold_id');
+});
+
 console.log('\npublic-booking: GET params flow + hold/book round trip ✅');
