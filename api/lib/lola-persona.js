@@ -75,6 +75,12 @@ export function reminderText({ salon, what, when }){
   return `Reminder from ${salon || 'the salon'}: ${what} on ${when}. Reply STOP to opt out.`;
 }
 
+// Booking lifecycle · 2h-before heads-up (the "radar" nudge): the
+// appointment is nearly here. Second band in the reminder engine's ledger.
+export function radarText({ salon, what, when, staffName }){
+  return `Reminder from ${salon || 'the salon'}: ${what} is coming up at ${when}${staffName ? ` with ${staffName}` : ''}. See you soon! Reply STOP to opt out.`;
+}
+
 // Booking lifecycle · waitlist offer on a just-freed slot.
 export function waitlistOfferText({ salon, what, when }){
   return `${salon || 'the salon'}: a ${what} spot just opened — ${when}. Reply to claim it, or reply STOP to opt out.`;

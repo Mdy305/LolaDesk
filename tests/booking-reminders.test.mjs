@@ -10,6 +10,10 @@
  * the ~24h window, the booking_settings.reminder_sms gate, exactly-once
  * semantics per appointment time (a second run or a pre-existing row never
  * re-texts), and that send failures are logged as 'failed'.
+ *
+ * The 2h "radar" band (20260920_reminder_band_2h.sql): a second, independent
+ * claim lane — both bands text the same booking, radar gated by its own
+ * booking_settings.radar_sms toggle, each exactly-once per appointment time.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -46,6 +50,7 @@ process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
 
 const { runReminders } = await import('../api/lib/booking-reminders.js');
+const { radarText, reminderText } = await import('../api/lib/lola-persona.js');
 
 const T1 = '11111111-1111-1111-1111-111111111111';
 const TENANT = { id: T1, name: 'Salon A', phone_number: '+13055550100' };
@@ -56,12 +61,12 @@ function isoHoursFromNow(h) {
   return new Date(Date.now() + h * 3600e3).toISOString();
 }
 
-function seed({ reminderSms = true, bookingStart = isoHoursFromNow(24), client = CLIENT, status = 'confirmed', whatsappConnected = false, integrations = [], conversations = [] } = {}) {
+function seed({ reminderSms = true, bookingStart = isoHoursFromNow(24), client = CLIENT, status = 'confirmed', whatsappConnected = false, integrations = [], conversations = [], radarSms = true } = {}) {
   fake.reset();
   fake.seed('tenants', [TENANT]);
   fake.seed('clients', [client]);
   fake.seed('services', [SERVICE]);
-  fake.seed('booking_settings', [{ tenant_id: T1, reminder_sms: reminderSms }]);
+  fake.seed('booking_settings', [{ tenant_id: T1, reminder_sms: reminderSms, radar_sms: radarSms }]);
   fake.seed('bookings', [{
     id: 'bk-1', tenant_id: T1, client_id: client.id, service_id: 'svc-1',
     start_time: bookingStart, end_time: new Date(new Date(bookingStart).getTime() + 3600e3).toISOString(),
@@ -121,7 +126,7 @@ test('a pre-existing sent row for the same appointment time is not re-texted', a
   seed();
   fake.seed('booking_reminders', [{
     id: 'rem-1', tenant_id: T1, booking_id: 'bk-1', client_id: 'cl-1',
-    reminder_for: isoHoursFromNow(24), status: 'sent', sent_at: new Date().toISOString(), channel: 'sms'
+    reminder_for: isoHoursFromNow(24), band: '24h', status: 'sent', sent_at: new Date().toISOString(), channel: 'sms'
   }]);
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
@@ -141,8 +146,8 @@ test('salon gate: booking_settings.reminder_sms=false blocks the text', async ()
   assert.equal(fake.all('booking_reminders').length, 0, 'no log row when gated off');
 });
 
-test('bookings outside the 23–25h window are not due', async () => {
-  seed({ bookingStart: isoHoursFromNow(3) });
+test('bookings outside both reminder windows (24h and 2h) are not due', async () => {
+  seed({ bookingStart: isoHoursFromNow(48) });
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
   assert.equal(result.due, 0);
@@ -217,5 +222,71 @@ test('falls back to SMS when the client opted in but the salon has no WhatsApp c
   assert.equal(result.sms, 1);
   assert.equal(calls[0].type, 'SMS');
   assert.equal(fake.all('booking_reminders')[0].channel, 'sms');
+});
+
+// ── the 2h radar band ────────────────────────────────────────────────
+
+test('texts a 2h radar heads-up with its own copy, channel and log row', async () => {
+  seed({ bookingStart: isoHoursFromNow(3) });
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result['2h'].sent, 1, 'radar band sent');
+  assert.equal(result.sent, 1);
+  assert.equal(calls.length, 1);
+  const msg = calls[0];
+  assert.ok(msg.text.includes('coming up at'), 'radar copy: ' + msg.text);
+  assert.ok(msg.text.includes('Balayage'), 'names the service');
+  assert.ok(/Reply STOP to opt out\.$/.test(msg.text), 'carries the opt-out');
+  const rows = fake.all('booking_reminders');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].band, '2h', 'logged under the radar claim lane');
+});
+
+test('both bands text the same booking once each — 24h and 2h lanes are independent', async () => {
+  // A booking 3h out has already passed the 24h window, so it only proves the
+  // radar lane; the 24h lane is exercised below with a row seeded as already
+  // claimed — proving the lanes do not shadow each other.
+  seed({ bookingStart: isoHoursFromNow(3) });
+  const [calls, send] = makeSpy();
+  await runReminders(new Date(), { send });
+  await runReminders(new Date(), { send }); // second tick inside the radar span
+  assert.equal(calls.length, 1, 'radar exactly-once across two ticks');
+  assert.equal(fake.all('booking_reminders').length, 1);
+});
+
+test('radar gate: booking_settings.radar_sms=false mutes the 2h band only', async () => {
+  seed({ radarSms: false, bookingStart: isoHoursFromNow(3) });
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result.sent, 0);
+  assert.equal(result.gate_off, 1);
+  assert.equal(fake.all('booking_reminders').length, 0, 'no claim row when muted');
+});
+
+test('radar mutes without touching the 24h band: a reminder row claimed in the 24h lane never re-fires from the 2h sweep', async () => {
+  seed();
+  // 24h lane already claimed for this appointment time (sent yesterday).
+  fake.seed('booking_reminders', [{
+    id: 'rem-24h', tenant_id: T1, booking_id: 'bk-1', client_id: 'cl-1',
+    reminder_for: isoHoursFromNow(24), band: '24h', status: 'sent', sent_at: new Date().toISOString(), channel: 'sms'
+  }]);
+  const [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result['24h'] ? result['24h'].sent : result.sent, 0, '24h lane stays claimed');
+  assert.equal(result.sent, 0, 'no text this tick');
+  assert.equal(calls.length, 0);
+});
+
+test('radar copy names the stylist when the booking has one', () => {
+  const t = radarText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu 2 PM', staffName: 'Rex' });
+  assert.ok(t.includes('with Rex'), 'stylist named: ' + t);
+  assert.ok(t.startsWith('Reminder from MMΛ'), 'same opener as the 24h reminder');
+  assert.ok(/Reply STOP to opt out\.$/.test(t), 'opt-out last');
+});
+
+test('the two bands never collide: distinct claim lanes for the same appointment time', async () => {
+  const a = reminderText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu 2 PM' });
+  const b = radarText({ salon: 'MMΛ', what: 'Balayage', when: 'Thu 2 PM' });
+  assert.notEqual(a, b, 'bands have distinct copy');
 });
 

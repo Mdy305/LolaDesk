@@ -6,7 +6,7 @@ const WRITABLE=new Set([
   'timezone','slot_interval_minutes','minimum_notice_minutes','booking_horizon_days','cancellation_window_hours',
   'default_buffer_before_min','default_buffer_after_min','allow_staff_choice','allow_any_staff','allow_processing_overlap',
   'public_booking_enabled','voice_booking_enabled','sms_booking_enabled','require_phone','require_email','confirmation_sms',
-  'reminder_sms','deposit_policy','cancellation_policy','metadata'
+  'reminder_sms','radar_sms','deposit_policy','cancellation_policy','metadata'
 ]);
 
 export default async function handler(req,res){

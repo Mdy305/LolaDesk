@@ -48,6 +48,10 @@ export const REQUIRED_COLUMNS = {
   services: ['name', 'price', 'duration_minutes'],
   // Bookable roster read by availability.
   staff: ['name', 'role'],
+  // Reminder engine ledger (api/lib/booking-reminders.js) — band carries the
+  // exactly-once claim lane ('24h' confirm-up, '2h' radar); without it the
+  // second band has no storage and the 2h heads-up silently never fires.
+  booking_reminders: ['band', 'reminder_for', 'channel', 'status'],
   // Availability-engine contract (20260812_calendar_core.sql).
   booking_settings: ['slot_interval_minutes', 'minimum_notice_minutes', 'default_buffer_before_min']
 };
@@ -79,5 +83,9 @@ export const REQUIRED_TABLES = [
   'deposits',
   // Auto-rebooking loop ledger (api/lib/rebooking.js) — one offer per
   // completed booking; self-heals at the loop's entry points like deposits.
-  'rebooking_offers'
+  'rebooking_offers',
+  // Reminder engine ledger (api/lib/booking-reminders.js) — the 24h/2h bands.
+  // A missing table makes both reminder bands fail (and the claims that gate
+  // double-texting vanish), so the gate must cover it.
+  'booking_reminders'
 ];
