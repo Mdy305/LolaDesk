@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Policies — LolaDesk</title>
+<meta name="description" content="Every revenue lever in one place: deposits, no-show fees, late cancellations, tip presets, and when Lola auto-charges."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<link rel="stylesheet" href="banking.css"/>
+</head>
+<body data-page="banking">
+<div class="app">
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Policies</h1>
+        <p class="page-narrative" id="narrativeLine">Every lever that turns bookings into revenue.</p>
+      </div>
+    </div>
+
+    <nav class="bank-tabs" aria-label="Banking sections">
+      <a href="banking.html">Overview</a>
+      <a href="banking-payments.html">Payments</a>
+      <a href="banking-policies.html" class="on" aria-current="page">Policies</a>
+    </nav>
+
+    <div id="bankingBody">
+
+      <!-- DEPOSITS -->
+      <section class="policy-card" data-policy="deposits">
+        <div class="policy-head">
+          <div class="policy-title">
+            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M12 3v6M9 6l3-3 3 3"/></svg></span>
+            Deposits
+          </div>
+          <div class="policy-toggle on" data-toggle="deposits.enabled" role="switch" aria-checked="true" tabindex="0"><span class="sw" aria-hidden="true"></span><span>On</span></div>
+        </div>
+        <p class="policy-sub">Charge a card at the moment of booking. Salons that require a deposit see a <b style="color:var(--accent)">30–60% drop</b> in no-shows. Lola holds the deposit — if the client shows, it applies to the service; if not, it stays with you.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Deposit type</label>
+            <select data-field="deposits.type">
+              <option value="percent">Percentage of service</option>
+              <option value="fixed">Fixed amount</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Amount</label>
+            <input data-field="deposits.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
+            <div class="fine" data-fine="deposits.amount">Applies to services under $250. Higher-value services use the tier below.</div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Premium service tier ($250+)</label>
+            <input data-field="deposits.premium_amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
+            <div class="fine">Applies to services $250 or more (balayage, extensions, color corrections).</div>
+          </div>
+          <div class="field">
+            <label>Minimum deposit</label>
+            <input data-field="deposits.min_amount" type="number" min="0" step="1" value="15" inputmode="numeric"/>
+            <div class="fine">Never less than this, even on small services.</div>
+          </div>
+        </div>
+        <div class="policy-preview">
+          <div class="k">If this had been on last month</div>
+          <div class="v" id="depositsPreview">You would have collected <b>$—</b> in deposits and prevented an estimated <b>$—</b> in no-show revenue loss.</div>
+        </div>
+      </section>
+
+      <!-- NO-SHOW FEE -->
+      <section class="policy-card" data-policy="no_show">
+        <div class="policy-head">
+          <div class="policy-title">
+            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 15h8M9 9h.01M15 9h.01"/></svg></span>
+            No-show fees
+          </div>
+          <div class="policy-toggle on" data-toggle="no_show.enabled" role="switch" aria-checked="true" tabindex="0"><span class="sw" aria-hidden="true"></span><span>On</span></div>
+        </div>
+        <p class="policy-sub">If a client doesn't show and doesn't call, Lola auto-charges the card on file 30 minutes after the appointment start. Applies whether or not a deposit was collected. Fee is separate from the deposit — deposits go back if the appointment happens.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Fee type</label>
+            <select data-field="no_show.type">
+              <option value="fixed">Fixed amount</option>
+              <option value="percent">Percentage of service</option>
+              <option value="full">Full service price</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Amount</label>
+            <input data-field="no_show.amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
+            <div class="fine">Client sees this on the confirmation SMS and again on the reminder 24h before.</div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Charge delay</label>
+            <select data-field="no_show.delay_minutes">
+              <option value="15">15 minutes after start</option>
+              <option value="30" selected>30 minutes after start</option>
+              <option value="60">1 hour after start</option>
+              <option value="1440">End of day (owner review first)</option>
+            </select>
+            <div class="fine">Extra buffer for stuck-in-traffic messages.</div>
+          </div>
+          <div class="field">
+            <label>Waive on chronic clients?</label>
+            <select data-field="no_show.waive_first_offense">
+              <option value="true">First offense — always waive</option>
+              <option value="false" selected>Never waive automatically</option>
+            </select>
+            <div class="fine">Even if waived, Lola sends the SMS: "we're not charging you this time."</div>
+          </div>
+        </div>
+        <div class="policy-preview">
+          <div class="k">Last 30 days</div>
+          <div class="v" id="noShowPreview"><b>—</b> no-shows caught. With this policy on, you would have recovered <b>$—</b>.</div>
+        </div>
+      </section>
+
+      <!-- LATE CANCEL -->
+      <section class="policy-card" data-policy="late_cancel">
+        <div class="policy-head">
+          <div class="policy-title">
+            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            Late cancellation
+          </div>
+          <div class="policy-toggle on" data-toggle="late_cancel.enabled" role="switch" aria-checked="true" tabindex="0"><span class="sw" aria-hidden="true"></span><span>On</span></div>
+        </div>
+        <p class="policy-sub">Give clients room to cancel, but charge when the slot is impossible to fill. Lola compares the cancel time to this window automatically.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Cancel window (hours before)</label>
+            <select data-field="late_cancel.window_hours">
+              <option value="12">12 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="48">48 hours</option>
+              <option value="72">72 hours (premium services)</option>
+            </select>
+            <div class="fine">Inside this window = late cancel = fee applies.</div>
+          </div>
+          <div class="field">
+            <label>Late-cancel fee</label>
+            <input data-field="late_cancel.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
+            <div class="fine">Half of your no-show fee is a common starting point.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TIPS -->
+      <section class="policy-card" data-policy="tips">
+        <div class="policy-head">
+          <div class="policy-title">
+            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>
+            Tips
+          </div>
+          <div class="policy-toggle on" data-toggle="tips.enabled" role="switch" aria-checked="true" tabindex="0"><span class="sw" aria-hidden="true"></span><span>On</span></div>
+        </div>
+        <p class="policy-sub">Presets shown to the client on the payment screen. Higher first preset → higher average tip. The order matters: put the number you want them to pick first.</p>
+        <div class="field">
+          <label>Presets (%)</label>
+          <div class="tip-row" id="tipRow">
+            <label class="tip-preset"><input type="number" min="0" max="100" value="20" data-tip-idx="0"/>%</label>
+            <label class="tip-preset on"><input type="number" min="0" max="100" value="25" data-tip-idx="1"/>%</label>
+            <label class="tip-preset"><input type="number" min="0" max="100" value="30" data-tip-idx="2"/>%</label>
+            <label class="tip-preset"><input type="number" min="0" max="100" value="0" data-tip-idx="3"/>% (custom)</label>
+          </div>
+          <div class="fine">The highlighted preset is the default. Most salons set 25% as the default.</div>
+        </div>
+        <div class="field-row" style="margin-top:16px">
+          <div class="field">
+            <label>Suggest tip after every…</label>
+            <select data-field="tips.suggest_when">
+              <option value="all" selected>Service, product, and gift card</option>
+              <option value="service_only">Service only</option>
+              <option value="off">Never suggest (silent tip)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Base tip on…</label>
+            <select data-field="tips.base_on">
+              <option value="subtotal" selected>Subtotal (pre-tax)</option>
+              <option value="total">Total (with tax)</option>
+            </select>
+            <div class="fine">Pre-tax is standard and what clients expect.</div>
+          </div>
+        </div>
+        <div class="policy-preview">
+          <div class="k">Your average tip</div>
+          <div class="v" id="tipsPreview">Last 30 days: <b>—</b> avg tip. Moving the default preset up 5% typically lifts your total tip revenue by <b>15–20%</b>.</div>
+        </div>
+      </section>
+
+      <!-- AUTO-CHARGE TRIGGERS -->
+      <section class="policy-card" data-policy="auto_charge">
+        <div class="policy-head">
+          <div class="policy-title">
+            <span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
+            When Lola auto-charges
+          </div>
+        </div>
+        <p class="policy-sub">Every automation that touches money. Turn off any one of these and Lola will ask you before charging.</p>
+        <div class="field-row" style="grid-template-columns:1fr">
+          <div class="policy-toggle on" data-toggle="auto_charge.deposit_on_booking" role="switch" aria-checked="true" tabindex="0" style="justify-content:space-between;width:100%">
+            <span>Deposit at booking</span>
+            <span class="sw" aria-hidden="true"></span>
+          </div>
+          <div class="policy-toggle on" data-toggle="auto_charge.no_show_fee" role="switch" aria-checked="true" tabindex="0" style="justify-content:space-between;width:100%">
+            <span>No-show fee auto-charge</span>
+            <span class="sw" aria-hidden="true"></span>
+          </div>
+          <div class="policy-toggle on" data-toggle="auto_charge.late_cancel_fee" role="switch" aria-checked="true" tabindex="0" style="justify-content:space-between;width:100%">
+            <span>Late-cancel fee auto-charge</span>
+            <span class="sw" aria-hidden="true"></span>
+          </div>
+          <div class="policy-toggle on" data-toggle="auto_charge.retry_failed" role="switch" aria-checked="true" tabindex="0" style="justify-content:space-between;width:100%">
+            <span>Retry failed payments (3× over 5 days)</span>
+            <span class="sw" aria-hidden="true"></span>
+          </div>
+          <div class="policy-toggle" data-toggle="auto_charge.rebook_nudge" role="switch" aria-checked="false" tabindex="0" style="justify-content:space-between;width:100%">
+            <span>Send SMS rebook nudge 4 weeks after service (with payment link)</span>
+            <span class="sw" aria-hidden="true"></span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- STICKY SAVE BAR — appears when policies are dirty -->
+    <div class="policy-savebar" id="savebar" role="dialog" aria-label="Unsaved changes">
+      <div class="policy-savebar-text">
+        <b id="savebarCount">0</b> unsaved change<span id="savebarS">s</span>. Estimated impact: <b id="savebarImpact">recalculating…</b>
+      </div>
+      <div class="policy-savebar-actions">
+        <button onclick="LolaBankPolicies.revert()">Discard</button>
+        <button class="primary" onclick="LolaBankPolicies.save()" id="savebarSaveBtn">Save policies</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+<script src="banking.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   Policies page — dirty-state save bar + live preview.
+   Policy shape (sent to POST /api/tenant/billing-policies):
+     {
+       deposits:    { enabled, type:"percent"|"fixed", amount, premium_amount, min_amount },
+       no_show:     { enabled, type:"fixed"|"percent"|"full", amount, delay_minutes, waive_first_offense },
+       late_cancel: { enabled, window_hours, amount },
+       tips:        { enabled, presets:[a,b,c,customFlag?], default_index, suggest_when, base_on },
+       auto_charge: { deposit_on_booking, no_show_fee, late_cancel_fee, retry_failed, rebook_nudge }
+     }
+   ═══════════════════════════════════════════════════════════════ */
+
+const LolaBankPolicies = {
+  original: null,
+  current:  null,
+  dirty: new Set(),
+
+  async load(){
+    const { ok, data } = await LolaBank.api('/api/tenant/billing-policies');
+    if(!ok || !data){ return; }
+    this.original = JSON.parse(JSON.stringify(data));
+    this.current  = JSON.parse(JSON.stringify(data));
+    this.paint();
+    this.preview();
+  },
+
+  paint(){
+    // Fields
+    document.querySelectorAll('[data-field]').forEach(el => {
+      const path = el.getAttribute('data-field');
+      const val = this.get(path);
+      if(val == null) return;
+      if(el.tagName === 'SELECT'){
+        el.value = String(val);
+      } else {
+        el.value = val;
+      }
+    });
+    // Toggles
+    document.querySelectorAll('[data-toggle]').forEach(el => {
+      const path = el.getAttribute('data-toggle');
+      const val = !!this.get(path);
+      el.classList.toggle('on', val);
+      el.setAttribute('aria-checked', val ? 'true' : 'false');
+    });
+    // Tips presets
+    const tips = this.current.tips || {};
+    (tips.presets || []).forEach((p,i) => {
+      const inp = document.querySelector(`[data-tip-idx="${i}"]`);
+      if(inp) inp.value = p;
+    });
+    document.querySelectorAll('.tip-preset').forEach((el,i) => {
+      el.classList.toggle('on', i === (tips.default_index||1));
+    });
+  },
+
+  get(path){
+    return path.split('.').reduce((o,k)=> o && o[k] != null ? o[k] : undefined, this.current || {});
+  },
+  set(path, value){
+    const keys = path.split('.');
+    let o = this.current;
+    for(let i=0;i<keys.length-1;i++){
+      if(!o[keys[i]]) o[keys[i]] = {};
+      o = o[keys[i]];
+    }
+    o[keys[keys.length-1]] = value;
+    // Dirty tracking
+    if(JSON.stringify(this.get(path)) !== JSON.stringify(path.split('.').reduce((o,k)=> o && o[k] != null ? o[k] : undefined, this.original || {}))){
+      this.dirty.add(path);
+    } else {
+      this.dirty.delete(path);
+    }
+    this.updateSavebar();
+    this.preview();
+  },
+
+  updateSavebar(){
+    const bar = document.getElementById('savebar');
+    const c = this.dirty.size;
+    document.getElementById('savebarCount').textContent = c;
+    document.getElementById('savebarS').textContent = c === 1 ? '' : 's';
+    bar.classList.toggle('on', c > 0);
+  },
+
+  async preview(){
+    if(!this.current) return;
+    const { ok, data } = await LolaBank.api('/api/tenant/billing-policies/preview', {
+      method: 'POST',
+      body: JSON.stringify(this.current)
+    });
+    if(!ok || !data) return;
+    // Overview strings
+    const dp = document.getElementById('depositsPreview');
+    if(dp && data.deposits) dp.innerHTML = `You would have collected <b>${LolaBank.money(data.deposits.collected||0, data.currency||'usd')}</b> in deposits and prevented an estimated <b>${LolaBank.money(data.deposits.prevented_loss||0, data.currency||'usd')}</b> in no-show revenue loss.`;
+    const ns = document.getElementById('noShowPreview');
+    if(ns && data.no_show) ns.innerHTML = `<b>${data.no_show.count||0}</b> no-show${data.no_show.count===1?'':'s'} caught. With this policy on, you would have recovered <b>${LolaBank.money(data.no_show.recovered||0, data.currency||'usd')}</b>.`;
+    const tp = document.getElementById('tipsPreview');
+    if(tp && data.tips) tp.innerHTML = `Last 30 days: <b>${LolaBank.money(data.tips.avg||0, data.currency||'usd')}</b> avg tip. Moving the default preset up 5% typically lifts your total tip revenue by <b>15–20%</b>.`;
+    // Save-bar impact
+    const impact = document.getElementById('savebarImpact');
+    if(impact){
+      const projected = data.projected_monthly_uplift;
+      impact.textContent = projected != null
+        ? `+${LolaBank.money(projected, data.currency||'usd')}/mo`
+        : `recalculated`;
+    }
+  },
+
+  revert(){
+    this.current = JSON.parse(JSON.stringify(this.original));
+    this.dirty.clear();
+    this.paint();
+    this.updateSavebar();
+    this.preview();
+  },
+
+  async save(){
+    const btn = document.getElementById('savebarSaveBtn');
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = 'Saving…';
+    const { ok, data } = await LolaBank.api('/api/tenant/billing-policies', {
+      method: 'POST',
+      body: JSON.stringify(this.current)
+    });
+    if(ok){
+      this.original = JSON.parse(JSON.stringify(this.current));
+      this.dirty.clear();
+      this.updateSavebar();
+      btn.textContent = 'Saved ✓';
+      setTimeout(() => { btn.textContent = prev; btn.disabled = false; }, 1600);
+    } else {
+      btn.textContent = 'Save failed — try again';
+      setTimeout(() => { btn.textContent = prev; btn.disabled = false; }, 2200);
+    }
+  }
+};
+
+/* Wire up interactions */
+function wirePolicyInputs(){
+  document.querySelectorAll('[data-field]').forEach(el => {
+    el.addEventListener('input', () => {
+      const path = el.getAttribute('data-field');
+      let val = el.value;
+      if(el.type === 'number') val = Number(val) || 0;
+      if(val === 'true') val = true;
+      if(val === 'false') val = false;
+      LolaBankPolicies.set(path, val);
+    });
+    el.addEventListener('change', () => {
+      const path = el.getAttribute('data-field');
+      let val = el.value;
+      if(el.type === 'number') val = Number(val) || 0;
+      if(val === 'true') val = true;
+      if(val === 'false') val = false;
+      LolaBankPolicies.set(path, val);
+    });
+  });
+  document.querySelectorAll('[data-toggle]').forEach(el => {
+    const flip = () => {
+      const path = el.getAttribute('data-toggle');
+      const next = !el.classList.contains('on');
+      el.classList.toggle('on', next);
+      el.setAttribute('aria-checked', next ? 'true' : 'false');
+      LolaBankPolicies.set(path, next);
+    };
+    el.addEventListener('click', flip);
+    el.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
+  });
+  // Tip preset selection (click a preset to make it default)
+  document.querySelectorAll('.tip-preset').forEach((el, i) => {
+    el.addEventListener('click', ev => {
+      // Only make it the default if they clicked the wrapper, not the input
+      if(ev.target.tagName === 'INPUT') return;
+      document.querySelectorAll('.tip-preset').forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+      LolaBankPolicies.set('tips.default_index', i);
+    });
+  });
+  document.querySelectorAll('[data-tip-idx]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const tips = LolaBankPolicies.current.tips = LolaBankPolicies.current.tips || { presets:[20,25,30,0], default_index:1 };
+      tips.presets = tips.presets || [20,25,30,0];
+      const idx = Number(inp.getAttribute('data-tip-idx'));
+      tips.presets[idx] = Number(inp.value) || 0;
+      LolaBankPolicies.set('tips.presets', tips.presets);
+    });
+  });
+}
+
+/* Kick off */
+(async () => {
+  await LolaBank.loadStatus();
+  if(!LolaBank.state.connected){
+    document.getElementById('narrativeLine').innerHTML = 'Connect Stripe on the <a href="banking.html" style="color:var(--accent);text-decoration:none">Overview</a> before configuring policies.';
+    document.querySelectorAll('.policy-card').forEach(c => c.style.opacity = '0.4');
+    document.querySelectorAll('.policy-card input, .policy-card select, .policy-toggle').forEach(el => {
+      if(el.matches('input,select')) el.disabled = true;
+      else el.style.pointerEvents = 'none';
+    });
+    return;
+  }
+  await LolaBankPolicies.load();
+  wirePolicyInputs();
+})();
+</script>
+</body>
+</html>

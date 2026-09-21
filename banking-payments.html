@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Payments — LolaDesk</title>
+<meta name="description" content="Every charge, tip, deposit and refund Lola handles — searchable, refundable, one place."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<link rel="stylesheet" href="banking.css"/>
+</head>
+<body data-page="banking">
+<div class="app">
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Payments</h1>
+        <p class="page-narrative" id="narrativeLine">Loading transactions…</p>
+      </div>
+    </div>
+
+    <nav class="bank-tabs" aria-label="Banking sections">
+      <a href="banking.html">Overview</a>
+      <a href="banking-payments.html" class="on" aria-current="page">Payments</a>
+      <a href="banking-policies.html">Policies</a>
+    </nav>
+
+    <div id="bankingBody">
+
+      <div class="pay-toolbar" role="toolbar" aria-label="Filter and search payments">
+        <div class="chip-row" role="tablist" aria-label="Filter by kind">
+          <button class="chip on" data-filter="all" onclick="setFilter('all')" role="tab" aria-selected="true">All <span class="chip-count" id="cnAll">0</span></button>
+          <button class="chip" data-filter="charge" onclick="setFilter('charge')" role="tab" aria-selected="false">Charges <span class="chip-count" id="cnCharge">0</span></button>
+          <button class="chip" data-filter="tip" onclick="setFilter('tip')" role="tab" aria-selected="false">Tips <span class="chip-count" id="cnTip">0</span></button>
+          <button class="chip" data-filter="deposit" onclick="setFilter('deposit')" role="tab" aria-selected="false">Deposits <span class="chip-count" id="cnDeposit">0</span></button>
+          <button class="chip" data-filter="fee" onclick="setFilter('fee')" role="tab" aria-selected="false">No-show fees <span class="chip-count" id="cnFee">0</span></button>
+          <button class="chip" data-filter="refund" onclick="setFilter('refund')" role="tab" aria-selected="false">Refunds <span class="chip-count" id="cnRefund">0</span></button>
+          <button class="chip" data-filter="at_risk" onclick="setFilter('at_risk')" role="tab" aria-selected="false" title="Unpaid fees + unclaimed deposits">Needs recovery <span class="chip-count" id="cnRisk">0</span></button>
+        </div>
+        <label class="search-box" aria-label="Search payments">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+          <input id="searchInput" type="search" placeholder="Search client, amount, or receipt…" oninput="setQuery(this.value)" autocomplete="off"/>
+        </label>
+        <select class="range-select" id="rangeSelect" onchange="setRange(this.value)" aria-label="Date range">
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="ytd">Year to date</option>
+          <option value="all">All time</option>
+        </select>
+      </div>
+
+      <div class="pay-list" id="paymentsList" role="list">
+        <div style="padding:60px 20px;text-align:center;color:var(--text3);font-size:13px">Loading…</div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+<script src="banking.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   Payments page — the transaction feed with filters, search, and
+   inline refund flow.
+   ═══════════════════════════════════════════════════════════════ */
+
+let PAYMENTS = [];
+let FILTER = new URLSearchParams(location.search).get('filter') || 'all';
+let QUERY = '';
+let RANGE = '30d';
+let OPEN_ID = null;
+
+const $ = id => document.getElementById(id);
+
+async function loadPayments(){
+  const q = new URLSearchParams({ range: RANGE, filter: FILTER === 'at_risk' ? 'at_risk' : 'all', q: QUERY });
+  const { ok, data } = await LolaBank.api('/api/stripe/payments?' + q.toString());
+  if(!ok){
+    $('paymentsList').innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--text3);font-size:13px">Couldn't load payments. Try refreshing.</div>`;
+    return;
+  }
+  PAYMENTS = Array.isArray(data.payments) ? data.payments : [];
+  updateCounts();
+  render();
+  updateNarrative();
+}
+
+function updateNarrative(){
+  const t = PAYMENTS.length;
+  if(!t){
+    $('narrativeLine').innerHTML = "No transactions in this range yet. Once Lola takes a booking with a deposit, it lands here.";
+    return;
+  }
+  const gross = PAYMENTS.filter(p=>p.kind!=='refund').reduce((s,p)=>s+Number(p.amount||0),0);
+  const refunded = PAYMENTS.filter(p=>p.kind==='refund').reduce((s,p)=>s+Number(p.amount||0),0);
+  const net = gross - refunded;
+  const currency = PAYMENTS[0]?.currency || 'usd';
+  $('narrativeLine').innerHTML = `<b>${LolaBank.money(net, currency)}</b> net across <b>${t}</b> transaction${t===1?'':'s'} in the selected range.`;
+}
+
+function updateCounts(){
+  const by = { all: PAYMENTS.length, charge:0, tip:0, deposit:0, fee:0, refund:0, at_risk:0 };
+  PAYMENTS.forEach(p => {
+    if(by[p.kind] != null) by[p.kind]++;
+    if(p.at_risk) by.at_risk++;
+  });
+  Object.entries({cnAll:'all',cnCharge:'charge',cnTip:'tip',cnDeposit:'deposit',cnFee:'fee',cnRefund:'refund',cnRisk:'at_risk'})
+    .forEach(([id,k]) => { const el = $(id); if(el) el.textContent = by[k]; });
+}
+
+function filterList(){
+  let list = PAYMENTS.slice();
+  if(FILTER === 'at_risk') list = list.filter(p => p.at_risk);
+  else if(FILTER !== 'all') list = list.filter(p => p.kind === FILTER);
+  if(QUERY){
+    const q = QUERY.toLowerCase();
+    list = list.filter(p =>
+      String(p.client||'').toLowerCase().includes(q) ||
+      String(p.description||'').toLowerCase().includes(q) ||
+      String(p.receipt_number||'').toLowerCase().includes(q) ||
+      String(Number(p.amount||0)/100).includes(q)
+    );
+  }
+  return list;
+}
+
+function paymentRowHtml(p){
+  const kind = p.kind || 'charge';
+  const status = String(p.status||'succeeded').toLowerCase();
+  const amtClass = kind === 'refund' ? ' refund' : '';
+  const sign = kind === 'refund' ? '−' : '';
+  const isOpen = OPEN_ID === p.id;
+  const detail = isOpen ? paymentDetailHtml(p) : '';
+  return `
+    <div class="pay-row ${isOpen?'open':''}" data-id="${LolaBank.esc(p.id)}" role="listitem" tabindex="0"
+         onclick="togglePayment('${LolaBank.esc(p.id)}', event)"
+         onkeydown="if(event.key==='Enter'||event.key===' '){togglePayment('${LolaBank.esc(p.id)}', event);event.preventDefault()}">
+      <div class="pay-icon ${kind}" aria-hidden="true">${LolaBank.paymentTypeIcon(kind)}</div>
+      <div class="pay-body">
+        <div class="pay-title">${LolaBank.esc(p.client || 'Unknown')} ${p.card_last4 ? `<span class="pay-num">•••• ${LolaBank.esc(p.card_last4)}</span>` : ''}</div>
+        <div class="pay-sub">${LolaBank.esc(p.description || LolaBank.paymentTypeLabel(kind))}</div>
+      </div>
+      <span class="pay-status ${status}">${status}</span>
+      <div class="pay-amount${amtClass}">${sign}${LolaBank.money(p.amount, p.currency)}</div>
+      <div class="pay-time">${LolaBank.esc(LolaBank.relTime(p.created_at))}</div>
+      ${detail}
+    </div>`;
+}
+
+function paymentDetailHtml(p){
+  const kind = p.kind || 'charge';
+  const status = String(p.status||'succeeded').toLowerCase();
+  const canRefund = kind === 'charge' && status === 'succeeded' && !p.refunded;
+  const canResend = p.at_risk || (kind === 'fee' && status !== 'succeeded');
+  return `
+    <div class="pay-detail" onclick="event.stopPropagation()">
+      <div class="detail-grid">
+        <div class="detail-stat"><div class="k">Gross</div><div class="v">${LolaBank.money(p.amount, p.currency)}</div></div>
+        <div class="detail-stat"><div class="k">Stripe fee</div><div class="v">${LolaBank.money(p.stripe_fee||0, p.currency)}</div></div>
+        <div class="detail-stat"><div class="k">Net to you</div><div class="v">${LolaBank.money((p.amount||0) - (p.stripe_fee||0), p.currency)}</div></div>
+      </div>
+      <div class="detail-line"><span>Client</span><b>${LolaBank.esc(p.client || 'Unknown')}</b></div>
+      <div class="detail-line"><span>Kind</span><b>${LolaBank.paymentTypeLabel(kind)}</b></div>
+      <div class="detail-line"><span>Description</span><b>${LolaBank.esc(p.description || '—')}</b></div>
+      <div class="detail-line"><span>When</span><b>${LolaBank.esc(LolaBank.fmtDate(p.created_at))} · ${LolaBank.esc(LolaBank.fmtTime(p.created_at))}</b></div>
+      ${p.card_last4 ? `<div class="detail-line"><span>Card</span><b>${LolaBank.esc(p.card_brand||'Card')} •••• ${LolaBank.esc(p.card_last4)}</b></div>` : ''}
+      ${p.receipt_number ? `<div class="detail-line"><span>Receipt #</span><b>${LolaBank.esc(p.receipt_number)}</b></div>` : ''}
+      ${p.booking_id ? `<div class="detail-line"><span>Booking</span><b><a href="bookings.html?id=${LolaBank.esc(p.booking_id)}" style="color:var(--accent);text-decoration:none">Open →</a></b></div>` : ''}
+      <div class="detail-actions">
+        ${canRefund ? `<button class="detail-btn danger" onclick="refundPayment('${LolaBank.esc(p.id)}', event)">Refund…</button>` : ''}
+        ${canResend ? `<button class="detail-btn primary" onclick="resendPaymentLink('${LolaBank.esc(p.id)}', event)">Send payment link via SMS</button>` : ''}
+        ${p.receipt_url ? `<a class="detail-btn" href="${LolaBank.esc(p.receipt_url)}" target="_blank" rel="noopener">Open Stripe receipt →</a>` : ''}
+        ${p.client_phone ? `<button class="detail-btn" onclick="textClient('${LolaBank.esc(p.client_phone)}', event)">Text client</button>` : ''}
+      </div>
+      <div class="refund-status" id="refstatus-${LolaBank.esc(p.id)}"></div>
+    </div>`;
+}
+
+function render(){
+  const list = filterList();
+  const host = $('paymentsList');
+  if(!list.length){
+    if(!PAYMENTS.length){
+      host.innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--text3);font-size:13px">Nothing here yet — as Lola takes deposits and payments, they land here.</div>`;
+    } else {
+      host.innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--text3);font-size:13px">Nothing matches — clear the filter or search.</div>`;
+    }
+    return;
+  }
+  host.innerHTML = list.map(paymentRowHtml).join('');
+}
+
+function togglePayment(id){
+  OPEN_ID = OPEN_ID === id ? null : id;
+  render();
+}
+
+function setFilter(f){
+  FILTER = f;
+  document.querySelectorAll('.chip').forEach(el => {
+    const on = el.dataset.filter === f;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  render();
+}
+function setQuery(q){ QUERY = String(q||'').trim(); render(); }
+function setRange(r){ RANGE = r; loadPayments(); }
+
+async function refundPayment(id, ev){
+  if(ev) ev.stopPropagation();
+  const p = PAYMENTS.find(x => x.id === id);
+  if(!p) return;
+  const status = $('refstatus-' + id);
+  const setStatus = (msg, ok) => { if(status){ status.className = 'refund-status ' + (ok===false?'err':'ok'); status.textContent = msg; } };
+  const reason = prompt(`Refund ${LolaBank.money(p.amount, p.currency)} to ${p.client || 'this client'}?\n\nOptional note (shown on Stripe receipt):`);
+  if(reason === null) return;
+  setStatus('Processing refund…', true);
+  const { ok, data } = await LolaBank.api(`/api/stripe/payments/${encodeURIComponent(id)}/refund`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  });
+  if(ok){
+    setStatus(`Refund sent — ${data.arrival || 'client sees it in 5-10 business days'}.`, true);
+    setTimeout(loadPayments, 1400);
+  } else {
+    setStatus(data?.error || 'Refund failed. Try again in a moment.', false);
+  }
+}
+
+async function resendPaymentLink(id, ev){
+  if(ev) ev.stopPropagation();
+  const status = $('refstatus-' + id);
+  const setStatus = (msg, ok) => { if(status){ status.className = 'refund-status ' + (ok===false?'err':'ok'); status.textContent = msg; } };
+  setStatus('Sending payment link via SMS…', true);
+  const { ok, data } = await LolaBank.api(`/api/stripe/payments/${encodeURIComponent(id)}/send-link`, { method:'POST' });
+  if(ok){
+    setStatus(`Payment link sent to ${data?.sent_to || 'client'}. Lola will follow up if it isn't paid in 24h.`, true);
+    if(typeof window.lolaPulse === 'function') window.lolaPulse('Payment link sent');
+  } else {
+    setStatus(data?.error || "Couldn't send payment link. Check the client's phone on file.", false);
+  }
+}
+
+function textClient(phone, ev){
+  if(ev) ev.stopPropagation();
+  location.href = 'inbox.html?compose=' + encodeURIComponent(phone);
+}
+
+/* Kick off */
+(async () => {
+  await LolaBank.loadStatus();
+  if(!LolaBank.state.connected){
+    $('narrativeLine').innerHTML = 'Connect Stripe on the <a href="banking.html" style="color:var(--accent);text-decoration:none">Overview</a> to start seeing payments here.';
+    $('paymentsList').innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--text3);font-size:13px">No payment account connected yet.</div>`;
+    return;
+  }
+  // Sync active filter from URL if present
+  const urlFilter = new URLSearchParams(location.search).get('filter');
+  if(urlFilter) setFilter(urlFilter);
+  await loadPayments();
+  setInterval(() => { if(!document.hidden) loadPayments(); }, 45000);
+})();
+</script>
+</body>
+</html>
