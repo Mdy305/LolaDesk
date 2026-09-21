@@ -4,136 +4,586 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Inbox — LolaDesk</title>
+<meta name="description" content="Every message Lola handles, across SMS, WhatsApp, Instagram and email — one thread view, one reply box, one voice."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
 <style>
-.inbox-layout{display:grid;grid-template-columns:340px 1fr;gap:16px;height:calc(100vh - 180px);min-height:480px}
-@media(max-width:900px){.inbox-layout{grid-template-columns:1fr;height:auto}}
-.thread-list{overflow-y:auto}
-.thread{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s}
-.thread:hover,.thread.active{background:var(--surface2)}
+/* ═══════════════════════════════════════════════════════════════
+   Inbox — twin surface to calls.html. Same visual language, same
+   design tokens (fix #1), same live orb pulse (fix #5).
+   Data shape: LolaData.load('inbox').threads[]
+     { id, who, channel, when, preview, unread?, avatar? }
+   Reply endpoint: POST /api/inbox-reply { conversation_id, text }
+   ═══════════════════════════════════════════════════════════════ */
+
+.page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
+.page-narrative b{color:var(--text);font-weight:600}
+
+/* seg-view — matches calls.html so the two pages read as one product */
+.seg-views{display:inline-flex;gap:4px;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:4px;margin:14px 0 20px}
+.seg-views a{padding:8px 18px;border-radius:9px;font-size:13px;font-weight:600;text-decoration:none;color:var(--text2);transition:color .15s,background .15s}
+.seg-views a.on{color:#10140a;background:var(--accent)}
+
+/* TOOLBAR — channel chips + search */
+.inbox-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.chip-row{display:inline-flex;gap:6px;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:4px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;transition:color .15s,background .15s;border:none;background:transparent;min-height:36px;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{color:var(--text)}
+.chip.on{color:#10140a;background:var(--accent)}
+.chip-count{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:rgba(255,255,255,.14);color:inherit;min-width:18px;text-align:center}
+.chip.on .chip-count{background:rgba(16,20,10,.18);color:#10140a}
+.chip-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.chip.ch-sms .chip-dot{background:var(--info)}
+.chip.ch-whatsapp .chip-dot{background:#25d366}
+.chip.ch-instagram .chip-dot{background:#e1306c}
+.chip.ch-email .chip-dot{background:var(--warning)}
+.search-box{flex:1;min-width:220px;max-width:360px;position:relative}
+.search-box input{width:100%;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px 10px 38px;color:var(--text);font:inherit;min-height:40px}
+.search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+.compose-btn{padding:10px 18px;border-radius:var(--r-sm);background:var(--accent);color:#10140a;font-weight:600;font-size:13px;cursor:pointer;min-height:40px;border:none;display:inline-flex;align-items:center;gap:6px;transition:transform .15s,box-shadow .15s}
+.compose-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--accent-glow)}
+
+/* MAIN LAYOUT — two-pane on desktop, single-pane with slide on mobile */
+.inbox-layout{display:grid;grid-template-columns:360px 1fr;gap:16px;height:calc(100dvh - 260px);min-height:520px}
+.thread-list{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+.thread-list-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:0.5px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600}
+.thread-scroll{flex:1;overflow-y:auto}
+.thread{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--border);cursor:pointer;transition:background .12s;position:relative}
+.thread:last-child{border-bottom:none}
+.thread:hover{background:var(--surface2)}
+.thread.active{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}
+.thread:focus-visible{outline:none;background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}
+.thread-av{width:38px;height:38px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--text2);flex-shrink:0;border:0.5px solid var(--border)}
+.thread.unread .thread-av{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-glow)}
 .thread-body{flex:1;min-width:0}
-.thread-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
-.thread-name{font-size:13px;font-weight:500}
-.thread-time{font-size:10px;color:var(--text3);flex-shrink:0}
-.thread-msg{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ch{font-size:9px;font-weight:500;padding:1px 6px;border-radius:4px}
-.ch-instagram{background:rgba(204,255,0,.15);color:#dcff66}
-.ch-sms{background:var(--mono-dim);color:var(--text)}
-.ch-whatsapp{background:rgba(37,211,102,.15);color:#25d366}
-.ch-email{background:var(--mono-dim);color:var(--text)}
-.conv{display:flex;flex-direction:column}
-.conv-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:0.5px solid var(--border)}
-.conv-msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
-.bubble{max-width:75%;font-size:13.5px;line-height:1.5;padding:10px 14px;border-radius:14px}
-.bubble.them{align-self:flex-start;background:var(--surface2);border-bottom-left-radius:3px}
-.bubble.us{align-self:flex-end;background:var(--pink-dim);border-bottom-right-radius:3px}
-.bubble-meta{font-size:10px;color:var(--text3);margin-top:4px}
-.lola-tag{font-size:9px;color:var(--pink2);font-weight:600;margin-left:6px}
-.conv-input{display:flex;gap:10px;padding:14px 18px;border-top:0.5px solid var(--border)}
-.conv-input input{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:24px;padding:11px 16px;color:var(--text);font-size:13.5px;outline:none}
-.conv-input input:focus{border-color:var(--pink)}
-.send{width:40px;height:40px;border-radius:50%;background:var(--pink);color:#fff;display:flex;align-items:center;justify-content:center}
-.auto-note{text-align:center;font-size:11px;color:var(--text3);padding:6px}
+.thread-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
+.thread-name{font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thread.unread .thread-name{font-weight:700}
+.thread-time{font-size:11px;color:var(--text3);flex-shrink:0;font-variant-numeric:tabular-nums}
+.thread-msg{font-size:12.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.thread.unread .thread-msg{color:var(--text)}
+.thread-tags{display:flex;align-items:center;gap:6px;margin-top:5px}
+.ch{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;letter-spacing:.02em;display:inline-flex;align-items:center;gap:4px}
+.ch::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor}
+.ch-sms{background:rgba(90,200,250,.12);color:var(--info)}
+.ch-whatsapp{background:rgba(37,211,102,.12);color:#25d366}
+.ch-instagram{background:rgba(225,48,108,.12);color:#e1306c}
+.ch-email{background:rgba(255,179,64,.12);color:var(--warning)}
+.unread-dot{position:absolute;top:16px;right:14px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+
+/* CONVERSATION PANE */
+.conv{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
+.conv-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:0.5px solid var(--border)}
+.conv-head .back-btn{display:none;background:none;border:none;color:var(--text2);cursor:pointer;padding:6px;margin-left:-6px;border-radius:8px;transition:background .12s}
+.conv-head .back-btn:hover{background:var(--surface2)}
+.conv-av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:flex;align-items:center;justify-content:center;color:#10140a;font-weight:700;font-size:16px;flex-shrink:0}
+.conv-title{flex:1;min-width:0}
+.conv-name{font-size:14.5px;font-weight:600;color:var(--text)}
+.conv-sub{font-size:11.5px;color:var(--text3);margin-top:2px;display:flex;align-items:center;gap:8px}
+.conv-actions{display:flex;gap:6px}
+.conv-action{width:36px;height:36px;border-radius:10px;background:var(--surface2);border:0.5px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.conv-action:hover{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-glow)}
+.conv-msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.bubble{max-width:75%;font-size:13.5px;line-height:1.5;padding:10px 14px;border-radius:16px;position:relative}
+.bubble.them{align-self:flex-start;background:var(--surface2);color:var(--text);border-bottom-left-radius:4px}
+.bubble.us{align-self:flex-end;background:var(--accent-dim);color:var(--text);border-bottom-right-radius:4px}
+.bubble.us.sending{opacity:.6}
+.bubble-meta{font-size:10.5px;color:var(--text3);margin-top:4px;display:flex;gap:6px;align-items:center}
+.bubble.us .bubble-meta{color:var(--text2)}
+.lola-tag{font-size:9.5px;color:var(--accent);font-weight:700;background:var(--bg);padding:1px 6px;border-radius:5px;letter-spacing:.03em}
+.auto-note{align-self:center;font-size:11px;color:var(--text3);padding:8px 14px;background:var(--surface2);border-radius:20px;display:inline-flex;align-items:center;gap:6px;margin:8px 0}
+.auto-note.off{color:var(--warning)}
+.auto-note .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
+.auto-note.off .dot{background:var(--warning);animation:none}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.auto-note .dot{animation:none}}
+.conv-input{display:flex;gap:10px;padding:14px 18px;border-top:0.5px solid var(--border);align-items:center;background:var(--surface)}
+.conv-input input{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:24px;padding:11px 18px;color:var(--text);font-size:13.5px;outline:none;min-height:44px;transition:border-color .15s,box-shadow .15s}
+.conv-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.conv-input input:disabled{opacity:.6;cursor:not-allowed}
+.send{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#10140a;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;transition:transform .15s,box-shadow .15s;flex-shrink:0}
+.send:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--accent-glow)}
+.send:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.autopilot-toggle{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface2);border-radius:20px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;border:0.5px solid var(--border);transition:background .12s}
+.autopilot-toggle:hover{background:var(--bg2)}
+.autopilot-toggle .sw{width:26px;height:14px;background:var(--border2);border-radius:20px;position:relative;transition:background .15s;flex-shrink:0}
+.autopilot-toggle .sw::after{content:"";position:absolute;left:2px;top:2px;width:10px;height:10px;border-radius:50%;background:var(--text);transition:transform .15s}
+.autopilot-toggle.on .sw{background:var(--accent)}
+.autopilot-toggle.on .sw::after{transform:translateX(12px);background:#10140a}
+
+/* EMPTY STATE (right pane, no thread selected) */
+.conv-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;color:var(--text3);text-align:center}
+.conv-empty-orb{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:flex;align-items:center;justify-content:center;color:#10140a;font-weight:700;font-size:26px;letter-spacing:-.02em;box-shadow:0 6px 24px var(--accent-glow)}
+.conv-empty-title{font-weight:600;color:var(--text);font-size:15px}
+.conv-empty-sub{max-width:280px;line-height:1.55;font-size:13px;color:var(--text2)}
+
+/* SKELETON */
+.sk-thread{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--border);align-items:center}
+.sk-thread:last-child{border-bottom:none}
+.sk-av{width:38px;height:38px;border-radius:50%;background:linear-gradient(90deg,var(--surface2) 0%,var(--surface) 50%,var(--surface2) 100%);background-size:200% 100%;animation:sk 1.4s ease-in-out infinite;flex-shrink:0}
+.sk-line{background:linear-gradient(90deg,var(--surface2) 0%,var(--surface) 50%,var(--surface2) 100%);background-size:200% 100%;animation:sk 1.4s ease-in-out infinite;border-radius:6px;height:11px;margin-bottom:6px}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk-av,.sk-line{animation:none}}
+
+/* SENDING / TOAST */
+.error-line{padding:8px 12px;font-size:12px;color:var(--danger);background:rgba(255,90,77,.1);border-radius:var(--r-sm);margin:8px 18px}
+
+/* RESPONSIVE */
+@media(max-width:900px){
+  .inbox-layout{grid-template-columns:1fr;height:auto;min-height:0}
+  .thread-list{max-height:60vh}
+  /* Slide-pane behavior: when a thread is open on mobile, hide the
+     list and show only the conversation. .inbox-layout gets .mobile-conv */
+  .inbox-layout.mobile-conv .thread-list{display:none}
+  .inbox-layout.mobile-conv .conv{min-height:calc(100dvh - 240px)}
+  .conv-head .back-btn{display:inline-flex}
+  .inbox-layout:not(.mobile-conv) .conv{display:none}
+}
+@media(max-width:720px){
+  .inbox-toolbar{gap:8px}
+  .chip-row{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .search-box{max-width:none;width:100%}
+  .compose-btn{width:100%;justify-content:center}
+  .bubble{max-width:85%}
+}
+@media(max-width:420px){
+  .main{padding:12px 12px 90px}
+  .conv-msgs{padding:14px}
+  .conv-input{padding:12px 14px}
+}
 </style>
 </head>
 <body data-page="inbox">
 <div class="app">
   <main class="main">
+
     <div class="topbar">
       <div class="page-head">
         <h1 class="page-title">Inbox</h1>
-<div class="seg-views" style="display:flex;gap:6px;margin:0 0 18px;background:var(--surface,#171a0e);border:0.5px solid var(--border,rgba(255,255,255,.09));border-radius:12px;padding:4px;width:max-content">
-  <a href="inbox.html" style="padding:8px 18px;border-radius:9px;font-size:13px;font-weight:600;text-decoration:none;color:#10140a;background:#ccff00">Messages</a>
-  <a href="calls.html" style="padding:8px 18px;border-radius:9px;font-size:13px;font-weight:600;text-decoration:none;color:var(--text2,#9aa38a);background:transparent">Calls</a>
-</div>
-        <p class="page-sub">Every channel, one place. Lola replies in seconds.</p>
+        <p class="page-narrative" id="narrativeLine">Loading conversations…</p>
       </div>
     </div>
 
-    <div class="inbox-layout">
-      <div class="card thread-list" id="threads"></div>
-      <div class="card conv">
-        <div class="conv-head" id="convHead"></div>
-        <div class="conv-msgs" id="convMsgs"></div>
-        <div class="conv-input">
-          <input id="reply" placeholder="Type a reply, or let Lola handle it…"/>
-          <button class="send" onclick="sendReply()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    <nav class="seg-views" aria-label="Messages or calls">
+      <a href="inbox.html" class="on" aria-current="page">Messages</a>
+      <a href="calls.html">Calls</a>
+    </nav>
+
+    <div class="inbox-toolbar" role="toolbar" aria-label="Filter and search messages">
+      <div class="chip-row" role="tablist" aria-label="Filter by channel">
+        <button class="chip on" data-filter="all" onclick="setFilter('all')" role="tab" aria-selected="true">All <span class="chip-count" id="cnAll">0</span></button>
+        <button class="chip" data-filter="unread" onclick="setFilter('unread')" role="tab" aria-selected="false">Unread <span class="chip-count" id="cnUnread">0</span></button>
+        <button class="chip ch-sms" data-filter="sms" onclick="setFilter('sms')" role="tab" aria-selected="false"><span class="chip-dot"></span>SMS <span class="chip-count" id="cnSms">0</span></button>
+        <button class="chip ch-whatsapp" data-filter="whatsapp" onclick="setFilter('whatsapp')" role="tab" aria-selected="false"><span class="chip-dot"></span>WhatsApp <span class="chip-count" id="cnWa">0</span></button>
+        <button class="chip ch-instagram" data-filter="instagram" onclick="setFilter('instagram')" role="tab" aria-selected="false"><span class="chip-dot"></span>Instagram <span class="chip-count" id="cnIg">0</span></button>
+        <button class="chip ch-email" data-filter="email" onclick="setFilter('email')" role="tab" aria-selected="false"><span class="chip-dot"></span>Email <span class="chip-count" id="cnEmail">0</span></button>
+      </div>
+      <label class="search-box" aria-label="Search messages">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+        <input id="searchInput" type="search" placeholder="Search name, number, or message…" oninput="setQuery(this.value)" autocomplete="off"/>
+      </label>
+      <button class="compose-btn" onclick="openCompose()" aria-label="New message">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New message
+      </button>
+    </div>
+
+    <div class="inbox-layout" id="inboxLayout">
+      <div class="thread-list" id="threadListWrap">
+        <div class="thread-list-head">
+          <span id="threadListLabel">All conversations</span>
+          <span id="threadListCount"></span>
+        </div>
+        <div class="thread-scroll" id="threads" role="list">
+          <div class="sk-thread"><div class="sk-av"></div><div style="flex:1"><div class="sk-line" style="width:40%"></div><div class="sk-line" style="width:70%"></div></div></div>
+          <div class="sk-thread"><div class="sk-av"></div><div style="flex:1"><div class="sk-line" style="width:50%"></div><div class="sk-line" style="width:60%"></div></div></div>
+          <div class="sk-thread"><div class="sk-av"></div><div style="flex:1"><div class="sk-line" style="width:35%"></div><div class="sk-line" style="width:75%"></div></div></div>
+        </div>
+      </div>
+
+      <div class="conv" id="conv">
+        <div class="conv-empty" id="convEmpty">
+          <div class="conv-empty-orb">L</div>
+          <div class="conv-empty-title">Pick a conversation</div>
+          <div class="conv-empty-sub">Every SMS, WhatsApp, Instagram DM and email lands here. Lola replies automatically — you can jump in any time.</div>
+        </div>
+        <div class="conv-head" id="convHead" hidden></div>
+        <div class="conv-msgs" id="convMsgs" hidden aria-live="polite" role="log"></div>
+        <div class="conv-input" id="convInputRow" hidden>
+          <div class="autopilot-toggle on" id="autopilotToggle" onclick="toggleAutopilot()" title="Lola is handling this thread automatically" role="switch" aria-checked="true" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){toggleAutopilot();event.preventDefault()}">
+            <span class="sw" aria-hidden="true"></span>
+            <span id="autopilotLabel">Lola</span>
+          </div>
+          <input id="reply" placeholder="Type a reply, or let Lola handle it…" aria-label="Reply message"/>
+          <button class="send" id="sendBtn" onclick="sendReply()" aria-label="Send reply">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
         </div>
       </div>
     </div>
   </main>
 </div>
 
+<nav class="mobile-bar" aria-label="Primary">
+  <a class="mb-item" href="dashboard.html" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-7h-6v7H4a1 1 0 01-1-1V9.5z"/></svg>Home</a>
+  <a class="mb-item" href="bookings.html" aria-label="Calendar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>Calendar</a>
+  <a class="mb-item" href="calls.html" aria-label="Calls"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>Calls</a>
+  <a class="mb-item active" href="inbox.html" aria-label="Inbox" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Inbox</a>
+  <a class="mb-item" href="settings.html" aria-label="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09A1.65 1.65 0 0015 4.6a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.24.58.79.98 1.41 1.02H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</a>
+</nav>
+
 <script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
 <script src="lola-data.js"></script>
 <script src="sidebar.js"></script>
-<script>
-let THREADS = [];
 
-let active = 0;
-function initial(n){ return (n.match(/[A-Za-z]/)||['#'])[0].toUpperCase(); }
-function av(t,sz){ return `<span class="av ${sz||''}"><span class="av-initial">${initial(t.name)}</span>${t.img?`<img src="${t.img}" onerror="this.style.opacity=0">`:''}</span>`; }
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   Inbox — data + interactivity. Twin of calls.html.
+   ═══════════════════════════════════════════════════════════════ */
+
+let THREADS = [];
+let ACTIVE_ID = null;      // currently opened thread id
+let FILTER = 'all';        // all | unread | sms | whatsapp | instagram | email
+let QUERY = '';
+let SEEN_UNREAD = new Set(); // ids we've already toasted
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function initial(n){ return String(n||'').match(/[A-Za-z]/)?.[0]?.toUpperCase() || '#'; }
+function fmtPhone(n){ return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3') || (n||''); }
+function relTime(iso){
+  if(!iso) return '';
+  const t = new Date(iso).getTime();
+  if(!t) return String(iso);
+  const s = Math.max(0, Math.floor((Date.now() - t)/1000));
+  if(s < 60) return 'now';
+  if(s < 3600) return Math.floor(s/60)+'m';
+  if(s < 86400) return Math.floor(s/3600)+'h';
+  if(s < 2592000) return Math.floor(s/86400)+'d';
+  return Math.floor(s/2592000)+'mo';
+}
+function chanKey(t){ return String(t.channel || t.ch || 'sms').toLowerCase(); }
+
+function narrative(list){
+  if(!list.length) return "Lola is standing by. No messages yet.";
+  const unread = list.filter(t => t.unread).length;
+  const byCh = {};
+  list.forEach(t => { const k = chanKey(t); byCh[k] = (byCh[k]||0)+1; });
+  const chNames = Object.keys(byCh).sort((a,b)=>byCh[b]-byCh[a]).slice(0,3).map(k => k[0].toUpperCase()+k.slice(1)).join(', ');
+  if(unread) return `<b>${unread}</b> unread across ${chNames}. Lola is auto-replying to the rest.`;
+  return `<b>${list.length}</b> conversation${list.length===1?'':'s'} — Lola is handling every reply automatically.`;
+}
+
+function threadMatches(t){
+  if(FILTER === 'unread' && !t.unread) return false;
+  if(FILTER !== 'all' && FILTER !== 'unread' && chanKey(t) !== FILTER) return false;
+  if(QUERY){
+    const q = QUERY.toLowerCase();
+    const hay = ((t.who||'') + ' ' + (t.preview||'') + ' ' + (t.phone||'')).toLowerCase();
+    if(!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+function threadRowHtml(t){
+  const isActive = ACTIVE_ID === t.id;
+  const isUnread = !!t.unread;
+  const ch = chanKey(t);
+  const name = t.who || fmtPhone(t.phone) || 'Client';
+  return `
+    <div class="thread ${isActive?'active':''} ${isUnread?'unread':''}" role="listitem" tabindex="0"
+         onclick="openThread('${esc(t.id)}')"
+         onkeydown="if(event.key==='Enter'||event.key===' '){openThread('${esc(t.id)}');event.preventDefault()}">
+      <div class="thread-av">${initial(name)}</div>
+      <div class="thread-body">
+        <div class="thread-top">
+          <span class="thread-name">${esc(name)}</span>
+          <span class="thread-time">${esc(relTime(t.when))}</span>
+        </div>
+        <div class="thread-msg">${esc(t.preview || '')}</div>
+        <div class="thread-tags"><span class="ch ch-${ch}">${ch}</span></div>
+      </div>
+      ${isUnread ? '<span class="unread-dot" aria-label="Unread"></span>' : ''}
+    </div>`;
+}
 
 function renderThreads(){
-  document.getElementById('threads').innerHTML = THREADS.map((t,i)=>`
-    <div class="thread ${i===active?'active':''}" onclick="openThread(${i})">
-      ${av(t,'')}
-      <div class="thread-body">
-        <div class="thread-top"><span class="thread-name">${t.name}</span><span class="thread-time">${t.time}</span></div>
-        <div class="thread-msg">${t.preview}</div>
-        <span class="ch ch-${t.ch}" style="margin-top:5px;display:inline-block">${t.ch}</span>
+  const list = THREADS.filter(threadMatches);
+  const counts = {
+    all: THREADS.length,
+    unread: THREADS.filter(t => t.unread).length,
+    sms: THREADS.filter(t => chanKey(t)==='sms').length,
+    whatsapp: THREADS.filter(t => chanKey(t)==='whatsapp').length,
+    instagram: THREADS.filter(t => chanKey(t)==='instagram').length,
+    email: THREADS.filter(t => chanKey(t)==='email').length
+  };
+  $('cnAll').textContent = counts.all;
+  $('cnUnread').textContent = counts.unread;
+  $('cnSms').textContent = counts.sms;
+  $('cnWa').textContent = counts.whatsapp;
+  $('cnIg').textContent = counts.instagram;
+  $('cnEmail').textContent = counts.email;
+  $('threadListLabel').textContent = ({
+    all: 'All conversations', unread: 'Unread', sms: 'SMS',
+    whatsapp: 'WhatsApp', instagram: 'Instagram', email: 'Email'
+  })[FILTER] || 'Conversations';
+  $('threadListCount').textContent = list.length;
+  $('narrativeLine').innerHTML = narrative(THREADS);
+
+  const host = $('threads');
+  if(!list.length){
+    if(!THREADS.length){
+      host.innerHTML = `
+        <div style="padding:40px 20px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div class="conv-empty-orb" style="width:48px;height:48px;font-size:20px">L</div>
+          <div style="font-weight:600;color:var(--text);font-size:14px">No messages yet</div>
+          <div style="max-width:220px;line-height:1.5;font-size:12.5px">When someone texts your Lola number, the conversation lands here.</div>
+        </div>`;
+    } else {
+      host.innerHTML = `<div style="padding:30px 20px;text-align:center;color:var(--text3);font-size:13px">Nothing matches — clear the filter or search.</div>`;
+    }
+    return;
+  }
+  host.innerHTML = list.map(threadRowHtml).join('');
+}
+
+function openThread(id){
+  ACTIVE_ID = id;
+  const t = THREADS.find(x => x.id === id);
+  if(!t) return;
+  t.unread = false;
+  renderThreads();
+  renderConv(t);
+  // Mobile slide-in
+  $('inboxLayout').classList.add('mobile-conv');
+}
+function closeThread(){
+  ACTIVE_ID = null;
+  $('inboxLayout').classList.remove('mobile-conv');
+  $('convHead').hidden = true;
+  $('convMsgs').hidden = true;
+  $('convInputRow').hidden = true;
+  $('convEmpty').style.display = 'flex';
+}
+
+function renderConv(t){
+  const ch = chanKey(t);
+  const name = t.who || fmtPhone(t.phone) || 'Client';
+  $('convEmpty').style.display = 'none';
+  $('convHead').hidden = false;
+  $('convMsgs').hidden = false;
+  $('convInputRow').hidden = false;
+
+  $('convHead').innerHTML = `
+    <button class="back-btn" onclick="closeThread()" aria-label="Back to inbox">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </button>
+    <div class="conv-av">${initial(name)}</div>
+    <div class="conv-title">
+      <div class="conv-name">${esc(name)}</div>
+      <div class="conv-sub"><span class="ch ch-${ch}">${ch}</span> ${t.phone ? `<span>${esc(fmtPhone(t.phone))}</span>` : ''}</div>
+    </div>
+    <div class="conv-actions">
+      ${t.phone ? `<button class="conv-action" onclick="callClient('${esc(t.phone)}')" aria-label="Call client" title="Call">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>
+      </button>` : ''}
+    </div>`;
+
+  const msgs = Array.isArray(t.msgs) && t.msgs.length ? t.msgs
+    : (t.preview ? [{ role:'them', text:t.preview, when:t.when||'', lola:false }] : []);
+  const bubbles = msgs.map(m => `
+    <div class="bubble ${m.role==='us'?'us':'them'} ${m.sending?'sending':''}">
+      ${esc(m.text||'')}
+      <div class="bubble-meta">
+        <span>${esc(m.status || relTime(m.when) || '')}</span>
+        ${m.lola ? '<span class="lola-tag">LOLA</span>' : ''}
       </div>
     </div>`).join('');
+  const autoNote = t.autopilot === false
+    ? `<div class="auto-note off"><span class="dot"></span>Autopilot paused — you're steering</div>`
+    : `<div class="auto-note"><span class="dot"></span>Lola is auto-replying to this thread</div>`;
+  $('convMsgs').innerHTML = bubbles + autoNote;
+  const m = $('convMsgs'); m.scrollTop = m.scrollHeight;
+
+  const tog = $('autopilotToggle');
+  const on = t.autopilot !== false;
+  tog.classList.toggle('on', on);
+  tog.setAttribute('aria-checked', on ? 'true' : 'false');
+  $('autopilotLabel').textContent = on ? 'Lola' : 'Manual';
 }
-function openThread(i){ active=i; renderThreads(); renderConv(); }
-function renderConv(){
-  const t = THREADS[active];
-  document.getElementById('convHead').innerHTML = `${av(t,'')}<div><div style="font-weight:600;font-size:14px">${t.name}</div><div style="font-size:11px;color:var(--text3)"><span class="ch ch-${t.ch}">${t.ch}</span></div></div>`;
-  document.getElementById('convMsgs').innerHTML = t.msgs.map(([who,txt,time,lola])=>`
-    <div class="bubble ${who}">${txt}<div class="bubble-meta">${time}${lola?'<span class="lola-tag">· Lola</span>':''}</div></div>`).join('')
-    + `<div class="auto-note">Lola is handling this conversation automatically</div>`;
-  const m = document.getElementById('convMsgs'); m.scrollTop = m.scrollHeight;
+
+function toggleAutopilot(){
+  const t = THREADS.find(x => x.id === ACTIVE_ID);
+  if(!t) return;
+  t.autopilot = t.autopilot === false;
+  renderConv(t);
+  // Best-effort persist — endpoint may or may not exist yet; failure is silent.
+  authToken().then(tok => fetch('/api/inbox-autopilot', {
+    method:'POST',
+    headers:{'Content-Type':'application/json', ...(tok?{Authorization:'Bearer '+tok}:{})},
+    body: JSON.stringify({ conversation_id: t.id, autopilot: t.autopilot })
+  }).catch(()=>{}));
 }
-function token(){ try{ return window.LolaAuth?.token || localStorage.getItem('loladesk_token') || ''; }catch(e){ return ''; } }
+
+async function authToken(){
+  try{
+    const auth = await window.LolaAuth.ready;
+    return auth?.token || localStorage.getItem('loladesk_token') || '';
+  }catch(e){ return localStorage.getItem('loladesk_token') || ''; }
+}
+
 async function sendReply(){
-  const inp = document.getElementById('reply');
+  const t = THREADS.find(x => x.id === ACTIVE_ID);
+  if(!t) return;
+  const inp = $('reply');
   const text = inp.value.trim();
   if(!text) return;
-  const t = THREADS[active];
-  if(!t) return;
-
-  const btn = document.querySelector('.send');
-  inp.disabled = true; if(btn) btn.disabled = true;
-
-  // Optimistic UI: show it immediately, but mark as sending.
-  const msg = ['us', text, 'Sending…', false];
+  const btn = $('sendBtn');
+  inp.disabled = true; btn.disabled = true;
+  const msg = { role:'us', text, status:'Sending…', when:new Date().toISOString(), sending:true, lola:false };
+  t.msgs = Array.isArray(t.msgs) ? t.msgs : (t.preview ? [{role:'them',text:t.preview,when:t.when||'',lola:false}] : []);
   t.msgs.push(msg);
-  inp.value=''; renderConv();
-
+  inp.value = '';
+  renderConv(t);
   try{
+    const tok = await authToken();
     const r = await fetch('/api/inbox-reply', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token() },
+      headers:{ 'Content-Type':'application/json', ...(tok?{Authorization:'Bearer '+tok}:{}) },
       body: JSON.stringify({ conversation_id: t.id, text })
     });
-    const data = await r.json().catch(()=>({}));
-    if(!r.ok || !data.ok) throw new Error(data.error || 'Could not send');
-    msg[2] = 'now';
-    renderConv();
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok || (d && d.ok === false)) throw new Error(d?.error || 'Could not send');
+    msg.status = 'Sent';
+    msg.sending = false;
+    renderConv(t);
   }catch(e){
-    msg[2] = 'Failed to send — ' + (e.message||'try again');
-    renderConv();
+    msg.status = 'Failed — ' + (e.message || 'try again');
+    msg.sending = false;
+    renderConv(t);
   }finally{
-    inp.disabled = false; if(btn) btn.disabled = false; inp.focus();
+    inp.disabled = false; btn.disabled = false; inp.focus();
   }
 }
-document.getElementById('reply').addEventListener('keydown',e=>{ if(e.key==='Enter') sendReply(); });
-(async ()=>{
-  const data = await LolaData.load('inbox');
-  const list = (data && data.threads) || [];
-  THREADS = list.map(t=>({ id:t.id, name:t.who||'Client', ch:t.channel||'sms', time:t.when||'', preview:t.preview||'', img:'', msgs: t.preview?[['them',t.preview,t.when||'',false]]:[] }));
-  if(!THREADS.length){ document.getElementById('threads').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No messages yet.</div>'; }
-  else { renderThreads(); renderConv(); }
+
+function callClient(phone){
+  // Route through the tel: scheme so it opens the OS dialer on mobile,
+  // which lets the owner call from their own phone if desired.
+  location.href = 'tel:' + phone;
+}
+
+function setFilter(f){
+  FILTER = f;
+  document.querySelectorAll('.chip').forEach(el => {
+    const on = el.dataset.filter === f;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  renderThreads();
+}
+function setQuery(q){ QUERY = String(q||'').trim(); renderThreads(); }
+
+function openCompose(){
+  const num = prompt("Text who? Enter a phone number (with area code):");
+  if(!num) return;
+  const cleaned = num.replace(/[^\d+]/g,'');
+  if(cleaned.length < 10){ alert("That doesn't look like a valid number."); return; }
+  const phone = cleaned.startsWith('+') ? cleaned : (cleaned.length === 10 ? '+1'+cleaned : '+'+cleaned);
+  // Create a placeholder thread and open it; the first send will
+  // create the real conversation on the backend.
+  const id = 'new-' + Date.now();
+  const t = { id, who: fmtPhone(phone), phone, channel:'sms', when:'', preview:'', unread:false, msgs:[], autopilot:false };
+  THREADS.unshift(t);
+  renderThreads();
+  openThread(id);
+  setTimeout(()=>$('reply').focus(), 100);
+}
+
+/* ── DATA + POLLING ───────────────────────────────────────── */
+function normalize(list){
+  return list.map((t, i) => {
+    const id = t.id || t.conversation_id || (t.who + '|' + (t.when||'') + '|' + i);
+    return {
+      id,
+      who: t.who,
+      phone: t.phone || t.from || t.to || '',
+      channel: (t.channel || t.ch || 'sms').toLowerCase(),
+      when: t.when || t.updated_at || t.created_at || '',
+      preview: t.preview || t.last_message || '',
+      unread: !!t.unread,
+      autopilot: t.autopilot === false ? false : true,
+      msgs: Array.isArray(t.messages) ? t.messages.map(m => ({
+        role: m.role || (m.direction === 'in' ? 'them' : 'us'),
+        text: m.text || m.content || '',
+        when: m.when || m.created_at || '',
+        lola: !!m.lola
+      })) : undefined
+    };
+  });
+}
+
+async function loadInbox(firstLoad){
+  let data;
+  try{ data = await LolaData.load('inbox'); }catch(e){ return; }
+  const list = normalize((data && data.threads) || []);
+  if(!firstLoad){
+    const newUnread = list.filter(t => t.unread && !SEEN_UNREAD.has(t.id));
+    if(newUnread.length && typeof window.lolaPulse === 'function'){
+      const t = newUnread[0];
+      window.lolaPulse(`New message from ${t.who || fmtPhone(t.phone) || 'a client'}`);
+    }
+  }
+  list.forEach(t => { if(t.unread) SEEN_UNREAD.add(t.id); });
+  // Preserve any in-flight msgs from the currently open thread that
+  // haven't made it to the server yet (rare, but keeps optimistic UI intact).
+  const openT = THREADS.find(t => t.id === ACTIVE_ID);
+  if(openT && Array.isArray(openT.msgs) && openT.msgs.length){
+    const server = list.find(t => t.id === ACTIVE_ID);
+    if(server && (!server.msgs || server.msgs.length < openT.msgs.length)){
+      server.msgs = openT.msgs;
+    }
+  }
+  THREADS = list;
+  renderThreads();
+  if(ACTIVE_ID){
+    const t = THREADS.find(x => x.id === ACTIVE_ID);
+    if(t) renderConv(t);
+  }
+}
+
+// URL param: ?compose=<phone> — used by calls.html Text-back
+(function handleComposeParam(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const phone = p.get('compose');
+    if(!phone) return;
+    // Wait for first load so we can attach to an existing thread if one exists.
+    setTimeout(() => {
+      const cleaned = phone.replace(/[^\d+]/g, '');
+      const existing = THREADS.find(t => (t.phone||'').replace(/[^\d+]/g,'').endsWith(cleaned.slice(-10)));
+      if(existing){ openThread(existing.id); return; }
+      const id = 'new-' + Date.now();
+      const t = { id, who: fmtPhone(phone), phone, channel:'sms', when:'', preview:'', unread:false, msgs:[], autopilot:false };
+      THREADS.unshift(t);
+      renderThreads();
+      openThread(id);
+      setTimeout(()=>$('reply').focus(), 100);
+    }, 200);
+  }catch(e){}
+})();
+
+// Enter-to-send
+document.getElementById('reply').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendReply(); }
+});
+
+// Kick off
+(async () => {
+  await loadInbox(true);
+  setInterval(loadInbox, 30000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) loadInbox(); });
 })();
 </script>
 </body>

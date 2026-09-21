@@ -205,6 +205,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   gap:14px;
 }
 .dash-header .kpi-row{min-width:min(760px,58vw)}
+/* fix #3: single-tile variant when Home leads with one signature metric */
+.kpi-row--single{grid-template-columns:minmax(220px,320px);min-width:0!important}
+.kpi-row--single .kpi{padding:22px 26px}
+.kpi-row--single .kpi-val{font-size:32px;letter-spacing:-.02em}
 .kpi{
   background:var(--surface);
   border:.5px solid var(--border);
@@ -244,7 +248,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
    KPIs, revenue, schedule, and the command center all still exist —
    Calendar, Revenue, and the sidebar links reach them directly. */
 .briefing-banner,.roi-panel,.away-panel,.dash-header,.desk-center,
-.grid-main>.col-stack,.res-panel,.quick-grid{display:none!important}
+/* fix #3: was hiding col-stack + res-panel + quick-grid. The last two are
+   now physically removed from the DOM; only col-stack (Today's Schedule
+   + Insights + Revenue) is still deferred here — TODO: un-hide once the
+   4-zone Home layout ships. */
+.grid-main>.col-stack{display:none!important}
 .lola-orb-zone{
   flex:1;
   display:flex;
@@ -831,25 +839,8 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       </div>
     </div>
 
-    <div class="roi-panel" id="roiPanel">
-      <div class="roi-head">
-        <div class="roi-title">
-          <div class="roi-title-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-          </div>
-          Lola Revenue
-        </div>
-        <span class="roi-badge">Last 30 days</span>
-      </div>
-      <div class="roi-big" id="roiTotal">$0</div>
-      <div class="roi-sub" id="roiSub">Revenue from bookings Lola helped convert.</div>
-      <div class="roi-stats">
-        <div class="roi-stat"><div class="roi-stat-val" id="roiCalls">0</div><div class="roi-stat-label">Calls answered</div></div>
-        <div class="roi-stat"><div class="roi-stat-val" id="roiBooked">0</div><div class="roi-stat-label">Bookings made</div></div>
-        <div class="roi-stat"><div class="roi-stat-val" id="roiConversion">0%</div><div class="roi-stat-label">Conversion rate</div></div>
-        <div class="roi-stat"><div class="roi-stat-val" id="roiUpsell">$0</div><div class="roi-stat-label">Upsell revenue</div></div>
-      </div>
-    </div>
+    <!-- ROI panel removed (fix #3, core-app audit): full ROI story
+         belongs on revenue.html, not on Home. -->
 
     <div class="away-panel" id="awayPanel">
       <div class="away-head">
@@ -868,26 +859,14 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         <p>Lola is part of the team and ready for today.</p>
       </div>
 
-      <div class="kpi-row">
-        <div class="kpi">
-          <div class="kpi-val" id="kpiBookings">0</div>
-          <div class="kpi-label">Appointments</div>
-          <div class="kpi-sub">Last 30 days</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-val" id="kpiCalls">0</div>
-          <div class="kpi-label">Calls</div>
-          <div class="kpi-sub">Last 30 days</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-val" id="kpiClients">0</div>
-          <div class="kpi-label">Clients</div>
-          <div class="kpi-sub">Tenant total</div>
-        </div>
+      <!-- KPI row cut from 4 tiles to 1 signature metric (fix #3, core-app
+           audit). Bookings / Calls / Clients live one click away in their
+           own tabs — Home leads with revenue, the number that matters. -->
+      <div class="kpi-row kpi-row--single">
         <div class="kpi accent">
           <div class="kpi-val" id="kpiRevenue">$0</div>
           <div class="kpi-label">Revenue</div>
-          <div class="kpi-sub">Last 30 days</div>
+          <div class="kpi-sub">Last 30 days · Lola-assisted</div>
         </div>
       </div>
     </div>
@@ -954,18 +933,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
           </div>
         </section>
 
-        <section class="card">
-          <div class="card-head">
-            <div class="card-title">Top Services</div>
-            <a class="card-link" href="revenue.html">This month</a>
-          </div>
-          <div class="donut-wrap">
-            <canvas class="donut" id="donutChart" width="110" height="110"></canvas>
-            <div class="donut-legend" id="serviceLegend">
-              <div class="legend-item"><span class="legend-dot" style="background:#ccff00"></span><span>Waiting for data</span></div>
-            </div>
-          </div>
-        </section>
+        <!-- Top Services donut card removed (fix #3, core-app audit):
+             service mix belongs on revenue.html, not on Home. Also removes
+             the hardcoded [48,28,16,8] blonde/extensions/color/haircut
+             demo split that was still in the shipped DOM. -->
       </div>
     </div>
 
@@ -1012,68 +983,13 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       </div>
     </section>
 
-    <section class="res-panel">
-      <div class="res-head">
-        <div class="res-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l2.7 5.6L21 8.6l-4.5 4.4 1.1 6.4L12 16.9 6.4 19.4l1.1-6.4L3 8.6l6.3-1z"/></svg>
-          Resonance Engine
-        </div>
-        <span class="res-pill" id="resMood">Start strong mode</span>
-      </div>
-      <div class="res-grid">
-        <div class="res-stat"><div class="res-stat-val" id="resStreak">0 days</div><div class="res-stat-label">Execution streak</div></div>
-        <div class="res-stat"><div class="res-stat-val" id="resActionsToday">0</div><div class="res-stat-label">Actions completed today</div></div>
-        <div class="res-stat"><div class="res-stat-val" id="resNextOpportunity">$0</div><div class="res-stat-label">Next opportunity value</div></div>
-      </div>
-      <div class="res-actions">
-        <button class="res-btn" onclick="runResonanceAction('Run a premium win-back campaign for top clients who have not booked in 8+ weeks.','marketer.html')">Run win-back</button>
-        <button class="res-btn" onclick="runResonanceAction('Create today\\'s owner power plan with the top 3 profit moves and exact scripts.','')">Owner power plan</button>
-        <button class="res-btn" onclick="runResonanceAction('Draft team huddle notes for VIPs, upsell targets, and at-risk bookings.','team.html')">Prepare team huddle</button>
-      </div>
-    </section>
+    <!-- Resonance Engine and quick-grid removed (fix #3, core-app audit).
+    · Resonance was already display:none on the shipped page — the markup
+      is now gone too. The three actions (win-back, power plan, huddle)
+      live in Growth Studio / marketer.html.
+    · The quick-grid duplicated the sidebar nav one-for-one — killed for
+      cognitive redundancy. -->
 
-    <section class="quick-grid">
-      <a class="quick-tile" href="clients.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Clients</div><div class="quick-val">Profiles, history, preferences and notes</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="calls.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Calls</div><div class="quick-val">Live calls, recordings and transcripts</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="inbox.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Inbox</div><div class="quick-val">SMS, WhatsApp, email and social</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="bookings.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Calendar</div><div class="quick-val">Appointments and availability</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="revenue.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Revenue</div><div class="quick-val">Sales, conversion and performance</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="team.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0116 0v1"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Team</div><div class="quick-val">Staff, schedules and performance</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="numbers.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Lola Line</div><div class="quick-val">Phone numbers and voice setup</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-      <a class="quick-tile" href="marketer.html">
-        <div class="quick-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 11l18-5v12L3 13v-2zM11.6 16.8a3 3 0 11-5.8-1.6"/></svg></div>
-        <div class="quick-body"><div class="quick-label">Growth Studio</div><div class="quick-val">Campaigns, rebooking and lead growth</div></div>
-        <svg class="quick-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </a>
-    </section>
 
     <div class="cmd-dock">
       <div class="cmd-dock-input">
@@ -1254,8 +1170,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     const revenue = Number(k.revenue30 || 0);
     const upsell = Number(k.upsellRevenue || 0);
 
+    // fix #3: ROI panel was removed from Home (moved to revenue.html).
+    // text() is already null-safe; guard the .style.display access too so
+    // this block doesn't throw when roiPanel is absent.
     const roiPanel = document.getElementById("roiPanel");
-    roiPanel.style.display = "block";
+    if(roiPanel) roiPanel.style.display = "block";
     text("roiTotal", money(revenue));
     text("roiCalls", calls);
     text("roiBooked", bookings);
@@ -1577,37 +1496,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       ctx.stroke();
     }
 
-    const donut = document.getElementById("donutChart");
-    if(donut && donut.getContext){
-      const ctx = donut.getContext("2d");
-      const cx = donut.width/2, cy = donut.height/2, r = 38;
-      ctx.clearRect(0,0,donut.width,donut.height);
-      const values = [48,28,16,8];
-      const colors = ["#ccff00","#8affc4","#8fd400","#3a5a00"];
-      let start = -Math.PI/2;
-      values.forEach((value,index)=>{
-        const end = start + Math.PI*2*(value/100);
-        ctx.beginPath();
-        ctx.arc(cx,cy,r,start,end);
-        ctx.strokeStyle = colors[index];
-        ctx.lineWidth = 16;
-        ctx.stroke();
-        start = end;
-      });
-
-      document.getElementById("serviceLegend").innerHTML = [
-        ["#ccff00","Blonde services","48%"],
-        ["#8affc4","Extensions","28%"],
-        ["#8fd400","Color","16%"],
-        ["#3a5a00","Haircut & style","8%"]
-      ].map(row=>`
-        <div class="legend-item">
-          <span class="legend-dot" style="background:${row[0]}"></span>
-          <span>${row[1]}</span>
-          <span style="margin-left:auto">${row[2]}</span>
-        </div>
-      `).join("");
-    }
+    // fix #3: donutChart + serviceLegend removed with the Top Services
+    // card. The drawing block here was shipping hardcoded fake data —
+    // [48,28,16,8] blonde/extensions/color/haircut — that the core-app
+    // audit flagged. When the service-mix view earns a home on
+    // revenue.html, wire it there with real data from LolaData.
   }
 
   window.openClientIntel = function(encoded){
