@@ -1,59 +1,966 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Booking Settings — LolaDesk</title><link rel="stylesheet" href="app.css"/><style>.head{margin-bottom:24px}.head h1{font-size:32px}.head p{color:var(--text3);font-size:13px;margin-top:4px}.panel{max-width:900px;border:1px solid var(--border);background:var(--surface);border-radius:20px;padding:22px}.section{padding:18px 0;border-bottom:1px solid var(--border)}.section:last-child{border-bottom:0}.section h2{font-size:15px;margin-bottom:14px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}.field input,.field select{height:42px;border:1px solid var(--border);border-radius:11px;background:var(--bg2);color:var(--text);padding:0 12px}.switches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.switch{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:12px}.switch input{width:18px;height:18px}.actions{display:flex;gap:10px;margin-top:18px}.status{font-size:12px;color:var(--text3);margin-top:12px}.hint{font-size:12px;color:var(--text3);margin:-4px 0 16px;line-height:1.7}.embed-row{display:flex;align-items:stretch;gap:10px;margin-bottom:16px}.embed-row>div{flex:1;min-width:0}.embed-row label{display:block;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.codebox{background:var(--bg2);border:1px solid var(--border);border-radius:11px;padding:11px 13px;font-size:12px;line-height:1.6;color:var(--text2);overflow-x:auto;white-space:pre-wrap;word-break:break-all;min-height:40px}.copy{width:84px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:11px;cursor:pointer;font-size:12px;font-family:inherit;flex-shrink:0}.copy:hover{background:var(--surface2)}.copy.done{color:#080809;background:var(--accent);border-color:transparent}.embed-preview{margin:0 0 18px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg2)}.preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text3)}.preview-head b{color:var(--text2);font-weight:600}.preview-head .ptoggle{width:auto;padding:6px 12px;font-size:11px;height:auto;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit}.preview-head .ptoggle:hover{background:var(--surface2)}.embed-preview iframe{width:100%;height:660px;border:0;display:block;background:#050506}.embed-status{display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:12.5px;border-radius:11px;padding:10px 14px;line-height:1.5}.embed-status.ok{background:rgba(94,255,168,.08);border:.5px solid rgba(94,255,168,.25);color:#8affc4}.embed-status.no{background:rgba(255,179,64,.06);border:.5px solid rgba(255,179,64,.2);color:var(--text3)}@media(max-width:720px){.fields,.switches{grid-template-columns:1fr}.embed-preview iframe{height:520px}}</style></head><body data-page="booking-settings"><div class="app"><main class="main"><div class="head"><h1>Booking settings</h1><p>Rules used by dashboard booking, public booking and Lola.</p></div><div class="panel"><div class="section"><h2>Scheduling</h2><div class="fields"><div class="field"><label>Timezone</label><input id="timezone" placeholder="America/New_York"/></div><div class="field"><label>Slot interval (minutes)</label><input id="slot_interval_minutes" type="number" min="5" max="120"/></div><div class="field"><label>Minimum notice (minutes)</label><input id="minimum_notice_minutes" type="number" min="0"/></div><div class="field"><label>Booking horizon (days)</label><input id="booking_horizon_days" type="number" min="1" max="730"/></div><div class="field"><label>Cancellation window (hours)</label><input id="cancellation_window_hours" type="number" min="0"/></div><div class="field"><label>Buffer after (minutes)</label><input id="default_buffer_after_min" type="number" min="0"/></div></div></div><div class="section"><h2>Channels & client rules</h2><div class="switches"><label class="switch">Public booking <input id="public_booking_enabled" type="checkbox"/></label><label class="switch">Voice booking <input id="voice_booking_enabled" type="checkbox"/></label><label class="switch">SMS booking <input id="sms_booking_enabled" type="checkbox"/></label><label class="switch">Allow staff choice <input id="allow_staff_choice" type="checkbox"/></label><label class="switch">Allow any staff <input id="allow_any_staff" type="checkbox"/></label><label class="switch">Require phone <input id="require_phone" type="checkbox"/></label><label class="switch">Require email <input id="require_email" type="checkbox"/></label><label class="switch">Confirmation SMS <input id="confirmation_sms" type="checkbox"/></label><label class="switch">Reminder SMS <input id="reminder_sms" type="checkbox"/></label><label class="switch">Processing overlap <input id="allow_processing_overlap" type="checkbox"/></label></div></div><div class="section"><h2>Share &amp; embed</h2><p class="hint">Put your booking flow on your website with one script tag — the same engine Lola uses on the phone. Clients see service, team, live slots, and can cancel later with their confirmation code.</p><div class="embed-status" id="embedStatus"></div><div class="embed-preview" id="embedPreview" style="display:none"><div class="preview-head"><b>Live preview — exactly what your clients see</b><button class="ptoggle" id="previewToggle" onclick="togglePreview()">Hide</button></div><iframe id="embedIframe" title="Booking widget live preview" loading="lazy"></iframe></div><div class="embed-row"><div><label>Public booking link</label><div class="codebox" id="embedUrl">Loading…</div></div><button class="copy" data-copy="embedUrl">Copy</button></div><div class="embed-row"><div><label>Inline widget — shows the full flow on your page</label><div class="codebox" id="embedInline">Loading…</div></div><button class="copy" data-copy="embedInline">Copy</button></div><div class="embed-row"><div><label>Floating button — opens the flow in a modal</label><div class="codebox" id="embedModal">Loading…</div></div><button class="copy" data-copy="embedModal">Copy</button></div></div><div class="actions"><button class="btn btn-primary" onclick="save()">Save settings</button><a class="btn btn-ghost" href="bookings.html">Back to calendar</a></div><div class="status" id="status"></div></div></main></div><script src="auth-guard.js"></script><script src="lola-data.js"></script><script src="sidebar.js"></script><script>
-const fields=['timezone','slot_interval_minutes','minimum_notice_minutes','booking_horizon_days','cancellation_window_hours','default_buffer_after_min'];const bools=['public_booking_enabled','voice_booking_enabled','sms_booking_enabled','allow_staff_choice','allow_any_staff','require_phone','require_email','confirmation_sms','reminder_sms','allow_processing_overlap'];function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||''}async function api(method='GET',body=null){if(window.LolaAuth?.ready)await window.LolaAuth.ready;const r=await fetch('/api/booking-settings',{method,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}async function load(){try{const j=await api();const s=j.settings||{};fields.forEach(k=>{const el=document.getElementById(k);if(el&&s[k]!=null)el.value=s[k]});bools.forEach(k=>{const el=document.getElementById(k);if(el)el.checked=!!s[k]})}catch(e){status.textContent=e.message}}async function save(){status.textContent='Saving…';const body={};fields.forEach(k=>{const el=document.getElementById(k);body[k]=el.type==='number'?Number(el.value||0):el.value.trim()});bools.forEach(k=>body[k]=document.getElementById(k).checked);try{await api('POST',body);status.textContent='Saved'}catch(e){status.textContent=e.message}}
-function copyText(text,btn){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>flash(btn)).catch(()=>fallbackCopy(text,btn))}else fallbackCopy(text,btn)}
-function fallbackCopy(text,btn){const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();try{document.execCommand('copy');flash(btn)}catch(e){}t.remove()}
-function flash(btn){if(!btn)return;btn.textContent='Copied ✓';btn.classList.add('done');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('done')},1600)}
-function togglePreview(){
-  const p=document.getElementById('embedPreview'),t=document.getElementById('previewToggle');
-  const hidden=p.style.display==='none';
-  p.style.display=hidden?'block':'none';
-  if(t)t.textContent=hidden?'Hide':'Show preview';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Booking Settings — LolaDesk</title>
+<meta name="description" content="Every rule your booking system follows — hours, cancellation window, reminders, embed, calendar sync. One place."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Booking Settings — rebuilt as a proper booking OS surface.
+   Tab strip: Hours · Rules · Reminders · Embed · Sync
+   Sticky save-bar with dirty tracking.
+   Shares the same tab shape as banking (visual continuity).
+   Backend endpoints (unchanged):
+     GET/POST /api/booking-settings
+     GET      /api/embed-status
+     POST     /api/widget-beacon
+   New (backend TODO — safe to leave 404, page degrades):
+     GET/POST /api/booking-settings/hours       body { business_hours:{mon..sun:{open,close,closed}}, closures:[YYYY-MM-DD] }
+     GET      /api/calendar-sync/status         { google:{connected,email}, icloud:{connected,email} }
+     POST     /api/calendar-sync/google/connect { url }
+     POST     /api/calendar-sync/icloud/connect
+     POST     /api/calendar-sync/disconnect     body { provider }
+   ═══════════════════════════════════════════════════════════════ */
+
+.page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
+.page-narrative b{color:var(--text);font-weight:600}
+
+/* TAB STRIP — matches banking */
+.bs-tabs{display:inline-flex;gap:4px;background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:4px;margin:12px 0 22px;flex-wrap:wrap}
+.bs-tabs button{padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600;color:var(--text2);border:none;background:transparent;cursor:pointer;transition:color .15s,background .15s;min-height:36px;display:inline-flex;align-items:center;gap:6px;font-family:inherit}
+.bs-tabs button:hover{color:var(--text)}
+.bs-tabs button.on{color:#10140a;background:var(--accent)}
+
+/* SECTIONS */
+.bs-section{display:none}
+.bs-section.on{display:block}
+
+/* CARD SHELL */
+.bs-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:24px 28px;box-shadow:0 8px 32px rgba(0,0,0,.4);margin-bottom:18px}
+.bs-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px}
+.bs-title{font-size:16px;font-weight:600;letter-spacing:-.01em;color:var(--text);display:flex;align-items:center;gap:10px}
+.bs-title .icon{width:32px;height:32px;border-radius:9px;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.bs-sub{font-size:12.5px;color:var(--text3);line-height:1.55;margin-bottom:18px;max-width:520px}
+
+/* HOURS TABLE */
+.hours-grid{display:flex;flex-direction:column;gap:8px}
+.hours-row{display:grid;grid-template-columns:110px auto 1fr auto 1fr auto;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);transition:opacity .15s}
+.hours-row.closed{opacity:.5}
+.hours-row .day{font-size:13.5px;font-weight:600;color:var(--text);text-transform:capitalize}
+.hours-row .day.today::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;box-shadow:0 0 6px var(--accent-glow)}
+.hours-row .to{font-size:12px;color:var(--text3)}
+.hours-row input[type="time"]{background:var(--bg);border:.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;color:var(--text);font:inherit;font-size:13px;min-height:36px}
+.hours-row input[type="time"]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.hours-row input[type="time"]:disabled{opacity:.4}
+.hours-toggle{padding:6px 12px;background:var(--surface2);border:.5px solid var(--border);border-radius:20px;font-size:11.5px;color:var(--text2);cursor:pointer;user-select:none;min-height:32px;display:inline-flex;align-items:center;gap:8px;transition:all .12s}
+.hours-toggle.open{background:var(--accent-dim);border-color:var(--accent-glow);color:var(--accent)}
+.hours-toggle .sw{width:26px;height:14px;background:var(--border2);border-radius:20px;position:relative;transition:background .15s;flex-shrink:0}
+.hours-toggle .sw::after{content:"";position:absolute;left:2px;top:2px;width:10px;height:10px;border-radius:50%;background:var(--text);transition:transform .15s}
+.hours-toggle.open .sw{background:var(--accent)}
+.hours-toggle.open .sw::after{transform:translateX(12px);background:#10140a}
+.copy-mon{font-size:11px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px}
+.copy-mon:hover{color:var(--accent);background:var(--accent-dim)}
+.hours-quick{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.hours-quick button{padding:8px 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;min-height:36px;transition:color .15s,border-color .15s}
+.hours-quick button:hover{color:var(--text);border-color:var(--border2)}
+
+/* CLOSURES */
+.closures{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.closure-chip{padding:8px 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:20px;font-size:12px;color:var(--text);display:inline-flex;align-items:center;gap:8px}
+.closure-chip button{background:none;border:none;color:var(--text3);cursor:pointer;padding:0;font-size:14px;line-height:1}
+.closure-chip button:hover{color:var(--danger)}
+.closure-add{display:flex;gap:8px;margin-top:10px}
+.closure-add input{flex:1;max-width:200px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;color:var(--text);font:inherit;font-size:13px;min-height:40px}
+.closure-add button{padding:9px 16px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;min-height:40px}
+
+/* FIELDS */
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.field input,.field select{background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);padding:11px 14px;color:var(--text);font:inherit;font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s;min-height:44px}
+.field input:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.field .fine{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* SWITCHES */
+.switches{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.switch-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);cursor:pointer;transition:border-color .15s}
+.switch-row:hover{border-color:var(--border2)}
+.switch-row .lbl{font-size:13px;font-weight:500;color:var(--text)}
+.switch-row .sub{font-size:11px;color:var(--text3);margin-top:2px;line-height:1.4}
+.switch-row .sw{width:34px;height:20px;background:var(--border2);border-radius:20px;position:relative;transition:background .15s;flex-shrink:0}
+.switch-row .sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--text);transition:transform .15s}
+.switch-row.on .sw{background:var(--accent)}
+.switch-row.on .sw::after{transform:translateX(14px);background:#10140a}
+
+/* SMS PREVIEW */
+.sms-preview{margin-top:16px;padding:16px 18px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r-sm)}
+.sms-preview .k{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.sms-bubble{background:var(--accent-dim);border:.5px solid var(--accent-glow);border-radius:14px;border-bottom-left-radius:4px;padding:10px 14px;font-size:13px;line-height:1.5;color:var(--text);max-width:340px}
+.sms-meta{font-size:10.5px;color:var(--text3);margin-top:6px}
+
+/* EMBED */
+.embed-status{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--r-sm);margin-bottom:14px;font-size:13px;border:.5px solid var(--border)}
+.embed-status.ok{background:var(--accent-dim);border-color:var(--accent-glow);color:var(--accent)}
+.embed-status.no{background:var(--surface2);color:var(--text3)}
+.embed-status svg{flex-shrink:0}
+.embed-preview{margin:14px 0 18px;border:.5px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--bg)}
+.embed-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:.5px solid var(--border);font-size:12px;color:var(--text3)}
+.embed-preview-head b{color:var(--text);font-weight:600}
+.embed-preview iframe{width:100%;height:640px;border:0;display:block;background:var(--bg)}
+.embed-row{display:flex;align-items:stretch;gap:10px;margin-bottom:12px}
+.embed-row>div{flex:1;min-width:0}
+.embed-row label{display:block;font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:6px}
+.codebox{background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);padding:11px 14px;font-size:12.5px;line-height:1.6;color:var(--text2);overflow-x:auto;white-space:pre-wrap;word-break:break-all;min-height:44px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace}
+.copy-btn{width:96px;padding:0 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);color:var(--text2);cursor:pointer;font:inherit;font-size:12.5px;font-weight:600;flex-shrink:0;transition:all .12s}
+.copy-btn:hover{color:var(--text);border-color:var(--border2)}
+.copy-btn.done{background:var(--accent);color:#10140a;border-color:var(--accent)}
+.preview-toggle{padding:6px 12px;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);color:var(--text2);font-size:11.5px;cursor:pointer;font-family:inherit}
+.preview-toggle:hover{color:var(--text)}
+
+/* SYNC */
+.sync-provider{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px}
+.sync-provider .left{display:flex;align-items:center;gap:14px;min-width:0}
+.sync-icon{width:40px;height:40px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text)}
+.sync-provider .name{font-size:14px;font-weight:600;color:var(--text)}
+.sync-provider .sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+.sync-btn{padding:9px 18px;border-radius:var(--r-sm);background:var(--accent);color:#10140a;font-weight:600;font-size:12.5px;cursor:pointer;border:none;min-height:38px;flex-shrink:0}
+.sync-btn.connected{background:var(--surface);color:var(--text2);border:.5px solid var(--border)}
+.sync-btn.connected:hover{color:var(--danger);border-color:var(--danger)}
+
+/* STICKY SAVE BAR */
+.save-bar{position:sticky;bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 20px;background:var(--bg2);border:.5px solid var(--accent-glow);border-radius:var(--r);box-shadow:0 12px 40px rgba(0,0,0,.45);z-index:20;transform:translateY(120%);transition:transform .28s cubic-bezier(.22,1,.36,1)}
+.save-bar.on{transform:translateY(0)}
+.save-bar-text{font-size:13px;color:var(--text2)}
+.save-bar-text b{color:var(--text)}
+.save-bar-actions{display:flex;gap:10px}
+.save-bar button{padding:10px 22px;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;min-height:40px;border:.5px solid var(--border);background:var(--surface2);color:var(--text)}
+.save-bar button.primary{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:700}
+.save-bar button.primary:hover{box-shadow:0 6px 20px var(--accent-glow)}
+
+/* RESPONSIVE */
+@media(max-width:900px){
+  .field-row{grid-template-columns:1fr}
+  .switches{grid-template-columns:1fr}
+  .hours-row{grid-template-columns:80px auto 1fr auto 1fr;gap:8px}
+  .hours-row .copy-mon{display:none}
 }
-let EMBED_SLUG='';
-async function loadEmbedStatus(){
-  const el=document.getElementById('embedStatus');
-  if(!el)return;
-  try{
-    const r=await fetch('/api/embed-status',{headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()}});
-    if(!r.ok){el.style.display='none';return;}
-    const j=await r.json().catch(()=>({}));
-    if(j.installed&&j.hosts&&j.hosts.length){
-      const site=j.hosts[0].host;
-      const more=j.hosts.length>1?(' +'+(j.hosts.length-1)+' more'):'';
-      el.className='embed-status ok';
-      el.textContent='✓ Widget is live on your site — detected on '+site+more+'.';
-    }else{
-      el.className='embed-status no';
-      el.textContent='Not detected on your website yet — copy the snippet above and add it to your site.';
+@media(max-width:720px){
+  .bs-tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+  .bs-tabs button{white-space:nowrap}
+  .hours-row{grid-template-columns:1fr;padding:14px 16px}
+  .hours-row .day{grid-column:1/-1;margin-bottom:4px}
+  .save-bar{flex-direction:column;align-items:stretch}
+  .save-bar-actions{width:100%}
+  .save-bar-actions button{flex:1}
+  .embed-row{flex-direction:column}
+  .copy-btn{width:100%}
+}
+@media(max-width:420px){
+  .main{padding:12px 12px 90px}
+  .bs-card{padding:20px 18px}
+  .embed-preview iframe{height:520px}
+}
+</style>
+</head>
+<body data-page="booking-settings">
+<div class="app">
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Booking settings</h1>
+        <p class="page-narrative" id="narrativeLine">Every rule your booking system follows — hours, cancel window, reminders, embed, calendar sync.</p>
+      </div>
+      <div class="topbar-actions">
+        <a class="btn btn-ghost" href="bookings.html">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back to calendar
+        </a>
+      </div>
+    </div>
+
+    <nav class="bs-tabs" role="tablist" aria-label="Booking settings sections">
+      <button class="on" data-tab="hours" onclick="switchTab('hours')" role="tab" aria-selected="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        Hours
+      </button>
+      <button data-tab="rules" onclick="switchTab('rules')" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 10h8M8 14h5"/></svg>
+        Rules
+      </button>
+      <button data-tab="reminders" onclick="switchTab('reminders')" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9zM13 21a2 2 0 01-4 0"/></svg>
+        Reminders
+      </button>
+      <button data-tab="embed" onclick="switchTab('embed')" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 4H4v16h4M16 4h4v16h-4M12 4v16"/></svg>
+        Embed
+      </button>
+      <button data-tab="sync" onclick="switchTab('sync')" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 01-15.5 6.5L3 21M3 12a9 9 0 0115.5-6.5L21 3M21 3v6h-6M3 21v-6h6"/></svg>
+        Sync
+      </button>
+    </nav>
+
+    <!-- ─── HOURS ────────────────────────────────────────────── -->
+    <section class="bs-section on" data-section="hours" role="tabpanel">
+      <div class="bs-card">
+        <div class="bs-head">
+          <div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Business hours</div>
+        </div>
+        <p class="bs-sub">When your salon is open. Lola will only offer these hours on the phone, in SMS, and on your booking widget. Toggle a day off to close it entirely.</p>
+        <div class="hours-grid" id="hoursGrid"></div>
+        <div class="hours-quick">
+          <button onclick="applyHoursPreset('tueSat10to8')">Tue–Sat 10–8</button>
+          <button onclick="applyHoursPreset('monFri9to6')">Mon–Fri 9–6</button>
+          <button onclick="applyHoursPreset('sevenDays')">7 days 10–7</button>
+          <button onclick="copyMondayToAll()">Copy Monday to all open days</button>
+        </div>
+      </div>
+
+      <div class="bs-card">
+        <div class="bs-head">
+          <div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3M16 14l-4 4-2-2"/></svg></span>Closures &amp; holidays</div>
+        </div>
+        <p class="bs-sub">One-off dates the salon is closed. Lola will not offer these on any channel.</p>
+        <div class="closures" id="closuresList"></div>
+        <div class="closure-add">
+          <input type="date" id="closureDate" aria-label="Add closure date"/>
+          <button onclick="addClosure()">Add closure</button>
+        </div>
+      </div>
+
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></svg></span>Timezone</div></div>
+        <p class="bs-sub">All hours and reminders reference this timezone.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Timezone</label>
+            <input id="timezone" placeholder="America/New_York" data-field="timezone"/>
+            <div class="fine">IANA name (America/New_York, America/Los_Angeles, Europe/London…)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── RULES ────────────────────────────────────────────── -->
+    <section class="bs-section" data-section="rules" role="tabpanel">
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 10h8M8 14h5"/></svg></span>Scheduling rules</div></div>
+        <p class="bs-sub">The mechanical settings Lola respects when offering a slot.</p>
+        <div class="field-row">
+          <div class="field">
+            <label>Slot interval</label>
+            <select data-field="slot_interval_minutes">
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="45">Every 45 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+            <div class="fine">How finely Lola offers start times.</div>
+          </div>
+          <div class="field">
+            <label>Minimum notice (minutes)</label>
+            <input type="number" min="0" max="1440" data-field="minimum_notice_minutes"/>
+            <div class="fine">No bookings sooner than this from now.</div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Booking horizon (days)</label>
+            <input type="number" min="1" max="730" data-field="booking_horizon_days"/>
+            <div class="fine">Furthest into the future Lola will book.</div>
+          </div>
+          <div class="field">
+            <label>Cancellation window (hours)</label>
+            <input type="number" min="0" data-field="cancellation_window_hours"/>
+            <div class="fine">Inside this window is a "late cancel" — the fee from Banking → Policies applies.</div>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Buffer after (minutes)</label>
+            <input type="number" min="0" data-field="default_buffer_after_min"/>
+            <div class="fine">Recovery time between clients. Applies unless the service defines its own.</div>
+          </div>
+          <div class="field">
+            <label>Allow processing overlap</label>
+            <select data-field="allow_processing_overlap_str">
+              <option value="false">No — one client at a time</option>
+              <option value="true">Yes — start a second while first processes (color, foils)</option>
+            </select>
+            <div class="fine">Only turn on if your service definitions include processing time.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1M16 3.5a3 3 0 010 6M21 21v-1a5 5 0 00-3-4.5"/></svg></span>Client rules</div></div>
+        <p class="bs-sub">What Lola requires from a client before confirming.</p>
+        <div class="switches">
+          <div class="switch-row on" data-toggle="require_phone">
+            <div><div class="lbl">Require phone number</div><div class="sub">Needed for SMS confirmation.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row" data-toggle="require_email">
+            <div><div class="lbl">Require email</div><div class="sub">Optional for receipts.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row on" data-toggle="allow_staff_choice">
+            <div><div class="lbl">Let clients pick their stylist</div><div class="sub">Off = Lola picks by service + availability.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row" data-toggle="allow_any_staff">
+            <div><div class="lbl">Offer "any available"</div><div class="sub">Fastest booking path — clients often pick this.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span>Where clients can book</div></div>
+        <p class="bs-sub">Every channel Lola listens on. Turn one off if you want humans-only there.</p>
+        <div class="switches">
+          <div class="switch-row on" data-toggle="public_booking_enabled">
+            <div><div class="lbl">Public booking page</div><div class="sub">The link + widget on your website.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row on" data-toggle="voice_booking_enabled">
+            <div><div class="lbl">Voice — over the phone with Lola</div><div class="sub">Every call Lola answers.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row on" data-toggle="sms_booking_enabled">
+            <div><div class="lbl">SMS — text to book</div><div class="sub">Clients text your Lola number, she confirms.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── REMINDERS ────────────────────────────────────────── -->
+    <section class="bs-section" data-section="reminders" role="tabpanel">
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9zM13 21a2 2 0 01-4 0"/></svg></span>Confirmations &amp; reminders</div></div>
+        <p class="bs-sub">SMS clients receive. Confirmations lift show-up rates 15–25%. Reminders 24h before drop no-shows another 20–30%.</p>
+        <div class="switches">
+          <div class="switch-row on" data-toggle="confirmation_sms">
+            <div><div class="lbl">Confirmation SMS at booking</div><div class="sub">Sent immediately with date, time, service, deposit info.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+          <div class="switch-row on" data-toggle="reminder_sms">
+            <div><div class="lbl">Reminder SMS before appointment</div><div class="sub">Uses the lead time below.</div></div>
+            <div class="sw" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="field-row" style="margin-top:16px">
+          <div class="field">
+            <label>Reminder lead time</label>
+            <select data-field="reminder_lead_hours">
+              <option value="1">1 hour before</option>
+              <option value="3">3 hours before</option>
+              <option value="24" selected>24 hours before</option>
+              <option value="48">48 hours before</option>
+              <option value="0">Multiple (24h + 1h)</option>
+            </select>
+            <div class="fine">"Multiple" = 24h and 1h. Slightly higher show-up rate; also higher SMS spend.</div>
+          </div>
+          <div class="field">
+            <label>Follow-up rebook nudge</label>
+            <select data-field="rebook_followup_days">
+              <option value="0">Off</option>
+              <option value="21">21 days after</option>
+              <option value="28" selected>28 days after</option>
+              <option value="35">35 days after</option>
+              <option value="42">42 days after</option>
+            </select>
+            <div class="fine">Configured in Banking → Policies. Set this to match your typical service cycle.</div>
+          </div>
+        </div>
+
+        <div class="sms-preview">
+          <div class="k">Preview — what a client sees</div>
+          <div class="sms-bubble" id="smsPreview">Hi Maria — just confirming your Balayage with Nia at 2:00 PM tomorrow at MMA Salon. Reply R to reschedule or C to cancel. See you then! 💚</div>
+          <div class="sms-meta">Delivered from your Lola number · updates live as you edit</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── EMBED ────────────────────────────────────────────── -->
+    <section class="bs-section" data-section="embed" role="tabpanel">
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4H4v16h4M16 4h4v16h-4M12 4v16"/></svg></span>Put Lola on your website</div></div>
+        <p class="bs-sub">One script tag. Same booking engine Lola uses on the phone. Clients see live slots, book instantly, cancel later with a confirmation code.</p>
+
+        <div class="embed-status no" id="embedStatus">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+          Checking whether the widget is installed on your website…
+        </div>
+
+        <div class="embed-preview" id="embedPreview" style="display:none">
+          <div class="embed-preview-head">
+            <b>Live preview — exactly what your clients see</b>
+            <button class="preview-toggle" id="previewToggle" onclick="togglePreview()">Hide</button>
+          </div>
+          <iframe id="embedIframe" title="Booking widget preview" loading="lazy"></iframe>
+        </div>
+
+        <div class="embed-row">
+          <div><label>Public booking link</label><div class="codebox" id="embedUrl">Loading…</div></div>
+          <button class="copy-btn" data-copy="embedUrl">Copy</button>
+        </div>
+        <div class="embed-row">
+          <div><label>Inline widget — shows the full flow on your page</label><div class="codebox" id="embedInline">Loading…</div></div>
+          <button class="copy-btn" data-copy="embedInline">Copy</button>
+        </div>
+        <div class="embed-row">
+          <div><label>Floating button — opens the flow in a modal</label><div class="codebox" id="embedModal">Loading…</div></div>
+          <button class="copy-btn" data-copy="embedModal">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SYNC ─────────────────────────────────────────────── -->
+    <section class="bs-section" data-section="sync" role="tabpanel">
+      <div class="bs-card">
+        <div class="bs-head"><div class="bs-title"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 01-15.5 6.5L3 21M3 12a9 9 0 0115.5-6.5L21 3M21 3v6h-6M3 21v-6h6"/></svg></span>Calendar sync</div></div>
+        <p class="bs-sub">Push every booking to your personal calendar so you and your team never have to check the app. Two-way sync coming soon; today it's one-way LolaDesk → your calendar.</p>
+
+        <div class="sync-provider">
+          <div class="left">
+            <div class="sync-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.7 3H4.3A1.3 1.3 0 003 4.3v15.4A1.3 1.3 0 004.3 21h15.4a1.3 1.3 0 001.3-1.3V4.3A1.3 1.3 0 0019.7 3zm-2.4 12.5a4.9 4.9 0 01-9.3-1.5 4.9 4.9 0 019.5-1.7h-2.5a2.5 2.5 0 100 3.2h2.5z" fill="currentColor"/></svg>
+            </div>
+            <div>
+              <div class="name">Google Calendar</div>
+              <div class="sub" id="googleSub">Not connected</div>
+            </div>
+          </div>
+          <button class="sync-btn" id="googleBtn" onclick="toggleSync('google')">Connect</button>
+        </div>
+
+        <div class="sync-provider">
+          <div class="left">
+            <div class="sync-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm-6 13a5 5 0 110-10 5 5 0 010 10z"/></svg>
+            </div>
+            <div>
+              <div class="name">iCloud Calendar</div>
+              <div class="sub" id="icloudSub">Not connected</div>
+            </div>
+          </div>
+          <button class="sync-btn" id="icloudBtn" onclick="toggleSync('icloud')">Connect</button>
+        </div>
+
+        <p class="bs-sub" style="margin-top:14px;font-size:11.5px">Each staff member with an owner-level login can connect their own calendar from their profile — this is the shop-wide default.</p>
+      </div>
+    </section>
+
+    <!-- STICKY SAVE BAR -->
+    <div class="save-bar" id="saveBar" role="dialog" aria-label="Unsaved changes">
+      <div class="save-bar-text">
+        <b id="dirtyCount">0</b> unsaved change<span id="dirtyS">s</span>.
+      </div>
+      <div class="save-bar-actions">
+        <button onclick="LolaBookingSettings.revert()">Discard</button>
+        <button class="primary" onclick="LolaBookingSettings.save()" id="saveBtn">Save settings</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   Booking Settings — logic.
+   Settings model (client-side; merges with backend responses):
+     {
+       timezone, slot_interval_minutes, minimum_notice_minutes,
+       booking_horizon_days, cancellation_window_hours,
+       default_buffer_after_min, allow_processing_overlap,
+       public_booking_enabled, voice_booking_enabled,
+       sms_booking_enabled, allow_staff_choice, allow_any_staff,
+       require_phone, require_email,
+       confirmation_sms, reminder_sms,
+       reminder_lead_hours, rebook_followup_days,
+       business_hours: {mon:{open,close,closed}, tue:…, …, sun:…},
+       closures: [YYYY-MM-DD, …]
+     }
+   ═══════════════════════════════════════════════════════════════ */
+
+const DAYS = ['mon','tue','wed','thu','fri','sat','sun'];
+const DAY_LABELS = { mon:'Monday', tue:'Tuesday', wed:'Wednesday', thu:'Thursday', fri:'Friday', sat:'Saturday', sun:'Sunday' };
+
+const LolaBookingSettings = {
+  original: null,
+  current: null,
+  dirty: new Set(),
+
+  defaults(){
+    return {
+      timezone: 'America/New_York',
+      slot_interval_minutes: 30,
+      minimum_notice_minutes: 60,
+      booking_horizon_days: 60,
+      cancellation_window_hours: 24,
+      default_buffer_after_min: 10,
+      allow_processing_overlap: false,
+      public_booking_enabled: true,
+      voice_booking_enabled: true,
+      sms_booking_enabled: true,
+      allow_staff_choice: true,
+      allow_any_staff: false,
+      require_phone: true,
+      require_email: false,
+      confirmation_sms: true,
+      reminder_sms: true,
+      reminder_lead_hours: 24,
+      rebook_followup_days: 28,
+      business_hours: {
+        mon:{open:'10:00',close:'20:00',closed:false},
+        tue:{open:'10:00',close:'20:00',closed:false},
+        wed:{open:'10:00',close:'20:00',closed:false},
+        thu:{open:'10:00',close:'20:00',closed:false},
+        fri:{open:'10:00',close:'20:00',closed:false},
+        sat:{open:'10:00',close:'20:00',closed:false},
+        sun:{open:'10:00',close:'20:00',closed:true}
+      },
+      closures: []
+    };
+  },
+
+  async token(){
+    try{
+      const auth = await window.LolaAuth.ready;
+      return auth?.token || localStorage.getItem('loladesk_token') || '';
+    }catch(e){ return localStorage.getItem('loladesk_token') || ''; }
+  },
+
+  async load(){
+    try{
+      if(window.LolaAuth?.ready) await window.LolaAuth.ready;
+      const tok = await this.token();
+      const r = await fetch('/api/booking-settings', { headers: { Authorization: 'Bearer ' + tok }});
+      const j = await r.json().catch(()=>({}));
+      const merged = Object.assign({}, this.defaults(), (j && j.settings) || {});
+      // Some servers return business_hours as string keys, harmonize
+      if(!merged.business_hours || typeof merged.business_hours !== 'object') merged.business_hours = this.defaults().business_hours;
+      if(!Array.isArray(merged.closures)) merged.closures = [];
+      // For UI: allow_processing_overlap is a bool; some backends store as string
+      merged.allow_processing_overlap_str = merged.allow_processing_overlap ? 'true' : 'false';
+      this.original = JSON.parse(JSON.stringify(merged));
+      this.current  = JSON.parse(JSON.stringify(merged));
+      this.paint();
+    }catch(e){
+      // Backend not reachable → work from defaults so the UI still renders
+      const d = this.defaults();
+      d.allow_processing_overlap_str = 'false';
+      this.original = JSON.parse(JSON.stringify(d));
+      this.current  = JSON.parse(JSON.stringify(d));
+      this.paint();
+      const n = document.getElementById('narrativeLine');
+      if(n) n.innerHTML = `Couldn't load current settings — showing defaults. Save to store.`;
     }
-  }catch(e){ el.style.display='none'; }
+  },
+
+  paint(){
+    // Fields
+    document.querySelectorAll('[data-field]').forEach(el => {
+      const path = el.getAttribute('data-field');
+      const val = this.current[path];
+      if(val == null) return;
+      if(el.tagName === 'SELECT') el.value = String(val);
+      else el.value = val;
+    });
+    // Toggles
+    document.querySelectorAll('[data-toggle]').forEach(el => {
+      const path = el.getAttribute('data-toggle');
+      const val = !!this.current[path];
+      el.classList.toggle('on', val);
+      el.setAttribute('aria-pressed', val ? 'true' : 'false');
+    });
+    // Hours grid
+    this.paintHours();
+    this.paintClosures();
+    this.paintSmsPreview();
+  },
+
+  paintHours(){
+    const host = document.getElementById('hoursGrid');
+    if(!host) return;
+    const today = new Date().getDay(); // 0=Sun … 6=Sat
+    const todayIdx = today === 0 ? 6 : today - 1; // convert to mon=0…sun=6
+    host.innerHTML = DAYS.map((d,i) => {
+      const h = this.current.business_hours[d] || {};
+      const isClosed = !!h.closed;
+      const isToday = i === todayIdx;
+      return `
+        <div class="hours-row ${isClosed?'closed':''}" data-day="${d}">
+          <div class="day ${isToday?'today':''}">${DAY_LABELS[d]}</div>
+          <label class="hours-toggle ${isClosed?'':'open'}" onclick="LolaBookingSettings.toggleDay('${d}')">
+            <span class="sw" aria-hidden="true"></span>
+            <span>${isClosed?'Closed':'Open'}</span>
+          </label>
+          <input type="time" value="${h.open||'10:00'}" ${isClosed?'disabled':''} onchange="LolaBookingSettings.setHour('${d}','open',this.value)"/>
+          <span class="to">to</span>
+          <input type="time" value="${h.close||'20:00'}" ${isClosed?'disabled':''} onchange="LolaBookingSettings.setHour('${d}','close',this.value)"/>
+          ${d==='mon'?'':`<button class="copy-mon" onclick="LolaBookingSettings.copyFromMon('${d}')">Same as Monday</button>`}
+          ${d==='mon'?'<span></span>':''}
+        </div>`;
+    }).join('');
+  },
+
+  paintClosures(){
+    const host = document.getElementById('closuresList');
+    if(!host) return;
+    const closures = Array.isArray(this.current.closures) ? this.current.closures : [];
+    if(!closures.length){
+      host.innerHTML = `<div style="font-size:12px;color:var(--text3)">No closures yet. Holidays and one-off closed days go here.</div>`;
+      return;
+    }
+    host.innerHTML = closures.sort().map(d => `
+      <div class="closure-chip">
+        <span>${d}</span>
+        <button onclick="LolaBookingSettings.removeClosure('${d}')" aria-label="Remove ${d}">×</button>
+      </div>`).join('');
+  },
+
+  paintSmsPreview(){
+    const el = document.getElementById('smsPreview');
+    if(!el) return;
+    const lead = Number(this.current.reminder_lead_hours || 24);
+    const when = lead >= 24 ? 'tomorrow' : lead >= 3 ? `in ${lead} hours` : 'in an hour';
+    const reminder = this.current.reminder_sms;
+    const conf = this.current.confirmation_sms;
+    if(!conf && !reminder){
+      el.textContent = "Confirmations and reminders are both off — clients will hear nothing between booking and arrival.";
+      return;
+    }
+    if(!reminder){
+      el.textContent = "Hi Maria — you're booked for Balayage with Nia on Thu Oct 12 at 2:00 PM at MMA Salon. Reply R to reschedule, C to cancel.";
+      return;
+    }
+    el.textContent = `Hi Maria — just confirming your Balayage with Nia at 2:00 PM ${when} at MMA Salon. Reply R to reschedule or C to cancel. See you then! 💚`;
+  },
+
+  setHour(day, which, value){
+    this.current.business_hours[day] = this.current.business_hours[day] || {};
+    this.current.business_hours[day][which] = value;
+    this.markDirty('business_hours.'+day+'.'+which);
+  },
+  toggleDay(day){
+    this.current.business_hours[day] = this.current.business_hours[day] || {};
+    this.current.business_hours[day].closed = !this.current.business_hours[day].closed;
+    this.markDirty('business_hours.'+day+'.closed');
+    this.paintHours();
+  },
+  copyFromMon(day){
+    const src = this.current.business_hours.mon || {};
+    this.current.business_hours[day] = { open:src.open||'10:00', close:src.close||'20:00', closed:!!src.closed };
+    this.markDirty('business_hours.'+day);
+    this.paintHours();
+  },
+
+  markDirty(path){
+    // Simple: track paths that changed vs original
+    const cur = JSON.stringify(this.get(path, this.current));
+    const orig = JSON.stringify(this.get(path, this.original));
+    if(cur !== orig) this.dirty.add(path);
+    else this.dirty.delete(path);
+    this.updateSaveBar();
+  },
+  get(path, obj){
+    return path.split('.').reduce((o,k)=> o && o[k] != null ? o[k] : undefined, obj || {});
+  },
+
+  updateSaveBar(){
+    const bar = document.getElementById('saveBar');
+    const c = this.dirty.size;
+    document.getElementById('dirtyCount').textContent = c;
+    document.getElementById('dirtyS').textContent = c === 1 ? '' : 's';
+    bar.classList.toggle('on', c > 0);
+  },
+
+  revert(){
+    this.current = JSON.parse(JSON.stringify(this.original));
+    this.dirty.clear();
+    this.paint();
+    this.updateSaveBar();
+  },
+
+  async save(){
+    const btn = document.getElementById('saveBtn');
+    const prev = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    // Prepare body: strip the UI-only fields, coerce types
+    const body = Object.assign({}, this.current);
+    if('allow_processing_overlap_str' in body){
+      body.allow_processing_overlap = body.allow_processing_overlap_str === 'true';
+      delete body.allow_processing_overlap_str;
+    }
+    body.reminder_lead_hours = Number(body.reminder_lead_hours || 24);
+    body.rebook_followup_days = Number(body.rebook_followup_days || 28);
+    try{
+      const tok = await this.token();
+      const r = await fetch('/api/booking-settings', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok || (j && j.ok === false)) throw new Error(j?.error || ('HTTP '+r.status));
+      this.original = JSON.parse(JSON.stringify(this.current));
+      this.dirty.clear();
+      this.updateSaveBar();
+      btn.textContent = 'Saved ✓';
+      setTimeout(()=>{ btn.textContent = prev; btn.disabled = false; }, 1600);
+    }catch(e){
+      btn.textContent = 'Save failed — try again';
+      setTimeout(()=>{ btn.textContent = prev; btn.disabled = false; }, 2200);
+    }
+  }
+};
+
+/* ── HOURS PRESETS ─────────────────────────────────────────── */
+function applyHoursPreset(kind){
+  const S = LolaBookingSettings;
+  const bh = S.current.business_hours;
+  if(kind === 'tueSat10to8'){
+    DAYS.forEach(d => bh[d] = { open:'10:00', close:'20:00', closed: !(d==='tue'||d==='wed'||d==='thu'||d==='fri'||d==='sat') });
+  } else if(kind === 'monFri9to6'){
+    DAYS.forEach(d => bh[d] = { open:'09:00', close:'18:00', closed: (d==='sat'||d==='sun') });
+  } else if(kind === 'sevenDays'){
+    DAYS.forEach(d => bh[d] = { open:'10:00', close:'19:00', closed:false });
+  }
+  DAYS.forEach(d => S.markDirty('business_hours.'+d));
+  S.paintHours();
 }
-function trackEmbed(kind,snippet){
-  if(!EMBED_SLUG)return;
-  try{fetch('/api/widget-beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:EMBED_SLUG,kind,snippet:snippet||'',source:'settings'})}).catch(()=>{});}catch(e){}
+function copyMondayToAll(){
+  const src = LolaBookingSettings.current.business_hours.mon;
+  DAYS.forEach(d => {
+    if(d==='mon') return;
+    if(LolaBookingSettings.current.business_hours[d].closed) return;
+    LolaBookingSettings.current.business_hours[d] = { open:src.open, close:src.close, closed:false };
+    LolaBookingSettings.markDirty('business_hours.'+d);
+  });
+  LolaBookingSettings.paintHours();
 }
+
+/* ── CLOSURES ─────────────────────────────────────────────── */
+function addClosure(){
+  const inp = document.getElementById('closureDate');
+  const d = inp.value;
+  if(!d) return;
+  const arr = LolaBookingSettings.current.closures = LolaBookingSettings.current.closures || [];
+  if(!arr.includes(d)) arr.push(d);
+  LolaBookingSettings.markDirty('closures');
+  LolaBookingSettings.paintClosures();
+  inp.value = '';
+}
+LolaBookingSettings.removeClosure = function(d){
+  this.current.closures = (this.current.closures || []).filter(x => x !== d);
+  this.markDirty('closures');
+  this.paintClosures();
+};
+
+/* ── TAB SWITCH ───────────────────────────────────────────── */
+function switchTab(name){
+  document.querySelectorAll('.bs-tabs button').forEach(b => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.bs-section').forEach(s => {
+    s.classList.toggle('on', s.dataset.section === name);
+  });
+  if(name === 'embed') initEmbed();
+  if(name === 'sync') loadSyncStatus();
+}
+
+/* ── FIELD WIRING ─────────────────────────────────────────── */
+function wireInputs(){
+  document.querySelectorAll('[data-field]').forEach(el => {
+    const handler = () => {
+      const path = el.getAttribute('data-field');
+      let val = el.value;
+      if(el.type === 'number') val = Number(val) || 0;
+      LolaBookingSettings.current[path] = val;
+      LolaBookingSettings.markDirty(path);
+      LolaBookingSettings.paintSmsPreview();
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  });
+  document.querySelectorAll('[data-toggle]').forEach(el => {
+    const flip = () => {
+      const path = el.getAttribute('data-toggle');
+      const next = !el.classList.contains('on');
+      el.classList.toggle('on', next);
+      LolaBookingSettings.current[path] = next;
+      LolaBookingSettings.markDirty(path);
+      LolaBookingSettings.paintSmsPreview();
+    };
+    el.addEventListener('click', flip);
+    el.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); }
+    });
+  });
+}
+
+/* ── EMBED ─────────────────────────────────────────────────── */
+let EMBED_SLUG = '';
+let embedInited = false;
 async function initEmbed(){
+  if(embedInited) return;
+  embedInited = true;
   try{
     if(window.LolaAuth?.ready) await window.LolaAuth.ready;
-    const r=await fetch('/api/auth/session',{headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()}});
-    const j=await r.json().catch(()=>({}));
-    const slug=(j&&j.tenant&&j.tenant.slug)||'';
-    if(!slug){document.getElementById('embedUrl').textContent='Public booking link unavailable for this account.';return;}
-    EMBED_SLUG=slug;
-    const base=location.origin||'https://www.loladesk.com';
-    const url=base+'/book?t='+encodeURIComponent(slug);
-    const inline='<script src="'+base+'/booking-widget.js" data-tenant="'+slug+'" data-accent="#ccff00" data-mode="inline"><\/script>';
-    const modal='<script src="'+base+'/booking-widget.js" data-tenant="'+slug+'" data-mode="modal"><\/script>';
-    document.getElementById('embedUrl').textContent=url;
-    document.getElementById('embedInline').textContent=inline;
-    document.getElementById('embedModal').textContent=modal;
-    const iframe=document.getElementById('embedIframe');
-    if(iframe)iframe.src=url;
-    const preview=document.getElementById('embedPreview');
-    if(preview)preview.style.display='block';
+    const tok = await LolaBookingSettings.token();
+    const r = await fetch('/api/auth/session', { headers:{ Authorization: 'Bearer ' + tok }});
+    const j = await r.json().catch(()=>({}));
+    const slug = (j && j.tenant && j.tenant.slug) || '';
+    if(!slug){
+      document.getElementById('embedUrl').textContent = 'Public booking link unavailable for this account.';
+      return;
+    }
+    EMBED_SLUG = slug;
+    const base = location.origin || 'https://www.loladesk.com';
+    const url = base + '/book?t=' + encodeURIComponent(slug);
+    const inline = '<script src="' + base + '/booking-widget.js" data-tenant="' + slug + '" data-mode="inline"><\/script>';
+    const modal  = '<script src="' + base + '/booking-widget.js" data-tenant="' + slug + '" data-mode="modal"><\/script>';
+    document.getElementById('embedUrl').textContent = url;
+    document.getElementById('embedInline').textContent = inline;
+    document.getElementById('embedModal').textContent = modal;
+    const iframe = document.getElementById('embedIframe');
+    if(iframe) iframe.src = url;
+    document.getElementById('embedPreview').style.display = 'block';
     loadEmbedStatus();
-    document.querySelectorAll('.copy').forEach(b=>{b.onclick=()=>{trackEmbed('embed_copied',b.getAttribute('data-copy'));copyText(document.getElementById(b.getAttribute('data-copy')).textContent,b)}});
-  }catch(e){document.getElementById('embedUrl').textContent='Could not load your booking link: '+e.message}
+    document.querySelectorAll('.copy-btn').forEach(b => {
+      b.addEventListener('click', () => copyEmbed(b));
+    });
+  }catch(e){
+    document.getElementById('embedUrl').textContent = "Couldn't load your booking link.";
+  }
 }
-load();initEmbed();
-</script></body></html>
+async function loadEmbedStatus(){
+  const el = document.getElementById('embedStatus');
+  if(!el) return;
+  try{
+    const tok = await LolaBookingSettings.token();
+    const r = await fetch('/api/embed-status', { headers: { Authorization: 'Bearer ' + tok }});
+    if(!r.ok){ el.style.display = 'none'; return; }
+    const j = await r.json().catch(()=>({}));
+    if(j.installed && j.hosts && j.hosts.length){
+      const site = j.hosts[0].host;
+      const more = j.hosts.length > 1 ? (' +' + (j.hosts.length-1) + ' more') : '';
+      el.className = 'embed-status ok';
+      el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>Widget is live on <b>${site}${more}</b>.`;
+    } else {
+      el.className = 'embed-status no';
+      el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>Not detected on your website yet — copy a snippet below and paste it into your site.`;
+    }
+  }catch(e){ el.style.display = 'none'; }
+}
+function copyEmbed(btn){
+  const id = btn.getAttribute('data-copy');
+  const text = document.getElementById(id).textContent;
+  const flash = () => {
+    btn.textContent = 'Copied ✓';
+    btn.classList.add('done');
+    setTimeout(()=>{ btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(flash).catch(()=>fallbackCopy(text, flash));
+  } else fallbackCopy(text, flash);
+  // Track for beacon
+  if(EMBED_SLUG){
+    fetch('/api/widget-beacon', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ tenant: EMBED_SLUG, kind:'embed_copied', snippet: id, source:'settings' })
+    }).catch(()=>{});
+  }
+}
+function fallbackCopy(text, cb){
+  const t = document.createElement('textarea');
+  t.value = text; t.style.position='fixed'; t.style.opacity='0';
+  document.body.appendChild(t); t.select();
+  try{ document.execCommand('copy'); cb(); }catch(e){}
+  t.remove();
+}
+function togglePreview(){
+  const p = document.getElementById('embedPreview');
+  const t = document.getElementById('previewToggle');
+  const hidden = p.style.display === 'none';
+  p.style.display = hidden ? 'block' : 'none';
+  if(t) t.textContent = hidden ? 'Hide' : 'Show';
+}
+
+/* ── SYNC ─────────────────────────────────────────────────── */
+let syncInited = false;
+async function loadSyncStatus(){
+  if(syncInited) return;
+  syncInited = true;
+  try{
+    const tok = await LolaBookingSettings.token();
+    const r = await fetch('/api/calendar-sync/status', { headers:{ Authorization: 'Bearer '+tok }});
+    if(!r.ok) return;
+    const j = await r.json().catch(()=>({}));
+    ['google','icloud'].forEach(p => {
+      const sub = document.getElementById(p+'Sub');
+      const btn = document.getElementById(p+'Btn');
+      const conn = j[p] && j[p].connected;
+      if(sub) sub.textContent = conn ? (j[p].email || 'Connected') : 'Not connected';
+      if(btn){
+        btn.textContent = conn ? 'Disconnect' : 'Connect';
+        btn.classList.toggle('connected', !!conn);
+      }
+    });
+  }catch(e){}
+}
+async function toggleSync(provider){
+  const btn = document.getElementById(provider+'Btn');
+  const connected = btn.classList.contains('connected');
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = connected ? 'Disconnecting…' : 'Opening…';
+  try{
+    const tok = await LolaBookingSettings.token();
+    if(connected){
+      await fetch('/api/calendar-sync/disconnect', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+tok },
+        body: JSON.stringify({ provider })
+      });
+      syncInited = false;
+      loadSyncStatus();
+      btn.disabled = false;
+    } else {
+      const r = await fetch('/api/calendar-sync/'+provider+'/connect', {
+        method:'POST',
+        headers:{ Authorization:'Bearer '+tok }
+      });
+      const j = await r.json().catch(()=>({}));
+      if(j.url){ location.href = j.url; return; }
+      btn.textContent = prev; btn.disabled = false;
+    }
+  }catch(e){
+    btn.textContent = 'Failed — try again';
+    setTimeout(()=>{ btn.textContent = prev; btn.disabled = false; }, 1800);
+  }
+}
+
+/* ── BOOT ─────────────────────────────────────────────────── */
+(async () => {
+  await LolaBookingSettings.load();
+  wireInputs();
+})();
+</script>
+</body>
+</html>
