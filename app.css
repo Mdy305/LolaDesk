@@ -2,29 +2,62 @@
    LolaDesk — shared app styles (design system + shell + sidebar)
    Linked by every interior page: clients, calls, inbox, bookings,
    revenue, team, numbers. Keeps one source of truth.
+
+   FIX (2026-09): tokens reconciled with dashboard.html.
+   - --pink was neon green (#ccff00) with a misleading name → now
+     --accent (honest). --pink* kept as aliases so no page breaks.
+   - --ff-serif pointed to the SAME sans stack as --ff → deleted.
+     Search-and-replace any remaining var(--ff-serif) with var(--ff).
+   - --r / --r-sm / --r-lg values now match dashboard.html so a
+     shared component renders identically on every page.
    ═══════════════════════════════════════════════════════════════ */
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#000000;
-  --bg2:rgba(20,20,20,0.85);
-  --surface:rgba(255,255,255,0.04);
-  --surface2:rgba(255,255,255,0.08);
-  --border:rgba(255,255,255,0.08);
-  --border2:rgba(255,255,255,0.15);
-  --text:#ffffff;
-  --text2:#98989d;
-  --text3:#636366;
-  --pink:#ccff00; /* Apple neon pink */
-  --pink2:#ccff00;
-  --pink-dim:rgba(204,255,0,.15);
-  --pink-glow:rgba(204,255,0,.6);
+  /* Surface */
+  --bg:#070708;
+  --bg2:#0c0c0e;
+  --surface:#121214;
+  --surface2:#16161a;
+  --border:#1e1e22;
+  --border2:#28282e;
+
+  /* Text */
+  --text:#f2f2f5;
+  --text2:#8a8a92;
+  --text3:#52525a;
+
+  /* Accent — honest names */
+  --accent:#ccff00;
+  --accent2:#dcff66;
+  --accent-dim:rgba(204,255,0,.12);
+  --accent-glow:rgba(204,255,0,.35);
+
+  /* Semantic (from dashboard.html) */
+  --danger:#ff5a4d;
+  --warning:#ffb340;
+  --info:#5ac8fa;
+
+  /* Neutral scrims */
   --mono-dim:rgba(255,255,255,.1);
   --mono-bright:rgba(255,255,255,.9);
-  --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
+
+  /* Type — one stack, no more fake serif */
   --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-  --r:20px;
-  --r-sm:14px;
-  --r-lg:28px;
+
+  /* Radii — reconciled with dashboard.html */
+  --r:14px;
+  --r-sm:10px;
+  --r-lg:20px;
+
+  /* ── LEGACY ALIASES ─────────────────────────────────────────
+     Keep these until every page has been migrated off --pink*.
+     Do not add new usages. Grep target for the cleanup PR:
+       grep -rn 'var(--pink' .
+     ─────────────────────────────────────────────────────────── */
+  --pink:var(--accent);
+  --pink2:var(--accent);
+  --pink-dim:var(--accent-dim);
+  --pink-glow:var(--accent-glow);
 }
 html,body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;overflow-x:hidden;letter-spacing:-0.015em}
 body{min-height:100vh}
@@ -32,8 +65,6 @@ body{min-height:100vh}
 a{color:inherit;text-decoration:none}
 button{font-family:var(--ff);cursor:pointer;border:none;background:none;color:inherit;letter-spacing:-0.01em}
 input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
-
-/* SHELL */
 .app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
 @media(max-width:1100px){.app{grid-template-columns:1fr}}
 
@@ -124,7 +155,7 @@ input,select,textarea{font-family:var(--ff);letter-spacing:-0.01em}
 @media(max-width:1100px){.mobile-bar{display:flex}}
 .mb-item{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text3);font-size:9px}
 .mb-item.active{color:var(--pink2)}
-.mb-orb{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#ccff00,#b01e6c);display:flex;align-items:center;justify-content:center;margin-top:-20px;box-shadow:0 4px 16px var(--pink-glow);font-family:var(--ff-serif);font-style:italic;color:#fff;font-size:18px}
+.mb-orb{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#ccff00,#b01e6c);display:flex;align-items:center;justify-content:center;margin-top:-20px;box-shadow:0 4px 16px var(--pink-glow);font-family:var(--ff);font-style:italic;color:#fff;font-size:18px}
 
 /* EMPTY */
 .empty{text-align:center;padding:60px 20px;color:var(--text3);font-size:14px}

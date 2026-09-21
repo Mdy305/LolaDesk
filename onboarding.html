@@ -149,14 +149,44 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <div class="error" id="err0"></div>
     </div>
 
-    <!-- STEP 1 · NAME — one decision: what's it called? -->
+    <!-- STEP 1 · NAME — one decision: what's it called?
+         Split into two phases:
+         (1a) name-entry — the input + Continue
+         (1b) hear-your-lola — Lola speaks the OWNER'S salon name back
+              BEFORE the account wall. The magic moment happens before
+              any password is asked, honoring the "hear before signup"
+              principle. Frontend-only: uses LolaAlive.speak() which
+              already works without auth. -->
     <div class="step" data-step="1">
-      <div class="step-label">Your business</div>
-      <h2>What's your salon<br/>called?</h2>
-      <p class="sub">That's all we need right now. Lola learns the rest as you go.</p>
-      <div class="field"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon" autocomplete="organization"/></div>
-      <div class="actions"><button class="btn-p" onclick="next1()">Continue</button></div>
-      <div class="error" id="err1"></div>
+      <!-- 1a · name entry -->
+      <div id="step1Entry">
+        <div class="step-label">Your business</div>
+        <h2>What's your salon<br/>called?</h2>
+        <p class="sub">That's all we need right now. Lola learns the rest as you go.</p>
+        <div class="field"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon" autocomplete="organization"/></div>
+        <div class="actions"><button class="btn-p" onclick="next1()">Hear your Lola</button></div>
+        <div class="error" id="err1"></div>
+      </div>
+      <!-- 1b · hear-your-lola — the personalized voice moment -->
+      <div id="step1Hear" style="display:none">
+        <div class="step-label">This is your Lola</div>
+        <h2 id="hearTitle">Meet your Lola.</h2>
+        <p class="sub" id="hearSub">Press play. She'll answer your calls exactly like this.</p>
+        <div class="voice-preview">
+          <button class="voice-btn" id="hearBtn" onclick="playPersonal()" aria-label="Play your personalized Lola greeting">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="voice-copy">
+            <b id="hearLine">Hi, thank you for calling. This is Lola — how can I help you today?</b>
+            <small id="hearStatus">Tap to hear Lola answer for your salon.</small>
+          </div>
+        </div>
+        <div class="actions" style="gap:10px;flex-wrap:wrap">
+          <button class="btn-p" id="hearContinue" onclick="go(2)">She's my Lola — create workspace</button>
+          <button class="btn-g" onclick="backToNameEntry()">Change salon name</button>
+        </div>
+        <div class="error" id="err1b"></div>
+      </div>
     </div>
 
     <!-- STEP 2 · ACCOUNT — one decision: create the workspace -->
@@ -295,6 +325,14 @@ function go(n){
   renderProgress();
   setOrb(n===4?'thinking':n===5?'speaking':'idle');
   if(n===3)renderAutoState();
+  // Step 1 has two internal phases (name-entry ↔ hear-your-lola). When
+  // arriving at step 1 fresh (no salon name yet, or navigating back),
+  // always show the name-entry phase.
+  if(n===1){
+    const entry=document.getElementById('step1Entry');
+    const hear=document.getElementById('step1Hear');
+    if(entry && hear){ entry.style.display='block'; hear.style.display='none'; }
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function renderAutoState(){
@@ -348,12 +386,59 @@ async function playDone(){
   setTimeout(()=>{btn.classList.remove('playing');setOrb('speaking');},6000);
 }
 
-// ── STEP 1 · NAME ────────────────────────────────────────────────
+// ── STEP 1 · NAME → HEAR YOUR LOLA ──────────────────────────────
+// Renamed conceptually: entering the salon name no longer jumps to the
+// password wall. Instead, phase 1b plays Lola's PERSONALIZED greeting
+// so the owner hears her say THEIR salon's name before any signup.
 function next1(){
   const err=document.getElementById('err1');
   if(!v('salonName').trim()){err.textContent='Please enter your salon name.';return;}
   S.salonName=v('salonName').trim();
-  err.textContent='';go(2);
+  err.textContent='';
+  // Swap phase 1a → 1b inside the same step (progress bar unchanged)
+  document.getElementById('step1Entry').style.display='none';
+  document.getElementById('step1Hear').style.display='block';
+  // Personalize the line the owner is about to hear
+  const line='Hi, thank you for calling '+S.salonName+'. This is Lola — how can I help you today?';
+  document.getElementById('hearLine').textContent=line;
+  document.getElementById('hearTitle').innerHTML='This is Lola<br/>at '+escHtml(S.salonName)+'.';
+  document.getElementById('hearSub').textContent='Press play. She will answer every call for '+S.salonName+' exactly like this.';
+  // Sync the left presence panel to the phase-1b moment.
+  document.getElementById('presenceEyebrow').textContent='Your Lola';
+  document.getElementById('presenceTitle').innerHTML='Hear her<br/>at '+escHtml(S.salonName)+'.';
+  document.getElementById('presenceText').textContent='This is exactly how she answers every call. Same voice on the phone, in texts, everywhere.';
+  // Auto-play once. If the browser blocks autoplay, the button still
+  // works on tap — we never leave the owner staring at silence.
+  setTimeout(playPersonal,350);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function backToNameEntry(){
+  document.getElementById('step1Hear').style.display='none';
+  document.getElementById('step1Entry').style.display='block';
+  setOrb('idle');
+}
+function escHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function playPersonal(){
+  const btn=document.getElementById('hearBtn');
+  const status=document.getElementById('hearStatus');
+  const line=document.getElementById('hearLine').textContent;
+  const reset=()=>{btn.classList.remove('playing');status.textContent='Tap play again to hear her once more.';setOrb('idle');};
+  btn.classList.add('playing');
+  status.textContent='Lola is speaking…';
+  setOrb('speaking');
+  // Same speak primitive Step 0 uses — no auth needed, real ElevenLabs
+  // voice. Hard-bounded so a hung backend can never leave the orb frozen.
+  const s=await Promise.race([
+    LolaAlive.speak(line),
+    new Promise(resolve=>setTimeout(()=>resolve({engine:'unavailable'}),8000))
+  ]);
+  if(s?.engine==='elevenlabs'){
+    status.textContent='That is your Lola.';
+    setTimeout(reset,6000);
+  }else{
+    status.textContent='Lola\'s voice isn\'t reachable right now — she still sounds exactly like this on every call.';
+    reset();
+  }
 }
 
 // ── STEP 2 · ACCOUNT ─────────────────────────────────────────────

@@ -163,6 +163,52 @@ function setOrbState(s){
 }
 
 /* ─────────────────────────────────────────────────────────────
+   LIVE PRESENCE — real-time "Lola just did something" pulse
+   ════════════════════════════════════════════════════════════════
+   lola-live-poll.js calls window.lolaPulse(text) whenever it sees
+   a new booking, call, or inbox message. The wire was previously
+   missing — the poll fired, nothing happened, and the owner never
+   saw the orb react to their live business.
+
+   Now: flare the orb, drop into "speaking" for a beat with the
+   event text on the sub-line, then restore the previous state.
+   The dashboard becomes an actual living presence — the owner
+   leaves the tab open and watches Lola work.
+   ───────────────────────────────────────────────────────────── */
+let _pulseTimer = null, _pulsePrevState = null;
+window.lolaPulse = function(text, tone){
+  try{
+    // Remember what the orb was doing so we can return to it. If a
+    // second pulse arrives mid-flare, keep the ORIGINAL prev-state so
+    // rapid-fire events don't leave the orb stuck "speaking".
+    if(_pulseTimer){ clearTimeout(_pulseTimer); }
+    else { _pulsePrevState = orbState; }
+
+    orb.flare();
+    if(window.LolaWakeBurst){
+      try{ window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas); }catch(e){}
+    }
+    setOrbState('speaking');
+
+    // Bubble the event text onto the orb sub-line so the owner knows
+    // WHY it just came alive. The sub text is set inside setOrbState,
+    // so overwrite it AFTER that call.
+    if(text){
+      const sub = document.getElementById('orbSub');
+      const title = document.getElementById('orbTitle');
+      if(sub) sub.textContent = String(text).slice(0,120);
+      if(title) title.textContent = 'Lola just noticed…';
+    }
+
+    _pulseTimer = setTimeout(()=>{
+      _pulseTimer = null;
+      setOrbState(_pulsePrevState || 'idle');
+      _pulsePrevState = null;
+    }, 2600);
+  }catch(e){ /* never let a pulse throw into the dashboard */ }
+};
+
+/* ─────────────────────────────────────────────────────────────
    CHARTS (hand-drawn on canvas — no library dependency)
    ───────────────────────────────────────────────────────────── */
 function drawRevLine(){
