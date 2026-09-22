@@ -96,7 +96,26 @@
     '.lw-fab:hover{background:var(--accent2)}',
     '.lw-overlay{position:fixed;inset:0;z-index:2147483001;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px}',
     '.lw-overlay .lw{width:100%;max-width:520px;max-height:92vh;overflow:auto;border-radius:22px}',
-    '.lw-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;font-family:inherit;line-height:1}'
+    '.lw-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;font-family:inherit;line-height:1}',
+    /* ─── polish additions: progress bar, skeletons, deposit chip, focus rings ─── */
+    '.lw-progress{display:flex;gap:6px;margin:0 0 22px;padding:0}',
+    '.lw-progress i{flex:1;height:3px;border-radius:2px;background:var(--surface2);transition:background .3s cubic-bezier(.22,1,.36,1)}',
+    '.lw-progress i.on{background:var(--accent);box-shadow:0 0 8px rgba(204,255,0,.35)}',
+    '.lw-progress i.done{background:var(--accent2)}',
+    '.lw-slot-sk{background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 50%,var(--surface) 100%);background-size:200% 100%;animation:lwsk 1.4s ease-in-out infinite;border-radius:10px;height:39px}',
+    '@keyframes lwsk{0%{background-position:200% 0}100%{background-position:-200% 0}}',
+    '@media(prefers-reduced-motion:reduce){.lw-slot-sk{animation:none}.lw-step.on{animation:none}}',
+    '.lw-deposit{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#080809;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:.02em;margin-top:8px;text-transform:uppercase}',
+    '.lw-summary .deposit-line{color:var(--accent2);margin-top:6px;font-size:12.5px;font-weight:500}',
+    '.lw-welcome{background:linear-gradient(180deg,rgba(204,255,0,.08),transparent);border:.5px solid rgba(204,255,0,.25);border-radius:14px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--text);line-height:1.55}',
+    '.lw-welcome b{color:var(--accent2);font-weight:600}',
+    '.lw-welcome .quick{display:inline-block;margin-top:8px;background:var(--surface2);border:.5px solid var(--line);border-radius:20px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;font-family:inherit;font-weight:600}',
+    '.lw-welcome .quick:hover{border-color:var(--accent);color:var(--accent2)}',
+    '.lw-opt:focus-visible,.lw-slot:focus-visible,.lw-btn:focus-visible,.lw-inp:focus-visible,.lw-date:focus-visible,.lw-link:focus-visible,.lw-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+    '.lw-inp,.lw-date{transition:border-color .18s cubic-bezier(.22,1,.36,1),box-shadow .18s cubic-bezier(.22,1,.36,1)}',
+    '.lw-inp:focus,.lw-date:focus{box-shadow:0 0 0 3px rgba(204,255,0,.14)}',
+    '.lw-step.on{animation:lwin .32s cubic-bezier(.22,1,.36,1)}',
+    '@keyframes lwin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}'
   ].join('\n');
 
   function esc(v) {
@@ -129,6 +148,84 @@
     return t.content.firstElementChild;
   }
 
+  // ── polish helpers ──────────────────────────────────────
+  // Progress indicator (dots). Step order for the booking flow.
+  var BOOK_STEPS = ['service','staff','time','details','done'];
+  function progressHtml(current, hasStaff) {
+    var steps = hasStaff === false ? ['service','time','details','done'] : BOOK_STEPS;
+    var idx = steps.indexOf(current);
+    if (idx < 0) return ''; // manage/cancel flows don't get the bar
+    return '<div class="lw-progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + (steps.length-1) + '" aria-valuenow="' + idx + '" aria-label="Booking progress step ' + (idx+1) + ' of ' + steps.length + '">' +
+      steps.map(function(_, i){
+        var cls = i < idx ? 'done' : (i === idx ? 'on' : '');
+        return '<i class="' + cls + '"></i>';
+      }).join('') + '</div>';
+  }
+
+  // Auto-format phone: (555) 555-5555 as they type. Preserves cursor at end.
+  function fmtPhone(v) {
+    var d = String(v || '').replace(/\D/g, '').slice(0, 10);
+    if (!d) return '';
+    if (d.length < 4) return d;
+    if (d.length < 7) return '(' + d.slice(0,3) + ') ' + d.slice(3);
+    return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6);
+  }
+  function wirePhone(input, onValid) {
+    if (!input) return;
+    input.addEventListener('input', function() {
+      var caret = input.selectionEnd;
+      var raw = input.value.replace(/\D/g, '');
+      input.value = fmtPhone(raw);
+      // Move caret to end (simple UX; edge cases rare on mobile)
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch(e){}
+      if (onValid && raw.length === 10) onValid(raw);
+    });
+    input.addEventListener('blur', function() {
+      var raw = input.value.replace(/\D/g, '');
+      if (onValid && raw.length === 10) onValid(raw);
+    });
+  }
+
+  // Deposit amount for a service. Uses service.deposit_override_* first,
+  // else falls back to global policy on catalog.deposit_policy (opt-in from
+  // backend; safe if missing).
+  function depositFor(service, catalog) {
+    if (!service) return 0;
+    if (service.deposit_override_type === 'none') return 0;
+    var price = Number(service.price || 0);
+    if (service.deposit_override_type === 'fixed') return Number(service.deposit_override_amount || 0);
+    if (service.deposit_override_type === 'percent') return Math.round(price * Number(service.deposit_override_amount || 0) / 100);
+    var policy = (catalog && catalog.deposit_policy) || null;
+    if (!policy || !policy.enabled) return 0;
+    var amt = policy.type === 'percent'
+      ? Math.round(price * Number(policy.amount || 0) / 100)
+      : Number(policy.amount || 0);
+    if (price >= 250 && policy.premium_amount) amt = Number(policy.premium_amount);
+    if (policy.min_amount && amt < Number(policy.min_amount)) amt = Number(policy.min_amount);
+    return amt;
+  }
+
+  // Returning-client lookup — soft: 404 or error means "not returning".
+  var CLIENT_CACHE = {};
+  function lookupClient(phone) {
+    if (!phone || phone.length < 10) return Promise.resolve(null);
+    if (CLIENT_CACHE[phone] !== undefined) return Promise.resolve(CLIENT_CACHE[phone]);
+    return apiGet('client_lookup', { phone: phone }).then(function(j){
+      var c = j && j.client ? j.client : null;
+      CLIENT_CACHE[phone] = c;
+      return c;
+    }).catch(function(){ CLIENT_CACHE[phone] = null; return null; });
+  }
+
+  // Focus first meaningful control on a step. iOS-safe (no focus if soft-kb
+  // would pop unexpectedly on modal open).
+  function focusFirst(host) {
+    try {
+      var el = host.querySelector('input, button.lw-opt, button.lw-btn');
+      if (el && el.focus) el.focus({ preventScroll: true });
+    } catch(e) {}
+  }
+
   function Widget(root) {
     this.root = root; // shadow root
     this.host = root.querySelector('.lw');
@@ -155,16 +252,19 @@
       w.render('<div class="lw-empty">No services listed yet.</div>');
       return;
     }
+    var hasStaff = !!(catalog.staff && catalog.staff.length);
     w.render(
-      '<div class="lw-step on" data-step="service">' +
-      '<div class="lw-label">1 · Choose a service</div>' +
-      '<div class="lw-opts">' + catalog.services.map(function (s, i) {
-        return '<button class="lw-opt" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
-          (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min</div>' : '') +
+      progressHtml('service', hasStaff) +
+      '<div class="lw-step on" data-step="service" role="region" aria-label="Step 1: Choose a service">' +
+      '<div class="lw-label">' + (hasStaff ? '1 of 4' : '1 of 3') + ' · Choose a service</div>' +
+      '<div class="lw-opts" role="list">' + catalog.services.map(function (s, i) {
+        return '<button class="lw-opt" role="listitem" data-i="' + i + '" aria-label="Choose ' + esc(s.name) + (s.price != null ? ' for ' + money(s.price) : '') + '"><span><b>' + esc(s.name) + '</b>' +
+          (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min' + (s.category ? ' · ' + esc(s.category) : '') + '</div>' : '') +
           '</span>' + (s.price != null ? '<span class="lw-price">' + money(s.price) + '</span>' : '') + '</button>';
       }).join('') + '</div>' +
       '<button class="lw-link" data-cancel>Manage or cancel an appointment</button></div>'
     );
+    focusFirst(w.host);
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
         w.service = catalog.services[Number(b.getAttribute('data-i'))];
@@ -184,9 +284,11 @@
         (s.role ? '<div class="meta">' + esc(s.role) + '</div>' : '') + '</span></button>');
     });
     w.render(
-      '<div class="lw-step on" data-step="staff"><button class="lw-back" data-back="service">← Back</button>' +
-      '<div class="lw-label">2 · Choose a team member</div><div class="lw-opts">' + opts.join('') + '</div></div>'
+      progressHtml('staff', true) +
+      '<div class="lw-step on" data-step="staff" role="region" aria-label="Step 2: Choose a team member"><button class="lw-back" data-back="service" aria-label="Back to services">← Back</button>' +
+      '<div class="lw-label">2 of 4 · Choose a team member</div><div class="lw-opts" role="list">' + opts.join('') + '</div></div>'
     );
+    focusFirst(w.host);
     w.host.querySelector('[data-back]').addEventListener('click', function () {
       if (w.managing) { renderManageCard(w, w.managing.booking); return; }
       stepService(w, catalog);
@@ -203,11 +305,14 @@
   function stepTime(w, catalog) {
     var today = new Date().toISOString().slice(0, 10);
     var date = w.date || today;
+    var hasStaff = !!(catalog.staff && catalog.staff.length);
+    var stepNum = hasStaff ? '3 of 4' : '2 of 3';
     w.render(
-      '<div class="lw-step on" data-step="time"><button class="lw-back" data-back="staff">← Back</button>' +
-      '<div class="lw-label">3 · Pick a time</div>' +
-      '<input type="date" class="lw-date" id="lwDate" value="' + date + '" min="' + today + '"/>' +
-      '<div class="lw-slots" id="lwSlots"><div class="lw-empty">Pick a date above.</div></div></div>'
+      progressHtml('time', hasStaff) +
+      '<div class="lw-step on" data-step="time" role="region" aria-label="Step: Pick a time"><button class="lw-back" data-back="staff" aria-label="Back">← Back</button>' +
+      '<div class="lw-label">' + stepNum + ' · Pick a time</div>' +
+      '<input type="date" class="lw-date" id="lwDate" value="' + date + '" min="' + today + '" aria-label="Choose date"/>' +
+      '<div class="lw-slots" id="lwSlots" role="list" aria-live="polite" aria-busy="true"><div class="lw-empty">Pick a date above.</div></div></div>'
     );
     var input = w.host.querySelector('#lwDate');
     input.addEventListener('change', function () { w.date = input.value; loadSlots(w, catalog, input.value); });
@@ -221,15 +326,20 @@
 
   function loadSlots(w, catalog, date) {
     var host = w.host.querySelector('#lwSlots');
-    host.innerHTML = '<div class="lw-empty">Checking availability…</div>';
+    // Skeleton: 9 shimmering slot placeholders while the availability call runs.
+    host.setAttribute('aria-busy', 'true');
+    var sk = [];
+    for (var i = 0; i < 9; i++) sk.push('<div class="lw-slot-sk" aria-hidden="true"></div>');
+    host.innerHTML = sk.join('');
     var p = { service_id: w.service.id, date: date };
     if (w.staff) p.staff_id = w.staff.id;
     apiGet('availability', p).then(function (data) {
       var slots = data.slots || [];
+      host.setAttribute('aria-busy', 'false');
       if (!slots.length) { renderWaitlist(w, catalog, host, date); return; }
       host.innerHTML = slots.map(function (s) {
         var iso = s.starts_at || s;
-        return '<button class="lw-slot" data-iso="' + esc(iso) + '">' + timeLabel(iso) + '</button>';
+        return '<button class="lw-slot" data-iso="' + esc(iso) + '" role="listitem" aria-label="Book at ' + timeLabel(iso) + '">' + timeLabel(iso) + '</button>';
       }).join('');
       host.querySelectorAll('.lw-slot').forEach(function (b) {
         b.addEventListener('click', function () {
@@ -251,6 +361,7 @@
       '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
       '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes — text me at this number the moment a slot opens.</span></label>' +
       '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk"></div></div>';
+    wirePhone(host.querySelector('#lwWlPhone'));
     host.querySelector('#lwWlGo').addEventListener('click', function () {
       var name = host.querySelector('#lwWlName').value.trim();
       var phone = host.querySelector('#lwWlPhone').value.trim();
@@ -272,17 +383,41 @@
 
   function stepDetails(w, catalog) {
     var staffLine = w.staff ? ' with <b>' + esc(w.staff.name) + '</b>' : '';
+    var hasStaff = !!(catalog.staff && catalog.staff.length);
+    var stepNum = hasStaff ? '4 of 4' : '3 of 3';
+    var deposit = depositFor(w.service, catalog);
+    var depositLine = deposit > 0
+      ? '<div class="deposit-line">A ' + money(deposit) + ' deposit holds your slot — applies to your service.</div>'
+      : '';
+    var bookLabel = deposit > 0 ? 'Confirm and pay ' + money(deposit) + ' deposit' : 'Confirm booking';
     w.render(
-      '<div class="lw-step on" data-step="details"><button class="lw-back" data-back="time">← Back</button>' +
-      '<div class="lw-label">4 · Your details</div>' +
-      '<div class="lw-summary"><b>' + esc(w.service.name) + '</b>' + staffLine + '<br>' + whenLabel(w.time) + '</div>' +
-      '<div class="lw-fld"><label>Name</label><input class="lw-inp" id="lwName" placeholder="Your name"/></div>' +
-      '<div class="lw-fld"><label>Phone</label><input class="lw-inp" id="lwPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
-      '<div class="lw-fld"><label>Email (optional)</label><input class="lw-inp" id="lwEmail" type="email"/></div>' +
-      '<button class="lw-btn" id="lwBook">Confirm booking</button><div class="lw-err"></div></div>'
+      progressHtml('details', hasStaff) +
+      '<div class="lw-step on" data-step="details" role="region" aria-label="Step: Your details"><button class="lw-back" data-back="time" aria-label="Back">← Back</button>' +
+      '<div class="lw-label">' + stepNum + ' · Your details</div>' +
+      '<div id="lwWelcome"></div>' +
+      '<div class="lw-summary"><b>' + esc(w.service.name) + '</b>' + staffLine + '<br>' + whenLabel(w.time) + depositLine + '</div>' +
+      '<div class="lw-fld"><label for="lwPhone">Phone</label><input class="lw-inp" id="lwPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel"/></div>' +
+      '<div class="lw-fld"><label for="lwName">Name</label><input class="lw-inp" id="lwName" placeholder="Your name" autocomplete="name"/></div>' +
+      '<div class="lw-fld"><label for="lwEmail">Email (optional)</label><input class="lw-inp" id="lwEmail" type="email" autocomplete="email"/></div>' +
+      '<button class="lw-btn" id="lwBook">' + esc(bookLabel) + '</button><div class="lw-err" role="alert" aria-live="polite"></div></div>'
     );
+    // Wire auto-format on phone + returning-visitor lookup on 10-digit valid.
+    var phoneInput = w.host.querySelector('#lwPhone');
+    var nameInput = w.host.querySelector('#lwName');
+    var welcome = w.host.querySelector('#lwWelcome');
+    wirePhone(phoneInput, function(digits) {
+      // Only pre-fill name if the user hasn't typed one yet.
+      lookupClient(digits).then(function(c) {
+        if (!c) return;
+        if (nameInput && !nameInput.value) nameInput.value = c.name || '';
+        if (welcome && c.name && !welcome.innerHTML) {
+          welcome.innerHTML = '<div class="lw-welcome">Welcome back, <b>' + esc(c.name.split(' ')[0]) + '</b>. We remember your details — just tap confirm.</div>';
+        }
+      });
+    });
     w.host.querySelector('[data-back]').addEventListener('click', function () { w.go('time'); });
     w.host.querySelector('#lwBook').addEventListener('click', function () { confirmBook(w); });
+    focusFirst(w.host);
   }
 
   function confirmBook(w) {
@@ -305,9 +440,17 @@
         btn.disabled = false; btn.textContent = 'Confirm booking';
         return;
       }
+      // If the backend returns a Stripe payment_link (deposit required and
+      // policy demands pay-at-book), redirect the client to complete it.
+      // Otherwise show the confirmation state as usual.
+      if (result.payment_link) {
+        btn.textContent = 'Opening secure payment…';
+        location.href = result.payment_link;
+        return;
+      }
       var code = result.booking && result.booking.confirmation_code;
       w.render(
-        '<div class="lw-step on" data-step="done"><div class="lw-orb"></div>' +
+        '<div class="lw-step on" data-step="done" role="status" aria-live="polite"><div class="lw-orb"></div>' +
         '<div class="lw-done-title">You are all set!</div>' +
         '<div class="lw-done-sub">' + esc(w.service.name) + ' on ' + whenLabel(w.time) +
         '.<br>We texted your confirmation — keep the code below to cancel or change online.</div>' +
@@ -338,6 +481,7 @@
       if (w.catalog) stepService(w, w.catalog);
     });
     w.host.querySelector('#lwLookup').addEventListener('click', function () { doLookup(w); });
+    wirePhone(w.host.querySelector('#lwMPhone'));
   }
 
   function doLookup(w) {
@@ -477,6 +621,7 @@
       if (w.catalog) stepService(w, w.catalog);
     });
     w.host.querySelector('#lwCancelBtn').addEventListener('click', function () { doCancel(w); });
+    wirePhone(w.host.querySelector('#lwCancelPhone'));
   }
 
   function doCancel(w) {
