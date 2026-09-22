@@ -1,81 +1,520 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Team — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Team — LolaDesk</title>
+<meta name="description" content="Your staff — shown in the calendar, selectable by clients online, and known by Lola on every call."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
 <style>
-.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:20px}
-.member{background:var(--surface);border:.5px solid var(--border);border-radius:16px;padding:18px 20px}
-.member-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-.av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#080809;flex:0 0 40px}
-.member-name{font-size:15px;font-weight:600}
-.member-role{font-size:12px;color:var(--text3);margin-top:2px}
-.member-acts{display:flex;gap:8px;margin-top:12px}
-.mbtn{padding:7px 14px;border-radius:9px;font-size:12px;cursor:pointer;border:.5px solid var(--border);background:transparent;color:var(--text2)}
-.mbtn.red{color:var(--danger);border-color:var(--danger)33}
+/* ═══════════════════════════════════════════════════════════════
+   Team — staff roster with photos, roles, service assignments,
+   and per-staff color used on the calendar. Preserves endpoints
+   (GET/POST/DELETE /api/staff). New fields on the wire (backend
+   TODO — safe to ignore server-side):
+     photo_url, phone, email, color, services[], active
+   ═══════════════════════════════════════════════════════════════ */
+.page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
+.page-narrative b{color:var(--text);font-weight:600}
+.topbar-actions{display:flex;gap:8px;align-items:center}
+
+.tm-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.chip-row{display:inline-flex;gap:6px;background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:4px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;transition:color .15s,background .15s;border:none;background:transparent;min-height:36px;display:inline-flex;align-items:center;gap:6px;font-family:inherit}
+.chip:hover{color:var(--text)}
+.chip.on{color:#10140a;background:var(--accent)}
+.chip-count{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:rgba(255,255,255,.14);color:inherit;min-width:18px;text-align:center}
+.chip.on .chip-count{background:rgba(16,20,10,.18);color:#10140a}
+.search-box{flex:1;min-width:220px;max-width:340px;position:relative}
+.search-box input{width:100%;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px 10px 38px;color:var(--text);font:inherit;min-height:40px}
+.search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.member{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:20px 22px;position:relative;overflow:hidden;transition:border-color .15s,transform .15s;cursor:pointer}
+.member:hover{border-color:var(--border2);transform:translateY(-1px)}
+.member:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.member.inactive{opacity:.55}
+.member-color-strip{position:absolute;top:0;left:0;right:0;height:3px;background:var(--memberColor,var(--accent))}
+.member-top{display:flex;align-items:center;gap:14px;margin-top:6px;margin-bottom:14px}
+.av{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#10140a;flex-shrink:0;overflow:hidden;position:relative;background:var(--memberColor,var(--accent))}
+.av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.member-name{font-size:15.5px;font-weight:600;color:var(--text);letter-spacing:-.01em}
+.member-role{font-size:12.5px;color:var(--text3);margin-top:3px}
+.member-status{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:20px;margin-top:6px}
+.member-status.active{background:var(--accent-dim);color:var(--accent)}
+.member-status.away{background:rgba(255,179,64,.14);color:var(--warning)}
+.member-status.off{background:var(--surface2);color:var(--text3)}
+.member-status .dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.member-meta{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;font-size:12.5px;color:var(--text2)}
+.member-meta .row{display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-meta svg{color:var(--text3);flex-shrink:0}
+.member-services{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px}
+.member-svc{font-size:10.5px;color:var(--text2);background:var(--surface2);padding:3px 8px;border-radius:20px;border:.5px solid var(--border)}
+.member-svc.more{color:var(--text3);border-style:dashed}
+.member-acts{display:flex;gap:6px}
+.mbtn{padding:8px 14px;border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer;border:.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;transition:background .12s,border-color .12s;min-height:34px}
+.mbtn:hover{background:var(--bg2);border-color:var(--border2)}
+.mbtn.danger{background:transparent;border-color:rgba(255,90,77,.35);color:var(--danger)}
+.mbtn.danger:hover{background:rgba(255,90,77,.08)}
+
+/* SKELETON */
+.sk-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:20px 22px}
+.sk-bar{background:linear-gradient(90deg,var(--surface2) 0%,var(--surface) 50%,var(--surface2) 100%);background-size:200% 100%;animation:sk 1.4s ease-in-out infinite;border-radius:6px}
+.sk-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.sk-av{height:52px;width:52px;border-radius:50%;flex-shrink:0}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk-bar{animation:none}}
+
+/* EMPTY */
+.empty-state{padding:60px 24px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:14px;grid-column:1/-1}
+.empty-orb{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:flex;align-items:center;justify-content:center;color:#10140a;font-weight:700;font-size:22px;box-shadow:0 6px 24px var(--accent-glow)}
+.empty-title{font-weight:600;color:var(--text);font-size:16px}
+.empty-sub{max-width:340px;line-height:1.55;font-size:13.5px;color:var(--text2)}
+
+/* MODAL */
 .mw{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
 .mw.open{display:flex}
-.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;padding:26px;max-width:420px;width:100%}
-.modal h3{font-size:18px;font-weight:600;margin-bottom:18px}
+.modal{background:var(--bg2);border:.5px solid var(--border);border-radius:22px;padding:28px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 30px 100px rgba(0,0,0,.55)}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+.modal h3{font-size:20px;font-weight:600;letter-spacing:-.02em}
+.modal-close{width:34px;height:34px;border-radius:50%;background:var(--surface);border:.5px solid var(--border);color:var(--text);font-size:18px;cursor:pointer}
+.modal-close:hover{background:var(--surface2)}
 .fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-.fld label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
-.fld input{background:var(--surface);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;width:100%}
-.fld input:focus{border-color:var(--accent)}
-.macts{display:flex;gap:10px;margin-top:6px}
-.macts button{flex:1;padding:12px;border-radius:11px;font-size:14px;font-weight:560;cursor:pointer;border:none}
-.macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
-.macts .save{background:var(--text);color:#080809}
-.err{color:var(--danger);font-size:12px;margin-top:8px;min-height:16px}
-.empty{color:var(--text3);padding:60px 0;text-align:center;font-size:14px;line-height:2}
+.fld label{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.fld input,.fld select{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-size:14px;outline:none;width:100%;font-family:inherit;min-height:44px;transition:border-color .15s,box-shadow .15s}
+.fld input:focus,.fld select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.fld .fine{font-size:11px;color:var(--text3);margin-top:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.photo-row{display:flex;align-items:center;gap:14px;padding:14px;background:var(--surface);border:1px dashed var(--border2);border-radius:var(--r-sm);margin-bottom:14px}
+.photo-preview{width:72px;height:72px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;overflow:hidden;color:var(--text3);font-size:11px;font-weight:600}
+.photo-preview img{width:100%;height:100%;object-fit:cover}
+
+/* COLOR PICKER */
+.color-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.color-swatch{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid var(--border);transition:transform .12s,border-color .12s;position:relative}
+.color-swatch:hover{transform:scale(1.08)}
+.color-swatch.on{border-color:var(--text)}
+.color-swatch.on::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#10140a;font-size:14px;font-weight:700}
+
+/* SERVICES PICKER */
+.svc-picker{display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);max-height:180px;overflow-y:auto}
+.svc-pick{padding:6px 12px;font-size:12px;background:var(--surface2);border:.5px solid var(--border);border-radius:20px;cursor:pointer;color:var(--text2);transition:all .12s;font-family:inherit}
+.svc-pick:hover{color:var(--text)}
+.svc-pick.on{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:600}
+.svc-empty{color:var(--text3);font-size:12px;padding:4px 8px}
+
+.macts{display:flex;gap:10px;margin-top:8px}
+.macts button{flex:1;padding:12px;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;border:.5px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;min-height:44px}
+.macts .primary{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:700}
+.macts .primary:hover{box-shadow:0 4px 14px var(--accent-glow)}
+.err{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px}
+.err.ok{color:var(--accent)}
+
+/* RESPONSIVE */
+@media(max-width:720px){
+  .chip-row{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .search-box{max-width:none;width:100%}
+  .row2{grid-template-columns:1fr}
+  .topbar-actions{width:100%}
+  .topbar-actions .btn{width:100%;justify-content:center}
+}
+@media(max-width:420px){
+  .main{padding:12px 12px 90px}
+  .member{padding:18px 20px}
+  .modal{padding:22px 20px}
+}
 </style>
 </head>
-<body data-page="team"><div class="app"><main class="main">
-<div class="page-head">
-  <div><h1 class="page-title">Team</h1><p style="font-size:13px;color:var(--text3);margin-top:4px">Your staff — shown in the booking calendar and selectable by clients online.</p></div>
-  <button class="btn btn-primary" onclick="openForm()">+ Add staff</button>
+<body data-page="team">
+<div class="app">
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Team</h1>
+        <p class="page-narrative" id="narrativeLine">Loading your team…</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openForm()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Add staff
+        </button>
+      </div>
+    </div>
+
+    <div class="tm-toolbar" role="toolbar" aria-label="Filter and search team">
+      <div class="chip-row" role="tablist" aria-label="Filter by status">
+        <button class="chip on" data-filter="all" onclick="setFilter('all')" role="tab" aria-selected="true">All <span class="chip-count" id="cnAll">0</span></button>
+        <button class="chip" data-filter="active" onclick="setFilter('active')" role="tab" aria-selected="false">Active <span class="chip-count" id="cnActive">0</span></button>
+        <button class="chip" data-filter="inactive" onclick="setFilter('inactive')" role="tab" aria-selected="false">Inactive <span class="chip-count" id="cnInactive">0</span></button>
+      </div>
+      <label class="search-box" aria-label="Search team">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+        <input id="searchInput" type="search" placeholder="Search name or role…" oninput="setQuery(this.value)" autocomplete="off"/>
+      </label>
+    </div>
+
+    <div class="team-grid" id="teamGrid" role="list">
+      <div class="sk-card"><div class="sk-top"><div class="sk-bar sk-av"></div><div style="flex:1"><div class="sk-bar" style="height:14px;width:60%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:40%"></div></div></div><div class="sk-bar" style="height:11px;width:70%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:50%"></div></div>
+      <div class="sk-card"><div class="sk-top"><div class="sk-bar sk-av"></div><div style="flex:1"><div class="sk-bar" style="height:14px;width:55%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:45%"></div></div></div><div class="sk-bar" style="height:11px;width:65%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:55%"></div></div>
+      <div class="sk-card"><div class="sk-top"><div class="sk-bar sk-av"></div><div style="flex:1"><div class="sk-bar" style="height:14px;width:65%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:35%"></div></div></div><div class="sk-bar" style="height:11px;width:60%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:45%"></div></div>
+    </div>
+
+  </main>
 </div>
-<div class="team-grid" id="teamGrid"><div class="empty">Loading...</div></div>
-</main></div>
-<div class="mw" id="modal"><div class="modal">
-  <h3 id="mTitle">Add staff</h3>
-  <div class="fld"><label>Name</label><input id="fName" placeholder="e.g. Sarah Johnson"/></div>
-  <div class="fld"><label>Role</label><input id="fRole" placeholder="e.g. Senior Stylist, Colorist"/></div>
-  <div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="save" onclick="save()">Save</button></div>
-  <div class="err" id="err"></div>
-</div></div>
-<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+
+<!-- ADD/EDIT MODAL -->
+<div class="mw" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="mTitle">Add staff</h3>
+        <div style="font-size:12.5px;color:var(--text3);margin-top:4px">Shows in the booking calendar and can be picked by clients online.</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">×</button>
+    </div>
+
+    <div class="photo-row">
+      <div class="photo-preview" id="photoPreview">Photo</div>
+      <div>
+        <label for="photoInput" class="btn btn-ghost">Upload photo</label>
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/>
+        <div style="margin-top:7px;font-size:11px;color:var(--text3)">Optional. Shown on the booking widget · JPEG, PNG, WebP up to 2 MB</div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="fld"><label>First name *</label><input id="fFirst" placeholder="Sarah" autocomplete="given-name"/></div>
+      <div class="fld"><label>Last name</label><input id="fLast" placeholder="Johnson" autocomplete="family-name"/></div>
+    </div>
+
+    <div class="fld"><label>Role</label><input id="fRole" placeholder="Senior Stylist, Colorist, Esthetician…"/></div>
+
+    <div class="row2">
+      <div class="fld"><label>Phone</label><input id="fPhone" type="tel" placeholder="(305) 555-0123" autocomplete="tel"/></div>
+      <div class="fld"><label>Email</label><input id="fEmail" type="email" placeholder="staff@salon.com" autocomplete="email"/></div>
+    </div>
+
+    <div class="fld">
+      <label>Calendar color</label>
+      <div class="color-row" id="colorRow"></div>
+      <div class="fine">Used on the booking calendar so their appointments stand out.</div>
+    </div>
+
+    <div class="fld">
+      <label>Services they perform</label>
+      <div class="svc-picker" id="svcPicker"><div class="svc-empty">Loading services…</div></div>
+      <div class="fine">If none picked, Lola offers this staff for every service.</div>
+    </div>
+
+    <div class="fld">
+      <label>Status</label>
+      <select id="fActive">
+        <option value="true">Active — bookable now</option>
+        <option value="false">Inactive — hidden from calendar and booking</option>
+      </select>
+    </div>
+
+    <div class="macts">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="save()" id="saveBtn">Save</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+
 <script>
-const COLORS=['var(--accent)','var(--info)','#ffc043','#34d171','#cc73e1','#ff9f43'];
-let STAFF=[],editId=null;
-function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
-function hdr(){return{Authorization:'Bearer '+token()};}
-function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+/* ═══════════════════════════════════════════════════════════════
+   Team — data + interactivity.
+   ═══════════════════════════════════════════════════════════════ */
+
+const COLORS = ['#ccff00','#5ac8fa','#ffc043','#34d171','#cc73e1','#ff9f43','#ff6b81','#a8e000','#7c5cff','#ff4d80'];
+let STAFF = [];
+let SERVICES = [];
+let editId = null;
+let photoData = '';
+let FILTER = 'all';
+let QUERY = '';
+let selectedColor = COLORS[0];
+let selectedServices = new Set();
+
+const $ = id => document.getElementById(id);
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function authToken(){
+  try{
+    const auth = await window.LolaAuth.ready;
+    return auth?.token || localStorage.getItem('loladesk_token') || '';
+  }catch(e){ return localStorage.getItem('loladesk_token') || ''; }
+}
+function hdr(t){ return { Authorization: 'Bearer ' + t }; }
+
+function fullName(s){ return [s.first_name || s.name, s.last_name].filter(Boolean).join(' ') || 'Unknown'; }
+function firstName(s){ return (s.first_name || (s.name||'').split(' ')[0]) || 'Staff'; }
+function initial(s){ return (fullName(s).match(/[A-Za-z]/)?.[0] || '?').toUpperCase(); }
+function colorFor(s, idx){ return s.color || COLORS[idx % COLORS.length]; }
+function isActive(s){ return s.active !== false; }
+function statusOf(s){
+  if(!isActive(s)) return { key:'off', label:'Inactive' };
+  if(s.status === 'away') return { key:'away', label:'Away' };
+  return { key:'active', label:'Available' };
+}
+
+async function loadServices(){
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/services', { headers: hdr(tok) });
+    const d = await r.json().catch(()=>({}));
+    SERVICES = d.ok ? (d.services || []).filter(s => s.is_active !== false) : [];
+  }catch(e){ SERVICES = []; }
+}
+
 async function load(){
-  try{const r=await fetch('/api/staff',{headers:hdr()});const d=await r.json();STAFF=d.ok?(d.staff||[]):[];}catch(e){STAFF=[];}
+  await loadServices();
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/staff', { headers: hdr(tok) });
+    const d = await r.json().catch(()=>({}));
+    STAFF = d.ok ? (d.staff || []) : [];
+  }catch(e){ STAFF = []; }
   render();
 }
+
+function narrative(){
+  const list = STAFF;
+  const t = list.length;
+  if(!t) return "No team yet. Add your first staff member and they'll appear in the calendar right away.";
+  const active = list.filter(isActive).length;
+  return `<b>${active}</b> active staff · <b>${t}</b> total. Every one shown in the calendar and bookable by clients.`;
+}
+
+function filterList(){
+  let list = STAFF.slice();
+  if(FILTER === 'active') list = list.filter(isActive);
+  else if(FILTER === 'inactive') list = list.filter(s => !isActive(s));
+  if(QUERY){
+    const q = QUERY.toLowerCase();
+    list = list.filter(s => [fullName(s), s.role, s.email, s.phone].some(v => String(v||'').toLowerCase().includes(q)));
+  }
+  return list.sort((a,b) => String(fullName(a)).localeCompare(String(fullName(b))));
+}
+
+function memberHtml(s, idx){
+  const color = colorFor(s, idx);
+  const st = statusOf(s);
+  const svcNames = Array.isArray(s.services) && s.services.length
+    ? s.services.map(id => (SERVICES.find(x => x.id === id) || {}).name).filter(Boolean).slice(0,4)
+    : [];
+  const svcTags = svcNames.map(n => `<span class="member-svc">${esc(n)}</span>`).join('');
+  const moreSvc = Array.isArray(s.services) && s.services.length > 4 ? `<span class="member-svc more">+${s.services.length - 4} more</span>` : '';
+  const avImg = s.photo_url ? `<img src="${esc(s.photo_url)}" alt="">` : esc(initial(s));
+  return `
+    <div class="member ${isActive(s)?'':'inactive'}" role="listitem" tabindex="0" style="--memberColor:${color}"
+         onclick="edit('${esc(s.id)}')"
+         onkeydown="if(event.key==='Enter'||event.key===' '){edit('${esc(s.id)}');event.preventDefault()}">
+      <div class="member-color-strip" aria-hidden="true"></div>
+      <div class="member-top">
+        <div class="av">${avImg}</div>
+        <div style="min-width:0;flex:1">
+          <div class="member-name">${esc(fullName(s))}</div>
+          <div class="member-role">${esc(s.role || 'Stylist')}</div>
+          <span class="member-status ${st.key}"><span class="dot" aria-hidden="true"></span>${st.label}</span>
+        </div>
+      </div>
+      <div class="member-meta">
+        ${s.phone ? `<div class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>${esc(s.phone)}</div>` : ''}
+        ${s.email ? `<div class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>${esc(s.email)}</div>` : ''}
+      </div>
+      ${(svcTags || moreSvc) ? `<div class="member-services">${svcTags}${moreSvc}</div>` : ''}
+      <div class="member-acts" onclick="event.stopPropagation()">
+        <button class="mbtn" onclick="edit('${esc(s.id)}')">Edit</button>
+        <button class="mbtn danger" onclick="del('${esc(s.id)}')">Remove</button>
+      </div>
+    </div>`;
+}
+
 function render(){
-  const g=document.getElementById('teamGrid');
-  if(!STAFF.length){g.innerHTML='<div class="empty">No staff yet.<br>Add your team so they appear in the booking calendar<br>and clients can choose them when booking online.</div>';return;}
-  g.innerHTML=STAFF.map((s,i)=>`<div class="member"><div class="member-top"><div class="av" style="background:${COLORS[i%COLORS.length]}">${(s.name||'?')[0].toUpperCase()}</div><div><div class="member-name">${esc(s.name)}</div><div class="member-role">${esc(s.role||'Stylist')}</div></div></div><div class="member-acts"><button class="mbtn" onclick="edit('${s.id}')">Edit</button><button class="mbtn red" onclick="del('${s.id}')">Remove</button></div></div>`).join('');
+  $('narrativeLine').innerHTML = narrative();
+  const active = STAFF.filter(isActive).length;
+  const inactive = STAFF.length - active;
+  $('cnAll').textContent = STAFF.length;
+  $('cnActive').textContent = active;
+  $('cnInactive').textContent = inactive;
+
+  const list = filterList();
+  const host = $('teamGrid');
+  if(!STAFF.length){
+    host.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-orb">L</div>
+        <div class="empty-title">No team yet</div>
+        <div class="empty-sub">Add your staff so they appear in the calendar and clients can choose them when booking online.</div>
+        <button class="btn btn-primary" onclick="openForm()" style="margin-top:8px">Add your first staff member</button>
+      </div>`;
+    return;
+  }
+  if(!list.length){
+    host.innerHTML = `<div class="empty-state"><div class="empty-title">Nothing matches</div><div class="empty-sub">Clear the filter or search.</div></div>`;
+    return;
+  }
+  host.innerHTML = list.map((s,i) => memberHtml(s, i)).join('');
 }
-function openForm(){editId=null;document.getElementById('mTitle').textContent='Add staff';document.getElementById('fName').value='';document.getElementById('fRole').value='';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
-function edit(id){const s=STAFF.find(x=>x.id===id);if(!s)return;editId=id;document.getElementById('mTitle').textContent='Edit staff';document.getElementById('fName').value=s.name||'';document.getElementById('fRole').value=s.role||'';document.getElementById('err').textContent='';document.getElementById('modal').classList.add('open');}
-function closeModal(){document.getElementById('modal').classList.remove('open');}
+
+function setFilter(f){
+  FILTER = f;
+  document.querySelectorAll('.chip').forEach(el => {
+    const on = el.dataset.filter === f;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  render();
+}
+function setQuery(q){ QUERY = String(q||'').trim(); render(); }
+
+/* ── MODAL ────────────────────────────────────────────────── */
+function paintColorSwatches(){
+  $('colorRow').innerHTML = COLORS.map(c => `
+    <div class="color-swatch ${c===selectedColor?'on':''}" data-color="${c}" style="background:${c}" onclick="pickColor('${c}')" role="button" tabindex="0" aria-label="Pick color ${c}"></div>
+  `).join('');
+}
+function pickColor(c){
+  selectedColor = c;
+  paintColorSwatches();
+}
+
+function paintServicePicker(){
+  const host = $('svcPicker');
+  if(!SERVICES.length){
+    host.innerHTML = `<div class="svc-empty">No services defined yet. Add services first, then assign them here.</div>`;
+    return;
+  }
+  host.innerHTML = SERVICES.map(s => `
+    <button type="button" class="svc-pick ${selectedServices.has(s.id)?'on':''}" data-id="${esc(s.id)}" onclick="toggleServicePick('${esc(s.id).replace(/'/g,"\\'")}')">
+      ${esc(s.name)}
+    </button>
+  `).join('');
+}
+function toggleServicePick(id){
+  if(selectedServices.has(id)) selectedServices.delete(id);
+  else selectedServices.add(id);
+  paintServicePicker();
+}
+
+function openForm(){
+  editId = null;
+  photoData = '';
+  selectedColor = COLORS[STAFF.length % COLORS.length];
+  selectedServices = new Set();
+  $('mTitle').textContent = 'Add staff';
+  $('fFirst').value = '';
+  $('fLast').value = '';
+  $('fRole').value = '';
+  $('fPhone').value = '';
+  $('fEmail').value = '';
+  $('fActive').value = 'true';
+  $('photoPreview').textContent = 'Photo';
+  $('err').textContent = '';
+  paintColorSwatches();
+  paintServicePicker();
+  $('modal').classList.add('open');
+  setTimeout(() => $('fFirst').focus(), 60);
+}
+
+function edit(id){
+  const s = STAFF.find(x => x.id === id);
+  if(!s) return;
+  editId = id;
+  photoData = '';
+  selectedColor = s.color || COLORS[STAFF.indexOf(s) % COLORS.length];
+  selectedServices = new Set(Array.isArray(s.services) ? s.services : []);
+  $('mTitle').textContent = 'Edit staff';
+  const parts = String(s.name || fullName(s)).split(' ');
+  $('fFirst').value = s.first_name || parts[0] || '';
+  $('fLast').value  = s.last_name  || parts.slice(1).join(' ') || '';
+  $('fRole').value  = s.role || '';
+  $('fPhone').value = s.phone || '';
+  $('fEmail').value = s.email || '';
+  $('fActive').value = isActive(s) ? 'true' : 'false';
+  $('photoPreview').innerHTML = s.photo_url ? `<img src="${esc(s.photo_url)}" alt="">` : (s.first_name ? esc(initial(s)) : 'Photo');
+  $('err').textContent = '';
+  paintColorSwatches();
+  paintServicePicker();
+  $('modal').classList.add('open');
+  setTimeout(() => $('fFirst').focus(), 60);
+}
+
+function closeModal(){ $('modal').classList.remove('open'); }
+
+$('photoInput').onchange = () => {
+  const f = $('photoInput').files[0];
+  if(!f) return;
+  if(f.size > 2097152){ $('err').textContent = 'Photo must be 2 MB or smaller.'; return; }
+  const reader = new FileReader();
+  reader.onload = () => { photoData = reader.result; $('photoPreview').innerHTML = `<img src="${reader.result}" alt="">`; };
+  reader.readAsDataURL(f);
+};
+
 async function save(){
-  const name=document.getElementById('fName').value.trim();
-  const err=document.getElementById('err');
-  if(!name){err.textContent='Name is required.';return;}
-  err.textContent='';
+  const first = $('fFirst').value.trim();
+  const err = $('err');
+  if(!first){ err.textContent = 'First name is required.'; err.className = 'err'; return; }
+  err.textContent = '';
+  const btn = $('saveBtn');
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'Saving…';
   try{
-    const r=await fetch('/api/staff',{method:'POST',headers:{...hdr(),'Content-Type':'application/json'},body:JSON.stringify({id:editId||undefined,name,role:document.getElementById('fRole').value.trim()||'Stylist'})});
-    const d=await r.json();if(!d.ok)throw new Error(d.error||'Failed');
-    closeModal();load();
-  }catch(e){err.textContent=e.message||'Something went wrong.';}
+    const tok = await authToken();
+    const body = {
+      id: editId || undefined,
+      name: [first, $('fLast').value.trim()].filter(Boolean).join(' '),
+      first_name: first,
+      last_name: $('fLast').value.trim() || null,
+      role: $('fRole').value.trim() || 'Stylist',
+      phone: $('fPhone').value.trim() || null,
+      email: $('fEmail').value.trim() || null,
+      color: selectedColor,
+      services: Array.from(selectedServices),
+      active: $('fActive').value === 'true'
+    };
+    if(photoData) body.photo_data_url = photoData;
+    const r = await fetch('/api/staff', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Save failed');
+    if(!editId && typeof window.lolaPulse === 'function') window.lolaPulse(`${first} added to the team`);
+    err.textContent = 'Saved.';
+    err.className = 'err ok';
+    setTimeout(closeModal, 600);
+    await load();
+  }catch(e){
+    err.textContent = e.message || 'Something went wrong.';
+    err.className = 'err';
+  }finally{
+    btn.disabled = false; btn.textContent = prev;
+  }
 }
+
 async function del(id){
-  if(!confirm('Remove this staff member?'))return;
-  try{await fetch('/api/staff?id='+id,{method:'DELETE',headers:hdr()});load();}catch(e){alert(e.message);}
+  if(!confirm('Remove this staff member? Their upcoming appointments will need reassignment.')) return;
+  try{
+    const tok = await authToken();
+    await fetch('/api/staff?id='+encodeURIComponent(id), { method:'DELETE', headers: hdr(tok) });
+    load();
+  }catch(e){ alert(e.message); }
 }
-(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
-</script></body></html>
+
+/* Click outside modal to close */
+$('modal').addEventListener('click', e => { if(e.target === $('modal')) closeModal(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && $('modal').classList.contains('open')) closeModal(); });
+
+(async () => { load(); })();
+</script>
+</body>
+</html>
