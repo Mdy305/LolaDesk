@@ -94,7 +94,7 @@ function drawBars(){
   bars.forEach((b,i)=>{
     const bh=b*H*0.88, bx=i*bw+4, by=H-bh;
     const g=x.createLinearGradient(0,by,0,H);
-    g.addColorStop(0,'#ccff00'); g.addColorStop(1,'rgba(204,255,0,.25)');
+    g.addColorStop(0,'var(--accent)'); g.addColorStop(1,'rgba(204,255,0,.25)');
     x.fillStyle=g;
     x.beginPath();
     if(x.roundRect) x.roundRect(bx,by,bw-8,bh,3); else x.rect(bx,by,bw-8,bh);
@@ -105,7 +105,7 @@ function drawDonut(){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15;
   x.clearRect(0,0,130,130);
-  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#a8e000'},{v:16,c:'#84c400'},{v:8,c:'#3a5a00'}];
+  const segs=[{v:48,c:'var(--accent)'},{v:28,c:'#a8e000'},{v:16,c:'#84c400'},{v:8,c:'#3a5a00'}];
   let s=-Math.PI/2;
   segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,s,s+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();s+=a;});
 }
@@ -117,14 +117,14 @@ function drawBarsData(months){
   const vals = months.map(m=>m.value);
   const max=Math.max(...vals,1); const bw=W/vals.length;
   vals.forEach((v,i)=>{ const bh=(v/max)*H*0.88, bx=i*bw+4, by=H-bh;
-    const g=x.createLinearGradient(0,by,0,H); g.addColorStop(0,'#ccff00'); g.addColorStop(1,'rgba(204,255,0,.25)');
+    const g=x.createLinearGradient(0,by,0,H); g.addColorStop(0,'var(--accent)'); g.addColorStop(1,'rgba(204,255,0,.25)');
     x.fillStyle=g; x.beginPath(); if(x.roundRect)x.roundRect(bx,by,bw-8,bh,3);else x.rect(bx,by,bw-8,bh); x.fill(); });
 }
 function drawDonutData(services){
   const c=document.getElementById('donut'); if(!c)return;
   const x=c.getContext('2d'), cx=65,cy=65,r=52,lw=15; x.clearRect(0,0,130,130);
   if(!services || !services.length) return; // no fake donut segments without real data
-  const palette=['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
+  const palette=['var(--accent)','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
   const tot=services.reduce((a,b)=>a+b.value,0)||1;
   const segs=services.slice(0,5).map((sv,i)=>({v:(sv.value/tot)*100,c:palette[i%palette.length]}));
   let a0=-Math.PI/2; segs.forEach(seg=>{const a=(seg.v/100)*Math.PI*2;x.beginPath();x.arc(cx,cy,r,a0,a0+a-0.05);x.strokeStyle=seg.c;x.lineWidth=lw;x.lineCap='round';x.stroke();a0+=a;});
@@ -168,7 +168,7 @@ function money(n){ return '$'+Math.round(n||0).toLocaleString(); }
   document.getElementById('donutTotal').textContent = money(total);
 
   if(services.length){
-    const palette=['#ccff00','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
+    const palette=['var(--accent)','#a8e000','#84c400','#5e9000','#3a5a00','#8affc4'];
     const tot = services.reduce((a,b)=>a+b.value,0) || 1;
     document.getElementById('serviceLegend').innerHTML = services.slice(0,5).map((sv,i)=>`
       <div class="legend-item"><span class="legend-dot" style="background:${palette[i%palette.length]}"></span><span class="legend-name">${sv.name}</span><span class="legend-val">${Math.round(sv.value/tot*100)}%</span></div>

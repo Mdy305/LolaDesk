@@ -1,67 +1,657 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Clients — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Clients — LolaDesk</title>
+<meta name="description" content="Every client Lola knows, remembers, and can book next. Search, import, and text — one place."/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
 <style>
-.search-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}.search-box{flex:1;min-width:220px;display:flex;align-items:center;gap:10px;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);padding:11px 16px}.search-box input{flex:1;background:none;border:0;outline:0;color:var(--text)}.filter-pill{padding:11px 16px;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);font-size:13px;color:var(--text2);cursor:pointer}.filter-pill.active{background:var(--pink-dim);color:var(--pink2)}.cell-name{display:flex;align-items:center;gap:12px}.cell-name-txt{font-weight:500}.cell-sub{font-size:11px;color:var(--text3)}.av img{width:100%;height:100%;object-fit:cover;border-radius:50%}.topbar-actions{display:flex;gap:9px}.modal-shell{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.72);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;padding:20px}.modal-shell.open{display:flex}.client-import{width:min(680px,100%);max-height:90vh;overflow:auto;background:#101012;border:1px solid #29292f;border-radius:22px;padding:24px;box-shadow:0 30px 100px rgba(0,0,0,.55)}.modal-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.modal-head h2{margin:0;font-size:23px}.modal-head p{margin:5px 0 0;color:var(--text2);font-size:13px}.modal-close{width:36px;height:36px;border-radius:50%;background:#1b1b1f;color:#fff;border:0;font-size:20px}.tabs{display:flex;gap:7px;margin:22px 0 18px;padding:5px;background:#09090a;border-radius:14px}.tab{flex:1;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--text2);font-weight:650}.tab.on{background:#202024;color:#dcff66}.pane{display:none}.pane.on{display:block}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:11px;color:var(--text2)}.field input,.field textarea,.field select{width:100%;padding:12px 13px;border-radius:11px;border:1px solid #2a2a30;background:#080809;color:#fff;outline:0}.field textarea{min-height:94px;resize:vertical}.photo-row{display:flex;align-items:center;gap:14px;padding:14px;border:1px dashed #34343a;border-radius:14px}.photo-preview{width:64px;height:64px;border-radius:50%;background:#1a1a1e;display:grid;place-items:center;overflow:hidden;color:#777}.photo-preview img{width:100%;height:100%;object-fit:cover}.drop{padding:28px;border:1px dashed #3a3a40;border-radius:16px;text-align:center;background:#0a0a0c}.drop input{margin-top:14px}.import-preview{margin-top:12px;color:var(--text2);font-size:12px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.status-msg{min-height:20px;margin-top:12px;font-size:12px;color:var(--text2)}.status-msg.ok{color:#ccff00}.status-msg.err{color:#ff8178}.smart-note{padding:13px 14px;border-radius:12px;background:rgba(204,255,0,.06);color:#b9b9c0;font-size:12px;margin-bottom:13px}.wa-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent}.wa-toggle input{position:absolute;opacity:0;width:0;height:0}.wa-sw{position:relative;width:40px;height:24px;flex-shrink:0;background:var(--surface2);border:.5px solid var(--border2);border-radius:14px;transition:background .22s cubic-bezier(.25,.8,.25,1),border-color .22s;box-shadow:inset 0 1px 3px rgba(0,0,0,.35)}.wa-sw::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.4);transition:transform .22s cubic-bezier(.25,.8,.25,1)}.wa-toggle input:checked+.wa-sw{background:linear-gradient(135deg,#70ff00,#ccff00);border-color:rgba(204,255,0,.6);box-shadow:0 0 12px rgba(204,255,0,.35)}.wa-toggle input:checked+.wa-sw::after{transform:translateX(16px)}.wa-toggle input:focus-visible+.wa-sw{outline:2px solid var(--pink2);outline-offset:2px}.wa-hint{font-size:11px;color:var(--text3);white-space:nowrap}.wa-hint.on{color:var(--pink2)}@media(max-width:650px){.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topbar{align-items:flex-start}.topbar-actions{width:100%;flex-wrap:wrap}}
+/* ═══════════════════════════════════════════════════════════════
+   Clients — Jobs-level CRM surface. Same shared design language as
+   calls.html and inbox.html: narrative line, filter chips, card
+   list (not table), skeleton loading, expandable inline detail,
+   window.lolaPulse on new clients (fix #5), mobile responsive.
+   Preserves every endpoint from the old page:
+     GET  /api/clients
+     POST /api/clients            (single save + whatsapp toggle)
+     POST /api/client-photo
+     POST /api/client-import
+   And every modal capability: one-client form, CSV upload, Smart
+   Lola text extraction.
+   ═══════════════════════════════════════════════════════════════ */
+
+.page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
+.page-narrative b{color:var(--text);font-weight:600}
+
+.topbar-actions{display:flex;gap:8px;align-items:center}
+
+/* TOOLBAR */
+.cl-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.chip-row{display:inline-flex;gap:6px;background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:4px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;transition:color .15s,background .15s;border:none;background:transparent;min-height:36px;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{color:var(--text)}
+.chip.on{color:#10140a;background:var(--accent)}
+.chip-count{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:rgba(255,255,255,.14);color:inherit;min-width:18px;text-align:center}
+.chip.on .chip-count{background:rgba(16,20,10,.18);color:#10140a}
+.search-box{flex:1;min-width:220px;max-width:400px;position:relative}
+.search-box input{width:100%;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);padding:10px 14px 10px 38px;color:var(--text);font:inherit;min-height:40px}
+.search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+
+/* CLIENT LIST */
+.cl-list{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cl-row{display:grid;grid-template-columns:auto 1fr auto auto auto auto;align-items:center;gap:14px;padding:16px 20px;border-bottom:.5px solid var(--border);cursor:pointer;transition:background .12s;position:relative}
+.cl-row:last-child{border-bottom:none}
+.cl-row:hover{background:var(--surface2)}
+.cl-row.open{background:var(--surface2)}
+.cl-row:focus-visible{outline:none;background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}
+.cl-av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);color:#10140a;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;position:relative;overflow:hidden}
+.cl-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cl-av.vip::after{content:"★";position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:var(--warning);color:#10140a;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--surface)}
+.cl-body{min-width:0}
+.cl-name{font-size:14.5px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px}
+.cl-contact{font-size:12px;color:var(--text3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-service{font-size:13px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.cl-service .lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;display:block;margin-bottom:2px}
+.cl-ltv{font-size:14.5px;font-weight:600;color:var(--text);text-align:right;font-variant-numeric:tabular-nums;min-width:80px}
+.cl-ltv .lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;display:block;margin-bottom:2px}
+.cl-status{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.pill-status{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:20px}
+.pill-status.active{background:var(--surface2);color:var(--text)}
+.pill-status.vip{background:var(--accent-dim);color:var(--accent)}
+.pill-status.due{background:rgba(255,179,64,.14);color:var(--warning)}
+.pill-status.lead{background:rgba(90,200,250,.14);color:var(--info)}
+.cl-last{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+
+/* WHATSAPP TOGGLE */
+.wa-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 8px;border-radius:20px;background:var(--surface2);border:.5px solid var(--border);user-select:none;transition:background .12s}
+.wa-toggle:hover{background:var(--bg2)}
+.wa-toggle input{position:absolute;opacity:0;width:0;height:0}
+.wa-sw{position:relative;width:26px;height:14px;background:var(--border2);border-radius:20px;transition:background .15s;flex-shrink:0}
+.wa-sw::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:var(--text);transition:transform .15s}
+.wa-toggle input:checked+.wa-sw{background:var(--accent)}
+.wa-toggle input:checked+.wa-sw::after{transform:translateX(12px);background:#10140a}
+.wa-lbl{font-size:10.5px;font-weight:600;color:var(--text3);letter-spacing:.03em}
+.wa-toggle input:checked~.wa-lbl{color:var(--accent)}
+
+/* EXPANDED DETAIL */
+.cl-detail{grid-column:1/-1;background:var(--bg);border-top:.5px solid var(--border);padding:20px;display:none}
+.cl-row.open .cl-detail{display:block}
+.detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.detail-stat{padding:12px 14px;background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm)}
+.detail-stat .k{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.detail-stat .v{font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.detail-notes{background:var(--surface2);border:.5px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;margin-bottom:14px}
+.detail-notes .k{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.detail-notes .v{font-size:13px;color:var(--text2);line-height:1.55}
+.detail-notes .v.empty{color:var(--text3);font-style:italic}
+.detail-actions{display:flex;gap:8px;padding-top:14px;border-top:.5px solid var(--border);flex-wrap:wrap}
+.detail-btn{padding:10px 18px;border-radius:var(--r-sm);background:var(--surface2);border:.5px solid var(--border);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;min-height:38px;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.detail-btn:hover{background:var(--bg2);border-color:var(--border2)}
+.detail-btn.primary{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:700}
+.detail-btn.primary:hover{box-shadow:0 4px 14px var(--accent-glow)}
+
+/* SKELETON */
+.sk-row{display:grid;grid-template-columns:42px 1fr 100px 80px 60px;gap:14px;padding:16px 20px;border-bottom:.5px solid var(--border);align-items:center}
+.sk-row:last-child{border-bottom:none}
+.sk-bar{background:linear-gradient(90deg,var(--surface2) 0%,var(--surface) 50%,var(--surface2) 100%);background-size:200% 100%;animation:sk 1.4s ease-in-out infinite;border-radius:6px;height:12px}
+.sk-bar.round{height:42px;width:42px;border-radius:50%}
+.sk-bar.short{width:60%}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk-bar{animation:none}}
+
+/* EMPTY */
+.empty-state{padding:60px 24px;text-align:center;color:var(--text3);display:flex;flex-direction:column;align-items:center;gap:14px}
+.empty-orb{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:flex;align-items:center;justify-content:center;color:#10140a;font-weight:700;font-size:22px;box-shadow:0 6px 24px var(--accent-glow)}
+.empty-title{font-weight:600;color:var(--text);font-size:16px}
+.empty-sub{max-width:320px;line-height:1.55;font-size:13.5px;color:var(--text2)}
+
+/* MODAL — preserved add-client flow with 3 tabs */
+.modal-shell{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.72);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;padding:20px}
+.modal-shell.open{display:flex}
+.modal-card{width:min(680px,100%);max-height:90vh;overflow:auto;background:var(--bg2);border:.5px solid var(--border);border-radius:22px;padding:26px;box-shadow:0 30px 100px rgba(0,0,0,.55)}
+.modal-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.modal-head h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em}
+.modal-head p{margin:5px 0 0;color:var(--text2);font-size:13px}
+.modal-close{width:36px;height:36px;border-radius:50%;background:var(--surface);color:var(--text);border:.5px solid var(--border);font-size:18px;cursor:pointer}
+.modal-close:hover{background:var(--surface2)}
+.modal-tabs{display:flex;gap:6px;margin:22px 0 18px;padding:4px;background:var(--surface);border-radius:12px;border:.5px solid var(--border)}
+.modal-tabs button{flex:1;padding:9px;border:0;border-radius:9px;background:transparent;color:var(--text2);font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;min-height:36px}
+.modal-tabs button.on{background:var(--accent);color:#10140a}
+.pane{display:none}
+.pane.on{display:block}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{display:grid;gap:6px}
+.field.full{grid-column:1/-1}
+.field label{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.field input,.field textarea,.field select{width:100%;padding:12px 13px;border-radius:var(--r-sm);border:.5px solid var(--border);background:var(--surface);color:var(--text);outline:0;font:inherit;font-size:14px;min-height:44px;transition:border-color .15s,box-shadow .15s}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.field textarea{min-height:100px;resize:vertical}
+.photo-row{display:flex;align-items:center;gap:14px;padding:14px;border:1px dashed var(--border2);border-radius:var(--r-sm)}
+.photo-preview{width:64px;height:64px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;overflow:hidden;color:var(--text3);font-size:11px}
+.photo-preview img{width:100%;height:100%;object-fit:cover}
+.drop{padding:28px;border:1px dashed var(--border2);border-radius:var(--r-sm);text-align:center;background:var(--surface)}
+.drop input{margin-top:14px}
+.import-preview{margin-top:12px;color:var(--text2);font-size:12px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.status-msg{min-height:20px;margin-top:12px;font-size:12.5px;color:var(--text2)}
+.status-msg.ok{color:var(--accent)}
+.status-msg.err{color:var(--danger)}
+.smart-note{padding:13px 14px;border-radius:var(--r-sm);background:var(--accent-dim);color:var(--text2);font-size:12.5px;margin-bottom:13px;line-height:1.55}
+
+/* RESPONSIVE */
+@media(max-width:960px){
+  .cl-row{grid-template-columns:auto 1fr auto auto;gap:12px}
+  .cl-service,.cl-last{display:none}
+}
+@media(max-width:720px){
+  .cl-row{grid-template-columns:auto 1fr auto;padding:14px 16px;gap:10px}
+  .cl-row .cl-status,.cl-row .cl-ltv{display:none}
+  .cl-row .cl-body{grid-column:2/-1}
+  .chip-row{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .search-box{max-width:none;width:100%}
+  .detail-grid{grid-template-columns:1fr 1fr}
+  .form-grid{grid-template-columns:1fr}
+  .field.full{grid-column:auto}
+  .cl-toolbar{gap:8px}
+  .topbar-actions{width:100%;flex-wrap:wrap}
+  .topbar-actions .btn{flex:1;min-width:0;justify-content:center}
+}
+@media(max-width:420px){
+  .main{padding:12px 12px 90px}
+  .detail-grid{grid-template-columns:1fr}
+}
 </style>
 </head>
-<body data-page="clients"><div class="app"><main class="main">
-<div class="topbar"><div class="page-head"><h1 class="page-title">Clients</h1><p class="page-sub">Everyone Lola knows — and remembers.</p></div><div class="topbar-actions"><button class="btn btn-ghost" id="importBtn">Import contacts</button><button class="btn btn-primary" id="addBtn">＋ Add client</button></div></div>
-<div class="kpis"><div class="kpi"><div class="kpi-val" id="kTotal">—</div><div class="kpi-label">Total clients</div><div class="kpi-sub">All time</div></div><div class="kpi"><div class="kpi-val pink" id="kVip">—</div><div class="kpi-label">VIP clients</div><div class="kpi-sub">Top spenders</div></div><div class="kpi"><div class="kpi-val mono" id="kNew">—</div><div class="kpi-label">New this month</div><div class="kpi-sub">Saved by your team and Lola</div></div><div class="kpi"><div class="kpi-val" id="kDue">—</div><div class="kpi-label">Due for rebooking</div><div class="kpi-sub">Lola is on it</div></div></div>
-<div class="search-row"><div class="search-box"><span>⌕</span><input id="search" placeholder="Search clients by name, phone, email, or service…"/></div><button class="filter-pill active" data-filter="all">All</button><button class="filter-pill" data-filter="vip">VIP</button><button class="filter-pill" data-filter="due">Due to rebook</button></div>
-<div class="card"><table class="tbl"><thead><tr><th>Client</th><th>Preferred service</th><th>Lifetime value</th><th>Last visit</th><th>Status</th><th>WhatsApp</th></tr></thead><tbody id="rows"><tr><td colspan="6"><div class="empty">Loading clients…</div></td></tr></tbody></table></div>
-</main></div>
-<div class="modal-shell" id="clientModal"><section class="client-import" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><h2 id="modalTitle">Add clients to LolaDesk</h2><p>Save one client, import a CSV, or let Lola extract contacts from pasted text.</p></div><button class="modal-close" id="closeModal" aria-label="Close">×</button></div>
-<div class="tabs"><button class="tab on" data-pane="manual">One client</button><button class="tab" data-pane="csv">CSV file</button><button class="tab" data-pane="smart">Smart Lola</button></div>
-<div class="pane on" id="pane-manual"><div class="form-grid"><div class="field full"><div class="photo-row"><div class="photo-preview" id="photoPreview">Photo</div><div><label for="photoInput" class="btn btn-ghost">Upload picture</label><input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/><div class="cell-sub" style="margin-top:7px">JPEG, PNG or WebP · max 2 MB</div></div></div></div><div class="field"><label>First name *</label><input id="firstName" autocomplete="given-name"/></div><div class="field"><label>Last name</label><input id="lastName" autocomplete="family-name"/></div><div class="field"><label>Phone</label><input id="phone" autocomplete="tel"/></div><div class="field"><label>Email</label><input id="email" type="email" autocomplete="email"/></div><div class="field"><label>Preferred service</label><input id="service"/></div><div class="field"><label>Status</label><select id="clientStatus"><option value="active">Active</option><option value="vip">VIP</option><option value="lead">Lead</option></select></div><div class="field full"><label>Notes Lola should remember</label><textarea id="notes" placeholder="Formula, preferences, allergies, birthday, consultation notes…"></textarea></div></div><div class="modal-actions"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" id="saveClient">Save client</button></div></div>
-<div class="pane" id="pane-csv"><div class="drop"><strong>Upload your client contact CSV</strong><div class="cell-sub" style="margin-top:6px">Recognizes name, first name, last name, phone, email, service, notes, lifetime value, last visit, and status.</div><input id="csvInput" type="file" accept=".csv,text/csv"/></div><div class="import-preview" id="csvPreview">No file selected.</div><div class="modal-actions"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" id="importCsv" disabled>Import contacts</button></div></div>
-<div class="pane" id="pane-smart"><div class="smart-note">Paste contacts copied from an email, spreadsheet, phone list, or notes. Put one person per line; Lola will identify the name, phone, and email and save them to this tenant only.</div><div class="field"><label>Contacts</label><textarea id="smartText" style="min-height:180px" placeholder="Jane Smith, (305) 555-0123, jane@email.com&#10;Maria Lopez | 786-555-0198"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" data-cancel>Cancel</button><button class="btn btn-primary" id="smartImport">Let Lola save contacts</button></div></div><div id="modalStatus" class="status-msg"></div></section></div>
-<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+<body data-page="clients">
+<div class="app">
+  <main class="main">
+
+    <div class="topbar">
+      <div class="page-head">
+        <h1 class="page-title">Clients</h1>
+        <p class="page-narrative" id="narrativeLine">Loading your client list…</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="importBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5-5 5 5M12 5v12"/></svg>
+          Import
+        </button>
+        <button class="btn btn-primary" id="addBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Add client
+        </button>
+      </div>
+    </div>
+
+    <div class="cl-toolbar" role="toolbar" aria-label="Filter and search clients">
+      <div class="chip-row" role="tablist" aria-label="Filter clients">
+        <button class="chip on" data-filter="all" onclick="setFilter('all')" role="tab" aria-selected="true">All <span class="chip-count" id="cnAll">0</span></button>
+        <button class="chip" data-filter="vip" onclick="setFilter('vip')" role="tab" aria-selected="false">VIP <span class="chip-count" id="cnVip">0</span></button>
+        <button class="chip" data-filter="due" onclick="setFilter('due')" role="tab" aria-selected="false">Due to rebook <span class="chip-count" id="cnDue">0</span></button>
+        <button class="chip" data-filter="new" onclick="setFilter('new')" role="tab" aria-selected="false">New this month <span class="chip-count" id="cnNew">0</span></button>
+        <button class="chip" data-filter="lead" onclick="setFilter('lead')" role="tab" aria-selected="false">Leads <span class="chip-count" id="cnLead">0</span></button>
+      </div>
+      <label class="search-box" aria-label="Search clients">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>
+        <input id="searchInput" type="search" placeholder="Search name, phone, email, or service…" oninput="setQuery(this.value)" autocomplete="off"/>
+      </label>
+    </div>
+
+    <div class="cl-list" id="clientsList" role="list">
+      <div class="sk-row"><div class="sk-bar round"></div><div><div class="sk-bar" style="width:40%;margin-bottom:8px"></div><div class="sk-bar short"></div></div><div class="sk-bar short"></div><div class="sk-bar short"></div><div class="sk-bar short"></div></div>
+      <div class="sk-row"><div class="sk-bar round"></div><div><div class="sk-bar" style="width:35%;margin-bottom:8px"></div><div class="sk-bar short"></div></div><div class="sk-bar short"></div><div class="sk-bar short"></div><div class="sk-bar short"></div></div>
+      <div class="sk-row"><div class="sk-bar round"></div><div><div class="sk-bar" style="width:45%;margin-bottom:8px"></div><div class="sk-bar short"></div></div><div class="sk-bar short"></div><div class="sk-bar short"></div><div class="sk-bar short"></div></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ADD CLIENT MODAL — 3 tabs preserved from original -->
+<div class="modal-shell" id="clientModal">
+  <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <div>
+        <h2 id="modalTitle">Add clients</h2>
+        <p>Save one client, import a CSV, or let Lola extract contacts from pasted text.</p>
+      </div>
+      <button class="modal-close" id="closeModal" aria-label="Close">×</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="on" data-pane="manual">One client</button>
+      <button data-pane="csv">CSV file</button>
+      <button data-pane="smart">Smart Lola</button>
+    </div>
+
+    <div class="pane on" id="pane-manual">
+      <div class="form-grid">
+        <div class="field full">
+          <div class="photo-row">
+            <div class="photo-preview" id="photoPreview">Photo</div>
+            <div>
+              <label for="photoInput" class="btn btn-ghost">Upload picture</label>
+              <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden/>
+              <div style="margin-top:7px;font-size:11px;color:var(--text3)">JPEG, PNG or WebP · max 2 MB</div>
+            </div>
+          </div>
+        </div>
+        <div class="field"><label>First name *</label><input id="firstName" autocomplete="given-name"/></div>
+        <div class="field"><label>Last name</label><input id="lastName" autocomplete="family-name"/></div>
+        <div class="field"><label>Phone</label><input id="phone" autocomplete="tel"/></div>
+        <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email"/></div>
+        <div class="field"><label>Preferred service</label><input id="service"/></div>
+        <div class="field"><label>Status</label><select id="clientStatus"><option value="active">Active</option><option value="vip">VIP</option><option value="lead">Lead</option></select></div>
+        <div class="field full"><label>Notes Lola should remember</label><textarea id="notes" placeholder="Formula, preferences, allergies, birthday, consultation notes…"></textarea></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-cancel>Cancel</button>
+        <button class="btn btn-primary" id="saveClient">Save client</button>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-csv">
+      <div class="drop">
+        <strong>Upload your client contact CSV</strong>
+        <div style="margin-top:6px;font-size:12px;color:var(--text3)">Recognizes name, first name, last name, phone, email, service, notes, lifetime value, last visit, and status.</div>
+        <input id="csvInput" type="file" accept=".csv,text/csv"/>
+      </div>
+      <div class="import-preview" id="csvPreview">No file selected.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-cancel>Cancel</button>
+        <button class="btn btn-primary" id="importCsv" disabled>Import contacts</button>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-smart">
+      <div class="smart-note">Paste contacts copied from an email, spreadsheet, phone list, or notes. Put one person per line — Lola will identify the name, phone, and email and save them to this tenant only.</div>
+      <div class="field"><label>Contacts</label><textarea id="smartText" style="min-height:180px" placeholder="Jane Smith, (305) 555-0123, jane@email.com&#10;Maria Lopez | 786-555-0198"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-cancel>Cancel</button>
+        <button class="btn btn-primary" id="smartImport">Let Lola save contacts</button>
+      </div>
+    </div>
+
+    <div id="modalStatus" class="status-msg"></div>
+  </section>
+</div>
+
+<script src="auth-guard.js"></script>
+<script src="lola-notify.js"></script>
+<script src="lola-data.js"></script>
+<script src="sidebar.js"></script>
+
 <script>
-let CLIENTS=[],activeFilter='all',csvContacts=[],photoData='';
-const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||''}
-async function api(url,options={}){const auth=await window.LolaAuth.ready;options.headers={...(options.headers||{}),Authorization:'Bearer '+auth.token};const r=await fetch(url,options),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('Request failed '+r.status));return d}
-function name(c){return [c.first_name,c.last_name].filter(Boolean).join(' ')||'Unknown'}
-function daysSince(d){if(!d)return null;return Math.floor((Date.now()-new Date(d))/86400000)}
-function fmtDate(d){if(!d)return'—';return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-function avatar(c){return c.profile_picture_url?'<span class="av"><img src="'+esc(c.profile_picture_url)+'" alt=""></span>':'<span class="av"><span class="av-initial">'+esc((name(c).match(/[A-Za-z]/)||['?'])[0].toUpperCase())+'</span></span>'}
-function render(){
- const q=$('search').value.toLowerCase(),rows=CLIENTS.filter(c=>{const due=daysSince(c.last_visit)>60;if(activeFilter==='vip'&&c.status!=='vip')return false;if(activeFilter==='due'&&!due)return false;return [name(c),c.phone,c.email,c.preferred_service].some(v=>String(v||'').toLowerCase().includes(q))});
- $('rows').innerHTML=rows.length?rows.map(c=>'<tr><td><div class="cell-name">'+avatar(c)+'<div><div class="cell-name-txt">'+esc(name(c))+'</div><div class="cell-sub">'+esc(c.phone||c.email||'No contact detail')+'</div></div>'+(c.status==='vip'?'<span class="pill vip">VIP</span>':'')+'</div></td><td>'+esc(c.preferred_service||'—')+'</td><td>$'+Number(c.lifetime_value||0).toLocaleString()+'</td><td>'+fmtDate(c.last_visit)+'</td><td><span class="pill mono">'+(daysSince(c.last_visit)>60?'Due to rebook':esc(c.status||'Active'))+'</span></td><td><label class="wa-toggle" title="Opt this client into WhatsApp booking reminders (salon must have WhatsApp connected)"><input type="checkbox" data-wa="'+esc(c.id)+'"'+(c.whatsapp_enabled?' checked':'')+'/><span class="wa-sw"></span><span class="wa-hint'+(c.whatsapp_enabled?' on':'')+'">'+(c.whatsapp_enabled?'On':'Off')+'</span></label></td></tr>').join(''):'<tr><td colspan="6"><div class="empty">No clients yet. Add one, import a CSV, or let Lola capture them from calls.</div></td></tr>';
- $('kTotal').textContent=CLIENTS.length.toLocaleString();$('kVip').textContent=CLIENTS.filter(c=>c.status==='vip').length;$('kDue').textContent=CLIENTS.filter(c=>daysSince(c.last_visit)>60).length;const start=new Date();start.setDate(1);start.setHours(0,0,0,0);$('kNew').textContent=CLIENTS.filter(c=>new Date(c.created_at)>=start).length
+/* ═══════════════════════════════════════════════════════════════
+   Clients — data + interactivity.
+   ═══════════════════════════════════════════════════════════════ */
+
+let CLIENTS = [];
+let FILTER = 'all';
+let QUERY = '';
+let OPEN_ID = null;
+let SEEN = new Set();
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function name(c){ return [c.first_name, c.last_name].filter(Boolean).join(' ') || 'Unknown'; }
+function initial(n){ return String(n||'').match(/[A-Za-z]/)?.[0]?.toUpperCase() || '?'; }
+function daysSince(d){ if(!d) return null; return Math.floor((Date.now() - new Date(d).getTime()) / 86400000); }
+function fmtPhone(n){ return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3') || (n||''); }
+function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }catch(e){ return '—'; } }
+function money(n){ return '$' + Number(n||0).toLocaleString(); }
+function isDue(c){ const ds = daysSince(c.last_visit); return ds != null && ds > 60; }
+function isNewThisMonth(c){
+  if(!c.created_at) return false;
+  const d = new Date(c.created_at);
+  const now = new Date();
+  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
-async function loadClients(){const d=await api('/api/clients');CLIENTS=d.clients||[];render()}
-function openModal(pane='manual'){$('clientModal').classList.add('open');selectPane(pane);$('modalStatus').textContent=''}
-function closeModal(){$('clientModal').classList.remove('open')}
-function selectPane(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.pane===id));document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('on',x.id==='pane-'+id))}
-function status(msg,kind=''){$('modalStatus').className='status-msg '+kind;$('modalStatus').textContent=msg}
-$('addBtn').onclick=()=>openModal('manual');$('importBtn').onclick=()=>openModal('csv');$('closeModal').onclick=closeModal;document.querySelectorAll('[data-cancel]').forEach(x=>x.onclick=closeModal);document.querySelectorAll('.tab').forEach(x=>x.onclick=()=>selectPane(x.dataset.pane));$('clientModal').onclick=e=>{if(e.target===$('clientModal'))closeModal()};$('search').oninput=render;document.querySelectorAll('[data-filter]').forEach(x=>x.onclick=()=>{document.querySelectorAll('[data-filter]').forEach(y=>y.classList.remove('active'));x.classList.add('active');activeFilter=x.dataset.filter;render()});
-$('photoInput').onchange=()=>{const file=$('photoInput').files[0];if(!file)return;if(file.size>2097152){status('Photo must be 2 MB or smaller.','err');return}const reader=new FileReader();reader.onload=()=>{photoData=reader.result;$('photoPreview').innerHTML='<img src="'+reader.result+'" alt="">'};reader.readAsDataURL(file)};
-$('saveClient').onclick=async()=>{const btn=$('saveClient');if(!$('firstName').value.trim()){status('First name is required.','err');return}btn.disabled=true;status('Saving client…');try{const d=await api('/api/clients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({first_name:$('firstName').value,last_name:$('lastName').value,phone:$('phone').value,email:$('email').value,preferred_service:$('service').value,status:$('clientStatus').value,notes:$('notes').value})});if(photoData&&d.client?.id)await api('/api/client-photo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:d.client.id,data_url:photoData})});status('Client saved. Lola can use this contact immediately.','ok');await loadClients();setTimeout(closeModal,650)}catch(e){status(e.message,'err')}finally{btn.disabled=false}};
-function parseCsv(text){const lines=[];let row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1];if(ch==='"'&&quoted&&next==='"'){cell+='"';i++}else if(ch==='"'){quoted=!quoted}else if(ch===','&&!quoted){row.push(cell);cell=''}else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&next==='\n')i++;row.push(cell);if(row.some(x=>x.trim()))lines.push(row);row=[];cell=''}else cell+=ch}row.push(cell);if(row.some(x=>x.trim()))lines.push(row);if(lines.length<2)return[];const headers=lines.shift().map(x=>x.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_'));const key=h=>({fullname:'name',full_name:'name',mobile:'phone',telephone:'phone',phone_number:'phone',firstname:'first_name',lastname:'last_name',service:'preferred_service',last_service:'preferred_service',ltv:'lifetime_value'}[h]||h);return lines.map(cols=>Object.fromEntries(headers.map((h,i)=>[key(h),cols[i]?.trim()||'']))).filter(x=>x.name||x.first_name)}
-$('csvInput').onchange=()=>{const f=$('csvInput').files[0];if(!f)return;const reader=new FileReader();reader.onload=()=>{csvContacts=parseCsv(reader.result);$('csvPreview').textContent=csvContacts.length?csvContacts.length+' contacts ready to import.':'No valid contact rows found. Check the header row.';$('importCsv').disabled=!csvContacts.length};reader.readAsText(f)};
-$('importCsv').onclick=async()=>{const b=$('importCsv');b.disabled=true;status('Lola is saving '+csvContacts.length+' contacts…');try{const d=await api('/api/client-import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contacts:csvContacts})});status(d.saved+' saved · '+d.created+' new · '+d.updated+' updated.','ok');await loadClients();setTimeout(closeModal,900)}catch(e){status(e.message,'err')}finally{b.disabled=false}};
-$('smartImport').onclick=async()=>{const b=$('smartImport'),raw=$('smartText').value.trim();if(!raw){status('Paste at least one contact.','err');return}b.disabled=true;status('Lola is identifying and saving contacts…');try{const d=await api('/api/client-import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({raw_text:raw})});status(d.saved+' contacts saved.','ok');await loadClients();setTimeout(closeModal,900)}catch(e){status(e.message,'err')}finally{b.disabled=false}};
-// WhatsApp opt-in toggle — flips clients.whatsapp_enabled via the dedicated
-// POST action, which updates only that field for the tenant-scoped client.
-$('rows').addEventListener('change',async e=>{
-  const box=e.target.closest('input[data-wa]');
-  if(!box)return;
-  const id=box.dataset.wa,on=box.checked;
-  box.disabled=true;
+
+async function authToken(){
   try{
-    const d=await api('/api/clients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,whatsapp_enabled:on})});
-    if(!d.ok)throw new Error(d.error||'Toggle failed');
-    const c=CLIENTS.find(x=>x.id===id);
-    if(c)c.whatsapp_enabled=on;
+    const auth = await window.LolaAuth.ready;
+    return auth?.token || localStorage.getItem('loladesk_token') || '';
+  }catch(e){ return localStorage.getItem('loladesk_token') || ''; }
+}
+async function api(url, options){
+  const tok = await authToken();
+  const opts = options || {};
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type':'application/json', Authorization:'Bearer '+tok, ...(opts.headers||{}) } });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error || ('Request failed '+r.status));
+  return d;
+}
+
+function narrative(){
+  const t = CLIENTS.length;
+  if(!t) return "No clients yet. Add one, import a CSV, or let Lola capture them from calls automatically.";
+  const vip = CLIENTS.filter(c => c.status === 'vip').length;
+  const due = CLIENTS.filter(isDue).length;
+  const nu = CLIENTS.filter(isNewThisMonth).length;
+  const parts = [`<b>${t.toLocaleString()}</b> clients`];
+  if(vip) parts.push(`<b>${vip}</b> VIP`);
+  if(due) parts.push(`<b>${due}</b> due to rebook`);
+  if(nu) parts.push(`<b>${nu}</b> new this month`);
+  return parts.join(' · ') + '. Lola remembers every one.';
+}
+
+function filterList(){
+  let list = CLIENTS.slice();
+  if(FILTER === 'vip')  list = list.filter(c => c.status === 'vip');
+  if(FILTER === 'due')  list = list.filter(isDue);
+  if(FILTER === 'new')  list = list.filter(isNewThisMonth);
+  if(FILTER === 'lead') list = list.filter(c => c.status === 'lead');
+  if(QUERY){
+    const q = QUERY.toLowerCase();
+    list = list.filter(c => [name(c), c.phone, c.email, c.preferred_service].some(v => String(v||'').toLowerCase().includes(q)));
+  }
+  return list;
+}
+
+function statusOf(c){
+  if(c.status === 'vip') return { key:'vip', label:'VIP' };
+  if(c.status === 'lead') return { key:'lead', label:'Lead' };
+  if(isDue(c)) return { key:'due', label:'Due to rebook' };
+  return { key:'active', label:'Active' };
+}
+
+function rowHtml(c){
+  const nm = name(c);
+  const isOpen = OPEN_ID === c.id;
+  const st = statusOf(c);
+  const isVip = c.status === 'vip';
+  const av = c.profile_picture_url
+    ? `<div class="cl-av${isVip?' vip':''}"><img src="${esc(c.profile_picture_url)}" alt=""></div>`
+    : `<div class="cl-av${isVip?' vip':''}">${esc(initial(nm))}</div>`;
+  const detail = isOpen ? detailHtml(c) : '';
+  return `
+    <div class="cl-row ${isOpen?'open':''}" data-id="${esc(c.id)}" role="listitem" tabindex="0"
+         onclick="toggleClient('${esc(c.id)}', event)"
+         onkeydown="if(event.key==='Enter'||event.key===' '){toggleClient('${esc(c.id)}', event);event.preventDefault()}">
+      ${av}
+      <div class="cl-body">
+        <div class="cl-name">${esc(nm)}</div>
+        <div class="cl-contact">${esc(c.phone ? fmtPhone(c.phone) : (c.email || 'No contact detail'))}</div>
+      </div>
+      <div class="cl-service"><span class="lbl">Service</span>${esc(c.preferred_service || '—')}</div>
+      <div class="cl-ltv"><span class="lbl">Lifetime</span>${money(c.lifetime_value)}</div>
+      <div class="cl-status">
+        <span class="pill-status ${st.key}">${st.label}</span>
+        <span class="cl-last">${c.last_visit ? esc(fmtDate(c.last_visit)) : 'No visits yet'}</span>
+      </div>
+      <label class="wa-toggle" title="WhatsApp reminders opt-in" onclick="event.stopPropagation()">
+        <input type="checkbox" data-wa="${esc(c.id)}" ${c.whatsapp_enabled?'checked':''}/>
+        <span class="wa-sw" aria-hidden="true"></span>
+        <span class="wa-lbl">WA</span>
+      </label>
+      ${detail}
+    </div>`;
+}
+
+function detailHtml(c){
+  const ds = daysSince(c.last_visit);
+  const notes = c.notes || '';
+  const canText = !!c.phone;
+  return `
+    <div class="cl-detail" onclick="event.stopPropagation()">
+      <div class="detail-grid">
+        <div class="detail-stat"><div class="k">Lifetime value</div><div class="v">${money(c.lifetime_value)}</div></div>
+        <div class="detail-stat"><div class="k">Visits</div><div class="v">${Number(c.visit_count||0).toLocaleString()}</div></div>
+        <div class="detail-stat"><div class="k">Last visit</div><div class="v">${ds!=null?ds+'d ago':'—'}</div></div>
+      </div>
+      <div class="detail-notes">
+        <div class="k">Notes for Lola</div>
+        <div class="v ${notes?'':'empty'}">${notes ? esc(notes) : 'No notes yet — add formulas, preferences, allergies, birthdays, consultation notes so Lola can reference them on the next call.'}</div>
+      </div>
+      <div class="detail-actions">
+        <a class="detail-btn primary" href="bookings.html?client=${esc(c.id)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>
+          Book next
+        </a>
+        ${canText ? `<a class="detail-btn" href="inbox.html?compose=${encodeURIComponent(c.phone)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Text
+        </a>` : ''}
+        ${c.phone ? `<a class="detail-btn" href="tel:${esc(c.phone)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>
+          Call
+        </a>` : ''}
+        <button class="detail-btn" onclick="editClient('${esc(c.id)}')">Edit</button>
+      </div>
+    </div>`;
+}
+
+function render(){
+  const list = filterList();
+  $('narrativeLine').innerHTML = narrative();
+
+  // Counts
+  const by = { all: CLIENTS.length, vip: 0, due: 0, new: 0, lead: 0 };
+  CLIENTS.forEach(c => {
+    if(c.status === 'vip')  by.vip++;
+    if(isDue(c))            by.due++;
+    if(isNewThisMonth(c))   by.new++;
+    if(c.status === 'lead') by.lead++;
+  });
+  $('cnAll').textContent  = by.all;
+  $('cnVip').textContent  = by.vip;
+  $('cnDue').textContent  = by.due;
+  $('cnNew').textContent  = by.new;
+  $('cnLead').textContent = by.lead;
+
+  const host = $('clientsList');
+  if(!CLIENTS.length){
+    host.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-orb">L</div>
+        <div class="empty-title">No clients yet</div>
+        <div class="empty-sub">Add one, upload a CSV, or paste contacts and let Lola extract them. Every call Lola takes also creates a client automatically.</div>
+        <div style="display:flex;gap:10px;margin-top:6px">
+          <button class="btn btn-primary" onclick="openModal('manual')">Add client</button>
+          <button class="btn btn-ghost" onclick="openModal('csv')">Import CSV</button>
+        </div>
+      </div>`;
+    return;
+  }
+  if(!list.length){
+    host.innerHTML = `<div class="empty-state"><div class="empty-title">Nothing matches</div><div class="empty-sub">Clear the filter or search.</div></div>`;
+    return;
+  }
+  host.innerHTML = list.map(rowHtml).join('');
+}
+
+function setFilter(f){
+  FILTER = f;
+  document.querySelectorAll('.chip').forEach(el => {
+    const on = el.dataset.filter === f;
+    el.classList.toggle('on', on);
+    el.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  render();
+}
+function setQuery(q){ QUERY = String(q||'').trim(); render(); }
+function toggleClient(id){ OPEN_ID = OPEN_ID === id ? null : id; render(); }
+
+function editClient(id){
+  const c = CLIENTS.find(x => x.id === id);
+  if(!c) return;
+  openModal('manual');
+  $('firstName').value = c.first_name || '';
+  $('lastName').value  = c.last_name || '';
+  $('phone').value     = c.phone || '';
+  $('email').value     = c.email || '';
+  $('service').value   = c.preferred_service || '';
+  $('clientStatus').value = c.status || 'active';
+  $('notes').value     = c.notes || '';
+  if(c.profile_picture_url){
+    $('photoPreview').innerHTML = `<img src="${esc(c.profile_picture_url)}" alt="">`;
+  }
+  window.__EDIT_CLIENT_ID__ = id;
+}
+
+/* ── LOAD + POLL ─────────────────────────────────────────── */
+async function loadClients(firstLoad){
+  try{
+    const d = await api('/api/clients');
+    const list = d.clients || [];
+    if(!firstLoad){
+      const fresh = list.filter(c => !SEEN.has(c.id));
+      if(fresh.length && typeof window.lolaPulse === 'function'){
+        window.lolaPulse(`${fresh.length} new client${fresh.length===1?'':'s'} added`);
+      }
+    }
+    list.forEach(c => SEEN.add(c.id));
+    CLIENTS = list;
     render();
+  }catch(e){
+    $('clientsList').innerHTML = `<div class="empty-state"><div class="empty-sub">${esc(e.message)}</div></div>`;
+  }
+}
+
+/* ── MODAL ───────────────────────────────────────────────── */
+function openModal(pane){
+  window.__EDIT_CLIENT_ID__ = null;
+  $('clientModal').classList.add('open');
+  selectPane(pane||'manual');
+  $('modalStatus').textContent = '';
+  ['firstName','lastName','phone','email','service','notes','csvPreview','smartText'].forEach(id => { const el = $(id); if(el && el.tagName !== 'DIV') el.value = ''; });
+  $('photoPreview').textContent = 'Photo';
+  photoData = '';
+}
+function closeModal(){ $('clientModal').classList.remove('open'); }
+function selectPane(id){
+  document.querySelectorAll('.modal-tabs button').forEach(x => x.classList.toggle('on', x.dataset.pane === id));
+  document.querySelectorAll('.pane').forEach(x => x.classList.toggle('on', x.id === 'pane-'+id));
+}
+function setStatus(msg, kind){ const el = $('modalStatus'); el.className = 'status-msg ' + (kind || ''); el.textContent = msg; }
+
+let photoData = '';
+$('addBtn').onclick = () => openModal('manual');
+$('importBtn').onclick = () => openModal('csv');
+$('closeModal').onclick = closeModal;
+document.querySelectorAll('[data-cancel]').forEach(x => x.onclick = closeModal);
+document.querySelectorAll('.modal-tabs button').forEach(x => x.onclick = () => selectPane(x.dataset.pane));
+$('clientModal').onclick = e => { if(e.target === $('clientModal')) closeModal(); };
+
+$('photoInput').onchange = () => {
+  const file = $('photoInput').files[0];
+  if(!file) return;
+  if(file.size > 2097152){ setStatus('Photo must be 2 MB or smaller.', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = () => { photoData = reader.result; $('photoPreview').innerHTML = `<img src="${reader.result}" alt="">`; };
+  reader.readAsDataURL(file);
+};
+
+$('saveClient').onclick = async () => {
+  const btn = $('saveClient');
+  if(!$('firstName').value.trim()){ setStatus('First name is required.', 'err'); return; }
+  btn.disabled = true; setStatus('Saving client…');
+  try{
+    const body = {
+      first_name: $('firstName').value,
+      last_name:  $('lastName').value,
+      phone:      $('phone').value,
+      email:      $('email').value,
+      preferred_service: $('service').value,
+      status:     $('clientStatus').value,
+      notes:      $('notes').value
+    };
+    if(window.__EDIT_CLIENT_ID__) body.id = window.__EDIT_CLIENT_ID__;
+    const d = await api('/api/clients', { method:'POST', body: JSON.stringify(body) });
+    if(photoData && d.client?.id){
+      await api('/api/client-photo', { method:'POST', body: JSON.stringify({ client_id: d.client.id, data_url: photoData }) });
+    }
+    setStatus('Client saved. Lola can use this contact immediately.', 'ok');
+    await loadClients();
+    setTimeout(closeModal, 650);
+  }catch(e){ setStatus(e.message, 'err'); }
+  finally{ btn.disabled = false; }
+};
+
+/* CSV parser */
+let csvContacts = [];
+function parseCsv(text){
+  const lines = []; let row = []; let cell = ''; let quoted = false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i], next = text[i+1];
+    if(ch === '"' && quoted && next === '"'){ cell += '"'; i++; }
+    else if(ch === '"'){ quoted = !quoted; }
+    else if(ch === ',' && !quoted){ row.push(cell); cell = ''; }
+    else if((ch === '\n' || ch === '\r') && !quoted){
+      if(ch === '\r' && next === '\n') i++;
+      row.push(cell); if(row.some(x => x.trim())) lines.push(row);
+      row = []; cell = '';
+    } else cell += ch;
+  }
+  row.push(cell); if(row.some(x => x.trim())) lines.push(row);
+  if(lines.length < 2) return [];
+  const headers = lines.shift().map(x => x.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_'));
+  const key = h => ({ fullname:'name', full_name:'name', mobile:'phone', telephone:'phone', phone_number:'phone', firstname:'first_name', lastname:'last_name', service:'preferred_service', last_service:'preferred_service', ltv:'lifetime_value' })[h] || h;
+  return lines.map(cols => Object.fromEntries(headers.map((h,i) => [key(h), cols[i]?.trim() || '']))).filter(x => x.name || x.first_name);
+}
+
+$('csvInput').onchange = () => {
+  const f = $('csvInput').files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    csvContacts = parseCsv(reader.result);
+    $('csvPreview').textContent = csvContacts.length ? csvContacts.length+' contacts ready to import.' : 'No valid contact rows found. Check the header row.';
+    $('importCsv').disabled = !csvContacts.length;
+  };
+  reader.readAsText(f);
+};
+$('importCsv').onclick = async () => {
+  const b = $('importCsv'); b.disabled = true;
+  setStatus('Lola is saving '+csvContacts.length+' contacts…');
+  try{
+    const d = await api('/api/client-import', { method:'POST', body: JSON.stringify({ contacts: csvContacts }) });
+    setStatus((d.saved||0)+' saved · '+(d.created||0)+' new · '+(d.updated||0)+' updated.', 'ok');
+    await loadClients();
+    setTimeout(closeModal, 900);
+  }catch(e){ setStatus(e.message, 'err'); }
+  finally{ b.disabled = false; }
+};
+
+$('smartImport').onclick = async () => {
+  const b = $('smartImport');
+  const raw = $('smartText').value.trim();
+  if(!raw){ setStatus('Paste at least one contact.', 'err'); return; }
+  b.disabled = true; setStatus('Lola is identifying and saving contacts…');
+  try{
+    const d = await api('/api/client-import', { method:'POST', body: JSON.stringify({ raw_text: raw }) });
+    setStatus((d.saved||0)+' contacts saved.', 'ok');
+    await loadClients();
+    setTimeout(closeModal, 900);
+  }catch(e){ setStatus(e.message, 'err'); }
+  finally{ b.disabled = false; }
+};
+
+/* WhatsApp inline toggle */
+document.getElementById('clientsList').addEventListener('change', async e => {
+  const box = e.target.closest('input[data-wa]');
+  if(!box) return;
+  const id = box.dataset.wa, on = box.checked;
+  box.disabled = true;
+  try{
+    const d = await api('/api/clients', { method:'POST', body: JSON.stringify({ id, whatsapp_enabled: on }) });
+    if(!d.ok && d.error) throw new Error(d.error);
+    const c = CLIENTS.find(x => x.id === id);
+    if(c) c.whatsapp_enabled = on;
   }catch(err){
-    box.checked=!on;render();
-    alert('Could not update WhatsApp preference: '+err.message);
-  }finally{box.disabled=false}
+    box.checked = !on;
+    alert('Could not update WhatsApp preference: ' + err.message);
+  }finally{ box.disabled = false; }
 });
-loadClients().catch(e=>{$('rows').innerHTML='<tr><td colspan="6"><div class="empty">'+esc(e.message)+'</div></td></tr>'});
-</script></body></html>
+
+/* ── BOOT ───────────────────────────────────────────────── */
+(async () => {
+  await loadClients(true);
+  setInterval(() => { if(!document.hidden) loadClients(); }, 45000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) loadClients(); });
+})();
+</script>
+</body>
+</html>
