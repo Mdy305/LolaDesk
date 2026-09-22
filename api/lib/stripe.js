@@ -19,6 +19,25 @@ export async function connectAccount(tenant_id) {
   return data || null;
 }
 
+// Platform-level operations (no stripeAccount header).
+export function stripePlatform() {
+  const s = client();
+  return {
+    createExpressAccount: (opts) => s.accounts.create({
+      type: 'express',
+      email: opts.email,
+      country: opts.country || 'US',
+      business_type: opts.business_type || 'individual',
+      capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+      metadata: opts.metadata || {}
+    }),
+    retrieveAccount: (account_id) => s.accounts.retrieve(account_id),
+    createAccountLink: (opts) => s.accountLinks.create(opts),
+    createDashboardLink: (account_id) => s.accounts.createLoginLink(account_id),
+    raw: s
+  };
+}
+
 // Convenience: call any Stripe API against the tenant's connected account.
 export function stripeFor(tenant_id, account_id) {
   const s = client();
@@ -34,6 +53,17 @@ export function stripeFor(tenant_id, account_id) {
     payoutNow: (amount, currency='usd') => s.payouts.create({ amount, currency }, { stripeAccount: account_id }),
     refund: (payment_intent_id, opts={}) => s.refunds.create({ payment_intent: payment_intent_id, ...opts }, { stripeAccount: account_id }),
     paymentLink: (line_items, opts={}) => s.paymentLinks.create({ line_items, ...opts }, { stripeAccount: account_id }),
+    createPaymentIntent: (opts) => s.paymentIntents.create({
+      amount: opts.amount,
+      currency: opts.currency || 'usd',
+      description: opts.description,
+      metadata: opts.metadata || {},
+      confirm: !!opts.confirm,
+      off_session: !!opts.off_session,
+      automatic_payment_methods: opts.confirm ? undefined : { enabled: true },
+      application_fee_amount: opts.application_fee_amount
+    }, { stripeAccount: account_id }),
+    retrievePaymentIntent: (id) => s.paymentIntents.retrieve(id, { stripeAccount: account_id }),
     raw: s
   };
 }
@@ -62,8 +92,13 @@ export async function ensureConnectAccount(tenant, ownerEmail) {
 
 // Verify Stripe webhook signature — required for POST /api/stripe-webhook.
 export function verifyStripeSig(rawBody, signature) {
-  const s = client();
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) throw new Error('STRIPE_WEBHOOK_SECRET missing');
-  return s.webhooks.constructEvent(rawBody, signature, secret);
+  try {
+    const s = client();
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) throw new Error('STRIPE_WEBHOOK_SECRET missing');
+    return s.webhooks.constructEvent(rawBody, signature, secret);
+  } catch (e) {
+    console.error('verifyStripeSig failed', e?.message);
+    return null;
+  }
 }

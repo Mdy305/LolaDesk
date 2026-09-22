@@ -1,16 +1,18 @@
-// GET   /api/services              → list all
-// POST  /api/services               → create
-// PATCH /api/services?id=uuid      → update
-// DELETE /api/services?id=uuid     → soft-delete (active=false)
+// GET   /api/staff-admin              → list all staff
+// POST  /api/staff-admin               → create
+// PATCH /api/staff-admin?id=uuid      → update
+// DELETE /api/staff-admin?id=uuid     → soft-delete (active=false)
+//
+// NOTE: named staff-admin to avoid colliding with /api/revenue/staff.js.
+// Wire your settings page here.
 import { cors, jsonBody } from './lib/cors.js';
 import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 
 const FIELDS = [
-  'name', 'category', 'description', 'duration_min', 'price', 'currency',
-  'buffer_after_min', 'photo_url', 'deposit_override_type',
-  'deposit_override_amount', 'tags', 'sort_order', 'active'
+  'first_name', 'last_name', 'name', 'role', 'phone', 'email',
+  'color', 'services', 'photo_url', 'active'
 ];
 
 export default async function handler(req, res) {
@@ -25,23 +27,26 @@ export default async function handler(req, res) {
     const id = req.query?.id;
 
     if (req.method === 'GET') {
-      const { data, error } = await c.from('services')
+      const { data, error } = await c.from('staff')
         .select('*')
         .eq('tenant_id', tenant.id)
-        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('first_name', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
       if (error) throw error;
-      return res.json({ ok: true, services: data || [] });
+      return res.json({ ok: true, staff: data || [] });
     }
 
     if (req.method === 'POST') {
       const body = jsonBody(req);
       const row = { tenant_id: tenant.id };
       FIELDS.forEach(k => { if (k in body) row[k] = body[k]; });
+      if (!row.name && (row.first_name || row.last_name)) {
+        row.name = [row.first_name, row.last_name].filter(Boolean).join(' ');
+      }
       if (!row.name) return res.status(400).json({ ok: false, error: 'missing_name' });
-      const { data, error } = await c.from('services').insert(row).select().single();
+      const { data, error } = await c.from('staff').insert(row).select().single();
       if (error) throw error;
-      return res.json({ ok: true, service: data });
+      return res.json({ ok: true, staff: data });
     }
 
     if (req.method === 'PATCH') {
@@ -49,18 +54,18 @@ export default async function handler(req, res) {
       const body = jsonBody(req);
       const patch = {};
       FIELDS.forEach(k => { if (k in body) patch[k] = body[k]; });
-      const { data, error } = await c.from('services')
+      const { data, error } = await c.from('staff')
         .update(patch)
         .eq('id', id)
         .eq('tenant_id', tenant.id)
         .select().single();
       if (error) throw error;
-      return res.json({ ok: true, service: data });
+      return res.json({ ok: true, staff: data });
     }
 
     if (req.method === 'DELETE') {
       if (!id) return res.status(400).json({ ok: false, error: 'missing_id' });
-      const { error } = await c.from('services')
+      const { error } = await c.from('staff')
         .update({ active: false })
         .eq('id', id)
         .eq('tenant_id', tenant.id);
