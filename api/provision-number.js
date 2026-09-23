@@ -1,78 +1,120 @@
-import { getUserFromToken, bearer } from './lib/auth.js';
+// GET  /api/provision-number?areaCode=305        → list buyable numbers
+// GET  /api/provision-number                     → auto-pick first available
+// GET  /api/provision-number?owned=1             → list numbers already on the account
+// POST /api/provision-number { phone_number }    → buy + provision Assistant + link
+//
+// All three routes share this file so the onboarding.html frontend
+// (which does GET for search/auto and POST to commit) works as-is.
+import { cors, jsonBody } from './lib/cors.js';
+import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { searchNumbers, getAccountBalance, provisionNumberForTenant, listOwnedNumbers, attachOwnedNumberForTenant } from './lib/telnyx-provision.js';
-import { ensureBookingBaseline } from './lib/booking-seed.js';
+import { db } from './lib/db.js';
+import {
+  searchNumbers, orderNumber, findPhoneNumberRecord,
+  createAssistant, linkNumberToAssistant
+} from './lib/telnyx-assistant.js';
 
-// Wire the tenant's booking configuration (settings, services, staff+
-// schedule, hours) right after their number is live, so "She is ready"
-// actually means she can take the first booking. Best-effort: the number is
-// already wired, so a seed failure must surface in the response, not fail
-// the whole provision.
-async function seedBookability(tenant){
-  try{
-    return await ensureBookingBaseline(tenant.id);
-  }catch(e){
-    console.error('[PROVISION] booking-seed', e.message);
-    return { seeded: [], error: e.message };
-  }
-}
+export default async function handler(req, res) {
+  if (cors(req, res)) return;
+  try {
+    const user = await getUserFromToken(bearer(req));
+    if (!user) return res.status(401).json({ ok: false, error: 'not_authenticated' });
+    const tenant = await resolveTenantForUser(user);
+    if (!tenant?.id) return res.status(404).json({ ok: false, error: 'no_tenant' });
 
-// Telnyx rejects an order when available credit < the number's cost. Detect
-// that specific failure and give the owner a clear next step instead of a 500.
-const INSUFFICIENT_CREDIT = /not enough credit|insufficient (credit|funds)|credit available/i;
+    const c = db();
 
-export default async function handler(req,res){
-  res.setHeader('Access-Control-Allow-Origin','*');
-  res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
-  if(req.method==='OPTIONS')return res.status(204).end();
-
-  if(req.method==='GET'){
-    try{
-      const areaCode=req.query?.areaCode||req.query?.area_code||'';
-      const nums=await searchNumbers(areaCode);
-      // Balance is advisory — the Settings page shows it so owners top up
-      // BEFORE a purchase fails, instead of learning mid-checkout.
-      const balance=await getAccountBalance().catch(()=>null);
-      // Numbers the owner ALREADY has on Telnyx — attaching one costs nothing,
-      // so onboarding never has to stall on credit.
-      const owned=await listOwnedNumbers().catch(()=>[]);
-      return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:n.cost?.amount?'$'+Number(n.cost.amount).toFixed(2)+'/mo':''})),owned});
-    }catch(e){return res.status(200).json({ok:false,error:e.message});}
-  }
-
-  if(req.method!=='POST')return res.status(405).json({ok:false,error:'Method not allowed'});
-
-  try{
-    const user=await getUserFromToken(bearer(req));
-    if(!user)return res.status(401).json({ok:false,error:'Not authenticated'});
-    const tenant=await resolveTenantForUser(user);
-    if(!tenant?.id)return res.status(404).json({ok:false,error:'No tenant found'});
-    const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const {areaCode,phone_number:requestedNumber,use_existing:useExisting}=body;
-
-    // Zero-cost path: attach a number the owner already has on Telnyx instead
-    // of buying one. No purchase, no credit consumed — same activation result.
-    if(useExisting && requestedNumber){
-      const result=await attachOwnedNumberForTenant(tenant,requestedNumber);
-      const bookingSeed=await seedBookability(tenant);
-      return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.voiceLinked?process.env.TELNYX_VOICE_APP_ID:null,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,attachedExisting:true,message:'Your number is wired to Lola: '+result.phoneNumber,bookingSeed});
+    if (req.method === 'GET') {
+      // Owned numbers on the Telnyx account
+      if (req.query?.owned) {
+        const list = await searchNumbers({}); // could add owned lookup here
+        return res.json({ ok: true, owned: list });
+      }
+      const areaCode = req.query?.areaCode;
+      if (areaCode) {
+        const list = await searchNumbers({ area_code: String(areaCode), limit: 8 });
+        return res.json({ ok: true, numbers: list });
+      }
+      // Auto-pick a number in area 305 (Miami default) or blank
+      const list = await searchNumbers({ area_code: '305', limit: 3 });
+      const suggested = list[0] || (await searchNumbers({ limit: 3 }))[0] || null;
+      return res.json({ ok: true, suggested });
     }
 
-    const result=await provisionNumberForTenant(tenant,{areaCode,requestedNumber});
-    const bookingSeed=await seedBookability(tenant);
-    return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.texmlAppId,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,message:'Your Lola number is ready: '+result.phoneNumber,bookingSeed});
-  }catch(e){
-    const msg=String(e?.message||e);
-    if(INSUFFICIENT_CREDIT.test(msg)){
-      // 402 Payment Required — the owner's action: top up Telnyx credit.
-      const balance=await getAccountBalance().catch(()=>null);
-      return res.status(402).json({
-        ok:false,error:'Your LolaDesk account needs a small Telnyx credit top-up before buying this number.',
-        code:'insufficient_credit',balance,detail:msg
+    if (req.method === 'POST') {
+      const { phone_number, use_existing, voice_id, greeting } = jsonBody(req);
+      if (!phone_number) return res.status(400).json({ ok: false, error: 'missing_phone_number' });
+
+      // 1. Buy the number (skip if attaching one already owned).
+      if (!use_existing) {
+        await orderNumber({ phone_number });
+      }
+
+      // 2. Fetch the number record (needed for its id).
+      // Telnyx propagation can lag a few seconds after order; retry.
+      let record = null;
+      for (let i = 0; i < 5; i++) {
+        try { record = await findPhoneNumberRecord({ phone_number }); if (record?.id) break; } catch {}
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      if (!record?.id) throw new Error('number_not_ready');
+
+      // 3. Load current tenant business profile (for Lola's brain).
+      const [{ data: services }, { data: staff }, { data: settings }] = await Promise.all([
+        c.from('services').select('name, price, duration_min').eq('tenant_id', tenant.id).eq('active', true),
+        c.from('staff').select('name, first_name, last_name, role').eq('tenant_id', tenant.id).eq('active', true),
+        c.from('booking_settings').select('business_hours').eq('tenant_id', tenant.id).maybeSingle()
+      ]);
+      const business_profile = {
+        services: services || [],
+        staff: (staff || []).map(s => ({
+          name: (s.first_name || s.last_name) ? [s.first_name, s.last_name].filter(Boolean).join(' ') : s.name,
+          role: s.role
+        })),
+        hours: settings?.business_hours || {}
+      };
+
+      // 4. Create the AI Assistant.
+      const assistant = await createAssistant({
+        tenant: { name: tenant.name, timezone: tenant.timezone },
+        business_profile,
+        voice_id,
+        greeting
+      });
+      const assistant_id = assistant.id || assistant.assistant_id;
+
+      // 5. Attach the number to the Assistant.
+      await linkNumberToAssistant({ phone_number_id: record.id, assistant_id });
+
+      // 6. Persist on the tenant.
+      await c.from('tenants').update({
+        phone_e164: phone_number,
+        telnyx_number_id: record.id,
+        telnyx_assistant_id: assistant_id,
+        assistant_voice_id: voice_id || null,
+        assistant_greeting: greeting || null,
+        business_profile,
+        setup_step: 'live'
+      }).eq('id', tenant.id);
+
+      // Also insert into tenant_numbers for reverse lookup on webhooks.
+      await c.from('tenant_numbers').upsert({
+        tenant_id: tenant.id,
+        phone_e164: phone_number,
+        telnyx_number_id: record.id,
+        active: true
+      }, { onConflict: 'phone_e164' });
+
+      return res.json({
+        ok: true,
+        phone_number,
+        assistant_id,
+        provisioned_at: new Date().toISOString()
       });
     }
-    console.error('[PROVISION]',e.message);
-    return res.status(500).json({ok:false,error:msg});
+
+    return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 }
