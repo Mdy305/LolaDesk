@@ -1,6 +1,30 @@
 {
-  "crons": [
-    { "path": "/api/cron/no-show-scan", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/rebook-nudge", "schedule": "0 15 * * *" }
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/calendar.ics",
+      "destination": "/api/calendar-ics"
+    }
+  ],
+  "outputDirectory": ".",
+  "fluid": true,
+  "functions": {"api/**/*.js":{"maxDuration":60}},
+  "redirects":[
+    {"source":"/landing","destination":"/","permanent":false},
+    {"source":"/start","destination":"/onboarding","permanent":false},
+    {"source":"/get-started","destination":"/onboarding","permanent":false},
+    {"source":"/sign-in","destination":"/login","permanent":false},
+    {"source":"/demo","destination":"/dashboard","permanent":false}
+  ],
+  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}],
+  "crons":[
+    {"path":"/api/cron/sync-availability","schedule":"* * * * *"},
+    {"path":"/api/cron/sync-alerts","schedule":"*/15 * * * *"},
+    {"path":"/api/cron/publish-reviews","schedule":"0 * * * *"},
+    {"path":"/api/cron/sync-connections","schedule":"0 3 * * *"},
+    {"path":"/api/cron/autopilot","schedule":"0 * * * *"},
+    {"path":"/api/cron/booking-reminders","schedule":"0 * * * *"},
+    {"path":"/api/cron/deposits","schedule":"0 * * * *"},
+    {"path":"/api/cron/rebooking","schedule":"0 * * * *"}
   ]
 }
