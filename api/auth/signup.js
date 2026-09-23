@@ -1,93 +1,83 @@
-// POST /api/auth/signup { email, password, name, salonName, plan? }
-// Creates the Supabase Auth user, the tenant row, the tenant_users link,
-// seeds billing_policies + booking_settings defaults, and returns a session
-// token the onboarding flow uses for subsequent authenticated calls.
-import { cors, jsonBody } from '../lib/cors.js';
-import { db } from '../lib/db.js';
+/**
+ * POST /api/auth/signup
+ * { email, password, name, salonName, location, hours, plan, websiteUrl }
+ * Creates the auth user + a tenant + starts a 14-day trial.
+ * Returns { session, tenant }.
+ */
+import { createUser } from '../lib/auth.js';
+import { provisionTenantForUser } from '../lib/db.js';
 
-function slugify(s) {
-  return String(s || '').toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 40) || 'salon-' + Math.random().toString(36).slice(2, 8);
+// Auto-assignment must never slow down or break signup. Cap it at 6s (the
+// parallel Telnyx links usually finish in ~2s, but cold starts need margin);
+// on timeout the tenant simply keeps no number and can wire one in the wizard.
+// Signup must never burn the serverless invocation budget on a hanging
+// upstream (e.g. Supabase Auth). Each critical step is time-bound; if it
+// can't finish in time the promise rejects with a recognizable error instead
+// of the whole handler stalling to FUNCTION_INVOCATION_TIMEOUT. This makes
+// the failure fast and loud — it does not fabricate a success.
+export const AUTH_TIMEOUT_CODE = 'SIGNUP_AUTH_TIMEOUT';
+export const SIGNUP_STEP_BUDGET_MS = 10000;
+export function withBudget(promise, label){
+  let timer;
+  const cap = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const e = new Error('Signup step timed out: ' + label);
+      e.code = AUTH_TIMEOUT_CODE;
+      reject(e);
+    }, SIGNUP_STEP_BUDGET_MS);
+  });
+  return Promise.race([promise, cap]).finally(() => clearTimeout(timer));
 }
 
-async function ensureUniqueSlug(c, base) {
-  let slug = base, i = 1;
-  while (i < 20) {
-    const { data } = await c.from('tenants').select('id').eq('slug', slug).maybeSingle();
-    if (!data) return slug;
-    i++;
-    slug = base + '-' + i;
-  }
-  return base + '-' + Math.random().toString(36).slice(2, 6);
-}
+export default async function handler(req, res){
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  if(req.method==='OPTIONS') return res.status(200).end();
+  if(req.method!=='POST') return res.status(405).json({ error:'POST only' });
+  try{
+    const b = typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
+    const { email, password, name, salonName, location, hours, plan, websiteUrl, businessMode } = b;
+    if(!email || !password) return res.status(400).json({ error:'email and password required' });
+    if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
-export default async function handler(req, res) {
-  if (cors(req, res)) return;
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+    const user = await withBudget(createUser({ email, password, name }), 'create-user');
+    // Create the workspace immediately so the confirmation link has a tenant to
+    // activate, but leave it PENDING — no session, no live number — until the
+    // owner confirms their email. That closes the open-signup surface: a random
+    // address can't log in or burn a Telnyx number. Activation + number
+    // auto-assign happen on the owner's first confirmed login (/api/auth/login).
+    const tenant = await withBudget(provisionTenantForUser(user, {
+      name, salonName, location, hours, plan, websiteUrl, businessMode,
+      activationStatus: 'pending_email'
+    }), 'workspace');
+    if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
 
-  const c = db();
-  try {
-    const { email, password, name, salonName, plan } = jsonBody(req);
-    if (!email || !password) return res.status(400).json({ ok: false, error: 'missing_email_or_password' });
-    if (String(password).length < 8) return res.status(400).json({ ok: false, error: 'password_too_short' });
-
-    // 1. Create the auth user with the Supabase admin client.
-    const { data: userRes, error: userErr } = await c.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { name: name || salonName || null }
-    });
-    if (userErr) {
-      const msg = userErr.message || String(userErr);
-      return res.status(400).json({ ok: false, error: msg });
-    }
-    const user = userRes.user;
-
-    // 2. Create the tenant.
-    const baseSlug = slugify(salonName || name || email.split('@')[0]);
-    const slug = await ensureUniqueSlug(c, baseSlug);
-
-    const { data: tenant, error: tenantErr } = await c.from('tenants').insert({
-      name: salonName || name || 'My Salon',
-      slug,
-      plan: plan || 'trial',
-      timezone: 'America/New_York',
-      created_by: user.id,
-      setup_step: 'name_set'
-    }).select().single();
-    if (tenantErr) throw tenantErr;
-
-    // 3. Link user ↔ tenant.
-    await c.from('tenant_users').insert({
-      tenant_id: tenant.id,
-      user_id: user.id,
-      role: 'owner'
-    });
-
-    // 4. Seed default policies + booking settings.
-    await Promise.all([
-      c.from('billing_policies').insert({ tenant_id: tenant.id }).select(),
-      c.from('booking_settings').insert({ tenant_id: tenant.id }).select()
-    ]);
-
-    // 5. Sign the user in to get a session token for the wizard's next calls.
-    const { data: session, error: signInErr } = await c.auth.signInWithPassword({ email, password });
-    if (signInErr) {
-      // User was created but sign-in failed — client can just navigate to login.
-      return res.json({ ok: true, tenant: { id: tenant.id, slug }, token: null, needs_login: true });
-    }
-
-    return res.json({
+    return res.status(200).json({
       ok: true,
-      tenant: { id: tenant.id, slug, name: tenant.name },
-      user: { id: user.id, email: user.email },
-      token: session?.session?.access_token || null
+      requires_email_confirmation: true,
+      // Truthful signal from Supabase: confirmation_sent_at is set the moment
+      // the mailer dispatches the link, so the page can tell "on its way in
+      // 5 minutes — check spam" from "resend". Never a session at signup: the
+      // pending tenant only becomes live on the owner's first confirmed login.
+      email_dispatched: !!(user.confirmation_sent_at),
+      email,
+      detail: `We emailed a confirmation link to ${email} — click it to activate your salon, then sign in.`,
+      tenant: { slug: tenant.slug }
     });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }catch(e){
+    if(e?.code === AUTH_TIMEOUT_CODE){
+      // The auth provider (Supabase Auth) isn't responding. Fail fast and
+      // loud instead of stalling to the serverless timeout — the owner can
+      // see this on the dashboard as a 503, not a frozen 60s page.
+      return res.status(503).json({
+        ok:false, code:'auth_unavailable',
+        error: "We couldn't reach the sign-in service. Please try again in a moment.",
+        detail: String(e.message || e)
+      });
+    }
+    const msg = String(e&&e.message||e);
+    const code = /already registered|exists/i.test(msg) ? 409 : 500;
+    return res.status(code).json({ error: msg });
   }
 }
