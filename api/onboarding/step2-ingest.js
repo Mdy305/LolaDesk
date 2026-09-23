@@ -171,7 +171,7 @@ export default async function handler(req, res) {
             tenant_id: tenant.id,
             name: s.name,
             price: s.price || 0,
-            duration_min: s.duration_min || 60,
+            duration_minutes: s.duration_min || 60,
             category: s.category || null,
             description: s.description || null,
             active: true
