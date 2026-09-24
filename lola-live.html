@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>Lola</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --accent:#ccff00;
+    --accent-soft:rgba(204,255,0,.35);
+    --accent-glow:rgba(204,255,0,.15);
+    --text:#f6f6f7;
+    --muted:#6b6b70;
+    --dim:#3a3a40;
+    --bg:#050506;
+  }
+  html,body{
+    height:100%;width:100%;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  body{
+    display:grid;
+    grid-template-rows:1fr auto;
+    align-items:center;
+    justify-items:center;
+    background:radial-gradient(ellipse at center,#0a0a0b 0%,var(--bg) 60%);
+    touch-action:manipulation;
+  }
+  #stage{
+    position:relative;
+    width:100vw;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #atom{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .center{
+    position:relative;
+    z-index:2;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    padding-top:8vh;
+    pointer-events:none;
+  }
+  .word{
+    font-size:11px;
+    letter-spacing:.32em;
+    color:var(--muted);
+    text-transform:uppercase;
+    font-weight:500;
+    opacity:0;
+    transition:opacity .6s;
+  }
+  .word.on{opacity:1}
+  .transcript{
+    position:absolute;
+    bottom:120px;
+    left:50%;
+    transform:translateX(-50%);
+    max-width:min(720px,84vw);
+    text-align:center;
+    color:var(--text);
+    font-size:clamp(18px,2.8vw,26px);
+    font-weight:300;
+    line-height:1.4;
+    letter-spacing:-.02em;
+    padding:0 20px;
+    opacity:0;
+    transition:opacity .5s;
+    z-index:2;
+    pointer-events:none;
+  }
+  .transcript.on{opacity:.92}
+  .transcript small{
+    display:block;
+    font-size:10px;
+    letter-spacing:.28em;
+    color:var(--muted);
+    text-transform:uppercase;
+    margin-bottom:10px;
+    opacity:.7;
+  }
+  .tap{
+    position:relative;
+    z-index:3;
+    width:200px;
+    height:200px;
+    border-radius:50%;
+    background:transparent;
+    border:0;
+    cursor:pointer;
+    outline:0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .hint{
+    position:absolute;
+    bottom:36px;
+    left:50%;
+    transform:translateX(-50%);
+    color:var(--dim);
+    font-size:11px;
+    letter-spacing:.28em;
+    text-transform:uppercase;
+    z-index:2;
+    transition:opacity .4s;
+    pointer-events:none;
+  }
+  .hint.hidden{opacity:0}
+  .err{
+    position:absolute;
+    top:32px;
+    left:50%;
+    transform:translateX(-50%);
+    color:#ff6b60;
+    font-size:12px;
+    letter-spacing:.02em;
+    opacity:0;
+    transition:opacity .4s;
+    max-width:80vw;
+    text-align:center;
+    z-index:5;
+  }
+  .err.on{opacity:.9}
+  @media(prefers-reduced-motion:reduce){
+    .word.on,.transcript.on{transition:none}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="atom"></canvas>
+  <div class="center">
+    <div class="word" id="state">Listening</div>
+    <button class="tap" id="tap" aria-label="Talk to Lola"></button>
+  </div>
+  <div class="transcript" id="transcript"></div>
+  <div class="hint" id="hint">Tap the orb to speak</div>
+  <div class="err" id="err"></div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+// Lola-Live — one page, one atom, one voice.
+// ═══════════════════════════════════════════════════════════════
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('atom');
+const ctx = canvas.getContext('2d', { alpha: true });
+const stateEl = $('state');
+const transcriptEl = $('transcript');
+const hintEl = $('hint');
+const errEl = $('err');
+const tapEl = $('tap');
+
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0, cx = 0, cy = 0;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth = window.innerWidth;
+  H = canvas.clientHeight = window.innerHeight;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx = W / 2;
+  cy = H / 2;
+}
+window.addEventListener('resize', resize, { passive: true });
+resize();
+
+// ─── State ────────────────────────────────────────────────────
+const STATE = { IDLE:'idle', LISTENING:'listening', THINKING:'thinking', SPEAKING:'speaking', ERROR:'error' };
+let state = STATE.IDLE;
+let amplitude = 0;      // 0..1 real-time audio level
+let amplitudeTarget = 0;
+let ringPulses = [];    // { r, alpha, born }
+let phase = 0;          // rotation
+let breath = 0;
+
+function setState(s) {
+  state = s;
+  if (s === STATE.IDLE) {
+    stateEl.classList.remove('on');
+    hintEl.classList.remove('hidden');
+  } else {
+    stateEl.textContent = ({
+      [STATE.LISTENING]: 'Listening',
+      [STATE.THINKING]:  'Thinking',
+      [STATE.SPEAKING]:  'Lola',
+      [STATE.ERROR]:     ''
+    })[s] || '';
+    stateEl.classList.add('on');
+    hintEl.classList.add('hidden');
+  }
+}
+
+function showTranscript(who, text) {
+  if (!text) { transcriptEl.classList.remove('on'); return; }
+  transcriptEl.innerHTML = `<small>${who}</small>${escapeHtml(text)}`;
+  transcriptEl.classList.add('on');
+}
+
+function showError(text) {
+  errEl.textContent = text || '';
+  errEl.classList.toggle('on', !!text);
+  if (text) setTimeout(() => errEl.classList.remove('on'), 4200);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function firePulse() {
+  ringPulses.push({ r: 0, alpha: 0.55, born: performance.now() });
+  if (ringPulses.length > 8) ringPulses.shift();
+}
+
+// ─── The atom ─────────────────────────────────────────────────
+function drawAtom() {
+  const now = performance.now() / 1000;
+  phase += 0.006;
+  breath = (Math.sin(now * 0.9) + 1) / 2;
+
+  // Smooth amplitude
+  amplitude += (amplitudeTarget - amplitude) * 0.18;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Base size — smaller on mobile
+  const base = Math.min(W, H) * 0.16;
+  const idleBoost = 1 + breath * 0.05;
+  const activeBoost = 1 + amplitude * 0.65;
+  const radius = base * idleBoost * (state === STATE.IDLE ? 1 : activeBoost);
+
+  // ── Halo — outer glow, breathing
+  const haloR = radius * 4.2;
+  const halo = ctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, haloR);
+  halo.addColorStop(0, `rgba(204,255,0,${0.18 + amplitude * 0.15 + breath * 0.02})`);
+  halo.addColorStop(0.35, `rgba(204,255,0,${0.06 + amplitude * 0.05})`);
+  halo.addColorStop(1, 'rgba(204,255,0,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Ring pulses (fired on speech events)
+  for (let i = ringPulses.length - 1; i >= 0; i--) {
+    const p = ringPulses[i];
+    const age = (performance.now() - p.born) / 1000;
+    p.r = radius + age * 220;
+    p.alpha = Math.max(0, 0.55 - age * 0.7);
+    if (p.alpha <= 0.01) { ringPulses.splice(i, 1); continue; }
+    ctx.beginPath();
+    ctx.arc(cx, cy, p.r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(204,255,0,${p.alpha})`;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  }
+
+  // ── Orbiting particles
+  const particleCount = 42;
+  for (let i = 0; i < particleCount; i++) {
+    const angle = (i / particleCount) * Math.PI * 2 + phase + Math.sin(now * 0.3 + i) * 0.15;
+    const distanceJitter = radius * (1.3 + Math.sin(now * 0.7 + i * 0.5) * 0.12);
+    const distance = distanceJitter + amplitude * 24;
+    const px = cx + Math.cos(angle) * distance;
+    const py = cy + Math.sin(angle) * distance;
+    const size = 1.4 + (amplitude * 2.6) + Math.sin(now * 2 + i) * 0.5;
+    const alpha = 0.35 + amplitude * 0.5 + Math.sin(now * 1.5 + i) * 0.15;
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(0.5, size), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(204,255,0,${Math.min(1, alpha)})`;
+    ctx.fill();
+  }
+
+  // ── Core — solid center
+  const coreR = radius * 0.42;
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 2);
+  core.addColorStop(0, 'rgba(241,255,192,0.95)');
+  core.addColorStop(0.35, `rgba(204,255,0,${0.85 + amplitude * 0.1})`);
+  core.addColorStop(1, 'rgba(122,158,0,0.0)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreR * 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  requestAnimationFrame(drawAtom);
+}
+requestAnimationFrame(drawAtom);
+
+// ─── Web Audio — mic capture for amplitude ────────────────────
+let audioCtx = null;
+let micStream = null;
+let micAnalyser = null;
+let micDataArray = null;
+
+async function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+}
+
+async function startMicVisualization() {
+  await ensureAudioContext();
+  if (!micStream) {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch (e) {
+      showError('Microphone permission denied.');
+      throw e;
+    }
+    const src = audioCtx.createMediaStreamSource(micStream);
+    micAnalyser = audioCtx.createAnalyser();
+    micAnalyser.fftSize = 1024;
+    micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+    src.connect(micAnalyser);
+  }
+  requestAnimationFrame(tickMic);
+}
+
+function tickMic() {
+  if (!micAnalyser || state !== STATE.LISTENING) { amplitudeTarget = 0; return; }
+  micAnalyser.getByteTimeDomainData(micDataArray);
+  let sum = 0;
+  for (let i = 0; i < micDataArray.length; i++) {
+    const v = (micDataArray[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / micDataArray.length);
+  amplitudeTarget = Math.min(1, rms * 5);
+  requestAnimationFrame(tickMic);
+}
+
+// ─── Web Audio — TTS playback with amplitude ──────────────────
+function playAudioFromUrl(url) {
+  return new Promise(async (resolve, reject) => {
+    await ensureAudioContext();
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('speak_failed_' + r.status);
+      const buf = await r.arrayBuffer();
+      const decoded = await audioCtx.decodeAudioData(buf);
+      const src = audioCtx.createBufferSource();
+      src.buffer = decoded;
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      const arr = new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      src.start(0);
+      firePulse();
+      let stopping = false;
+      const tick = () => {
+        if (stopping) return;
+        analyser.getByteTimeDomainData(arr);
+        let sum = 0;
+        for (let i = 0; i < arr.length; i++) {
+          const v = (arr[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / arr.length);
+        amplitudeTarget = Math.min(1, rms * 6);
+        requestAnimationFrame(tick);
+      };
+      tick();
+      src.onended = () => { stopping = true; amplitudeTarget = 0; resolve(); };
+    } catch (e) { reject(e); }
+  });
+}
+
+// ─── Speech recognition ───────────────────────────────────────
+let recognition = null;
+let recActive = false;
+
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  const r = new SR();
+  r.lang = 'en-US';
+  r.interimResults = true;
+  r.continuous = false;
+  r.maxAlternatives = 1;
+  return r;
+}
+
+async function listenOnce() {
+  if (recActive) return;
+  recognition = recognition || initRecognition();
+  if (!recognition) {
+    showError('Speech recognition not supported. Try Chrome or Safari.');
+    return;
+  }
+
+  setState(STATE.LISTENING);
+  showTranscript('you', '');
+  await startMicVisualization();
+
+  let heardFinal = '';
+  recActive = true;
+
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (const res of e.results) {
+      if (res.isFinal) final += res[0].transcript;
+      else interim += res[0].transcript;
+    }
+    if (interim) showTranscript('you', interim);
+    if (final) heardFinal = final;
+  };
+  recognition.onerror = (e) => {
+    recActive = false;
+    if (e.error === 'no-speech') { setState(STATE.IDLE); showTranscript(); return; }
+    showError('Voice: ' + (e.error || 'unknown'));
+    setState(STATE.IDLE);
+  };
+  recognition.onend = async () => {
+    recActive = false;
+    if (!heardFinal) { setState(STATE.IDLE); return; }
+    showTranscript('you', heardFinal);
+    await ask(heardFinal);
+  };
+  try { recognition.start(); } catch (e) { recActive = false; }
+}
+
+// ─── Ask Lola ─────────────────────────────────────────────────
+function getBearer() {
+  // Look at common auth token keys
+  for (const k of Object.keys(localStorage)) {
+    if (/access_token|auth-token|sb-.*-auth-token/i.test(k)) {
+      try {
+        const v = localStorage.getItem(k);
+        if (!v) continue;
+        try {
+          const parsed = JSON.parse(v);
+          if (parsed?.access_token) return parsed.access_token;
+          if (parsed?.currentSession?.access_token) return parsed.currentSession.access_token;
+        } catch { if (v.length > 20 && !/^\s*[\{\[]/.test(v)) return v; }
+      } catch {}
+    }
+  }
+  return null;
+}
+
+async function ask(question) {
+  setState(STATE.THINKING);
+  showTranscript('you', question);
+  firePulse();
+
+  // Try /api/lola/ask first (my wiring4 endpoint), then fall back to /api/lola
+  const token = getBearer();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+
+  let answer = null;
+  for (const url of ['/api/lola/ask', '/api/lola', '/api/lola-brain']) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ question, prompt: question, text: question })
+      });
+      if (!r.ok) continue;
+      const j = await r.json().catch(() => null);
+      answer = j?.answer || j?.reply || j?.speak || j?.text || j?.response || j?.content || null;
+      if (answer) break;
+    } catch {}
+  }
+
+  if (!answer) {
+    setState(STATE.ERROR);
+    showError('Lola could not respond. Check /api/lola/ask is live and you are signed in.');
+    setTimeout(() => setState(STATE.IDLE), 1200);
+    return;
+  }
+
+  showTranscript('lola', answer);
+  setState(STATE.SPEAKING);
+  firePulse();
+
+  // Speak the answer
+  try {
+    const speakUrl = '/api/speak-lola?text=' + encodeURIComponent(answer.slice(0, 600));
+    await playAudioFromUrl(speakUrl);
+  } catch (e) {
+    showError('Voice playback failed.');
+  }
+  setState(STATE.IDLE);
+  setTimeout(() => showTranscript(), 4500);
+}
+
+// ─── Tap to talk ──────────────────────────────────────────────
+tapEl.addEventListener('click', () => {
+  if (state === STATE.SPEAKING) return;
+  if (state === STATE.LISTENING) { try { recognition && recognition.stop(); } catch {} return; }
+  listenOnce();
+});
+
+// ─── Wake word (optional, best-effort) ────────────────────────
+// If SpeechRecognition supports continuous, we listen for "Lola" and start.
+(function ambientWake(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const wake = new SR();
+  wake.lang = 'en-US';
+  wake.interimResults = true;
+  wake.continuous = true;
+  wake.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = (e.results[i][0]?.transcript || '').toLowerCase();
+      if (/\blola\b/.test(t) && state === STATE.IDLE) {
+        try { wake.stop(); } catch {}
+        listenOnce();
+        setTimeout(() => { try { wake.start(); } catch {} }, 6000);
+        return;
+      }
+    }
+  };
+  wake.onerror = () => { setTimeout(() => { try { wake.start(); } catch {} }, 3000); };
+  wake.onend = () => { setTimeout(() => { try { wake.start(); } catch {} }, 300); };
+  // Only start after first user gesture (browser policy)
+  document.addEventListener('click', function once() {
+    document.removeEventListener('click', once);
+    try { wake.start(); } catch {}
+  });
+})();
+
+// Idle amplitude drift so the atom always has micro-motion
+setInterval(() => {
+  if (state === STATE.IDLE) {
+    amplitudeTarget = 0.03 + Math.random() * 0.02;
+    setTimeout(() => { if (state === STATE.IDLE) amplitudeTarget = 0; }, 400);
+  }
+}, 1800);
+</script>
+</body>
+</html>
