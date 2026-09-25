@@ -1,0 +1,230 @@
+/* ============================================================
+   CALENDAR — Apple-style day landing for LolaDesk
+   White, generous whitespace, SF Pro Display.
+   The atom lives top-right; it grows when you speak.
+   ============================================================ */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: #fbfbfd;
+  color: #1d1d1f;
+  font: 400 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── Day view ─────────────────────────────────────────────── */
+.day {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 88px 32px 120px;
+}
+
+.day-head { margin-bottom: 40px; }
+
+.day-label {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #86868b;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.day-date {
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #1d1d1f;
+  margin: 0 0 20px;
+}
+
+.day-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.day-nav-btn {
+  height: 34px;
+  min-width: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: #fff;
+  color: #1d1d1f;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.day-nav-btn:hover { background: #f2f2f4; border-color: rgba(0,0,0,0.14); }
+.day-nav-today { font-weight: 500; }
+
+/* ── Summary tile (opt., set by JS if wanted later) ───────── */
+.day-summary {
+  padding: 16px 20px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 14px;
+  margin-bottom: 28px;
+  font-size: 14px;
+  color: #444;
+}
+
+/* ── Agenda list ──────────────────────────────────────────── */
+.day-agenda {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-loading, .day-empty {
+  padding: 80px 0;
+  text-align: center;
+  color: #86868b;
+  font-size: 15px;
+}
+
+.appt {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background 160ms ease;
+}
+.appt:first-child { border-top: none; }
+.appt:hover { background: rgba(0, 0, 0, 0.02); }
+
+.appt-time {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1d1d1f;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.appt-body { min-width: 0; }
+.appt-name {
+  font-size: 17px;
+  font-weight: 500;
+  color: #1d1d1f;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.appt-service { font-size: 14px; color: #6e6e73; }
+.appt-stylist {
+  font-size: 13px;
+  color: #86868b;
+  text-align: right;
+  padding-left: 8px;
+  white-space: nowrap;
+}
+
+/* ── The Atom (top-right, always visible) ─────────────────── */
+.atom {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 64px;
+  height: 64px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  z-index: 100;
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              top 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              right 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              width 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              height 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, top, right, width, height;
+}
+.atom canvas { width: 100%; height: 100%; pointer-events: none; display: block; }
+.atom:hover { transform: scale(1.06); }
+.atom:focus { outline: none; }
+.atom:focus-visible { outline: 2px solid rgba(0, 122, 255, 0.5); outline-offset: 4px; border-radius: 50%; }
+
+.atom.expanded {
+  top: calc(50vh - 100px);
+  right: calc(50vw - 100px);
+  width: 200px;
+  height: 200px;
+}
+
+/* ── Overlay when engaged ─────────────────────────────────── */
+.atom-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+  backdrop-filter: saturate(180%) blur(30px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease;
+  z-index: 50;
+}
+.atom-overlay.on { opacity: 1; pointer-events: auto; }
+
+.atom-overlay-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  color: #86868b;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 200ms;
+  z-index: 200;
+}
+.atom-overlay-close:hover { background: rgba(0, 0, 0, 0.05); color: #1d1d1f; }
+
+.atom-transcript {
+  position: absolute;
+  top: 18vh;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 640px);
+  padding: 0 32px;
+  font-size: 22px;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  color: #1d1d1f;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  pointer-events: none;
+}
+.atom-transcript.show { opacity: 1; }
+
+.atom-caption {
+  position: absolute;
+  bottom: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #86868b;
+  pointer-events: none;
+}
+
+/* ── Small screens ────────────────────────────────────────── */
+@media (max-width: 520px) {
+  .day { padding: 80px 20px 100px; }
+  .day-date { font-size: 32px; }
+  .appt { grid-template-columns: 72px 1fr; padding: 18px 0; }
+  .appt-stylist { display: none; }
+}

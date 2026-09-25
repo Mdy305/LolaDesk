@@ -255,7 +255,7 @@ window.signIn=async ()=>{
       window.location.href = 'onboarding.html';
       return;
     }
-    window.location.href = next ? decodeURIComponent(next) : 'dashboard.html';
+    window.location.href = next ? decodeURIComponent(next) : 'calendar.html';
   }catch(e){ stateEl.textContent = e.message||'Invalid email or password'; }
 };
 document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') signIn(); });
