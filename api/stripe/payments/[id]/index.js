@@ -1,9 +1,9 @@
 // GET /api/stripe/payments/:id
 // Details for a single PaymentIntent on the tenant's Connect account.
-import { cors } from '../../lib/cors.js';
-import { bearer, getUserFromToken } from '../../lib/auth.js';
-import { resolveTenantForUser } from '../../lib/tenant-access.js';
-import { connectAccount, stripeFor } from '../../lib/stripe.js';
+import { cors } from '../../../lib/cors.js';
+import { bearer, getUserFromToken } from '../../../lib/auth.js';
+import { resolveTenantForUser } from '../../../lib/tenant-access.js';
+import { connectAccount, stripeFor } from '../../../lib/stripe.js';
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;

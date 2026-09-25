@@ -2,10 +2,10 @@
 // POST /api/tenant/billing-policies → replace them
 // Body: full policy object; shape:
 //   { deposits: {...}, no_show: {...}, late_cancel: {...}, tips: {...}, auto_charge: {...} }
-import { cors, jsonBody } from '../lib/cors.js';
-import { bearer, getUserFromToken } from '../lib/auth.js';
-import { resolveTenantForUser } from '../lib/tenant-access.js';
-import { db } from '../lib/db.js';
+import { cors, jsonBody } from '../../lib/cors.js';
+import { bearer, getUserFromToken } from '../../lib/auth.js';
+import { resolveTenantForUser } from '../../lib/tenant-access.js';
+import { db } from '../../lib/db.js';
 
 // Sensible defaults if a tenant has never saved policies before.
 const DEFAULTS = {
