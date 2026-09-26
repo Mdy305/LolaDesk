@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fbfbfd">
+<title>Client · LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/client.css">
+</head>
+<body>
+
+<!-- Lola atom (auto-mounts) -->
+<div data-lola-atom class="cp-atom-mount"></div>
+
+<div class="cp">
+  <!-- Header: avatar + name + quick stats -->
+  <header class="cp-head">
+    <a href="/clients" class="cp-back" aria-label="Back to clients">&larr;</a>
+    <div class="cp-avatar" id="cpAvatar" aria-hidden="true">&mdash;</div>
+    <div class="cp-heading">
+      <div class="cp-name" id="cpName">Loading&hellip;</div>
+      <div class="cp-sub" id="cpSub"></div>
+      <div class="cp-tags" id="cpTags"></div>
+    </div>
+    <div class="cp-quick">
+      <div class="stat">
+        <div class="stat-label">Lifetime</div>
+        <div class="stat-value" id="statLifetime">&mdash;</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Visits</div>
+        <div class="stat-value" id="statVisits">&mdash;</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Last visit</div>
+        <div class="stat-value" id="statLast">&mdash;</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Due back</div>
+        <div class="stat-value" id="statDue">&mdash;</div>
+      </div>
+    </div>
+    <div class="cp-actions">
+      <button id="btnBook"    class="btn primary">Book</button>
+      <button id="btnText"    class="btn">Text</button>
+      <button id="btnCall"    class="btn">Call back</button>
+      <button id="btnDeposit" class="btn">Send deposit link</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="cp-tabs" role="tablist">
+    <button data-tab="overview"    class="cp-tab on" role="tab">Overview</button>
+    <button data-tab="history"     class="cp-tab" role="tab">Visits</button>
+    <button data-tab="formulas"    class="cp-tab" role="tab">Formulas</button>
+    <button data-tab="notes"       class="cp-tab" role="tab">Notes</button>
+    <button data-tab="conversations" class="cp-tab" role="tab">Lola chats</button>
+    <button data-tab="photos"      class="cp-tab" role="tab">Photos</button>
+    <button data-tab="payments"    class="cp-tab" role="tab">Payments</button>
+  </nav>
+
+  <!-- Content panes -->
+  <main class="cp-body">
+    <section id="paneOverview"      class="cp-pane on"></section>
+    <section id="paneHistory"       class="cp-pane"></section>
+    <section id="paneFormulas"      class="cp-pane"></section>
+    <section id="paneNotes"         class="cp-pane"></section>
+    <section id="paneConversations" class="cp-pane"></section>
+    <section id="panePhotos"        class="cp-pane"></section>
+    <section id="panePayments"      class="cp-pane"></section>
+  </main>
+</div>
+
+<script src="/lola-core.js" defer></script>
+<script src="/client.js" defer></script>
+</body>
+</html>
