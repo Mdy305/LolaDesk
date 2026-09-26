@@ -49,7 +49,7 @@
     el.innerHTML = '<div class="day-loading">Loading&hellip;</div>';
     const dateStr = isoDate(activeDate());
     try {
-      const r = await fetch(`/api/appointments?date=${dateStr}`, { credentials: 'include' });
+      const r = await fetch(`/api/calendar?date=${dateStr}`, { credentials: 'include' });
       if (!r.ok) {
         if (r.status === 401) { location.href = '/login?next=%2Fcalendar.html'; return; }
         throw new Error('load');

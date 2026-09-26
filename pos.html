@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0c">
+<title>POS · LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/pos.css">
+</head>
+<body>
+
+<div class="pos">
+
+  <!-- Header -->
+  <header class="pos-head">
+    <div>
+      <div class="pos-label">Register</div>
+      <div class="pos-title" id="posTenant">&mdash;</div>
+    </div>
+    <div class="pos-head-right">
+      <button class="btn-ghost" id="btnClose">Close drawer</button>
+      <button class="btn-ghost" id="btnEndDay">End of day</button>
+    </div>
+  </header>
+
+  <!-- Body: left = catalog, right = cart -->
+  <main class="pos-body">
+
+    <!-- Catalog -->
+    <section class="pos-catalog">
+      <div class="pos-search">
+        <input id="catSearch" type="search" placeholder="Search services or products…" autocomplete="off">
+      </div>
+      <div class="pos-tabs">
+        <button class="pos-tab on" data-tab="services">Services</button>
+        <button class="pos-tab" data-tab="products">Products</button>
+        <button class="pos-tab" data-tab="gift">Gift cards</button>
+        <button class="pos-tab" data-tab="quick">Quick amount</button>
+      </div>
+      <div class="pos-grid" id="posGrid">
+        <div class="pos-loading">Loading&hellip;</div>
+      </div>
+    </section>
+
+    <!-- Cart -->
+    <aside class="pos-cart">
+      <div class="pos-cart-head">
+        <div>
+          <div class="pos-label">Sale</div>
+          <div class="pos-client" id="cartClient">Walk-in</div>
+        </div>
+        <button class="btn-ghost small" id="btnAssignClient">Assign client</button>
+      </div>
+
+      <ul class="pos-cart-items" id="cartItems">
+        <li class="pos-cart-empty">Add items from the left to start a sale.</li>
+      </ul>
+
+      <div class="pos-cart-totals">
+        <div class="row"><span>Subtotal</span><span id="sumSubtotal">$0.00</span></div>
+        <div class="row"><span>Tax</span><span id="sumTax">$0.00</span></div>
+        <div class="row tip-row">
+          <span>Tip</span>
+          <div class="tip-controls">
+            <button class="tip-btn" data-tip="0">No tip</button>
+            <button class="tip-btn" data-tip="15">15%</button>
+            <button class="tip-btn" data-tip="18">18%</button>
+            <button class="tip-btn on" data-tip="20">20%</button>
+            <button class="tip-btn" data-tip="25">25%</button>
+            <button class="tip-btn" data-tip="custom">Custom</button>
+          </div>
+          <span id="sumTip">$0.00</span>
+        </div>
+        <div class="row total"><span>Total</span><span id="sumTotal">$0.00</span></div>
+      </div>
+
+      <div class="pos-pay">
+        <button class="pay-btn primary" id="payCard">
+          <div class="pay-icon">💳</div>
+          <div><div class="pay-label">Tap or insert card</div><div class="pay-sub">Stripe Terminal / Payment Element</div></div>
+        </button>
+        <button class="pay-btn" id="payCash">
+          <div class="pay-icon">💵</div>
+          <div><div class="pay-label">Cash</div><div class="pay-sub">Record cash sale</div></div>
+        </button>
+        <button class="pay-btn" id="payLink">
+          <div class="pay-icon">🔗</div>
+          <div><div class="pay-label">Send payment link</div><div class="pay-sub">SMS or email</div></div>
+        </button>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- The atom (mounted by lola-core.js) -->
+  <div data-lola-atom class="pos-atom"></div>
+
+</div>
+
+<!-- Payment modal -->
+<div id="payModal" class="pay-modal" hidden>
+  <div class="pay-card">
+    <button class="pay-modal-close" id="payClose">×</button>
+    <div id="payBody"></div>
+  </div>
+</div>
+
+<!-- Receipt modal -->
+<div id="receiptModal" class="pay-modal" hidden>
+  <div class="pay-card">
+    <button class="pay-modal-close" id="receiptClose">×</button>
+    <div id="receiptBody"></div>
+  </div>
+</div>
+
+<script src="/lola-core.js" defer></script>
+<script src="/pos.js" defer></script>
+</body>
+</html>
