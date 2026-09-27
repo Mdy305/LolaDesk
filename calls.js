@@ -67,6 +67,7 @@
   // ── Load ─────────────────────────────────────────────────
   async function loadCalls() {
     const endpoints = [
+      '/api/call-center/calls?limit=100',
       '/api/calls?limit=100',
       '/api/calls/list?limit=100',
       '/api/calls'
@@ -101,17 +102,18 @@
       status: (row.status || row.state || 'unknown').toString().toLowerCase(),
       outcome: row.outcome || row.result || '',
       direction: (row.direction || 'inbound').toLowerCase(),
-      from: row.from || row.caller_phone || row.phone || '',
-      to:   row.to   || row.called_phone || '',
+      from: (String(row.direction || '').toLowerCase() === 'outbound' ? (row.to || row.to_number) : (row.phone || row.from || row.from_number)) || row.caller_phone || '',
+      to:   row.to   || row.to_number || row.called_phone || '',
       client_name: row.client_name || row.caller_name || row.name || '',
-      duration_sec: parseInt(row.duration_sec || row.duration || row.duration_seconds || 0, 10) || 0,
+      duration_sec: parseInt(row.duration_sec || row.duration_seconds || row.duration || 0, 10) || 0,
       started_at: row.started_at || row.created_at || row.starts_at || null,
       ended_at:   row.ended_at   || row.finished_at || null,
-      recording_url: row.recording_url || row.recording || null,
-      transcript: row.transcript || row.notes || '',
+      recording_url: /^https?:\/\//i.test(String(row.recording_audio_url || row.recording_url || row.recording || '')) ? (row.recording_audio_url || row.recording_url || row.recording) : null,
+      transcript: (typeof row.transcript === 'string' && row.transcript && !/^https?:\/\//i.test(row.transcript)) ? row.transcript
+        : ((typeof row.recording_url === 'string' && row.recording_url && !/^https?:\/\//i.test(row.recording_url)) ? row.recording_url : (row.notes || '')),
       summary: row.summary || row.snippet || '',
-      is_voicemail: !!(row.is_voicemail || (row.recording_url && !row.duration_sec)),
-      handled: !!row.handled,
+      is_voicemail: !!row.is_voicemail,
+      handled: !!(row.handled || row.handled_at),
       raw: row
     };
   }
@@ -210,7 +212,7 @@
 
   async function refreshDetail() {
     if (!state.selected) return;
-    for (const ep of [`/api/calls/${state.selected.id}`, `/api/calls?id=${state.selected.id}`]) {
+    for (const ep of [`/api/call-center/call?id=${encodeURIComponent(state.selected.id)}`]) {
       try {
         const r = await fetch(ep, { credentials: 'include' });
         if (!r.ok) continue;
@@ -255,7 +257,7 @@
       ` : ''}
 
       <div class="cc-transcript-label">${live ? 'Live transcript' : 'Transcript'}</div>
-      <div class="cc-transcript ${live ? 'live' : ''} ${c.transcript ? '' : 'empty'}">${esc(c.transcript || 'No transcript yet.')}</div>
+      <div class="cc-transcript cc-thread ${live ? 'live' : ''} ${c.transcript ? '' : 'empty'}">${c.transcript ? threadHtml(c.transcript, c.client_name) : 'No conversation recorded for this call.'}</div>
 
       <div class="cc-actions">
         ${live ? `<button class="live-take primary" id="btnTakeOver">Take over call</button>` : ''}
@@ -277,6 +279,39 @@
     $('btnAddWaitlist')?.addEventListener('click', () => addToWaitlist(c));
   }
 
+  function threadHtml(text, clientName) {
+    const who = String(clientName || '').split(' ')[0] || 'Caller';
+    const lines = String(text || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const bubbles = [];
+    for (const line of lines) {
+      const m = /^(caller|client|customer|user|lola|assistant|agent)\s*:\s*(.*)$/i.exec(line);
+      if (m) {
+        const lola = /^(lola|assistant|agent)$/i.test(m[1]);
+        bubbles.push({ lola, text: m[2] });
+      } else if (bubbles.length) {
+        bubbles[bubbles.length - 1].text += ' ' + line;
+      } else {
+        bubbles.push({ lola: false, text: line });
+      }
+    }
+    return bubbles.map(b => `<div class="cc-msg ${b.lola ? 'lola' : 'caller'}"><div class="cc-who">${b.lola ? 'Lola' : esc(who)}</div><div class="cc-bubble">${esc(b.text)}</div></div>`).join('');
+  }
+  (function threadCss() {
+    if (document.getElementById('cc-thread-css')) return;
+    const st = document.createElement('style'); st.id = 'cc-thread-css';
+    st.textContent = `
+      .cc-thread { display:flex; flex-direction:column; gap:10px; white-space:normal; }
+      .cc-msg { display:flex; flex-direction:column; max-width:82%; }
+      .cc-msg.caller { align-self:flex-start; }
+      .cc-msg.lola { align-self:flex-end; align-items:flex-end; }
+      .cc-who { font-size:11px; letter-spacing:.06em; text-transform:uppercase; opacity:.55; margin:0 6px 3px; }
+      .cc-bubble { padding:10px 14px; border-radius:18px; line-height:1.45; font-size:14px; }
+      .cc-msg.caller .cc-bubble { background:rgba(120,120,128,.14); border-bottom-left-radius:6px; }
+      .cc-msg.lola .cc-bubble { background:#0a84ff; color:#fff; border-bottom-right-radius:6px; }
+    `;
+    document.head.appendChild(st);
+  })();
+
   function setStatus(msg, kind) {
     const el = document.getElementById('ccStatus');
     if (!el) return;
@@ -293,11 +328,11 @@
       try {
         const r = await fetch(ep, {
           method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ call_id: c.id, phone: c.from, client_name: c.client_name || '', reason: 'manual' })
+          body: JSON.stringify({ to: c.from, call_id: c.id, client_name: c.client_name || '', reason: 'manual' })
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok !== false) {
-          setStatus('Callback started — your phone will ring, then Lola bridges the client.', 'ok');
+          setStatus('Lola is calling ' + (c.client_name || 'the client') + ' now.', 'ok');
           setTimeout(loadCalls, 4000);
           return;
         }
@@ -333,11 +368,11 @@
     const text = prompt('Message to send:', c.client_name ? `Hi ${String(c.client_name).split(' ')[0]}, it's ${document.getElementById('tenantName').textContent}. ` : '');
     if (!text) return;
     setStatus('Sending SMS…', 'info');
-    for (const ep of ['/api/inbox/send', '/api/telnyx-sms']) {
+    for (const ep of ['/api/call-center/sms']) {
       try {
         const r = await fetch(ep, {
           method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ to: c.from, body: text, message: text, phone: c.from })
+          body: JSON.stringify({ to: c.from, text })
         });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.ok !== false) { setStatus('SMS sent.', 'ok'); return; }
@@ -349,28 +384,30 @@
 
   async function markHandled(c) {
     setStatus('Marking handled…', 'info');
-    for (const ep of [`/api/calls/${c.id}/handled`, `/api/calls/handled`]) {
+    for (const ep of ['/api/call-center/handled']) {
       try {
         const r = await fetch(ep, {
           method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
           body: JSON.stringify({ id: c.id, handled: true })
         });
         if (r.ok) { setStatus('Marked handled.', 'ok'); c.handled = true; loadCalls(); return; }
-        if (r.status !== 404) { setStatus(`Failed: ${r.status}`, 'err'); return; }
+        const d = await r.json().catch(() => ({}));
+        setStatus(`Couldn't mark handled: ${d.error || r.status}`, 'err'); return;
       } catch (_) {}
     }
-    // Fall back: just update locally
-    c.handled = true;
-    setStatus('Marked handled locally (no server endpoint).', 'info');
-    renderDetail();
+    setStatus('Mark-handled endpoint missing.', 'err');
   }
 
   async function addToWaitlist(c) {
     setStatus('Adding to waitlist…', 'info');
     try {
-      const r = await fetch('/api/lola/waitlist-candidates', { credentials: 'include' });
-      // No-op if the endpoint doesn't have a POST — this is placeholder for future
-      setStatus('Client added to waitlist (Lola will text when a spot opens).', 'ok');
+      const r = await fetch('/api/call-center/waitlist', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ phone: c.from, client_name: c.client_name || '' })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) { setStatus(`Waitlist failed: ${d.error || r.status}`, 'err'); return; }
+      setStatus('Added to the waitlist — Lola offers them the next opening.', 'ok');
     } catch (err) {
       setStatus(`Waitlist errored: ${err.message}`, 'err');
     }

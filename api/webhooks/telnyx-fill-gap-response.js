@@ -52,42 +52,63 @@ export default async function handler(req, res) {
         bookedText = 'accepted';
         if (attemptId) await c.from('fill_gap_attempts').update({ status: 'accepted', outcome: 'yes', responded_at: new Date().toISOString(), gather_response: speech || digits }).eq('id', attemptId);
 
-        // Attempt to actually book — best-effort. If your booking pipeline
-        // accepts a shape like below, this books; otherwise the attempt row
-        // is still marked accepted and a human can finish it from the calendar.
+        // Book it through the canonical engine (same path as every booking):
+        // createCanonicalBooking writes `bookings`, logs history, and sends
+        // the salon's standard confirmation text + deposit request.
+        let booked = false;
         try {
           const { data: attempt } = await c.from('fill_gap_attempts').select('*').eq('id', attemptId).maybeSingle();
           if (attempt && attempt.client_phone) {
-            await c.from('appointments').insert({
-              tenant_id: attempt.tenant_id,
-              start_time: `${attempt.gap_date}T${attempt.gap_start_time}:00`,
-              duration_minutes: attempt.gap_duration_minutes,
-              status: 'confirmed',
-              source: 'lola_voice_fill_gap',
-              client_id: attempt.client_id,
-              client_name: attempt.client_name,
-              client_phone: attempt.client_phone,
-              stylist_name: attempt.gap_stylist,
-              notes: `Booked via Lola outbound gap-fill call (attempt ${attempt.id})`
-            });
-            await c.from('fill_gap_attempts').update({ status: 'booked', outcome: 'booked' }).eq('id', attemptId);
+            const { createCanonicalBooking, getBookingSettings, addMinutes } = await import('../lib/booking-repository.js');
+            const { zonedLocalToUtc } = await import('../lib/timezone.js');
+            const { upsertClient, e164 } = await import('../lib/db.js');
+            const settings = await getBookingSettings(attempt.tenant_id);
+            const tz = settings?.timezone || 'America/New_York';
+            const hhmm = String(attempt.gap_start_time || '').slice(0, 5);
+            const startIso = zonedLocalToUtc(String(attempt.gap_date).slice(0, 10), `${hhmm}:00`, tz);
+            const endIso = addMinutes(startIso, attempt.gap_duration_minutes || 60);
+            let clientId = attempt.client_id || null;
+            if (!clientId) {
+              // Find the existing client by phone first — never rename a known client.
+              const { data: ex } = await c.from('clients').select('id')
+                .eq('tenant_id', attempt.tenant_id).eq('phone', e164(attempt.client_phone)).maybeSingle();
+              clientId = ex?.id || null;
+            }
+            if (!clientId) {
+              const cl = await upsertClient(attempt.tenant_id, { phone: attempt.client_phone, name: attempt.client_name || 'Client' });
+              clientId = cl?.id || null;
+            }
+            if (clientId) {
+              const booking = await createCanonicalBooking({
+                tenantId: attempt.tenant_id, clientId,
+                startTime: startIso, endTime: endIso, status: 'confirmed',
+                source: 'lola_gap_fill',
+                notes: `Booked by Lola on an outbound gap-fill call${attempt.gap_stylist ? ' · requested ' + attempt.gap_stylist : ''}`,
+              });
+              booked = !!booking?.id;
+              await c.from('fill_gap_attempts').update({ status: 'booked', outcome: 'booked' }).eq('id', attemptId);
+              if (attempt.waitlist_id) {
+                try { await c.from('booking_waitlist').update({ status: 'fulfilled', updated_at: new Date().toISOString() }).eq('id', attempt.waitlist_id); } catch (_) {}
+              }
+            }
           }
         } catch (e) { console.warn('[fill-gap-response] auto-book failed', e?.message); }
 
-        // Fire an SMS confirmation, best-effort
-        try {
-          const sms = await import('../lib/sms.js').catch(() => null);
-          const { data: attempt } = await c.from('fill_gap_attempts').select('client_phone, gap_date, gap_start_time, tenant_id').eq('id', attemptId).maybeSingle();
-          const { data: tenant } = attempt ? await c.from('tenants').select('name').eq('id', attempt.tenant_id).maybeSingle() : { data: null };
-          if (sms?.sendSms && attempt?.client_phone && tenant) {
-            const t = fmtHumanTime(attempt.gap_start_time);
-            await sms.sendSms({
-              tenant: { id: attempt.tenant_id, name: tenant.name },
-              to: attempt.client_phone,
-              body: `Confirmed at ${tenant.name}: ${t} today. See you soon!`
-            });
-          }
-        } catch (_) {}
+        // Only text separately if the canonical booking didn't (it sends its own confirmation).
+        if (!booked) {
+          try {
+            const sms = await import('../lib/sms.js').catch(() => null);
+            const { data: attempt } = await c.from('fill_gap_attempts').select('client_phone, gap_date, gap_start_time, tenant_id').eq('id', attemptId).maybeSingle();
+            const { data: tenant } = attempt ? await c.from('tenants').select('id, name').eq('id', attempt.tenant_id).maybeSingle() : { data: null };
+            if (sms?.sendSms && attempt?.client_phone && tenant) {
+              await sms.sendSms({
+                tenantId: tenant.id,
+                to: attempt.client_phone,
+                text: `Thanks for saying yes to ${fmtHumanTime(attempt.gap_start_time)} at ${tenant.name}! We're confirming it now and will text you shortly.`
+              });
+            }
+          } catch (_) {}
+        }
       } else if (no) {
         farewell = `No problem — thanks anyway. I'll ping you next time something opens up.`;
         if (attemptId) await c.from('fill_gap_attempts').update({ status: 'declined', outcome: 'no', responded_at: new Date().toISOString(), gather_response: speech || digits }).eq('id', attemptId);
@@ -104,9 +125,9 @@ export default async function handler(req, res) {
             const base = process.env.APP_URL || 'https://www.loladesk.com';
             const link = `${base}/book?t=${encodeURIComponent(attempt.tenant_id)}&d=${attempt.gap_date}&s=${encodeURIComponent(attempt.gap_start_time)}`;
             await sms.sendSms({
-              tenant: { id: attempt.tenant_id, name: tenant.name },
+              tenantId: attempt.tenant_id,
               to: attempt.client_phone,
-              body: `Just called from ${tenant.name}. A ${t} spot's open today — tap to grab it: ${link}`
+              text: `Just called from ${tenant.name}. A ${t} spot's open — tap to grab it: ${link}`
             });
           }
         } catch (_) {}
@@ -125,7 +146,7 @@ export default async function handler(req, res) {
     return res.status(200).send(xml);
   } catch (e) {
     console.error('[fill-gap-response]', e?.message);
-    const fallback = `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Thanks. Goodbye.</Say><Hangup/></Response>`;
+    const fallback = `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`;
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(fallback);
   }

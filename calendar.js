@@ -36,6 +36,21 @@
     return d.toLocaleDateString('en-US', { weekday: 'long' });
   }
 
+  function mountNewBooking() {
+    const nav = document.querySelector('.day-nav');
+    if (!nav || document.getElementById('navNewBooking')) return;
+    const b = document.createElement('button');
+    b.id = 'navNewBooking'; b.className = 'day-nav-btn day-nav-new'; b.textContent = '+ New booking';
+    b.style.marginLeft = 'auto';
+    b.onclick = () => {
+      if (!window.LolaBookDialog) { alert('Booking dialog is still loading — try again in a second.'); return; }
+      window.LolaBookDialog.open({ date: isoDate(activeDate()), onBooked: () => loadAgenda() });
+    };
+    nav.appendChild(b);
+  }
+  document.addEventListener('DOMContentLoaded', mountNewBooking);
+  setTimeout(mountNewBooking, 0);
+
   function renderHead() {
     const d = activeDate();
     document.querySelector('.day-label').textContent = labelFor(d);
@@ -55,8 +70,10 @@
         throw new Error('load');
       }
       const data = await r.json();
-      const rows = Array.isArray(data) ? data
-        : (data.appointments || data.rows || data.data || []);
+      state.tz = data.timezone || state.tz || undefined;
+      const rows = (Array.isArray(data) ? data
+        : (data.bookings || data.appointments || data.rows || data.data || []))
+        .filter(b => !/^cancel/i.test(String(b.status || '')));
       if (!rows.length) return renderEmpty(el, dateStr);
       renderAgenda(el, rows);
     } catch {
@@ -75,12 +92,14 @@
   function renderAgenda(el, rows) {
     const sorted = rows.slice().sort((a, b) => timeVal(a) - timeVal(b));
     el.innerHTML = sorted.map(r => {
-      const t = fmtTime(r.start_time || r.time || r.starts_at || '');
-      const name = r.client_name || r.name || 'Client';
-      const svc = r.service || r.service_name || r.service_title || '';
-      const sty = r.stylist_name || r.stylist || r.staff_name || '';
+      const t = fmtLocal(r.start_time || r.starts_at || r.time || '');
+      const name = (r.client && (r.client.name || [r.client.first_name, r.client.last_name].filter(Boolean).join(' ')))
+        || r.client_name || 'Client';
+      const svc = (r.service && typeof r.service === 'object' ? r.service.name : r.service) || r.service_name || '';
+      const sty = (r.staff && typeof r.staff === 'object' ? r.staff.name : r.stylist) || r.stylist_name || '';
+      const st = String(r.status || '').toLowerCase();
       return `
-        <div class="appt">
+        <div class="appt${st === 'no-show' || st === 'no_show' ? ' appt-noshow' : ''}" data-booking-id="${escapeHtml(r.id || '')}">
           <div class="appt-time">${escapeHtml(t)}</div>
           <div class="appt-body">
             <div class="appt-name">${escapeHtml(name)}</div>
@@ -93,9 +112,17 @@
   }
 
   function timeVal(r) {
-    const t = String(r.start_time || r.time || r.starts_at || '');
+    const iso = r.start_time || r.starts_at;
+    if (iso && !isNaN(new Date(iso))) return new Date(iso).getTime();
+    const t = String(r.time || '');
     const m = /(\d{1,2}):(\d{2})/.exec(t);
     return m ? parseInt(m[1],10) * 60 + parseInt(m[2],10) : 9999;
+  }
+  function fmtLocal(v) {
+    const d = new Date(v);
+    if (!v || isNaN(d)) return fmtTime(v);
+    try { return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: state.tz }); }
+    catch (_) { return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
   }
   function fmtTime(v) {
     const m = /(\d{1,2}):(\d{2})/.exec(String(v || ''));
