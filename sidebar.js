@@ -31,13 +31,6 @@
     {id:'clients',label:'Clients',href:'clients.html'},
     {id:'revenue',label:'Revenue',href:'revenue.html'},
     {id:'banking',label:'Banking',href:'banking.html'},
-    {href:'/services',label:'Services',icon:'M4 6h16M4 10h16M4 14h16M4 18h16'},
-    {href:'/team',label:'Team',icon:'circle 9,7 r=3; M3 21v-1a5 5 0 015-5h2a5 5 0 015 5v1'},
-    {href:'/reviews',label:'Reviews',icon:'polygon 12,2 15,8 22,9 17,14 18,21 12,17 6,21 7,14 2,9 9,8'},
-    {href:'/growth',label:'Growth',icon:'M3 17l6-6 4 4 8-8M17 7h4v4'},
-    {href:'/inventory',label:'Inventory',icon:'M3 7l9-4 9 4-9 4-9-4zM3 12l9 4 9-4M3 17l9 4 9-4'},
-    {href:'/phone',label:'Phone',icon:'M22 16.9v3a2 2 0 01-2.2 2A19.8 19.8 0 013 5.2 2 2 0 015 3h3a2 2 0 012 1.7c.1.9.3 1.8.6 2.6a2 2 0 01-.5 2.1L8.9 10.7a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.5c.8.3 1.7.5 2.6.6a2 2 0 011.7 2Z'},
-    {href:'/booking-rules',label:'Booking rules',icon:'M4 4h16v4H4zM4 12h16v4H4zM4 20h10v0H4z'},
     {id:'settings',label:'Settings',href:'settings.html'}
   ];
   const navHTML=items.map(it=>`<a class="nav-item ${it.id===page?'active':''}" href="${it.href}" ${it.id===page?'aria-current="page"':''}><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${icons[it.id]||''}</svg>${it.label}</a>`).join('');
