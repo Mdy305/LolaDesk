@@ -1,0 +1,212 @@
+/* LolaDesk — canonical design tokens. One source of truth.
+   Every rebuilt page references these; older pages can adopt them
+   incrementally. Resolves the audit's "4 conflicting design systems"
+   finding. */
+:root {
+  /* ---- surfaces ---- */
+  --bg:       #000;
+  --bg2:      #070708;
+  --surface:  #101012;
+  --surface2: #16161a;
+  --surface3: #1c1c22;
+  --line:     rgba(255,255,255,.08);
+  --line2:    rgba(255,255,255,.14);
+
+  /* ---- text ---- */
+  --text:     #f4f4f7;
+  --text2:    #9a9aa2;
+  --text3:    #56565e;
+
+  /* ---- accent (honestly named — was --pink and is not pink) ---- */
+  --accent:      #ccff00;
+  --accent-2:    #dcff66;
+  --accent-dim:  rgba(204,255,0,.12);
+  --accent-glow: rgba(204,255,0,.5);
+
+  /* ---- status ---- */
+  --ok:        #34c759;
+  --warn:      #ffb340;
+  --dan:       #ff453a;
+  --info:      #64d2ff;
+
+  /* ---- radius ---- */
+  --r-xs:  8px;
+  --r-sm:  12px;
+  --r:     16px;
+  --r-lg:  20px;
+  --r-xl:  28px;
+
+  /* ---- spacing scale (4/8/12/16/24/32/48/64) ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+
+  /* ---- type scale ---- */
+  --fs-xs:  11px;
+  --fs-sm:  12px;
+  --fs-md:  14px;
+  --fs-base:15px;
+  --fs-lg:  17px;
+  --fs-xl:  22px;
+  --fs-2xl: 28px;
+  --fs-3xl: 36px;
+  --fs-4xl: 48px;
+
+  /* ---- font stacks (both point to the same real face — will
+          only diverge if you decide to load a serif; do not lie) ---- */
+  --ff:    -apple-system, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+  --ff-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* ---- motion ---- */
+  --spring:   cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 140ms;
+  --dur-med:  280ms;
+  --dur-slow: 400ms;
+
+  /* ---- elevation ---- */
+  --shadow-1: 0 2px 8px rgba(0,0,0,.24);
+  --shadow-2: 0 12px 32px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.16);
+  --shadow-3: 0 24px 60px rgba(0,0,0,.34), 0 4px 12px rgba(0,0,0,.16);
+
+  /* ---- layout ---- */
+  --page-max:      1400px;
+  --sidebar-w:     240px;
+  --mobile-nav-h:  72px;
+}
+
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--fs-base)/1.5 var(--ff);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); }
+button { font: inherit; }
+
+/* Primitives that pages reuse. Each is opt-in — a page includes
+   design.css but chooses which classes to compose. */
+
+/* Page frame */
+.ld-app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100vh;
+}
+.ld-main {
+  padding: var(--s-6) var(--s-6) var(--s-8);
+  max-width: var(--page-max);
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .ld-app { grid-template-columns: 1fr; }
+  .ld-main { padding: var(--s-4) var(--s-4) calc(var(--mobile-nav-h) + var(--s-5)); }
+}
+
+/* Page header */
+.ld-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-4); margin-bottom: var(--s-5); flex-wrap: wrap; }
+.ld-page-title { font: 600 var(--fs-2xl)/1.1 var(--ff); letter-spacing: -0.02em; margin: 0; }
+.ld-page-sub { font: 400 var(--fs-md)/1.4 var(--ff); color: var(--text2); margin-top: var(--s-1); }
+
+/* Card */
+.ld-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s-5);
+  transition: border-color var(--dur-fast);
+}
+.ld-card:hover { border-color: var(--line2); }
+.ld-card h3 { font: 600 var(--fs-lg)/1.2 var(--ff); letter-spacing: -0.01em; margin: 0 0 var(--s-3); }
+
+/* Grid utilities */
+.ld-grid { display: grid; gap: var(--s-4); }
+.ld-grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.ld-grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.ld-grid-4 { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+
+/* Buttons */
+.ld-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: var(--surface2);
+  color: var(--text);
+  font: 600 var(--fs-md)/1 var(--ff);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.ld-btn:hover { background: var(--surface3); }
+.ld-btn:active { transform: scale(.97); }
+.ld-btn.pri { background: var(--accent); color: #000; border-color: var(--accent); }
+.ld-btn.pri:hover { background: var(--accent-2); }
+.ld-btn.dan { background: transparent; color: var(--dan); border-color: rgba(255,69,58,.4); }
+.ld-btn.dan:hover { background: rgba(255,69,58,.1); }
+.ld-btn.ghost { background: transparent; border-color: transparent; }
+.ld-btn[disabled] { opacity: .5; cursor: not-allowed; transform: none; }
+.ld-btn-icon { padding: 8px; border-radius: 10px; }
+
+/* Inputs */
+.ld-input, .ld-select, .ld-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: 400 var(--fs-base) var(--ff);
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+  -webkit-appearance: none; appearance: none;
+}
+.ld-input:focus, .ld-select:focus, .ld-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface3);
+}
+.ld-textarea { resize: vertical; min-height: 72px; }
+.ld-label { display: block; font: 600 var(--fs-sm) var(--ff); color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; margin: var(--s-3) 0 var(--s-2); }
+
+/* Toggle switch */
+.ld-toggle { position: relative; width: 44px; height: 26px; background: var(--surface3); border-radius: 999px; cursor: pointer; transition: background var(--dur-med) var(--ease-out); flex-shrink: 0; }
+.ld-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,.35); transition: transform var(--dur-med) var(--spring); }
+.ld-toggle.on { background: var(--accent); }
+.ld-toggle.on::after { transform: translateX(18px); background: #000; }
+
+/* Chip / pill */
+.ld-chip { display: inline-flex; align-items: center; gap: var(--s-1); padding: 4px 10px; border-radius: 999px; background: var(--surface2); border: 1px solid var(--line); font: 500 var(--fs-sm) var(--ff); color: var(--text2); }
+.ld-chip.ok { color: var(--ok); border-color: rgba(52,199,89,.35); background: rgba(52,199,89,.08); }
+.ld-chip.warn { color: var(--warn); border-color: rgba(255,179,64,.35); background: rgba(255,179,64,.08); }
+.ld-chip.dan { color: var(--dan); border-color: rgba(255,69,58,.35); background: rgba(255,69,58,.08); }
+.ld-chip.accent { color: #000; background: var(--accent); border-color: var(--accent); }
+
+/* Empty state */
+.ld-empty { text-align: center; padding: var(--s-8) var(--s-5); border: 1px dashed var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.ld-empty h3 { font: 600 var(--fs-lg) var(--ff); margin: 0 0 var(--s-2); }
+.ld-empty p { color: var(--text2); font-size: var(--fs-md); max-width: 380px; margin: 0 auto var(--s-4); }
+
+/* Skeleton loader */
+@keyframes ld-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.ld-skel { background: linear-gradient(90deg, var(--surface2) 0px, var(--surface3) 200px, var(--surface2) 400px); background-size: 800px 100%; animation: ld-shimmer 1.2s linear infinite; border-radius: var(--r-sm); }
+
+/* Table */
+.ld-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
+.ld-table th { text-align: left; padding: var(--s-3) var(--s-3); font: 600 var(--fs-sm) var(--ff); color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--line); }
+.ld-table td { padding: var(--s-3) var(--s-3); border-bottom: 1px solid var(--line); }
+.ld-table tr:hover td { background: var(--surface2); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

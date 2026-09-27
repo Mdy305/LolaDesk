@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phone · LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/design.css">
+<style>
+.pn-num { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-5); background: linear-gradient(135deg, #101012, #16161a); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.pn-badge { background: var(--accent-dim); color: var(--accent); padding: 6px 10px; border-radius: 999px; font: 600 var(--fs-sm) var(--ff); letter-spacing: .04em; text-transform: uppercase; }
+.pn-tel { font: 700 var(--fs-2xl) var(--ff-mono); letter-spacing: -.01em; }
+.pn-status-row { display: grid; grid-template-columns: 1fr auto; gap: var(--s-4); padding: var(--s-4) 0; border-top: 1px solid var(--line); align-items: center; }
+.pn-status-row:first-child { border-top: none; }
+.pn-status-row .t { font: 500 var(--fs-base) var(--ff); }
+.pn-status-row .h { font: 400 var(--fs-md) var(--ff); color: var(--text2); margin-top: 2px; }
+</style>
+</head>
+<body data-page="phone">
+<div class="ld-app">
+  <aside id="sidebar-mount"></aside>
+  <main class="ld-main">
+    <header class="ld-page-head">
+      <div>
+        <h1 class="ld-page-title">Phone</h1>
+        <p class="ld-page-sub">The number Lola answers on, plus routing and forwarding.</p>
+      </div>
+    </header>
+
+    <section id="active"></section>
+
+    <section class="ld-card" style="max-width: 720px; margin-top: var(--s-4)">
+      <h3>Routing</h3>
+      <div class="pn-status-row">
+        <div><div class="t">Ring Lola first</div><div class="h">Every call goes to Lola. Recommended.</div></div>
+        <div class="ld-toggle on" id="f-lola-first"></div>
+      </div>
+      <div class="pn-status-row">
+        <div><div class="t">Forward to owner after hours</div><div class="h">Outside business hours, ring your phone.</div></div>
+        <div class="ld-toggle" id="f-fwd-owner"></div>
+      </div>
+      <div class="pn-status-row">
+        <div><div class="t">Owner phone</div><div class="h">Where "take over" calls and forwards ring.</div></div>
+        <div><input class="ld-input" id="f-owner-phone" style="width:200px" placeholder="+1 305 555 …"></div>
+      </div>
+      <div class="pn-status-row">
+        <div><div class="t">Record calls</div><div class="h">Store audio + transcript in Call Center.</div></div>
+        <div class="ld-toggle on" id="f-record"></div>
+      </div>
+      <div style="margin-top: var(--s-4); text-align: right"><button class="ld-btn pri" id="btn-save">Save routing</button></div>
+    </section>
+
+    <section class="ld-card" style="max-width: 720px; margin-top: var(--s-4)">
+      <h3>Get another number</h3>
+      <p style="color: var(--text2); font-size: var(--fs-md); margin: 0 0 var(--s-4)">
+        Add a second line for marketing campaigns or SMS blasts. Same Lola brain, separate number.
+      </p>
+      <div style="display:flex;gap:8px">
+        <input class="ld-input" id="f-area" placeholder="Area code (e.g. 305)" maxlength="3" style="width:180px">
+        <button class="ld-btn pri" id="btn-search">Search available</button>
+      </div>
+      <div id="results" style="margin-top: var(--s-4)"></div>
+    </section>
+  </main>
+</div>
+<script src="/auth-guard.js" defer></script>
+<script src="/page-shell.js" defer></script>
+<script>
+(function () {
+  const wait = () => new Promise(r => window.LolaShell ? r() : window.addEventListener('lola:shell-ready', r, { once: true }));
+  wait().then(main);
+  async function main() {
+    const S = window.LolaShell; S.initPage();
+    const t = await S.fetchJson('/api/tenant');
+    const data = t.data || {};
+    document.getElementById('active').innerHTML = `
+      <div class="pn-num">
+        <div class="pn-badge">Live</div>
+        <div>
+          <div class="pn-tel">${data.phone || '— no number yet —'}</div>
+          <div style="color: var(--text2); font-size: var(--fs-md); margin-top: 4px">
+            Answered by Lola · SMS enabled · ${data.timezone || 'America/New_York'}
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('f-owner-phone').value = data.owner_phone || '';
+    document.getElementById('f-fwd-owner').classList.toggle('on', !!data.forward_after_hours);
+    document.getElementById('f-record').classList.toggle('on', data.record_calls !== false);
+    document.querySelectorAll('.ld-toggle').forEach(t => t.onclick = () => t.classList.toggle('on'));
+
+    document.getElementById('btn-save').onclick = async () => {
+      const r = await S.api('/api/tenant', {
+        owner_phone: document.getElementById('f-owner-phone').value.trim() || null,
+        forward_after_hours: document.getElementById('f-fwd-owner').classList.contains('on'),
+        record_calls: document.getElementById('f-record').classList.contains('on'),
+      }, 'PATCH');
+      if (!r.ok) return S.toast('Save failed: ' + r.error, 'dan');
+      S.toast('Routing saved', 'ok');
+    };
+    document.getElementById('btn-search').onclick = async () => {
+      const area = document.getElementById('f-area').value.trim();
+      if (!/^\d{3}$/.test(area)) return S.toast('3-digit area code', 'dan');
+      const r = await S.api('/api/provision-number/search', { area_code: area });
+      const results = document.getElementById('results');
+      if (!r.ok) { results.textContent = 'Search failed: ' + r.error; return; }
+      const list = r.data?.numbers || r.data || [];
+      if (!list.length) { results.textContent = 'No numbers available in this area right now.'; return; }
+      results.innerHTML = list.slice(0, 6).map(n => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:8px">
+          <div style="font: 600 var(--fs-base) var(--ff-mono)">${n.phone_number || n}</div>
+          <button class="ld-btn pri" data-num="${n.phone_number || n}">Get it</button>
+        </div>`).join('');
+      results.querySelectorAll('[data-num]').forEach(b => b.onclick = async () => {
+        b.disabled = true; b.textContent = 'Provisioning…';
+        const r2 = await S.api('/api/provision-number', { phone_number: b.dataset.num });
+        if (!r2.ok) { S.toast('Failed: ' + r2.error, 'dan'); b.disabled = false; b.textContent = 'Get it'; return; }
+        S.toast('Number added', 'ok'); setTimeout(() => location.reload(), 900);
+      });
+    };
+  }
+})();
+</script>
+</body>
+</html>

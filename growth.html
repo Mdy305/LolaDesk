@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Growth · LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/design.css">
+<style>
+.gr-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s-4); margin-bottom: var(--s-5); }
+.gr-stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s-4); }
+.gr-stat .n { font: 700 var(--fs-2xl) var(--ff); letter-spacing: -.02em; }
+.gr-stat .n.accent { color: var(--accent); }
+.gr-stat .k { font: 500 var(--fs-sm) var(--ff); color: var(--text2); text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+.gr-tile { position: relative; padding: var(--s-5); cursor: pointer; transition: border-color var(--dur-fast), transform var(--dur-fast); }
+.gr-tile:hover { border-color: var(--line2); transform: translateY(-2px); }
+.gr-tile h3 { font: 600 var(--fs-lg) var(--ff); letter-spacing: -.01em; margin: 0 0 var(--s-2); }
+.gr-tile p { color: var(--text2); font-size: var(--fs-md); margin: 0; line-height: 1.4; }
+.gr-tile .stat { position: absolute; top: var(--s-4); right: var(--s-4); font: 700 var(--fs-xl) var(--ff); color: var(--accent); }
+</style>
+</head>
+<body data-page="growth">
+<div class="ld-app">
+  <aside id="sidebar-mount"></aside>
+  <main class="ld-main">
+    <header class="ld-page-head">
+      <div>
+        <h1 class="ld-page-title">Growth</h1>
+        <p class="ld-page-sub">Fill gaps · re-engage · earn reviews · pay referrers. Lola does the work.</p>
+      </div>
+    </header>
+
+    <section class="gr-hero" id="hero"></section>
+
+    <h3 style="margin: var(--s-5) 0 var(--s-3); font: 600 var(--fs-lg) var(--ff)">What Lola can do for you</h3>
+    <section class="ld-grid ld-grid-2">
+      <div class="ld-card gr-tile" data-nav="gap-fill">
+        <div class="stat" id="gap-stat">—</div>
+        <h3>Fill last-minute gaps</h3>
+        <p>Lola calls or texts your waitlist when a slot opens today or tomorrow.</p>
+      </div>
+      <div class="ld-card gr-tile" data-nav="rebooking">
+        <div class="stat" id="reb-stat">—</div>
+        <h3>Rebook winbacks</h3>
+        <p>Clients who haven't been in 60+ days get a personal nudge.</p>
+      </div>
+      <div class="ld-card gr-tile" data-nav="referrals">
+        <div class="stat" id="ref-stat">—</div>
+        <h3>Referral program</h3>
+        <p>Auto-issue a discount to any client who brings a friend in.</p>
+      </div>
+      <div class="ld-card gr-tile" data-nav="reviews">
+        <div class="stat" id="rev-stat">—</div>
+        <h3>Ask for reviews</h3>
+        <p>After every visit, a right-timed request to the client's Google.</p>
+      </div>
+      <div class="ld-card gr-tile" data-nav="deposits">
+        <div class="stat" id="dep-stat">—</div>
+        <h3>Deposits & no-show fees</h3>
+        <p>Cut no-shows with automatic deposits and enforcement.</p>
+      </div>
+      <div class="ld-card gr-tile" data-nav="campaigns">
+        <div class="stat">Soon</div>
+        <h3>SMS campaigns</h3>
+        <p>Send a promo blast to a client segment. Compliant, opt-out aware.</p>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="/auth-guard.js" defer></script>
+<script src="/page-shell.js" defer></script>
+<script>
+(function () {
+  const wait = () => new Promise(r => window.LolaShell ? r() : window.addEventListener('lola:shell-ready', r, { once: true }));
+  wait().then(main);
+  async function main() {
+    const S = window.LolaShell; S.initPage();
+    const r = await S.fetchJson('/api/growth/summary');
+    const d = r.ok ? (r.data || {}) : {};
+    document.getElementById('hero').innerHTML = `
+      <div class="gr-stat"><div class="n accent">${d.filled_gaps_month || 0}</div><div class="k">Gaps filled (30d)</div></div>
+      <div class="gr-stat"><div class="n">${d.rebook_winbacks_month || 0}</div><div class="k">Winbacks (30d)</div></div>
+      <div class="gr-stat"><div class="n">${d.new_reviews_month || 0}</div><div class="k">New reviews (30d)</div></div>
+      <div class="gr-stat"><div class="n">${d.referrals_month || 0}</div><div class="k">Referrals (30d)</div></div>
+      <div class="gr-stat"><div class="n">${S.fmtMoney(d.revenue_month_cents || 0)}</div><div class="k">Revenue (30d)</div></div>
+    `;
+    document.getElementById('gap-stat').textContent = (d.waitlist_size || 0) + ' waiting';
+    document.getElementById('reb-stat').textContent = (d.due_winbacks || 0) + ' due';
+    document.getElementById('ref-stat').textContent = d.referral_program_on ? 'On' : 'Off';
+    document.getElementById('rev-stat').textContent = d.review_auto_on ? 'On' : 'Off';
+    document.getElementById('dep-stat').textContent = d.deposits_on ? 'On' : 'Off';
+    document.querySelectorAll('[data-nav]').forEach(t => t.onclick = () => {
+      const key = t.dataset.nav;
+      const map = { 'gap-fill':'/calls', 'rebooking':'/clients', 'referrals':'/booking-rules', 'reviews':'/reviews', 'deposits':'/booking-rules', 'campaigns':'/inbox' };
+      const dest = map[key]; if (dest) location.href = dest;
+    });
+  }
+})();
+</script>
+</body>
+</html>

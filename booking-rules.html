@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Booking rules · LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/design.css">
+<style>
+.br-sec { max-width: 720px; }
+.br-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--s-4); padding: var(--s-4) 0; border-top: 1px solid var(--line); }
+.br-row:first-of-type { border-top: none; }
+.br-row .t { font: 500 var(--fs-base) var(--ff); }
+.br-row .h { font: 400 var(--fs-md) var(--ff); color: var(--text2); margin-top: 2px; max-width: 460px; }
+.br-inline { display: flex; gap: 8px; align-items: center; }
+.br-inline .ld-input { width: 90px; text-align: center; }
+.hours-grid { display: grid; grid-template-columns: 80px 1fr 1fr; gap: 8px; align-items: center; margin-top: var(--s-2); }
+.hours-grid > * { font-size: var(--fs-md); }
+</style>
+</head>
+<body data-page="booking-rules">
+<div class="ld-app">
+  <aside id="sidebar-mount"></aside>
+  <main class="ld-main">
+    <header class="ld-page-head">
+      <div>
+        <h1 class="ld-page-title">Booking rules</h1>
+        <p class="ld-page-sub">Hours, buffers, deposits, cancellations — the guardrails Lola books within.</p>
+      </div>
+      <button class="ld-btn pri" id="btn-save">Save changes</button>
+    </header>
+
+    <section class="ld-card br-sec" id="hours-card">
+      <h3>Business hours</h3>
+      <div id="hours"></div>
+    </section>
+
+    <section class="ld-card br-sec" style="margin-top: var(--s-4)">
+      <h3>Booking behavior</h3>
+      <div class="br-row">
+        <div><div class="t">Advance-booking window</div><div class="h">Farthest in the future a client can book.</div></div>
+        <div class="br-inline"><input class="ld-input" type="number" id="f-lead-max" min="1"> days</div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Minimum lead time</div><div class="h">How close to now a client can still book.</div></div>
+        <div class="br-inline"><input class="ld-input" type="number" id="f-lead-min" min="0"> hours</div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Slot granularity</div><div class="h">How Lola quantizes start times.</div></div>
+        <div class="br-inline"><select class="ld-select" id="f-slot" style="width:auto"><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Auto-confirm bookings</div><div class="h">Off = every request needs your OK first.</div></div>
+        <div class="ld-toggle" id="f-auto"></div>
+      </div>
+    </section>
+
+    <section class="ld-card br-sec" style="margin-top: var(--s-4)">
+      <h3>Deposits</h3>
+      <div class="br-row">
+        <div><div class="t">Require deposit</div><div class="h">Applied to services with a deposit set.</div></div>
+        <div class="ld-toggle" id="f-dep-on"></div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Default deposit</div><div class="h">Used when a service has no explicit deposit.</div></div>
+        <div class="br-inline">$ <input class="ld-input" type="number" id="f-dep-default" min="0" step="0.01"></div>
+      </div>
+    </section>
+
+    <section class="ld-card br-sec" style="margin-top: var(--s-4)">
+      <h3>Late cancellations</h3>
+      <div class="br-row">
+        <div><div class="t">Enforce late-cancel fee</div><div class="h">Charged when a client cancels within the window.</div></div>
+        <div class="ld-toggle" id="f-lc-on"></div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Window</div><div class="h">Hours before start where cancellations are "late."</div></div>
+        <div class="br-inline"><input class="ld-input" type="number" id="f-lc-hours" min="0"> hours</div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Fee amount</div><div class="h">Flat dollars or percent of service price.</div></div>
+        <div class="br-inline">
+          <select class="ld-select" id="f-lc-type" style="width:auto"><option value="flat">$</option><option value="percent">%</option></select>
+          <input class="ld-input" type="number" id="f-lc-value" min="0" step="0.01">
+        </div>
+      </div>
+    </section>
+
+    <section class="ld-card br-sec" style="margin-top: var(--s-4)">
+      <h3>No-shows</h3>
+      <div class="br-row">
+        <div><div class="t">Enforce no-show fee</div><div class="h">Applied when the appointment is marked no-show.</div></div>
+        <div class="ld-toggle" id="f-ns-on"></div>
+      </div>
+      <div class="br-row">
+        <div><div class="t">Fee amount</div><div class="h">Flat dollars or percent.</div></div>
+        <div class="br-inline">
+          <select class="ld-select" id="f-ns-type" style="width:auto"><option value="flat">$</option><option value="percent">%</option></select>
+          <input class="ld-input" type="number" id="f-ns-value" min="0" step="0.01">
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="/auth-guard.js" defer></script>
+<script src="/page-shell.js" defer></script>
+<script>
+(function () {
+  const wait = () => new Promise(r => window.LolaShell ? r() : window.addEventListener('lola:shell-ready', r, { once: true }));
+  wait().then(main);
+  const DOWS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  async function main() {
+    const S = window.LolaShell; S.initPage();
+    const tenant = await S.fetchJson('/api/tenant');
+    const pol = await S.fetchJson('/api/tenant/billing-policies');
+    render(tenant?.data || {}, pol?.data || {});
+    document.getElementById('btn-save').onclick = save;
+  }
+
+  function render(t, p) {
+    const hoursEl = document.getElementById('hours');
+    const wh = t.working_hours || t.hours || {};
+    hoursEl.innerHTML = '<div class="hours-grid"><div></div><div style="font-size:var(--fs-sm);color:var(--text2)">Open</div><div style="font-size:var(--fs-sm);color:var(--text2)">Close</div></div>';
+    DOWS.forEach((d, i) => {
+      const key = d.toLowerCase();
+      const day = wh[key] || wh[i] || { open: '', close: '' };
+      const row = document.createElement('div');
+      row.className = 'hours-grid';
+      row.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="ld-toggle${day.open ? ' on' : ''}" data-day-tog></div>
+          <div>${d}</div>
+        </div>
+        <input class="ld-input" type="time" data-day="${key}" data-part="open" value="${day.open || ''}">
+        <input class="ld-input" type="time" data-day="${key}" data-part="close" value="${day.close || ''}">
+      `;
+      hoursEl.append(row);
+      row.querySelector('[data-day-tog]').onclick = (e) => e.currentTarget.classList.toggle('on');
+    });
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+    const setTog = (id, val) => { const el = document.getElementById(id); if (el) el.classList.toggle('on', !!val); };
+    set('f-lead-max', t.lead_max_days || 60);
+    set('f-lead-min', t.lead_min_hours || 2);
+    set('f-slot', t.slot_minutes || 30);
+    setTog('f-auto', t.auto_confirm !== false);
+    setTog('f-dep-on', p.deposit?.enabled);
+    set('f-dep-default', ((p.deposit?.default_cents || 0) / 100).toFixed(2));
+    setTog('f-lc-on', p.late_cancel?.enabled);
+    set('f-lc-hours', p.late_cancel?.window_hours || 24);
+    set('f-lc-type', p.late_cancel?.fee_type || 'flat');
+    set('f-lc-value', p.late_cancel?.fee_type === 'percent' ? (p.late_cancel?.fee_value ?? 50) : ((p.late_cancel?.fee_value ?? 2500) / (p.late_cancel?.fee_type === 'flat' ? 100 : 1)));
+    setTog('f-ns-on', p.no_show?.enabled);
+    set('f-ns-type', p.no_show?.fee_type || 'flat');
+    set('f-ns-value', p.no_show?.fee_type === 'percent' ? (p.no_show?.fee_value ?? 100) : ((p.no_show?.fee_value ?? 5000) / (p.no_show?.fee_type === 'flat' ? 100 : 1)));
+  }
+
+  async function save() {
+    const S = window.LolaShell;
+    // Working hours
+    const wh = {};
+    document.querySelectorAll('.hours-grid').forEach((row, idx) => {
+      if (idx === 0) return; // header
+      const tog = row.querySelector('[data-day-tog]');
+      const inps = row.querySelectorAll('input[type=time]');
+      if (!tog || inps.length < 2) return;
+      const dayKey = inps[0].dataset.day;
+      wh[dayKey] = tog.classList.contains('on') ? { open: inps[0].value, close: inps[1].value } : null;
+    });
+    const tenantPayload = {
+      working_hours: wh,
+      lead_max_days: parseInt(document.getElementById('f-lead-max').value, 10) || 60,
+      lead_min_hours: parseInt(document.getElementById('f-lead-min').value, 10) || 0,
+      slot_minutes: parseInt(document.getElementById('f-slot').value, 10) || 30,
+      auto_confirm: document.getElementById('f-auto').classList.contains('on'),
+    };
+    const lcType = document.getElementById('f-lc-type').value;
+    const nsType = document.getElementById('f-ns-type').value;
+    const polPayload = {
+      deposit: { enabled: document.getElementById('f-dep-on').classList.contains('on'), default_cents: Math.round(parseFloat(document.getElementById('f-dep-default').value || '0') * 100) },
+      late_cancel: {
+        enabled: document.getElementById('f-lc-on').classList.contains('on'),
+        window_hours: parseInt(document.getElementById('f-lc-hours').value, 10) || 24,
+        fee_type: lcType,
+        fee_value: lcType === 'percent' ? parseFloat(document.getElementById('f-lc-value').value || '0') : Math.round(parseFloat(document.getElementById('f-lc-value').value || '0') * 100),
+      },
+      no_show: {
+        enabled: document.getElementById('f-ns-on').classList.contains('on'),
+        fee_type: nsType,
+        fee_value: nsType === 'percent' ? parseFloat(document.getElementById('f-ns-value').value || '0') : Math.round(parseFloat(document.getElementById('f-ns-value').value || '0') * 100),
+      },
+    };
+    const [r1, r2] = await Promise.all([
+      S.api('/api/tenant', tenantPayload, 'PATCH'),
+      S.api('/api/tenant/billing-policies', polPayload),
+    ]);
+    if (!r1.ok || !r2.ok) return S.toast('Save failed: ' + (r1.error || r2.error), 'dan');
+    S.toast('Saved', 'ok');
+  }
+})();
+</script>
+</body>
+</html>

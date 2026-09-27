@@ -371,3 +371,29 @@
 
   console.info('[calendar] ready — atom lives top-right, tap or say "Lola"');
 })();
+
+
+/* --- Lola gap-fill wire (installed by all-in-one) --- */
+(function(){
+  if (window.__lolaGapWired) return; window.__lolaGapWired = true;
+  const authToken = () => localStorage.getItem("sb-access-token") || localStorage.getItem("access_token") || "";
+  async function post(path, body) {
+    const r = await fetch(path, { method:"POST", headers: { "Content-Type":"application/json", "Authorization": "Bearer " + authToken() }, body: JSON.stringify(body||{}) });
+    let d = null; try { d = await r.json(); } catch(_){}
+    return { ok: r.ok && d?.ok !== false, data: d?.data, error: d?.error };
+  }
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest?.("[data-action="ask-lola-fill"], .btn-fill-gap, [data-lola-fill-gap]");
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const slot = btn.closest("[data-slot-date]");
+    const date = btn.dataset.slotDate || slot?.dataset.slotDate;
+    const time = btn.dataset.slotTime || slot?.dataset.slotTime;
+    if (!date || !time) { alert("Missing slot info"); return; }
+    btn.disabled = true; const oldTxt = btn.textContent; btn.textContent = "Lola is calling…";
+    const r = await post("/api/lola/voice-fill-gap", { date, start_time: time, channel: btn.dataset.channel || "voice" });
+    btn.disabled = false; btn.textContent = oldTxt;
+    if (r.ok) window.LolaShell?.toast?.(`Lola is reaching out to ${r.data?.candidates_count || "the waitlist"}`, "ok");
+    else alert("Failed: " + (r.error || "unknown"));
+  }, true);
+})();

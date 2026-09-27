@@ -1,6 +1,4 @@
-// GET/POST /api/services
-// GET  → list all active services for tenant
-// POST → create service
+// GET/POST /api/team
 export default async function handler(req, res) {
   let cors, jsonBody, bearer, getUserFromToken, resolveTenantForUser, dbFn;
   try {
@@ -15,41 +13,30 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ ok:false, error:'not_authenticated' });
     const tenant = await resolveTenantForUser(user);
     if (!tenant?.id) return res.status(404).json({ ok:false, error:'no_tenant' });
-
     const c = dbFn();
-
     if (req.method === 'GET') {
-      const { data, error } = await c.from('services').select('*').eq('tenant_id', tenant.id).order('category', { ascending: true }).order('sort_order', { ascending: true }).order('name', { ascending: true });
+      const { data, error } = await c.from('staff_members').select('*').eq('tenant_id', tenant.id).order('name');
       if (error) throw error;
-      return res.json({ ok:true, data: { services: data || [] } });
+      return res.json({ ok:true, data: { members: data || [] } });
     }
-
     if (req.method === 'POST') {
       const b = (jsonBody ? jsonBody(req) : null) || {};
       if (!b.name) return res.status(400).json({ ok:false, error:'name_required' });
       const insert = {
         tenant_id: tenant.id,
         name: String(b.name).trim(),
-        category: b.category ? String(b.category).trim() : null,
-        duration_minutes: parseInt(b.duration_minutes, 10) || 60,
-        price_cents: parseInt(b.price_cents, 10) || 0,
-        deposit_cents: parseInt(b.deposit_cents, 10) || 0,
-        buffer_minutes: parseInt(b.buffer_minutes, 10) || 0,
-        description: b.description || null,
+        role: b.role || 'Stylist',
+        phone: b.phone || null,
+        email: b.email || null,
+        commission_pct: parseInt(b.commission_pct, 10) || 0,
+        color: b.color || null,
+        working_days: Array.isArray(b.working_days) ? b.working_days : [],
         active: b.active !== false,
-        online_bookable: b.online_bookable !== false,
-        staff_only: !!b.staff_only,
-        sort_order: parseInt(b.sort_order, 10) || 0,
-        created_by: user.id || null,
       };
-      const { data, error } = await c.from('services').insert(insert).select().single();
+      const { data, error } = await c.from('staff_members').insert(insert).select().single();
       if (error) throw error;
       return res.json({ ok:true, data });
     }
-
     return res.status(405).json({ ok:false, error:'method_not_allowed' });
-  } catch (e) {
-    console.error('[services]', e?.message);
-    return res.status(500).json({ ok:false, error:String(e?.message||e) });
-  }
+  } catch (e) { console.error('[team]', e?.message); return res.status(500).json({ ok:false, error:String(e?.message||e) }); }
 }

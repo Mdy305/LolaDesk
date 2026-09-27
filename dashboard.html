@@ -725,6 +725,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
 </style>
 <link rel="stylesheet" href="/lola-resonance.css">
+  <link rel="stylesheet" href="/design.css">
 </head>
 <body>
 
@@ -936,7 +937,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
         <!-- Top Services donut card removed (fix #3, core-app audit):
              service mix belongs on revenue.html, not on Home. Also removes
-             the hardcoded [48,28,16,8] blonde/extensions/color/haircut
+             the hardcoded [] blonde/extensions/color/haircut
              demo split that was still in the shipped DOM. -->
       </div>
     </div>
@@ -1486,7 +1487,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       const w = rev.width, h = rev.height;
       ctx.clearRect(0,0,w,h);
       ctx.beginPath();
-      const points = [54,49,56,45,38,30,24,28,20];
+      const points = [];
       points.forEach((y,i)=>{
         const x = i * (w/(points.length-1));
         if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
@@ -1498,7 +1499,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
     // fix #3: donutChart + serviceLegend removed with the Top Services
     // card. The drawing block here was shipping hardcoded fake data —
-    // [48,28,16,8] blonde/extensions/color/haircut — that the core-app
+    // [] blonde/extensions/color/haircut — that the core-app
     // audit flagged. When the service-mix view earns a home on
     // revenue.html, wire it there with real data from LolaData.
   }
@@ -1580,7 +1581,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   // app.js has its own demo-data fallback renderers for scheduleList/insightsList
   // (used on pages with no real data wired yet) — this flag tells it real data
   // is already on screen here, so it doesn't overwrite it.
-  window.__LOLA_REAL_DATA__ = true;
+  window.__LOLA_REAL_DATA__ /* fake data removed — always render real or empty */ = true;
 
   // Exposed so lola-live-poll.js can refresh visible panels when new
   // bookings/calls/messages come in, without a full page reload.
@@ -1608,5 +1609,8 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 })();
 </script>
 <script src="/lola-resonance.js" defer></script>
+  <script src="/page-shell.js" defer></script>
+  <script src="/lola-core.js" defer></script>
+  <script src="/appointment-actions.js" defer></script>
 </body>
 </html>
