@@ -11,13 +11,13 @@
  * surfaced it. One funnel means one opt-out gate, one auth, one place to
  * add logging/metrics/health signals.
  */
-import { e164, isOptedOut } from './db.js';
+import { e164, isOptedOut, db as _smsDb } from './db.js';
 import { resolveInboundTenant } from './tenant-resolver.js';
 
 // The historical alias: every pre-existing call site imports `sendSMS`.
 export { sendSms as sendSMS };
 
-export async function sendSms({
+async function _sendSmsCore({
   from, to, text, profileId, tenantId,
   skipOptOut = false, type = 'SMS', channel = 'sms',
 } = {}) {
@@ -65,4 +65,49 @@ export async function sendAutopilotSms({ from, to, text, tenantId } = {}) {
   } catch (e) {
     return { skipped: true, reason: String(e?.message || e) };
   }
+}
+
+
+/**
+ * Public entry point. Accepts the canonical { from, to, text, tenantId }
+ * shape AND the { tenant, to, body } shape some features use. When `from`
+ * is missing it resolves the salon's own line (tenant_numbers primary →
+ * tenants.phone_number → env). Missing essentials return
+ * { skipped, reason } instead of sending a broken request to Telnyx.
+ */
+export async function sendSms(opts = {}) {
+  const o = { ...opts };
+  if (o.text == null && o.body != null) o.text = o.body;
+  if (o.text == null && o.message != null) o.text = o.message;
+  if (!o.tenantId && o.tenant && o.tenant.id) o.tenantId = o.tenant.id;
+  if (!o.from) o.from = await _resolveSalonLine(o.tenant, o.tenantId);
+  const tenant = o.tenant;
+  delete o.body; delete o.message; delete o.tenant;
+  if (!o.from || !o.to || !o.text) {
+    const reason = !o.from ? 'no_salon_number' : (!o.to ? 'no_recipient' : 'no_text');
+    console.warn('[sms] not sent:', reason, tenant && tenant.id ? `tenant=${tenant.id}` : '');
+    return { skipped: true, reason };
+  }
+  return _sendSmsCore(o);
+}
+
+async function _resolveSalonLine(tenant, tenantId) {
+  const id = (tenant && tenant.id) || tenantId || null;
+  try {
+    const c = _smsDb();
+    if (c && id) {
+      const { data: rows } = await c.from('tenant_numbers').select('*').eq('tenant_id', id);
+      const list = (rows || []).filter(r => r && (r.phone_number || r.phone_e164));
+      const pick = list.find(r => r.kind === 'primary') || list.find(r => r.status === 'active') || list[0];
+      if (pick) return pick.phone_number || pick.phone_e164;
+    }
+  } catch (_) { /* fall through */ }
+  let t = tenant || null;
+  if ((!t || !(t.phone_number || t.phone_e164)) && id) {
+    try {
+      const c = _smsDb();
+      if (c) { const { data } = await c.from('tenants').select('*').eq('id', id).maybeSingle(); if (data) t = data; }
+    } catch (_) { /* fall through */ }
+  }
+  return (t && (t.phone_number || t.phone_e164 || t.phone)) || process.env.TELNYX_FROM_NUMBER || process.env.TELNYX_NUMBER || null;
 }

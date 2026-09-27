@@ -27,17 +27,17 @@ export default async function handler(req, res) {
     let out = [];
     try {
       const { data } = await c.from('booking_waitlist')
-        .select('id, client_id, client_name, phone, service, stylist_hint, preferred_time, created_at, status')
+        .select('*')
         .eq('tenant_id', tenant.id)
-        .in('status', ['open', 'active', null])
+        .eq('status', 'active')
         .order('created_at', { ascending: true })
         .limit(30);
       out = (data || []).map(w => ({
         source: 'waitlist',
         id: w.client_id || w.id,
         name: w.client_name || 'Client',
-        phone_masked: mask(w.phone),
-        service: w.service || '',
+        phone_masked: mask(w.client_phone || w.phone),
+        service: w.service_name || w.service || '',
         preferred_time: w.preferred_time || null,
         stylist_hint: w.stylist_hint || null,
         fit_score: score(w, { startTime, stylist })

@@ -39,22 +39,22 @@ export default async function handler(req, res) {
     // Waitlist first
     try {
       const { data: wait } = await c.from('booking_waitlist')
-        .select('id, tenant_id, client_id, client_name, phone, service, stylist_hint, preferred_time, created_at, status')
+        .select('*')
         .eq('tenant_id', tenant.id)
-        .in('status', ['open', 'active', null])
+        .eq('status', 'active')
         .order('created_at', { ascending: true })
         .limit(50);
       if (Array.isArray(wait)) {
         for (const w of wait) {
-          if (!w.phone) continue;
+          const wPhone = w.client_phone || w.phone; if (!wPhone) continue;
           const fitScore = scoreFit(w, { startTime, serviceHint, stylist });
           candidates.push({
             source: 'waitlist',
             client_id: w.client_id || null,
             waitlist_id: w.id,
             name: w.client_name || 'Client',
-            phone: w.phone,
-            service: w.service || serviceHint || '',
+            phone: wPhone,
+            service: w.service_name || w.service || serviceHint || '',
             fit_score: fitScore
           });
         }
@@ -66,11 +66,11 @@ export default async function handler(req, res) {
       try {
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 45);
         const { data: lapsed } = await c.from('clients')
-          .select('id, name, phone, last_visit_at, preferred_service, preferred_stylist')
+          .select('*')
           .eq('tenant_id', tenant.id)
           .not('phone', 'is', null)
-          .lt('last_visit_at', cutoff.toISOString())
-          .order('last_visit_at', { ascending: false })
+          .lt('last_visit', cutoff.toISOString())
+          .order('last_visit', { ascending: false })
           .limit(20);
         if (Array.isArray(lapsed)) {
           for (const l of lapsed) {
