@@ -102,6 +102,15 @@
     .lp-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--lp-line); }
     .lp-input { flex: 1; resize: none; max-height: 120px; min-height: 40px; padding: 10px 14px; border-radius: 20px; border: 1px solid var(--lp-line); background: transparent; color: var(--lp-ink); font: inherit; outline: none; }
     .lp-input:focus { border-color: #ccff00; }
+    .lp-badge { position: absolute; top: 2px; right: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #ff3b30; color: #fff; font: 600 12px/20px -apple-system, system-ui, sans-serif; box-shadow: 0 0 0 2px var(--lp-bg); pointer-events: none; }
+    .lp-badge.dot { min-width: 12px; width: 12px; height: 12px; padding: 0; top: 6px; right: 6px; background: #ccff00; }
+    .lp-badge[hidden], .lp-nudge[hidden] { display: none !important; }
+    .lp-nudge { position: fixed; right: calc(104px + env(safe-area-inset-right, 0px)); bottom: calc(30px + env(safe-area-inset-bottom, 0px)); z-index: 2147482000; max-width: 280px; text-align: left;
+      padding: 10px 14px; border-radius: 16px; border: 1px solid var(--lp-line); background: var(--lp-bg); color: var(--lp-ink); box-shadow: var(--lp-shadow); cursor: pointer; font: inherit;
+      backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); animation: lp-in .45s cubic-bezier(.32,.72,0,1); }
+    .lp-nudge b { display: block; font-weight: 600; font-size: 14px; } .lp-nudge span { display: block; font-size: 13px; color: var(--lp-muted); }
+    @keyframes lp-in { from { opacity: 0; transform: translateX(10px) scale(.96); } }
+    @media (max-width: 1100px) { .lp-nudge { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); right: calc(88px + env(safe-area-inset-right, 0px)); } }
     .lp-send { background: var(--lp-acc); color: var(--lp-acc-ink); border-color: var(--lp-acc); }
     .lp-mic.on { background: #ccff00; color: #000; border-color: #ccff00; animation: lp-pulse 1.2s ease-in-out infinite; }
     @keyframes lp-pulse { 50% { box-shadow: 0 0 0 6px rgba(204,255,0,.25); } }
@@ -235,10 +244,41 @@
     }
   }
 
+  // ── while you were away ───────────────────────────────────
+  const AWAY_MS = 2 * 3600e3;
+  let onAway = null;                       // set by the panel once mounted
+  function markSeen() { store.set('lola.seen', Date.now()); }
+  async function checkAway(prev) {
+    if (!prev || Date.now() - prev < AWAY_MS) return;
+    try {
+      const r = await fetch('/api/lola/away?since=' + encodeURIComponent(new Date(prev).toISOString()), { headers: { Authorization: 'Bearer ' + token() } });
+      if (!r.ok) return;
+      const d = await r.json().catch(() => ({}));
+      const brief = d && d.brief;
+      if (!brief || !brief.notable) return;
+      if (onAway) onAway(brief);
+      else if (window.LolaNotify && typeof window.LolaNotify.show === 'function') window.LolaNotify.show({ title: 'While you were away', sub: brief.say, tone: brief.counts && brief.counts.needs_you ? 'call' : 'plain', sticky: true });
+    } catch (_) {}
+  }
+  function startPresenceClock() {
+    const prev = Number(store.get('lola.seen', 0)) || 0;
+    markSeen();
+    setInterval(() => { if (!document.hidden) markSeen(); }, 60e3);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { markSeen(); return; }
+      const before = Number(store.get('lola.seen', 0)) || 0;
+      markSeen(); checkAway(before);
+    });
+    addEventListener('pagehide', markSeen);
+    return prev;
+  }
+
   // ── mount ─────────────────────────────────────────────────
   function mount() {
     if (!token()) return;                                                  // signed-in pages only
-    if (document.getElementById('orbMic') || document.getElementById('cmdInput')) return; // the dashboard has its own Lola
+    if (window.__lolaClock) return; window.__lolaClock = true;
+    const prevSeen = startPresenceClock();
+    if (document.getElementById('orbMic') || document.getElementById('cmdInput')) { setTimeout(() => checkAway(prevSeen), 1500); return; } // the dashboard has its own Lola
     if (document.querySelector('.lp-root')) return;
     // The calendar's old white atom is replaced by Lola herself.
     ['atom', 'atomOverlay'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
@@ -282,9 +322,9 @@
       if (!thread.length) bubble('assistant', "Hi, I'm here. I can text or call clients, move or cancel bookings, fill open slots, send offers, and catch you up. What do you need?");
       thread.slice(-20).forEach(m => bubble(m.role, m.text));
     }
-    function renderChips() {
+    function renderChips(list) {
       chipsEl.innerHTML = '';
-      suggestions().forEach(s => { const b = document.createElement('button'); b.type = 'button'; b.className = 'lp-chip'; b.textContent = s; b.onclick = () => send(s); chipsEl.appendChild(b); });
+      (list && list.length ? list : suggestions()).forEach(s => { const b = document.createElement('button'); b.type = 'button'; b.className = 'lp-chip'; b.textContent = s; b.onclick = () => send(s); chipsEl.appendChild(b); });
     }
 
     let busy = false;
@@ -318,9 +358,13 @@
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); } });
     form.addEventListener('submit', (e) => { e.preventDefault(); send(input.value); });
 
+    let awayBrief = null;
     function open() {
       panel.hidden = false; orb.setAttribute('aria-expanded', 'true');
-      renderThread(); renderChips();
+      const brief = awayBrief; awayBrief = null; clearAway();
+      if (brief) remember('assistant', brief.say);
+      renderThread(); renderChips(brief && brief.suggestions);
+      if (brief) speak(brief.say, body);
       requestAnimationFrame(() => panel.classList.remove('lp-enter'));
       setTimeout(() => input.focus(), 50);
       if (body.mode === 'idle') body.mode = 'listening'; setTimeout(() => { if (body.mode === 'listening') body.mode = 'idle'; }, 1200);
@@ -352,6 +396,21 @@
       mic.classList.add('on'); body.mode = 'listening'; if (currentAudio) currentAudio.pause();
       try { rec.start(); } catch (_) { stopListening(); }
     };
+
+    // "While you were away": a badge on Lola and a quiet note beside her.
+    const badge = document.createElement('span'); badge.className = 'lp-badge'; badge.hidden = true; orb.appendChild(badge);
+    const nudge = document.createElement('button'); nudge.type = 'button'; nudge.className = 'lp-nudge'; nudge.hidden = true; root.appendChild(nudge);
+    nudge.onclick = () => open();
+    function clearAway() { badge.hidden = true; nudge.hidden = true; }
+    onAway = (brief) => {
+      awayBrief = brief;
+      if (!panel.hidden) { const b = awayBrief; awayBrief = null; remember('assistant', b.say); bubble('assistant', b.say); renderChips(b.suggestions); return; }
+      const n = (brief.counts && brief.counts.needs_you) || 0;
+      badge.textContent = n ? String(n) : ''; badge.classList.toggle('dot', !n); badge.hidden = false;
+      nudge.innerHTML = '<b>While you were away</b><span></span>'; nudge.lastChild.textContent = brief.headline || 'Tap to catch up';
+      nudge.hidden = false; setTimeout(() => { nudge.hidden = true; }, 14000);
+    };
+    setTimeout(() => checkAway(prevSeen), 1200);
 
     // Some pages rebuild <body>; keep Lola attached.
     setInterval(() => { if (!root.isConnected && document.body) { document.body.appendChild(root); if (!document.getElementById('lp-css')) document.head.appendChild(style); } }, 1500);

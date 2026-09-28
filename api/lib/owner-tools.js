@@ -17,9 +17,11 @@ import { getBookingSettings, updateCanonicalBooking, addToWaitlist, listServices
 import { dayBoundsUtc, localDateKey, zonedLocalToUtc } from './timezone.js';
 import { sendSms } from './sms.js';
 import { originateCallback } from './call-callback.js';
+import { awayBrief } from './owner-brief.js';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 // ── tool declarations (OpenAI function format, used by Telnyx inference) ──
 const clientArg = { type: 'string', description: 'Client name or phone number, e.g. "Sarah Lee" or "+13055551234".' };
@@ -50,6 +52,8 @@ export const OWNER_TOOLS = [
   fn('mark_no_show', "Mark a client's booking as a no-show.", { client: clientArg, date: dateArg, confirmed: confirmedArg }, ['client']),
   fn('add_to_waitlist', 'Put a client on the waitlist for the next opening.', { client: clientArg, preferred_date: dateArg, service: { type: 'string' } }, ['client']),
   fn('fill_gap', 'Offer an open slot to waitlisted and lapsed clients by text.', { date: dateArg, time: { type: 'string' }, duration_minutes: { type: 'integer' }, confirmed: confirmedArg }, ['date', 'time']),
+  fn('away_brief', "What happened while the owner was away: calls, who needs a call back, bookings made and cancelled. Use for 'what did I miss', 'anything I should know'.", { hours: { type: 'integer', description: 'How far back, in hours (default 12).' } }),
+  fn('set_alerts', 'Turn owner text alerts on or off (Lola texts the owner when a caller asks for them, is unhappy or was missed, or a booking in the next 48h is cancelled), and/or set the phone they go to.', { enabled: { type: 'boolean' }, phone: { type: 'string', description: "Owner's mobile number for alerts." } }),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos'] } }, ['page']),
 ];
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
@@ -62,7 +66,7 @@ const PAGES = {
 };
 
 // ── owner-command detection: these skip the caller fast-paths in the brain ──
-const OWNER_VERBS = /\b(text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup)\b/i;
+const OWNER_VERBS = /\b(text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup|what did i miss|did i miss|while i was|alerts?|notify me|alert me)\b/i;
 export function isOwnerCommand(text) { return OWNER_VERBS.test(String(text || '')); }
 
 const YES = /^\s*(yes|yeah|yep|yup|sure|ok(ay)?|do it|send( it)?|go( ahead)?|confirm(ed)?|please do|absolutely|correct|that'?s right)\b[\s.!]*$/i;
@@ -234,6 +238,29 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
         return { ok: true, say: `Opening ${args.page}.`, ui: { navigate: path } };
       }
 
+      case 'away_brief': {
+        const hrs = Math.min(168, Math.max(1, Number(args.hours) || 12));
+        const brief = await awayBrief(c, tenant, new Date(Date.now() - hrs * 3600e3).toISOString());
+        return { ok: true, say: brief.notable ? brief.say.replace(/^While you were away/, `In the last ${plural(hrs, 'hour')}`) : `Nothing needs you from the last ${plural(hrs, 'hour')}.`, brief };
+      }
+
+      case 'set_alerts': {
+        const patch = {};
+        if (args.phone) {
+          const ph = e164(args.phone);
+          if (!ph || ph.replace(/\D/g, '').length < 10) return { ok: false, say: "That number doesn't look right. What's your mobile number?" };
+          const { error } = await c.from('tenants').update({ operator_phone: ph }).eq('id', tenant.id);
+          if (error) return { ok: false, say: "I couldn't save that number. You can set it in Settings, Call handling." };
+          patch.phone = ph;
+        }
+        const on = args.enabled === undefined ? true : args.enabled !== false;
+        await c.from('client_memories').upsert({ tenant_id: tenant.id, client_phone: 'owner_alerts', key: 'enabled', value: { on, at: new Date().toISOString() } }, { onConflict: 'tenant_id,client_phone,key' });
+        const to = patch.phone || tenant.operator_phone || null;
+        if (!on) return { ok: true, say: "Okay, I'll stop texting you alerts. You'll still see everything when you open LolaDesk." };
+        if (!to) return { ok: true, say: "Alerts are on. What's your mobile number? I'll text you there when someone needs you." };
+        return { ok: true, say: `Alerts are on. I'll text ${to} when a caller asks for you, sounds unhappy or I miss them, or a booking in the next 48 hours is cancelled. Never between 9pm and 8am.` };
+      }
+
       case 'today_brief': {
         const key = resolveDayKey(args.date, tz);
         const b = dayBoundsUtc(key, tz);
@@ -358,13 +385,19 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
       }
 
       case 'call_client': {
-        const found = await oneClient(c, tenant.id, args.client);
+        let found = await oneClient(c, tenant.id, args.client);
+        // A caller who isn't a client yet (e.g. from the away brief): call the number itself.
+        const rawDigits = String(args.client || '').replace(/\D/g, '');
+        if (found.error && rawDigits.length >= 10 && rawDigits.length <= 11) {
+          const ph = e164(args.client);
+          found = { client: { id: ph, phone: ph, name: ph.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, '($1) $2-$3') } };
+        }
         if (found.error) return { ok: false, say: found.error };
         if (!found.client.phone || !/^\+?\d{7,}/.test(found.client.phone)) return { ok: false, say: `${firstName(found.client)} has no phone number on file.` };
         if (!confirmed) return park(tenant.id, name, { ...args, client: found.client.id }, `I'll call ${clientName(found.client)} now from the salon line. Go ahead?`);
         const r = await originateCallback(c, tenant, e164(found.client.phone));
         if (!r?.ok) return { ok: false, say: `I couldn't place the call: ${r?.error || 'unknown error'}.` };
-        return { ok: true, say: `Calling ${firstName(found.client)} now.` };
+        return { ok: true, say: `Calling ${/^\(\d{3}\)/.test(clientName(found.client)) ? clientName(found.client) : firstName(found.client)} now.` };
       }
 
       case 'cancel_booking':
