@@ -169,7 +169,7 @@
 </head>
 <body data-page="bookings"><div class="app"><main class="main">
 <div class="cal-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-  <div><div class="cal-date" id="calDate" style="font-size:26px;font-weight:560;letter-spacing:-.02em">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div>
+  <div style="display:flex;align-items:center;gap:18px"><div id="lolaAnchor" data-inline aria-hidden="true" style="width:84px;height:84px;flex:none;margin:-10px 0 -10px -4px"></div><div><div class="cal-date" id="calDate" style="font-size:26px;font-weight:560;letter-spacing:-.02em">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div></div>
   <div class="cal-nav" style="display:flex;gap:6px;align-items:center">
     <div class="view-switch" id="viewSwitch">
       <button data-v="week" class="on">Week</button>
@@ -327,7 +327,7 @@ function renderDay(){
     const top=(mins/60)*SLOT_H,height=Math.max(30,(dur/60)*SLOT_H-5);
     const el=document.createElement('div');
     const color=svcColor(b.service_id);
-    el.className='appt '+(b.status||'confirmed');
+    el.className='appt '+(b.status||'confirmed');el.dataset.bookingId=b.id||'';el.dataset.start=b.start_time||'';
     el.style.cssText='top:'+top+'px;height:'+height+'px;--svc:'+color;
     const st=(b.status==='completed')?'completed':(b.status==='cancelled')?'cancelled':(b.status==='pending')?'pending':(b.status==='in_progress')?'in_progress':(b.status==='no_show')?'no_show':'confirmed';
     el.innerHTML='<div class="at">'+fmtT(start)+' · '+fmtDur(dur)+'<span class="st '+st+'">'+st+'</span></div>'
@@ -383,7 +383,7 @@ function renderWeek(){
     dayBk.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time)).forEach(b=>{
       const color=svcColor(b.service_id);
       const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':(b.status==='in_progress'?'in_progress':(b.status==='no_show'?'no_show':'confirmed')));
-      html+='<div class="wk-appt" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
+      html+='<div class="wk-appt" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
         +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:var(--accent)">'+st+'</span></div>'
         +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
         +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'—')+'</div></div>';
@@ -405,7 +405,7 @@ function renderAgenda(){
   dayBk.forEach(b=>{
     const color=svcColor(b.service_id);
     const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':'confirmed');
-    html+='<div class="ag-item" onclick="showDetail(\''+b.id+'\')">'
+    html+='<div class="ag-item" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" onclick="showDetail(\''+b.id+'\')">'
       +'<div class="ag-t">'+fmtT(new Date(b.start_time))+'<small>'+fmtDur(b.service?.duration_minutes)+'</small></div>'
       +'<div class="ag-cli"><div class="ag-av" style="--svc:'+color+'">'+esc(initials(clientName(b.client)))+'</div>'
       +'<div><div class="ag-name">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</div>'
@@ -748,4 +748,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowLeft'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(-1);}
 });
 (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();loadWaitlist();})();
-</script></body></html>
+</script>
+<script src="/lola-stage.js" defer></script>
+<script src="/lola-calendar-bridge.js" defer></script>
+</body></html>

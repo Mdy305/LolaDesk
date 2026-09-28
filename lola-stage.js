@@ -20,10 +20,10 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    #lolaAnchor { position: fixed; top: calc(22px + env(safe-area-inset-top, 0px)); right: calc(28px + env(safe-area-inset-right, 0px)); width: 150px; height: 150px; pointer-events: none; z-index: 1; }
-    @media (max-width: 1100px) { #lolaAnchor { width: 112px; height: 112px; top: 14px; right: 16px; } }
-    @media (max-width: 700px)  { #lolaAnchor { width: 80px; height: 80px; top: 6px; right: 6px; } }
-    .ls-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; }`;
+    #lolaAnchor:not([data-inline]) { position: fixed; top: calc(22px + env(safe-area-inset-top, 0px)); right: calc(28px + env(safe-area-inset-right, 0px)); width: 150px; height: 150px; pointer-events: none; z-index: 1; }
+    @media (max-width: 1100px) { #lolaAnchor:not([data-inline]) { width: 112px; height: 112px; top: 14px; right: 16px; } }
+    @media (max-width: 700px)  { #lolaAnchor:not([data-inline]) { width: 80px; height: 80px; top: 6px; right: 6px; } }
+    .ls-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 90; }`;
   document.head.appendChild(style);
 
   const core = document.createElement('canvas'); core.className = 'ls-canvas'; core.setAttribute('aria-hidden', 'true');
@@ -202,6 +202,7 @@
     g.addColorStop(1, `rgba(${GLOW},0)`);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(C.x, C.y, haloR, 0, Math.PI * 2); ctx.fill();
 
+    const onScreen = C.y > -R * 3 && C.y < H + R * 3;
     if (hasGL) {
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND);
       if (dark) gl.blendFunc(gl.SRC_ALPHA, gl.ONE); else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -214,7 +215,7 @@
       gl.uniform1f(loc.u_flow, reduce ? 0.4 : 1);
       const ink = INK().split(',').map(v => parseFloat(v) / 255);
       gl.uniform3fv(loc.u_ink, ink); gl.uniform3fv(loc.u_glow, [0.8, 1, 0]);
-      gl.drawArrays(gl.POINTS, 0, coreN);
+      if (onScreen) gl.drawArrays(gl.POINTS, 0, coreN);
     }
 
     // workers

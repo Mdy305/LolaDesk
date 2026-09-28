@@ -1,41 +1,6 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<script src="/lola-auth-fetch.js"></script>
-<script src="/lola-everywhere.js" defer></script>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#fbfbfd">
-<title>Today · LolaDesk</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/calendar.css">
-</head>
-<body>
-
-<!-- Lola lives here: lola-stage.js draws her body, lola-everywhere.js is her conversation -->
-<div id="lolaAnchor" aria-hidden="true"></div>
-
-<!-- Calendar view -->
-<main class="day">
-  <header class="day-head">
-    <div class="day-label">Today</div>
-    <div id="dayDate" class="day-date">&mdash;</div>
-    <nav class="day-nav">
-      <button id="navPrev" class="day-nav-btn" aria-label="Previous day">&larr;</button>
-      <button id="navToday" class="day-nav-btn day-nav-today">Today</button>
-      <button id="navNext" class="day-nav-btn" aria-label="Next day">&rarr;</button>
-    </nav>
-  </header>
-
-  <section id="daySummary" class="day-summary" hidden></section>
-
-  <section id="dayAgenda" class="day-agenda">
-    <div class="day-loading">Loading&hellip;</div>
-  </section>
-</main>
-
-<script src="/book-dialog.js" defer></script>
-<script src="/lola-stage.js" defer></script>
-<script src="/calendar.js" defer></script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calendar · LolaDesk</title>
+<style>html,body{margin:0;background:#070708}</style>
+<script>location.replace('/bookings' + location.search + location.hash);</script>
+</head><body></body></html>
