@@ -102,3 +102,161 @@ export function verifyStripeSig(rawBody, signature) {
     return null;
   }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Billing + deposits (REST). Restored: the Sep 22 Connect rewrite of this
+// file dropped these exports, and every module importing them failed to
+// load — /api/calendar, Lola, voice booking, deposits, checkout, portal.
+// ═══════════════════════════════════════════════════════════════════
+const STRIPE_API = 'https://api.stripe.com/v1';
+
+function key(){ return process.env.STRIPE_SECRET_KEY; }
+
+// Stripe wants form-encoded bodies; this flattens nested objects.
+function form(obj, prefix='', out=[]){
+  for(const k in obj){
+    const v = obj[k];
+    const key = prefix ? `${prefix}[${k}]` : k;
+    if(v && typeof v === 'object' && !Array.isArray(v)) form(v, key, out);
+    else if(Array.isArray(v)) v.forEach((item,i)=>{
+      if(item && typeof item==='object') form(item, `${key}[${i}]`, out);
+      else out.push(`${encodeURIComponent(key)}[${i}]=${encodeURIComponent(item)}`);
+    });
+    else if(v!==undefined && v!==null) out.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+  }
+  return out.join('&');
+}
+
+async function stripeRest(path, method='POST', body){
+  const r = await fetch(`${STRIPE_API}${path}`, {
+    method,
+    headers:{
+      'Authorization': `Bearer ${key()}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: body ? form(body) : undefined
+  });
+  const data = await r.json();
+  if(!r.ok) throw new Error(data?.error?.message || `Stripe ${r.status}`);
+  return data;
+}
+
+// Normalize the marketing slugs to billing plan keys.
+const PLAN_ALIAS = { solo:'starter', starter:'starter', pro:'pro', medspa:'medspa', 'med-spa':'medspa' };
+
+// Map plan slug + billing interval -> env price id
+export function priceFor(plan, interval='monthly'){
+  const p = PLAN_ALIAS[plan] || 'starter';
+  const monthly = {
+    starter: process.env.STRIPE_PRICE_STARTER,
+    pro:     process.env.STRIPE_PRICE_PRO,
+    medspa:  process.env.STRIPE_PRICE_MEDSPA
+  };
+  const annual = {
+    starter: process.env.STRIPE_PRICE_STARTER_ANNUAL,
+    pro:     process.env.STRIPE_PRICE_PRO_ANNUAL,
+    medspa:  process.env.STRIPE_PRICE_MEDSPA_ANNUAL
+  };
+  const map = interval === 'annual' ? annual : monthly;
+  // Fall back to the monthly price if an annual one isn't configured yet.
+  return map[p] || monthly[p] || monthly.starter;
+}
+
+// Create a Checkout Session for a subscription
+export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly', areaCode }){
+  const price = priceFor(plan, interval);
+  if(!price) throw new Error('No Stripe price configured for plan: '+plan);
+  const appUrl = process.env.APP_URL || 'https://www.loladesk.com';
+  // Both spellings are shipped so the webhook can never miss the tenant, and
+  // preferred_area_code lets checkout.session.completed auto-provision the
+  // salon's own local area-code number (defaults to 305 upstream).
+  const md = { tenantId: tenantId||'', tenant_id: tenantId||'', plan, interval, preferred_area_code: areaCode || '' };
+  const payload = {
+    mode: 'subscription',
+    'line_items': [{ price, quantity: 1 }],
+    success_url: `${appUrl}/settings?billing=success`,
+    cancel_url: `${appUrl}/settings?billing=cancelled`,
+    client_reference_id: tenantId || '',
+    metadata: md,
+    subscription_data: { metadata: md }
+  };
+  if(customerId) payload.customer = customerId;
+  else if(email) payload.customer_email = email;
+  return stripeRest('/checkout/sessions', 'POST', payload);
+}
+
+// Customer portal so salons manage/cancel their plan
+export async function createPortal({ customerId }){
+  const appUrl = process.env.APP_URL || 'https://www.loladesk.com';
+  return stripeRest('/billing_portal/sessions', 'POST', {
+    customer: customerId,
+    return_url: `${appUrl}/settings`
+  });
+}
+
+// Verify a webhook signature (Stripe signs with HMAC-SHA256)
+export async function verifyWebhook(rawBody, sig){
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if(!secret) throw new Error('Missing STRIPE_WEBHOOK_SECRET');
+  // sig header: t=timestamp,v1=signature
+  const parts = Object.fromEntries(sig.split(',').map(p=>p.split('=')));
+  const signedPayload = `${parts.t}.${rawBody}`;
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(secret),
+    { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(signedPayload));
+  const hex = [...new Uint8Array(mac)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(hex !== parts.v1) throw new Error('Invalid webhook signature');
+  return JSON.parse(rawBody);
+}
+
+// ── Automated Metered Billing ──
+// Pushes $0.05 per text usage records to Stripe Connect
+export async function flushMeteredTextUsageToStripe(tenantId, messageCount = 1){
+  try {
+    // 1. Fetch the active subscription item for the metered text product
+    // In a production database, you would look up the exact subscription_item_id
+    // linked to this tenant. We use a mock ID for demonstration.
+    const mockSubscriptionItemId = `si_${tenantId}_texts`; 
+
+    // 2. Push the usage record to Stripe
+    await stripeRest(`/subscription_items/${mockSubscriptionItemId}/usage_records`, 'POST', {
+      quantity: messageCount,
+      timestamp: Math.floor(Date.now() / 1000),
+      action: 'increment'
+    });
+    
+    console.log(`[stripe] Billed ${tenantId} for ${messageCount} messages at $0.05/ea.`);
+  } catch(e) {
+    console.error(`[stripe] Failed to push metered usage for ${tenantId}:`, e);
+  }
+}
+
+// ── Booking deposits ──
+// One primitive: a Payment Link with an on-the-fly price. The client pays on
+// Stripe's hosted page (no card data ever touches LolaDesk); checkout.session
+// .completed on that link flips the deposit row in api/stripe-webhook.js and
+// records the PaymentIntent id for later refunds.
+export async function createPaymentLink({ amountCents, description, successUrl }){
+  if(!Number.isFinite(amountCents) || amountCents <= 0) throw new Error('deposit amount must be positive');
+  const body = {
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: 'usd',
+        unit_amount: Math.round(amountCents),
+        product_data: { name: description || 'Booking deposit' }
+      }
+    }],
+    after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/bookings.html` } }
+  };
+  const link = await stripeRest('/payment_links', 'POST', body);
+  return { id: link.id, url: link.url };
+}
+
+// Refund a deposit's PaymentIntent (in-window cancellations).
+export async function stripeRefund(paymentIntentId){
+  return stripeRest('/refunds', 'POST', { payment_intent: paymentIntentId });
+}
+
