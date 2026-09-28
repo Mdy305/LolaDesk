@@ -59,6 +59,8 @@
     // deep-links into Stripe Checkout for the tenant's current plan.
     loadScript('/trial-paywall.js','trialPaywall');
     loadScript('/front-desk-os.js','frontDeskOs');
+    // Lola on every signed-in page: particle orb + chat/voice, owner tools (⌘J).
+    loadScript('/lola-everywhere.js','lolaEverywhere');
     if(isMarketing()) loadScript('/tenant-campaign-approval.js','tenantCampaignApproval');
     if(isSettings()) loadScript('/integration-command-center.js','integrationCommandCenter');
     if(!isDashboard()) return;
