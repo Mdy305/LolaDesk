@@ -81,15 +81,12 @@
     /* One Lola: the old "go to dashboard" pill and the per-page atoms step aside. */
     #lolaPresencePill, [data-lola-atom], .lola-core-atom { display: none !important; }
     /* Staged (calendar): Lola's big particle body is drawn by lola-stage.js; the orb becomes her touch target. */
-    .lp-staged .lp-orb { top: calc(22px + env(safe-area-inset-top, 0px)); right: calc(28px + env(safe-area-inset-right, 0px)); bottom: auto; width: 150px; height: 150px; }
+    .lp-staged .lp-orb { right: auto; bottom: auto; z-index: 91; }   /* placed over Lola's stage by JS */
     .lp-staged .lp-orb canvas { display: none; }
     .lp-staged .lp-orb:hover, .lp-staged .lp-orb:active { transform: none; }
-    .lp-staged .lp-panel { top: calc(186px + env(safe-area-inset-top, 0px)); bottom: auto; max-height: calc(100vh - 206px); transform-origin: 100% 0; }
-    .lp-staged .lp-nudge { top: calc(60px + env(safe-area-inset-top, 0px)); right: calc(192px + env(safe-area-inset-right, 0px)); bottom: auto; }
+    .lp-staged .lp-nudge { right: auto; bottom: auto; }
     @media (max-width: 1100px) { .lp-orb { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: 60px; height: 60px; } .lp-panel { bottom: calc(156px + env(safe-area-inset-bottom, 0px)); max-height: calc(100vh - 190px); } }
     @media (max-width: 520px) { .lp-panel { right: 8px; left: 8px; width: auto; } }
-    @media (max-width: 1100px) { .lp-staged .lp-orb { width: 112px; height: 112px; top: 14px; right: 16px; bottom: auto; } .lp-staged .lp-panel { top: 138px; bottom: auto; max-height: calc(100vh - 150px); } .lp-staged .lp-nudge { top: 44px; right: 140px; bottom: auto; } }
-    @media (max-width: 700px) { .lp-staged .lp-orb { width: 80px; height: 80px; top: 6px; right: 6px; } .lp-staged .lp-panel { top: 92px; left: 8px; right: 8px; width: auto; max-height: calc(100vh - 100px); } .lp-staged .lp-nudge { top: 92px; right: 8px; } }
     .lp-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px 18px; border-bottom: 1px solid var(--lp-line); }
     .lp-title { font-weight: 600; font-size: 16px; letter-spacing: -.01em; flex: 1; }
     .lp-title small { display: block; font-weight: 400; font-size: 12px; color: var(--lp-muted); letter-spacing: 0; }
@@ -487,6 +484,24 @@
         remember('assistant', w.say); open(); renderChips(w.suggestions); speak(w.say, body);
       }), 500);
     } else setTimeout(() => checkAway(prevSeen), 1200);
+
+    // Staged: the touch target and the note follow Lola's stage wherever it sits on the page.
+    if (staged) {
+      const anchorEl = document.getElementById('lolaAnchor');
+      let lastKey = '';
+      const place = () => {
+        const r = anchorEl.getBoundingClientRect();
+        const key = [r.left, r.top, r.width, r.height, innerWidth].map(Math.round).join(',');
+        if (key !== lastKey) {
+          lastKey = key;
+          Object.assign(orb.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+          const nl = Math.min(Math.max(8, r.left), innerWidth - 290);
+          Object.assign(nudge.style, { left: nl + 'px', top: (r.bottom + 10) + 'px' });
+        }
+        requestAnimationFrame(place);
+      };
+      place();
+    }
 
     // Some pages rebuild <body>; keep Lola attached.
     setInterval(() => { if (!root.isConnected && document.body) { document.body.appendChild(root); if (!document.getElementById('lp-css')) document.head.appendChild(style); } }, 1500);
