@@ -19,6 +19,7 @@ import { sendSms } from './sms.js';
 import { originateCallback } from './call-callback.js';
 import { awayBrief } from './owner-brief.js';
 import { learnBusiness, parseKnowledge } from './business-learn.js';
+import { SEGMENTS, audience, createCampaign, startCampaign, campaignsWithStats, inSendingHours } from './marketing.js';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
@@ -39,7 +40,12 @@ export const OWNER_TOOLS = [
   fn('find_client', 'Look up a client: phone, last visit, next booking.', { client: clientArg }, ['client']),
   fn('list_bookings', "List bookings for a day, or a client's upcoming bookings.", { date: dateArg, client: clientArg }),
   fn('text_client', 'Text one client from the salon line.', { client: clientArg, message: { type: 'string' }, confirmed: confirmedArg }, ['client', 'message']),
-  fn('text_clients_segment', 'Text a group of clients (marketing): lapsed = not seen in N days, vip, or tomorrow = everyone booked tomorrow.', {
+  fn('launch_campaign', 'Launch a marketing text campaign to a whole audience of any size (lapsed = not seen in N days, vip, recent = seen in the last 30 days, tomorrow = booked tomorrow, all). Sent in paced batches between 9am and 8pm with an opt-out line, nobody texted twice in a week, bookings it wins are tracked. Use this for marketing to groups.', {
+    segment: { type: 'string', enum: ['lapsed', 'vip', 'recent', 'tomorrow', 'all'] }, days: { type: 'integer', description: 'For lapsed: days since last visit (default 60).' },
+    message: { type: 'string', description: 'The text. Use {first_name} for personalization.' }, name: { type: 'string' }, confirmed: confirmedArg,
+  }, ['segment', 'message']),
+  fn('campaign_report', 'How recent marketing campaigns are doing: sent, bookings won, revenue.'),
+  fn('text_clients_segment', 'Text a small group of clients right now (25 max): lapsed = not seen in N days, vip, or tomorrow = everyone booked tomorrow. For marketing to a larger audience use launch_campaign.', {
     segment: { type: 'string', enum: ['lapsed', 'vip', 'tomorrow'] },
     days: { type: 'integer', description: 'For lapsed: days since last visit (default 60).' },
     message: { type: 'string' }, confirmed: confirmedArg,
@@ -56,15 +62,15 @@ export const OWNER_TOOLS = [
   fn('away_brief', "What happened while the owner was away: calls, who needs a call back, bookings made and cancelled. Use for 'what did I miss', 'anything I should know'.", { hours: { type: 'integer', description: 'How far back, in hours (default 12).' } }),
   fn('set_alerts', 'Turn owner text alerts on or off (Lola texts the owner when a caller asks for them, is unhappy or was missed, or a booking in the next 48h is cancelled), and/or set the phone they go to.', { enabled: { type: 'boolean' }, phone: { type: 'string', description: "Owner's mobile number for alerts." } }),
   fn('learn_business', "Read the salon's website and/or a menu the owner pastes, and learn services, prices, team, hours, FAQ, brand voice and marketing ideas. Use for 'learn my website', 'read my site', or when the owner pastes a price list.", { website: { type: 'string' }, notes: { type: 'string', description: 'Menu, prices or anything the owner pasted.' } }),
-  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos'] } }, ['page']),
+  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
-const NEEDS_CONFIRM = new Set(['text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
+const NEEDS_CONFIRM = new Set(['launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
   calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
   revenue: '/revenue', settings: '/settings', growth: '/growth-os', reviews: '/reviews', team: '/team',
-  services: '/services', banking: '/banking', pos: '/pos',
+  services: '/services', banking: '/banking', pos: '/pos', marketing: '/campaigns',
 };
 
 // ── owner-command detection: these skip the caller fast-paths in the brain ──
@@ -253,6 +259,31 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
         const path = PAGES[String(args.page || '').toLowerCase()];
         if (!path) return { ok: false, say: "I don't know that page." };
         return { ok: true, say: `Opening ${args.page}.`, ui: { navigate: path } };
+      }
+
+      case 'launch_campaign': {
+        const seg = SEGMENTS[args.segment] ? args.segment : 'lapsed';
+        const message = String(args.message || '').trim();
+        if (!message) return { ok: false, say: 'What should the text say?' };
+        if (!confirmed) {
+          const a = await audience(c, tenant.id, seg, { days: args.days, tz });
+          if (!a.recipients.length) return { ok: false, say: `Nobody in "${SEGMENTS[seg].label.toLowerCase()}" can be texted right now${a.capped ? ` (${a.capped} already got a campaign this week)` : ''}.` };
+          const when = inSendingHours(new Date(), tz) ? 'starting now' : 'starting at 9am';
+          return park(tenant.id, name, { ...args, segment: seg }, `That's ${plural(a.recipients.length, 'client')} (${SEGMENTS[seg].label.toLowerCase()}${seg === 'lapsed' ? `, ${a.days}+ days` : ''}). Message: "${message}". I'll send it in batches ${when}, with an opt-out line, and track the bookings it brings in. Launch it?`);
+        }
+        const made = await createCampaign(c, tenant, { name: args.name, segment: seg, days: args.days, message, createdBy: 'lola' });
+        if (!made.ok) return { ok: false, say: made.error };
+        const st = await startCampaign(c, tenant, made.campaign.id, { max: 15, deadline: Date.now() + 12000, tz });
+        const first = st.batch?.sent || 0;
+        return { ok: true, say: first >= made.total ? `Launched — all ${plural(made.total, 'text')} sent. I'll track who books.` : first ? `Launched. ${first} sent so far; the rest of the ${made.total} go out over the next few minutes. I'll track who books.` : `Launched for ${made.total} clients. ${st.batch?.reason === 'quiet_hours' ? 'Texts start at 9am.' : 'Sending now.'} I'll track who books.`, suggestions: ['How is my campaign doing?'] };
+      }
+
+      case 'campaign_report': {
+        const list = await campaignsWithStats(c, tenant.id, { limit: 5 });
+        if (!list.length) return { ok: true, say: "You haven't run a campaign yet. Want me to plan one?" };
+        const x = list[0];
+        const more = list.length > 1 ? ` Across your last ${list.length} campaigns: ${list.reduce((s, k) => s + k.booked, 0)} bookings, $${list.reduce((s, k) => s + k.revenue, 0).toLocaleString('en-US')}.` : '';
+        return { ok: true, say: `"${x.name}" (${x.status}): ${x.sent} of ${x.total} sent${x.failed ? `, ${x.failed} failed` : ''}. ${x.booked ? `${plural(x.booked, 'client')} booked — $${x.revenue.toLocaleString('en-US')}.` : 'No bookings from it yet.'}${more}` };
       }
 
       case 'learn_business': {

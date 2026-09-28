@@ -44,8 +44,9 @@ export default async function handler(req, res) {
     if (!telnyxId) return res.status(400).json({ ok: false, error: 'telnyx_call_id_required', hint: 'Include telnyx_call_id in body, or ensure the calls row has one.' });
 
     // Owner's mobile — required for the bridge target
-    const ownerPhone = tenant.owner_phone || tenant.phone || user.phone || '';
-    if (!ownerPhone) return res.status(400).json({ ok: false, error: 'owner_phone_missing', hint: 'Set tenants.owner_phone or user.phone.' });
+    // The owner's mobile: Settings → Call handling (operator_phone), or "alert me at …" to Lola.
+    const ownerPhone = tenant.operator_phone || tenant.owner_phone || user.phone || '';
+    if (!ownerPhone) return res.status(400).json({ ok: false, error: 'owner_phone_missing: set your mobile in Settings → Call handling' });
 
     // Best-effort Telnyx transfer. Different Telnyx SDKs/versions have slightly
     // different endpoint shapes; the v2 REST call transfer works for TeXML calls too.
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           to: ownerPhone,
-          from: callRow?.to || tenant.outbound_number || undefined,
+          from: callRow?.to_number || callRow?.to || tenant.phone_number || tenant.outbound_number || undefined,
           answering_machine_detection: 'premium',
           time_limit_secs: 3600
         })

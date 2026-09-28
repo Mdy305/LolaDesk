@@ -433,6 +433,7 @@
       clearTimeout(closeTimer); closeTimer = setTimeout(() => { panel.hidden = true; window.dispatchEvent(new Event('lola:panel-close')); }, 200); stopListening();
     }
     api.open = open; api.close = close;
+    api.ask = (t) => { open(); setTimeout(() => send(t), 80); };
     api.listen = () => { open(); setTimeout(() => { if (!mic.hidden && !mic.classList.contains('on')) mic.click(); }, 120); };
     const toggle = () => (panel.hidden ? open() : close());
     orb.onclick = toggle;
@@ -516,6 +517,7 @@
     open() { api.open && api.open(); },
     close() { api.close && api.close(); },
     listen() { api.listen && api.listen(); },
+    ask(text) { api.ask && api.ask(text); },
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();

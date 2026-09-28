@@ -1,59 +1,106 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="/lola-auth-fetch.js"></script>
-<script src="/lola-everywhere.js" defer></script>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#fbfbfd">
-<title>Call Center · LolaDesk</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Call Center — LolaDesk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/calls.css">
+<link rel="stylesheet" href="app.css"/>
+<style>
+.cc-head{display:flex;align-items:center;gap:18px;margin-bottom:18px;flex-wrap:wrap}
+.cc-head h1{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0}
+.cc-head p{margin:4px 0 0;color:var(--text2);font-size:14px}
+.cc-head .grow{flex:1;min-width:220px}
+.cc-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.chips{display:inline-flex;gap:4px;background:var(--surface);border:.5px solid var(--border);border-radius:14px;padding:4px;flex-wrap:wrap}
+.chip{border:0;background:transparent;color:var(--text2);font:inherit;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:10px;cursor:pointer;display:inline-flex;gap:7px;align-items:center;min-height:36px}
+.chip.on{background:var(--accent);color:#10140a}
+.chip .n{font-size:10.5px;padding:1px 7px;border-radius:20px;background:rgba(255,255,255,.12)}
+.chip.on .n{background:rgba(16,20,10,.18)}
+.chip.alert .n{background:#ff453a;color:#fff}
+.search{flex:1;min-width:200px;max-width:360px;background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:10px 14px;color:var(--text);font:inherit;font-size:14px;outline:none}
+.search:focus{border-color:var(--accent)}
+.live-toggle{font-size:12px;color:var(--text3);display:flex;gap:6px;align-items:center;margin-left:auto}
+.cc-body{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:1000px){.cc-body{grid-template-columns:1fr}.cc-detail{position:static!important}}
+.cc-list{list-style:none;margin:0;padding:6px;background:var(--surface);border:.5px solid var(--border);border-radius:20px;max-height:calc(100vh - 230px);overflow:auto}
+.row{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;padding:12px;border-radius:14px;cursor:pointer;align-items:start}
+.row:hover{background:rgba(255,255,255,.03)}
+.row.sel{background:rgba(204,255,0,.07);box-shadow:inset 0 0 0 1px rgba(204,255,0,.25)}
+.ic{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:14px;background:rgba(255,255,255,.06);color:var(--text2)}
+.ic.need{background:rgba(255,69,58,.14);color:#ff6961}
+.ic.live{background:rgba(204,255,0,.16);color:var(--accent);animation:pulse 1.4s ease-in-out infinite}
+.ic.booked{background:rgba(48,209,88,.14);color:#30d158}
+.ic.vm{background:rgba(100,210,255,.14);color:#64d2ff}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(204,255,0,.12)}}
+.nm{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph{font-size:12px;color:var(--text3)}
+.sn{font-size:12.5px;color:var(--text2);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tm{font-size:11.5px;color:var(--text3);white-space:nowrap}
+.tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;margin:6px 4px 0 0;background:rgba(255,255,255,.08);color:var(--text2)}
+.tag.need{background:rgba(255,69,58,.14);color:#ff6961}.tag.booked{background:rgba(48,209,88,.14);color:#30d158}.tag.vm{background:rgba(100,210,255,.14);color:#64d2ff}
+.empty{padding:28px;text-align:center;color:var(--text3);font-size:13px}
+.cc-detail{background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:22px;position:sticky;top:18px;min-height:300px}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:600;display:flex;gap:8px;align-items:center}
+.cc-detail h2{font-size:24px;font-weight:600;letter-spacing:-.02em;margin:6px 0 2px}
+.cc-detail h2 a{color:inherit;text-decoration:none;border-bottom:1px dashed var(--text3)}
+.sub{font-size:13px;color:var(--text2)}
+.why{margin-top:14px;padding:12px 14px;border-radius:14px;background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.25);color:#ffb3ad;font-size:13.5px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+.btn{border:1px solid var(--border);background:var(--bg2,#0c0c0e);color:var(--text);border-radius:999px;padding:10px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--text3)}
+.btn.primary{background:var(--accent);color:#10140a;border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+audio{width:100%;margin-top:14px}
+.lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:600;margin:18px 0 10px}
+.thread{display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;padding-right:4px}
+.msg{display:flex;flex-direction:column;max-width:84%}
+.msg.caller{align-self:flex-start}.msg.lola{align-self:flex-end;align-items:flex-end}
+.who{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin:0 6px 3px}
+.bub{padding:10px 14px;border-radius:18px;line-height:1.45;font-size:14px}
+.caller .bub{background:rgba(255,255,255,.07);border-bottom-left-radius:6px}
+.lola .bub{background:rgba(204,255,0,.14);color:#eaffb0;border-bottom-right-radius:6px}
+.compose{margin-top:14px;border:1px solid var(--border);border-radius:16px;padding:12px;background:var(--bg2,#0c0c0e)}
+.compose textarea{width:100%;background:transparent;border:0;color:var(--text);font:inherit;font-size:14px;resize:vertical;min-height:70px;outline:none}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{font:inherit;font-size:12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:999px;padding:5px 10px;cursor:pointer}
+.status{margin-top:10px;font-size:13px;min-height:18px}
+.status.ok{color:#30d158}.status.err{color:#ff6961}.status.info{color:var(--text2)}
+</style>
 </head>
-<body>
+<body data-page="calls">
+<div class="app"><main class="main">
 
-<!-- Atom (LolaCore auto-mounts) -->
-<div data-lola-atom class="cc-atom-mount"></div>
-
-<div class="cc">
-
-  <!-- Left rail: filters -->
-  <aside class="cc-rail">
-    <div class="cc-brand">
-      <div class="cc-brand-label">Call Center</div>
-      <div class="cc-brand-title" id="tenantName">&mdash;</div>
+  <div class="cc-head">
+    <div id="lolaAnchor" data-inline aria-hidden="true" style="width:76px;height:76px;flex:none"></div>
+    <div class="grow">
+      <h1>Call Center</h1>
+      <p id="narrative">Every call Lola took — who needs you, what was said, and one tap to call back.</p>
     </div>
-    <nav class="cc-tabs">
-      <button data-filter="live"      class="cc-tab" data-count="0"><span class="dot dot-live"></span>Live<span class="cc-tab-badge" id="cntLive">0</span></button>
-      <button data-filter="missed"    class="cc-tab on" data-count="0"><span class="dot dot-missed"></span>Missed<span class="cc-tab-badge" id="cntMissed">0</span></button>
-      <button data-filter="voicemail" class="cc-tab"><span class="dot dot-vm"></span>Voicemail<span class="cc-tab-badge" id="cntVM">0</span></button>
-      <button data-filter="handled"   class="cc-tab"><span class="dot dot-handled"></span>Handled<span class="cc-tab-badge" id="cntHandled">0</span></button>
-      <button data-filter="all"       class="cc-tab"><span class="dot dot-all"></span>All calls</button>
-    </nav>
-    <div class="cc-rail-foot">
-      <button id="btnRefresh" class="btn-ghost">Refresh</button>
-      <label class="cc-live-toggle"><input type="checkbox" id="autoRefresh" checked><span>Auto-refresh</span></label>
+  </div>
+
+  <div class="cc-tools">
+    <div class="chips" role="tablist" id="filters">
+      <button class="chip on alert" data-f="needs" role="tab">Needs you <span class="n" id="nNeeds">0</span></button>
+      <button class="chip" data-f="live" role="tab">Live <span class="n" id="nLive">0</span></button>
+      <button class="chip" data-f="booked" role="tab">Booked <span class="n" id="nBooked">0</span></button>
+      <button class="chip" data-f="vm" role="tab">Voicemail <span class="n" id="nVm">0</span></button>
+      <button class="chip" data-f="all" role="tab">All <span class="n" id="nAll">0</span></button>
     </div>
-  </aside>
+    <input class="search" id="q" type="search" placeholder="Search name, number or words said…" autocomplete="off">
+    <label class="live-toggle"><input type="checkbox" id="auto" checked> Live updates</label>
+  </div>
 
-  <!-- Center: call list -->
-  <main class="cc-list-wrap">
-    <header class="cc-list-head">
-      <input id="callSearch" type="search" placeholder="Search caller name or phone…">
-    </header>
-    <ul id="callList" class="cc-list">
-      <li class="cc-empty">Loading&hellip;</li>
-    </ul>
-  </main>
+  <div class="cc-body">
+    <ul class="cc-list" id="list"><li class="empty">Loading calls…</li></ul>
+    <section class="cc-detail" id="detail"><div class="empty">Select a call to see the conversation, hear it, and act.</div></section>
+  </div>
 
-  <!-- Right rail: selected call detail -->
-  <aside id="callDetail" class="cc-detail">
-    <div class="cc-detail-empty">Select a call to see the transcript, recording and actions.</div>
-  </aside>
+</main></div>
 
-</div>
-
-<script src="/lola-core.js" defer></script>
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
 <script src="/calls.js" defer></script>
+<script src="/lola-stage.js" defer></script>
 </body>
 </html>
