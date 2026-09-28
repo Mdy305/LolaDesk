@@ -1,421 +1,226 @@
 /* ============================================================
-   CALL CENTER — LolaDesk
-   Callback · take over live Lola call · listen to voicemail.
+   CALL CENTER — LolaDesk (inside the app)
+   Who needs you first · the conversation as a thread · hear it ·
+   call back (Lola dials) · text · take over a live call ·
+   waitlist · mark handled · ask Lola about the call.
+   Endpoints: /api/call-center/{calls,call,callback,sms,handled,waitlist,take-over}
    ============================================================ */
-
 (function () {
   'use strict';
+  const S = { filter: 'needs', q: '', calls: [], sel: null, timer: null, liveTimer: null };
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const token = () => (window.LolaAuth && window.LolaAuth.token) || localStorage.getItem('loladesk_token') || '';
+  const hdr = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() });
+  const phoneFmt = (p) => { const d = String(p || '').replace(/\D/g, ''); const t = d.length === 11 && d[0] === '1' ? d.slice(1) : d; return t.length === 10 ? `(${t.slice(0, 3)}) ${t.slice(3, 6)}-${t.slice(6)}` : String(p || ''); };
+  const when = (ts) => { if (!ts) return ''; const d = new Date(ts), now = new Date(); const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); const diff = Math.round((day(now) - day(d)) / 864e5); const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); return diff === 0 ? t : diff === 1 ? 'Yesterday ' + t : diff < 7 ? d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
+  const dur = (s) => { s = Number(s) || 0; const m = Math.floor(s / 60); return m ? `${m}:${String(s % 60).padStart(2, '0')}` : `${s}s`; };
 
-  const state = {
-    filter: 'missed',      // 'live'|'missed'|'voicemail'|'handled'|'all'
-    query: '',
-    calls: [],
-    selected: null,
-    autoRefresh: true,
-    refreshTimer: null,
-    liveTimer: null,
-  };
+  // ── what each call is ──
+  const LIVE = new Set(['ringing', 'in_progress', 'in-progress', 'live', 'active', 'answered', 'initiated', 'bridging']);
+  const MISSED = new Set(['no-answer', 'no_answer', 'busy', 'failed', 'canceled', 'cancelled', 'missed', 'abandoned', 'unanswered']);
+  const ESCALATE = /\b(manager|the owner|speak (to|with) (a |the )?(person|human|someone|owner|manager)|real person|complain\w*|refund|upset|angry|terrible|lawyer|call me back|callback)\b/i;
+  const UNHAPPY = /refund|complain|upset|angry|terrible|lawyer/i;
+  const callerWords = (t) => String(t || '').split(/\n+/).filter(l => /^\s*(caller|client|customer|user)\s*:/i.test(l)).join('\n') || String(t || '');
+  const lolaWords = (t) => String(t || '').split(/\n+/).filter(l => /^\s*(lola|assistant|agent)\s*:/i.test(l)).join('\n');
+  const isLive = (c) => LIVE.has(c.status) && (!c.started_at || Date.now() - Date.parse(c.started_at) < 2 * 3600e3);
+  const isVm = (c) => !!c.is_voicemail;
+  const isBooked = (c) => /book/i.test(c.outcome || '') || /\b(you(?:'re| are) (all )?(set|booked|confirmed)|booked you|i'?ve booked|confirmation (code|number))\b/i.test(lolaWords(c.transcript));
+  function needsWhy(c) {
+    if (c.handled || c.direction !== 'inbound' || isLive(c)) return null;
+    const w = callerWords(c.transcript);
+    if (ESCALATE.test(w)) return UNHAPPY.test(w) ? 'Sounded unhappy — call them personally.' : 'Asked for you or for a call back.';
+    if (isVm(c)) return 'Left a voicemail.';
+    if (MISSED.has(c.status)) return "Didn't get through to Lola.";
+    return null;
+  }
+  const kind = (c) => isLive(c) ? 'live' : needsWhy(c) ? 'need' : isBooked(c) ? 'booked' : isVm(c) ? 'vm' : '';
 
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmtTime = ts => { if (!ts) return ''; const d = new Date(ts); return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
-  const fmtDate = ts => { if (!ts) return ''; const d = new Date(ts); const today = new Date(); today.setHours(0,0,0,0); const t = new Date(d); t.setHours(0,0,0,0); const diff = Math.round((today - t) / 86400000); if (diff === 0) return fmtTime(ts); if (diff === 1) return 'Yesterday'; if (diff < 7) return d.toLocaleDateString('en-US', { weekday:'short' }); return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }); };
-  const fmtDur = sec => { const s = parseInt(sec, 10) || 0; const m = Math.floor(s/60); return m ? `${m}:${String(s%60).padStart(2,'0')}` : `${s}s`; };
-  const maskPhone = p => { const d = String(p || '').replace(/\D/g, ''); if (!d) return ''; if (d.length === 11 && d[0] === '1') return `+1 (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`; if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`; return p; };
-
-  // ── Boot ─────────────────────────────────────────────────
-  async function boot() {
+  // ── data ──
+  async function load() {
     try {
-      const r = await fetch('/api/settings', { credentials: 'include' });
-      if (r.ok) {
-        const s = await r.json().catch(() => ({}));
-        document.getElementById('tenantName').textContent = s?.tenant_name || s?.name || 'Salon';
-      }
-    } catch {}
-
-    wireEvents();
-    loadCalls();
-    scheduleRefresh();
-  }
-
-  function wireEvents() {
-    document.querySelectorAll('.cc-tab').forEach(b => {
-      b.addEventListener('click', () => {
-        document.querySelectorAll('.cc-tab').forEach(x => x.classList.remove('on'));
-        b.classList.add('on');
-        state.filter = b.dataset.filter;
-        renderList();
-      });
-    });
-    document.getElementById('callSearch').addEventListener('input', (e) => {
-      state.query = e.target.value.trim();
-      renderList();
-    });
-    document.getElementById('btnRefresh').addEventListener('click', () => loadCalls());
-    document.getElementById('autoRefresh').addEventListener('change', (e) => {
-      state.autoRefresh = e.target.checked;
-      scheduleRefresh();
-    });
-  }
-
-  function scheduleRefresh() {
-    if (state.refreshTimer) clearInterval(state.refreshTimer);
-    if (!state.autoRefresh) return;
-    // Faster refresh when watching Live; slower otherwise.
-    state.refreshTimer = setInterval(loadCalls, state.filter === 'live' ? 5000 : 20000);
-  }
-
-  // ── Load ─────────────────────────────────────────────────
-  async function loadCalls() {
-    const endpoints = [
-      '/api/call-center/calls?limit=100',
-      '/api/calls?limit=100',
-      '/api/calls/list?limit=100',
-      '/api/calls'
-    ];
-    for (const ep of endpoints) {
-      try {
-        const r = await fetch(ep, { credentials: 'include' });
-        if (r.status === 401) { location.href = '/login?next=%2Fcalls.html'; return; }
-        if (!r.ok) continue;
-        const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.calls || d.rows || d.data || []);
-        if (!rows) continue;
-        state.calls = rows.map(normalize).filter(Boolean);
-        break;
-      } catch (_) {}
+      const r = await fetch('/api/call-center/calls?limit=200', { headers: hdr() });
+      if (r.status === 401) { location.href = '/login?next=%2Fcalls'; return; }
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) throw new Error(d.error || ('calls ' + r.status));
+      S.calls = (d.calls || []).map(x => ({ ...x, status: String(x.status || '').toLowerCase(), direction: String(x.direction || 'inbound').toLowerCase() }));
+    } catch (e) {
+      if (!S.calls.length) $('list').innerHTML = `<li class="empty">Couldn't load calls: ${esc(e.message)}</li>`;
+      return;
     }
-    computeCounts();
-    renderList();
-    // If a call was already selected, refresh its detail
-    if (state.selected) {
-      const upd = state.calls.find(c => c.id === state.selected.id);
-      if (upd) { state.selected = upd; renderDetail(); }
-    }
+    counts(); renderList();
+    if (S.sel) { const u = S.calls.find(x => x.id === S.sel.id); if (u) { S.sel = u; renderDetail(); } }
   }
-
-  function normalize(row) {
-    if (!row) return null;
-    return {
-      id: row.id || row.call_id || row.telnyx_call_id,
-      telnyx_call_id: row.telnyx_call_id || row.telnyx_id || row.call_control_id || row.id,
-      call_sid: row.call_sid || null,
-      status: (row.status || row.state || 'unknown').toString().toLowerCase(),
-      outcome: row.outcome || row.result || '',
-      direction: (row.direction || 'inbound').toLowerCase(),
-      from: (String(row.direction || '').toLowerCase() === 'outbound' ? (row.to || row.to_number) : (row.phone || row.from || row.from_number)) || row.caller_phone || '',
-      to:   row.to   || row.to_number || row.called_phone || '',
-      client_name: row.client_name || row.caller_name || row.name || '',
-      duration_sec: parseInt(row.duration_sec || row.duration_seconds || row.duration || 0, 10) || 0,
-      started_at: row.started_at || row.created_at || row.starts_at || null,
-      ended_at:   row.ended_at   || row.finished_at || null,
-      recording_url: /^https?:\/\//i.test(String(row.recording_audio_url || row.recording_url || row.recording || '')) ? (row.recording_audio_url || row.recording_url || row.recording) : null,
-      transcript: (typeof row.transcript === 'string' && row.transcript && !/^https?:\/\//i.test(row.transcript)) ? row.transcript
-        : ((typeof row.recording_url === 'string' && row.recording_url && !/^https?:\/\//i.test(row.recording_url)) ? row.recording_url : (row.notes || '')),
-      summary: row.summary || row.snippet || '',
-      is_voicemail: !!row.is_voicemail,
-      handled: !!(row.handled || row.handled_at),
-      raw: row
-    };
+  function counts() {
+    const c = { needs: 0, live: 0, booked: 0, vm: 0, all: S.calls.length };
+    for (const x of S.calls) { if (needsWhy(x)) c.needs++; if (isLive(x)) c.live++; if (isBooked(x)) c.booked++; if (isVm(x)) c.vm++; }
+    $('nNeeds').textContent = c.needs; $('nLive').textContent = c.live; $('nBooked').textContent = c.booked; $('nVm').textContent = c.vm; $('nAll').textContent = c.all;
+    const week = S.calls.filter(x => x.direction === 'inbound' && Date.now() - Date.parse(x.started_at || 0) < 7 * 864e5);
+    const wb = week.filter(isBooked).length;
+    $('narrative').textContent = week.length
+      ? `Lola answered ${week.length} call${week.length === 1 ? '' : 's'} this week${wb ? ` and booked ${wb}` : ''}. ${c.needs ? `${c.needs} need${c.needs === 1 ? 's' : ''} you.` : 'Nothing needs you.'}`
+      : 'Every call Lola takes shows up here — who needs you, what was said, and one tap to call back.';
+    document.querySelector('.chip[data-f="needs"]').classList.toggle('alert', c.needs > 0);
   }
-
-  function isLive(c) {
-    return ['ringing', 'in_progress', 'in-progress', 'live', 'active', 'answered'].includes(c.status);
-  }
-  function isMissed(c) {
-    if (isLive(c)) return false;
-    return ['missed', 'no_answer', 'no-answer', 'unanswered'].includes(c.status) ||
-           (c.direction === 'inbound' && !c.duration_sec && !c.recording_url && !c.handled);
-  }
-  function isVoicemail(c) {
-    return c.is_voicemail || (c.recording_url && c.duration_sec > 0 && !isLive(c) && (c.outcome === 'voicemail' || /voicemail|left.*message/i.test(c.summary || '')));
-  }
-  function isHandled(c) {
-    return c.handled || c.outcome === 'booked' || c.outcome === 'handled' || c.duration_sec > 30;
-  }
-
-  function computeCounts() {
-    let live = 0, missed = 0, vm = 0, handled = 0;
-    for (const c of state.calls) {
-      if (isLive(c)) live++;
-      else if (isVoicemail(c)) vm++;
-      else if (isMissed(c)) missed++;
-      else if (isHandled(c)) handled++;
-    }
-    document.getElementById('cntLive').textContent    = live;
-    document.getElementById('cntMissed').textContent  = missed;
-    document.getElementById('cntVM').textContent      = vm;
-    document.getElementById('cntHandled').textContent = handled;
-  }
-
-  // ── Filter + search ──────────────────────────────────────
-  function currentList() {
-    const q = state.query.toLowerCase();
-    return state.calls.filter(c => {
-      if (state.filter === 'live'      && !isLive(c))      return false;
-      if (state.filter === 'missed'    && !isMissed(c))    return false;
-      if (state.filter === 'voicemail' && !isVoicemail(c)) return false;
-      if (state.filter === 'handled'   && !isHandled(c))   return false;
-      if (q) {
-        const hay = (c.client_name + ' ' + c.from + ' ' + c.to + ' ' + (c.summary||'')).toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+  function visible() {
+    const q = S.q.toLowerCase();
+    return S.calls.filter(c => {
+      if (S.filter === 'needs' && !needsWhy(c)) return false;
+      if (S.filter === 'live' && !isLive(c)) return false;
+      if (S.filter === 'booked' && !isBooked(c)) return false;
+      if (S.filter === 'vm' && !isVm(c)) return false;
+      if (q && !`${c.client_name} ${c.phone} ${phoneFmt(c.phone)} ${c.transcript}`.toLowerCase().includes(q)) return false;
       return true;
-    }).sort((a, b) => new Date(b.started_at || 0) - new Date(a.started_at || 0));
+    }).sort((a, b) => Date.parse(b.started_at || 0) - Date.parse(a.started_at || 0));
   }
-
-  // ── Render list ──────────────────────────────────────────
   function renderList() {
-    const list = currentList();
-    const el = document.getElementById('callList');
+    const list = visible();
+    const el = $('list');
     if (!list.length) {
-      el.innerHTML = `<li class="cc-empty">No calls here yet.</li>`;
+      el.innerHTML = `<li class="empty">${S.filter === 'needs' ? 'Nothing needs you. Lola has it covered.' : S.q ? 'No calls match that search.' : 'No calls here yet.'}</li>`;
       return;
     }
     el.innerHTML = list.map(c => {
-      const cls = isLive(c) ? 'live' : isVoicemail(c) ? 'vm' : isMissed(c) ? 'missed' : c.direction === 'outbound' ? 'outbound' : 'handled';
-      const icon = isLive(c) ? '●' : isVoicemail(c) ? '✉' : isMissed(c) ? '↳' : c.direction === 'outbound' ? '↗' : '✓';
-      const name = c.client_name || maskPhone(c.from) || 'Unknown';
-      const snippet = c.summary || c.transcript || '';
-      const tags = [];
-      if (c.outcome === 'booked')   tags.push('<span class="call-tag booked">Booked</span>');
-      if (c.outcome === 'callback') tags.push('<span class="call-tag callback">Callback</span>');
-      if (isVoicemail(c))           tags.push('<span class="call-tag vm">Voicemail</span>');
-      return `<li class="call-row ${state.selected?.id === c.id ? 'selected' : ''}" data-id="${esc(c.id)}">
-        <div class="call-icon ${cls}">${icon}</div>
-        <div class="call-body">
-          <div class="call-name">${esc(name)}</div>
-          <div class="call-phone">${esc(maskPhone(c.from))}${c.duration_sec ? ' · ' + fmtDur(c.duration_sec) : ''}</div>
-          ${snippet ? `<div class="call-snippet">${esc(snippet.slice(0, 160))}</div>` : ''}
-          ${tags.length ? `<div class="call-tags">${tags.join('')}</div>` : ''}
+      const k = kind(c);
+      const icon = k === 'live' ? '●' : k === 'need' ? '!' : k === 'booked' ? '✓' : k === 'vm' ? '✉' : c.direction === 'outbound' ? '↗' : '↙';
+      const name = c.client_name || phoneFmt(c.phone) || 'Unknown caller';
+      const last = String(c.transcript || '').split(/\n+/).map(l => l.replace(/^\s*\w+\s*:\s*/, '')).filter(Boolean);
+      const snip = last.length ? last[0] : '';
+      return `<li class="row ${S.sel && S.sel.id === c.id ? 'sel' : ''}" data-id="${esc(c.id)}" tabindex="0">
+        <div class="ic ${k}">${icon}</div>
+        <div style="min-width:0"><div class="nm">${esc(name)}</div>
+          <div class="ph">${c.client_name ? esc(phoneFmt(c.phone)) + ' · ' : ''}${c.direction === 'outbound' ? 'Outgoing' : 'Incoming'}${c.duration_sec ? ' · ' + dur(c.duration_sec) : ''}</div>
+          ${snip ? `<div class="sn">${esc(snip)}</div>` : ''}
+          ${k === 'need' ? '<span class="tag need">Needs you</span>' : ''}${k === 'booked' ? '<span class="tag booked">Booked</span>' : ''}${isVm(c) ? '<span class="tag vm">Voicemail</span>' : ''}${c.handled ? '<span class="tag">Handled</span>' : ''}
         </div>
-        <div class="call-time">${esc(fmtDate(c.started_at))}</div>
-      </li>`;
+        <div class="tm">${esc(when(c.started_at))}</div></li>`;
     }).join('');
-    el.querySelectorAll('.call-row').forEach(row => {
-      row.addEventListener('click', () => selectCall(row.dataset.id));
-    });
+    el.querySelectorAll('.row').forEach(r => { r.onclick = () => select(r.dataset.id); r.onkeydown = (e) => { if (e.key === 'Enter') select(r.dataset.id); }; });
   }
-
-  // ── Detail ───────────────────────────────────────────────
-  function selectCall(id) {
-    const c = state.calls.find(x => String(x.id) === String(id));
-    if (!c) return;
-    state.selected = c;
-    renderList();
-    renderDetail();
-    // If live, poll the transcript rapidly
-    if (state.liveTimer) clearInterval(state.liveTimer);
-    if (isLive(c)) {
-      state.liveTimer = setInterval(refreshDetail, 3000);
-    }
+  function select(id) {
+    const c = S.calls.find(x => String(x.id) === String(id)); if (!c) return;
+    S.sel = c; renderList(); renderDetail();
+    clearInterval(S.liveTimer);
+    if (isLive(c)) S.liveTimer = setInterval(refreshSelected, 3000);
   }
-
-  async function refreshDetail() {
-    if (!state.selected) return;
-    for (const ep of [`/api/call-center/call?id=${encodeURIComponent(state.selected.id)}`]) {
-      try {
-        const r = await fetch(ep, { credentials: 'include' });
-        if (!r.ok) continue;
-        const d = await r.json();
-        const row = Array.isArray(d) ? d[0] : (d.call || d.data || d);
-        if (row) {
-          state.selected = normalize(row);
-          renderDetail();
-          return;
-        }
-      } catch (_) {}
-    }
-  }
-
-  function renderDetail() {
-    const c = state.selected;
-    const el = document.getElementById('callDetail');
-    if (!c) { el.innerHTML = `<div class="cc-detail-empty">Select a call to see the transcript, recording and actions.</div>`; return; }
-
-    const name = c.client_name || 'Unknown caller';
-    const live = isLive(c);
-    const vm = isVoicemail(c);
-    const missed = isMissed(c);
-
-    el.innerHTML = `
-      <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;">
-        ${live ? 'Live call' : missed ? 'Missed call' : vm ? 'Voicemail' : 'Call'}
-        ${live ? '<span class="cc-live-badge"><span class="dot"></span>Live</span>' : ''}
-      </div>
-      <h2>${esc(name)}</h2>
-      <div class="detail-sub">${esc(maskPhone(c.from))} · ${esc(fmtDate(c.started_at))}${c.duration_sec ? ' · ' + fmtDur(c.duration_sec) : ''}</div>
-
-      <div class="field"><span class="field-label">Status</span><span class="field-value">${esc(c.status || '—')}</span></div>
-      ${c.outcome ? `<div class="field"><span class="field-label">Outcome</span><span class="field-value">${esc(c.outcome)}</span></div>` : ''}
-      <div class="field"><span class="field-label">Direction</span><span class="field-value">${esc(c.direction)}</span></div>
-
-      ${c.recording_url ? `
-        <div class="cc-audio">
-          <div class="audio-label">Recording${vm ? ' (voicemail)' : ''}</div>
-          <audio controls preload="metadata" src="${esc(c.recording_url)}"></audio>
-        </div>
-      ` : ''}
-
-      <div class="cc-transcript-label">${live ? 'Live transcript' : 'Transcript'}</div>
-      <div class="cc-transcript cc-thread ${live ? 'live' : ''} ${c.transcript ? '' : 'empty'}">${c.transcript ? threadHtml(c.transcript, c.client_name) : 'No conversation recorded for this call.'}</div>
-
-      <div class="cc-actions">
-        ${live ? `<button class="live-take primary" id="btnTakeOver">Take over call</button>` : ''}
-        <button class="primary" id="btnCallback" ${!c.from ? 'disabled' : ''}>${live ? 'Send SMS instead' : 'Call back'}</button>
-        <button id="btnTextClient" ${!c.from ? 'disabled' : ''}>Send SMS</button>
-        ${!c.handled && !live ? `<button id="btnMarkHandled">Mark handled</button>` : ''}
-        ${!live && (missed || vm) ? `<button id="btnAddWaitlist">Add to waitlist</button>` : ''}
-      </div>
-
-      <div id="ccStatus"></div>
-    `;
-
-    // Wire actions
-    const $ = id => document.getElementById(id);
-    $('btnTakeOver')?.addEventListener('click', () => takeOver(c));
-    $('btnCallback')?.addEventListener('click', () => live ? sendSms(c) : callback(c));
-    $('btnTextClient')?.addEventListener('click', () => sendSms(c));
-    $('btnMarkHandled')?.addEventListener('click', () => markHandled(c));
-    $('btnAddWaitlist')?.addEventListener('click', () => addToWaitlist(c));
-  }
-
-  function threadHtml(text, clientName) {
-    const who = String(clientName || '').split(' ')[0] || 'Caller';
-    const lines = String(text || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
-    const bubbles = [];
-    for (const line of lines) {
-      const m = /^(caller|client|customer|user|lola|assistant|agent)\s*:\s*(.*)$/i.exec(line);
-      if (m) {
-        const lola = /^(lola|assistant|agent)$/i.test(m[1]);
-        bubbles.push({ lola, text: m[2] });
-      } else if (bubbles.length) {
-        bubbles[bubbles.length - 1].text += ' ' + line;
-      } else {
-        bubbles.push({ lola: false, text: line });
-      }
-    }
-    return bubbles.map(b => `<div class="cc-msg ${b.lola ? 'lola' : 'caller'}"><div class="cc-who">${b.lola ? 'Lola' : esc(who)}</div><div class="cc-bubble">${esc(b.text)}</div></div>`).join('');
-  }
-  (function threadCss() {
-    if (document.getElementById('cc-thread-css')) return;
-    const st = document.createElement('style'); st.id = 'cc-thread-css';
-    st.textContent = `
-      .cc-thread { display:flex; flex-direction:column; gap:10px; white-space:normal; }
-      .cc-msg { display:flex; flex-direction:column; max-width:82%; }
-      .cc-msg.caller { align-self:flex-start; }
-      .cc-msg.lola { align-self:flex-end; align-items:flex-end; }
-      .cc-who { font-size:11px; letter-spacing:.06em; text-transform:uppercase; opacity:.55; margin:0 6px 3px; }
-      .cc-bubble { padding:10px 14px; border-radius:18px; line-height:1.45; font-size:14px; }
-      .cc-msg.caller .cc-bubble { background:rgba(120,120,128,.14); border-bottom-left-radius:6px; }
-      .cc-msg.lola .cc-bubble { background:#0a84ff; color:#fff; border-bottom-right-radius:6px; }
-    `;
-    document.head.appendChild(st);
-  })();
-
-  function setStatus(msg, kind) {
-    const el = document.getElementById('ccStatus');
-    if (!el) return;
-    el.className = 'cc-status ' + (kind || 'info');
-    el.textContent = msg;
-  }
-
-  // ── Actions ──────────────────────────────────────────────
-  async function callback(c) {
-    if (!c?.from) return;
-    setStatus('Placing callback…', 'info');
-    const endpoints = ['/api/call-center/callback', '/api/calls/callback'];
-    for (const ep of endpoints) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ to: c.from, call_id: c.id, client_name: c.client_name || '', reason: 'manual' })
-        });
-        const d = await r.json().catch(() => ({}));
-        if (r.ok && d.ok !== false) {
-          setStatus('Lola is calling ' + (c.client_name || 'the client') + ' now.', 'ok');
-          setTimeout(loadCalls, 4000);
-          return;
-        }
-        if (r.status !== 404) {
-          setStatus(`Callback failed: ${d.error || r.status}`, 'err');
-          return;
-        }
-      } catch (err) {
-        setStatus(`Callback errored: ${err.message}`, 'err');
-        return;
-      }
-    }
-    setStatus('Callback endpoint not found — check api/call-center/callback.js', 'err');
-  }
-
-  async function takeOver(c) {
-    setStatus('Requesting take-over…', 'info');
+  async function refreshSelected() {
+    if (!S.sel) return;
     try {
-      const r = await fetch('/api/call-center/take-over', {
-        method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-        body: JSON.stringify({ call_id: c.id, telnyx_call_id: c.telnyx_call_id })
-      });
-      const d = await r.json();
-      if (!r.ok || d.ok === false) { setStatus(`Take-over failed: ${d.error || r.status}`, 'err'); return; }
-      setStatus('Take-over started. Your phone will ring; answer to be bridged in.', 'ok');
-    } catch (err) {
-      setStatus(`Take-over errored: ${err.message}`, 'err');
-    }
-  }
-
-  async function sendSms(c) {
-    if (!c?.from) return;
-    const text = prompt('Message to send:', c.client_name ? `Hi ${String(c.client_name).split(' ')[0]}, it's ${document.getElementById('tenantName').textContent}. ` : '');
-    if (!text) return;
-    setStatus('Sending SMS…', 'info');
-    for (const ep of ['/api/call-center/sms']) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ to: c.from, text })
-        });
-        const d = await r.json().catch(() => ({}));
-        if (r.ok && d.ok !== false) { setStatus('SMS sent.', 'ok'); return; }
-        if (r.status !== 404) { setStatus(`SMS failed: ${d.error || r.status}`, 'err'); return; }
-      } catch (err) { setStatus(`SMS errored: ${err.message}`, 'err'); return; }
-    }
-    setStatus('SMS endpoint not found.', 'err');
-  }
-
-  async function markHandled(c) {
-    setStatus('Marking handled…', 'info');
-    for (const ep of ['/api/call-center/handled']) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ id: c.id, handled: true })
-        });
-        if (r.ok) { setStatus('Marked handled.', 'ok'); c.handled = true; loadCalls(); return; }
-        const d = await r.json().catch(() => ({}));
-        setStatus(`Couldn't mark handled: ${d.error || r.status}`, 'err'); return;
-      } catch (_) {}
-    }
-    setStatus('Mark-handled endpoint missing.', 'err');
-  }
-
-  async function addToWaitlist(c) {
-    setStatus('Adding to waitlist…', 'info');
-    try {
-      const r = await fetch('/api/call-center/waitlist', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ phone: c.from, client_name: c.client_name || '' })
-      });
+      const r = await fetch('/api/call-center/call?id=' + encodeURIComponent(S.sel.id), { headers: hdr() });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.ok === false) { setStatus(`Waitlist failed: ${d.error || r.status}`, 'err'); return; }
-      setStatus('Added to the waitlist — Lola offers them the next opening.', 'ok');
-    } catch (err) {
-      setStatus(`Waitlist errored: ${err.message}`, 'err');
+      const row = d.call || d.data || null;
+      if (row) { S.sel = { ...S.sel, ...row, status: String(row.status || S.sel.status).toLowerCase() }; renderDetail(true); if (!isLive(S.sel)) clearInterval(S.liveTimer); }
+    } catch (_) {}
+  }
+  function thread(text, name) {
+    const who = String(name || '').split(' ')[0] || 'Caller';
+    const out = [];
+    for (const line of String(text || '').split(/\n+/).map(l => l.trim()).filter(Boolean)) {
+      const m = /^(caller|client|customer|user|lola|assistant|agent)\s*:\s*(.*)$/i.exec(line);
+      if (m) out.push({ lola: /^(lola|assistant|agent)$/i.test(m[1]), text: m[2] });
+      else if (out.length) out[out.length - 1].text += ' ' + line;
+      else out.push({ lola: false, text: line });
     }
+    return out.map(b => `<div class="msg ${b.lola ? 'lola' : 'caller'}"><div class="who">${b.lola ? 'Lola' : esc(who)}</div><div class="bub">${esc(b.text)}</div></div>`).join('');
+  }
+  function renderDetail(keepCompose) {
+    const c = S.sel, el = $('detail');
+    if (!c) { el.innerHTML = '<div class="empty">Select a call to see the conversation, hear it, and act.</div>'; return; }
+    const draft = keepCompose && $('smsText') ? $('smsText').value : null;
+    const live = isLive(c), why = needsWhy(c);
+    const name = c.client_name || phoneFmt(c.phone) || 'Unknown caller';
+    const first = (c.client_name || '').split(' ')[0];
+    el.innerHTML = `
+      <div class="eyebrow">${live ? '<span style="color:var(--accent)">● Live now</span>' : c.direction === 'outbound' ? 'Outgoing call' : 'Incoming call'} · ${esc(when(c.started_at))}${c.duration_sec ? ' · ' + dur(c.duration_sec) : ''}</div>
+      <h2>${c.client_id ? `<a href="/client.html?id=${encodeURIComponent(c.client_id)}">${esc(name)}</a>` : esc(name)}</h2>
+      <div class="sub">${esc(phoneFmt(c.phone))}${c.client_id ? '' : ' · not a client yet'}</div>
+      ${why ? `<div class="why">${esc(why)}</div>` : ''}
+      <div class="acts">
+        ${live ? '<button class="btn primary" id="aTake">Take over the call</button>' : `<button class="btn primary" id="aCall" ${c.phone ? '' : 'disabled'}>Lola, call ${esc(first || 'them')} back</button>`}
+        <button class="btn" id="aText" ${c.phone ? '' : 'disabled'}>Text</button>
+        <button class="btn" id="aAsk">Ask Lola</button>
+        ${!c.handled && !live ? '<button class="btn" id="aDone">Mark handled</button>' : ''}
+        ${!live && why ? '<button class="btn" id="aWait">Add to waitlist</button>' : ''}
+      </div>
+      <div id="composeHost"></div>
+      <div class="status" id="st"></div>
+      ${c.recording_url ? `<div class="lbl">Recording</div><audio controls preload="metadata" src="${esc(c.recording_url)}"></audio>` : ''}
+      <div class="lbl">${live ? 'Live conversation' : 'Conversation'}</div>
+      <div class="thread" id="thr">${c.transcript ? thread(c.transcript, c.client_name) : '<div class="sub">No conversation recorded for this call.</div>'}</div>`;
+    const thr = $('thr'); if (thr) thr.scrollTop = thr.scrollHeight;
+    $('aTake') && ($('aTake').onclick = () => takeOver(c));
+    $('aCall') && ($('aCall').onclick = () => callBack(c));
+    $('aText') && ($('aText').onclick = () => compose(c));
+    $('aDone') && ($('aDone').onclick = () => handled(c));
+    $('aWait') && ($('aWait').onclick = () => waitlist(c));
+    $('aAsk').onclick = () => askLola(c);
+    if (draft != null) { compose(c); $('smsText').value = draft; }
+  }
+  function st(msg, k) { const e = $('st'); if (e) { e.className = 'status ' + (k || 'info'); e.textContent = msg; } }
+  async function post(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.error || ('failed (' + r.status + ')'));
+    return d;
+  }
+  async function callBack(c) {
+    const b = $('aCall'); b.disabled = true; st('Lola is dialing…');
+    try { await post('/api/call-center/callback', { to: c.phone, call_id: c.id }); st(`Lola is calling ${c.client_name || phoneFmt(c.phone)} now. The call will show up here.`, 'ok'); setTimeout(load, 5000); }
+    catch (e) { st("Couldn't place the call: " + e.message, 'err'); b.disabled = false; }
+  }
+  async function takeOver(c) {
+    const b = $('aTake'); b.disabled = true; st('Connecting you…');
+    try { await post('/api/call-center/take-over', { call_id: c.id, telnyx_call_id: c.telnyx_call_id }); st('Your phone will ring — answer to take the call from Lola.', 'ok'); }
+    catch (e) { st("Couldn't take over: " + e.message + (/owner_phone|operator/i.test(e.message) ? ' Set your mobile in Settings → Call handling.' : ''), 'err'); b.disabled = false; }
+  }
+  function compose(c) {
+    const host = $('composeHost'); if (!host || $('smsText')) { $('smsText') && $('smsText').focus(); return; }
+    const first = (c.client_name || '').split(' ')[0];
+    const hi = first ? `Hi ${first}, ` : 'Hi, ';
+    const why = needsWhy(c) || '';
+    const quick = [
+      /unhappy/i.test(why) ? [`Personal apology`, `${hi}I'm so sorry about your experience. I want to make it right — I'll call you personally today.`]
+        : /voicemail|through/i.test(why) ? [`Sorry we missed you`, `${hi}sorry we missed your call! How can we help? You can reply here to book.`]
+        : [`Following up`, `${hi}following up on your call — how can I help?`],
+      [`Call you soon`, `${hi}thanks for calling — I'll call you back shortly.`],
+      [`Book online`, `${hi}you can grab any open time here and we'll see you soon!`],
+    ];
+    host.innerHTML = `<div class="compose"><div class="quick">${quick.map((q, i) => `<button type="button" data-q="${i}">${esc(q[0])}</button>`).join('')}</div>
+      <textarea id="smsText" placeholder="Write a text…"></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn" id="smsCancel">Cancel</button><button class="btn primary" id="smsSend">Send text</button></div></div>`;
+    host.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { $('smsText').value = quick[+b.dataset.q][1]; $('smsText').focus(); });
+    $('smsCancel').onclick = () => { host.innerHTML = ''; };
+    $('smsSend').onclick = async () => {
+      const text = $('smsText').value.trim(); if (!text) return;
+      $('smsSend').disabled = true; st('Sending…');
+      try { await post('/api/call-center/sms', { to: c.phone, text }); host.innerHTML = ''; st('Text sent.', 'ok'); }
+      catch (e) { st("Couldn't send: " + e.message, 'err'); $('smsSend').disabled = false; }
+    };
+    $('smsText').focus();
+  }
+  async function handled(c) {
+    try { await post('/api/call-center/handled', { id: c.id, handled: true }); c.handled = true; counts(); renderList(); renderDetail(); st('Marked handled.', 'ok'); }
+    catch (e) { st("Couldn't update: " + e.message, 'err'); }
+  }
+  async function waitlist(c) {
+    try { await post('/api/call-center/waitlist', { phone: c.phone, client_name: c.client_name || '' }); st('On the waitlist — Lola will offer them the next opening.', 'ok'); }
+    catch (e) { st("Couldn't add: " + e.message, 'err'); }
+  }
+  function askLola(c) {
+    const L = window.LolaEverywhere; if (!L) return;
+    const name = c.client_name || phoneFmt(c.phone);
+    L.setContext({ 'Call the owner is looking at': `${c.direction} call ${c.client_name ? 'with ' + c.client_name + ' ' : ''}(${c.phone}) ${when(c.started_at)}. Conversation:\n${String(c.transcript || '(none)').slice(0, 2500)}` });
+    if (L.ask) L.ask(`What happened on the call with ${name}, and what should I do?`); else L.open();
   }
 
-  boot();
-
-  // Lola-core hook: nudge on live-call arrival
-  window.LolaCore?.onEngage?.(() => {}); // just make sure it's mounted
-  console.info('[call-center] ready — live · missed · voicemail · handled');
+  // ── wiring ──
+  document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.chip').forEach(x => x.classList.remove('on')); b.classList.add('on');
+    S.filter = b.dataset.f; renderList(); schedule();
+  });
+  $('q').addEventListener('input', (e) => { S.q = e.target.value.trim(); renderList(); });
+  $('auto').addEventListener('change', schedule);
+  function schedule() { clearInterval(S.timer); if ($('auto').checked) S.timer = setInterval(() => { if (!document.hidden) load(); }, S.filter === 'live' ? 5000 : 15000); }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  (async () => { try { await window.LolaAuth.ready; } catch (_) { return; } await load(); schedule(); const deep = new URLSearchParams(location.search).get('call'); if (deep) select(deep); })();
 })();

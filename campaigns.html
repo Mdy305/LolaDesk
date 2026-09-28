@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Marketing — LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<style>
+.mk-head{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+.mk-head h1{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:0}
+.mk-head p{margin:4px 0 0;color:var(--text2);font-size:14px;max-width:620px;line-height:1.5}
+.mk-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:18px;align-items:start}
+@media(max-width:1100px){.mk-grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:20px}
+.card h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin:0 0 14px}
+.plan{background:radial-gradient(ellipse 90% 120% at 0% 0%,rgba(204,255,0,.07),transparent 60%),var(--surface)}
+.plan ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.plan li{display:flex;gap:10px;font-size:14px;line-height:1.5}
+.plan li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:8px;flex:none}
+.plan .ideal{font-size:14px;color:var(--text2);margin-bottom:12px}
+.plan .ideal b{color:var(--text);font-weight:600}
+.aud{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.aud button{text-align:left;background:var(--bg2,#0c0c0e);border:1px solid var(--border);border-radius:16px;padding:14px;color:var(--text);cursor:pointer;transition:border-color .15s,transform .15s}
+.aud button:hover{transform:translateY(-1px)}
+.aud button.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(204,255,0,.12)}
+.aud .n{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.aud .l{font-size:13px;font-weight:600;margin-top:2px}
+.aud .a{font-size:11.5px;color:var(--text3);margin-top:3px;line-height:1.4}
+.aud button:disabled{opacity:.45;cursor:not-allowed}
+.days{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:13px;color:var(--text2)}
+.days select{background:var(--bg2,#0c0c0e);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font:inherit}
+.fld{margin-top:14px}
+.fld label{display:block;font-size:12px;color:var(--text2);margin-bottom:6px}
+.fld input,.fld textarea{width:100%;background:var(--bg2,#0c0c0e);border:1px solid var(--border);border-radius:14px;padding:12px 14px;color:var(--text);font:inherit;font-size:14px;line-height:1.5;outline:none}
+.fld textarea{min-height:110px;resize:vertical}
+.fld input:focus,.fld textarea:focus{border-color:var(--accent)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.meta{font-size:12px;color:var(--text3);margin-top:6px}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:10px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--text3)}
+.btn.primary{background:var(--accent);color:#10140a;border-color:var(--accent);box-shadow:0 4px 14px rgba(204,255,0,.25)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.small{padding:6px 12px;min-height:30px;font-size:12px}
+.phone{background:#000;border:1px solid var(--border);border-radius:28px;padding:18px 14px 20px;max-width:340px;margin:0 auto}
+.phone .from{text-align:center;font-size:11px;color:var(--text3);margin-bottom:12px}
+.bubble{background:#26262a;color:#f2f2f5;border-radius:18px;border-bottom-left-radius:6px;padding:10px 13px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;max-width:88%}
+.bubble a{color:#64d2ff}
+.hint{font-size:12px;color:var(--text3);line-height:1.5;margin-top:12px}
+.list{display:grid;gap:10px}
+.camp{border:1px solid var(--border);border-radius:16px;padding:14px;background:var(--bg2,#0c0c0e)}
+.camp .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.camp .nm{font-weight:600;font-size:14px}
+.camp .sub{font-size:12px;color:var(--text3);margin-top:2px}
+.pill{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.08);color:var(--text2);white-space:nowrap}
+.pill.sending{background:rgba(204,255,0,.14);color:var(--accent)}
+.pill.sent{background:rgba(48,209,88,.14);color:#30d158}
+.pill.paused{background:rgba(255,159,10,.14);color:#ff9f0a}
+.bar{height:6px;border-radius:6px;background:rgba(255,255,255,.07);margin:12px 0 8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:6px;transition:width .6s ease}
+.stats{display:flex;gap:16px;font-size:12.5px;color:var(--text2);flex-wrap:wrap}
+.stats b{color:var(--text);font-weight:600}
+.stats .won b{color:var(--accent)}
+.empty{font-size:13px;color:var(--text3);padding:18px;border:1px dashed var(--border);border-radius:14px;text-align:center}
+.warn{background:rgba(255,159,10,.08);border:1px solid rgba(255,159,10,.3);color:#ffcf80;border-radius:14px;padding:12px 14px;font-size:13px;margin-bottom:16px}
+.mk-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1c1c1f;color:#f2f2f5;border:1px solid var(--border);padding:12px 18px;border-radius:14px;font-size:14px;z-index:400;box-shadow:0 12px 40px rgba(0,0,0,.5);max-width:min(560px,calc(100vw - 32px))}
+.mk-toast.err{border-color:rgba(255,105,97,.5)}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:grid;place-items:center;z-index:350;padding:16px}
+.dlg .box{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;max-width:440px;width:100%}
+.dlg h3{margin:0 0 8px;font-size:18px}
+.dlg p{margin:0 0 18px;color:var(--text2);font-size:14px;line-height:1.55}
+</style>
+</head>
+<body data-page="marketing">
+<div class="app"><main class="main">
+
+  <div class="mk-head">
+    <div id="lolaAnchor" data-inline aria-hidden="true" style="width:76px;height:76px;flex:none"></div>
+    <div>
+      <h1>Marketing</h1>
+      <p id="narrative">Lola picks who to text, writes it in your voice, sends it at the right hours, and tracks the bookings it brings in.</p>
+    </div>
+  </div>
+
+  <div id="setupWarn" class="warn" hidden>One-time setup: run <b>sql/lola-marketing.sql</b> in Supabase (SQL Editor) to turn on campaigns.</div>
+
+  <div class="mk-grid">
+    <div style="display:grid;gap:18px">
+      <section class="card plan" id="planCard" hidden>
+        <h2>Lola's plan</h2>
+        <div class="ideal" id="idealClient"></div>
+        <ul id="opps"></ul>
+      </section>
+
+      <section class="card">
+        <h2>1 · Who</h2>
+        <div class="aud" id="audiences"><div class="empty">Loading your clients…</div></div>
+        <div class="days" id="daysRow" hidden>Not seen in
+          <select id="days"><option value="45">45 days</option><option value="60" selected>60 days</option><option value="90">90 days</option><option value="180">6 months</option></select>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2 · What</h2>
+        <div class="fld"><label for="goal">What's it for? (optional)</label><input id="goal" placeholder="e.g. fill Tuesday afternoons, launch keratin, holiday gift cards"/></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="btnDraft">✦ Lola, write it</button>
+          <button class="btn" id="btnPlan" hidden>Use Lola's first campaign</button>
+          <label class="meta" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="withLink" checked> Add booking link</label>
+        </div>
+        <div class="fld"><label for="msg">Message</label><textarea id="msg" placeholder="Hi {first_name}! …"></textarea>
+          <div class="meta" id="count">0 characters</div></div>
+        <div class="fld"><label for="cname">Campaign name</label><input id="cname" placeholder="Autumn color refresh"/></div>
+      </section>
+    </div>
+
+    <div style="display:grid;gap:18px;position:sticky;top:18px">
+      <section class="card">
+        <h2>3 · Preview & send</h2>
+        <div class="phone"><div class="from" id="fromLine">Text message</div><div class="bubble" id="preview">Pick who to text and write the message.</div></div>
+        <div class="row" style="margin-top:16px;justify-content:center">
+          <button class="btn" id="btnTest">Send me a test</button>
+          <button class="btn primary" id="btnLaunch" disabled>Send to 0 clients</button>
+        </div>
+        <div class="hint" id="rules">Texts go out between 9am and 8pm, a few at a time. Every text ends with "Reply STOP to opt out", opted-out clients are never texted, and nobody gets more than one campaign a week.</div>
+      </section>
+
+      <section class="card">
+        <h2>Campaigns</h2>
+        <div class="list" id="campaigns"><div class="empty">No campaigns yet.</div></div>
+      </section>
+    </div>
+  </div>
+
+</main></div>
+
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const money=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-US');
+  let DATA=null,SEG='lapsed',poll=null;
+  const token=()=>(window.LolaAuth&&window.LolaAuth.token)||localStorage.getItem('loladesk_token')||'';
+  async function api(body){
+    const r=await fetch(body?'/api/marketing':'/api/marketing?days='+encodeURIComponent(($('days')||{}).value||60),{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:body?JSON.stringify(body):undefined});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.ok===false)throw new Error(d.error||('Request failed ('+r.status+')'));
+    return d;
+  }
+  function toast(msg,bad){const t=document.createElement('div');t.className='mk-toast'+(bad?' err':'');t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),4200);}
+  function confirmDlg(title,text,ok){return new Promise(res=>{const d=document.createElement('div');d.className='dlg';d.innerHTML='<div class="box" role="dialog" aria-modal="true"><h3></h3><p></p><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Not now</button><button class="btn primary" data-ok></button></div></div>';d.querySelector('h3').textContent=title;d.querySelector('p').textContent=text;d.querySelector('[data-ok]').textContent=ok;const done=v=>{d.remove();res(v);};d.querySelector('[data-x]').onclick=()=>done(false);d.querySelector('[data-ok]').onclick=()=>done(true);d.onclick=e=>{if(e.target===d)done(false);};document.body.appendChild(d);d.querySelector('[data-ok]').focus();});}
+
+  function seg(){return (DATA&&DATA.audiences||[]).find(a=>a.id===SEG)||null;}
+  function renderAudiences(){
+    const el=$('audiences');
+    el.innerHTML=(DATA.audiences||[]).map(a=>'<button type="button" data-seg="'+esc(a.id)+'" class="'+(a.id===SEG?'on':'')+'"'+(a.count?'':' disabled')+'><div class="n">'+a.count+'</div><div class="l">'+esc(a.label)+'</div><div class="a">'+esc(a.about)+(a.capped?' · '+a.capped+' texted this week':'')+'</div></button>').join('');
+    el.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{SEG=b.dataset.seg;renderAudiences();update();});
+    $('daysRow').hidden=SEG!=='lapsed';
+  }
+  function renderPlan(){
+    const p=DATA.plan||{};
+    const has=(p.opportunities&&p.opportunities.length)||p.ideal_client;
+    $('planCard').hidden=!has;
+    $('idealClient').innerHTML=p.ideal_client?'Your ideal client: <b>'+esc(p.ideal_client)+'</b>':'';
+    $('opps').innerHTML=(p.opportunities||[]).map(o=>'<li>'+esc(o)+'</li>').join('');
+    $('btnPlan').hidden=!(p.first_campaign&&p.first_campaign.message);
+    if(!$('msg').value&&p.first_campaign&&p.first_campaign.message){$('msg').value=p.first_campaign.message;$('cname').value=p.first_campaign.name||'';if(p.first_campaign.segment&&p.first_campaign.segment!=='all')SEG=p.first_campaign.segment;}
+  }
+  function linkify(t){return esc(t).replace(/(https?:\/\/[^\s]+)/g,'<a>$1</a>');}
+  function update(){
+    const m=$('msg').value;
+    const a=seg();
+    const first=(a&&a.sample&&a.sample[0])||'Sarah';
+    let t=m.replace(/\{\s*first_name\s*\}|\{\s*name\s*\}/gi,first).trim();
+    if(t&&!/\bstop\b|opt.?out|unsubscribe/i.test(t))t+='\nReply STOP to opt out.';
+    $('preview').innerHTML=t?linkify(t):'Pick who to text and write the message.';
+    const n=t.length, parts=n<=160?1:Math.ceil(n/153);
+    $('count').textContent=m.length+' characters · '+parts+' text'+(parts>1?'s':'')+' per client'+(/\{\s*first_name\s*\}/i.test(m)?'':' · tip: add {first_name}');
+    const count=a?a.count:0;
+    $('btnLaunch').textContent=count?('Send to '+count+' client'+(count===1?'':'s')):'Nobody to send to';
+    $('btnLaunch').disabled=!count||!m.trim()||!DATA.tables_ready;
+  }
+  function renderCampaigns(){
+    const el=$('campaigns');const list=DATA.campaigns||[];
+    if(!list.length){el.innerHTML='<div class="empty">No campaigns yet. Your first one takes a minute.</div>';return;}
+    el.innerHTML=list.map(c=>{
+      const pct=c.total?Math.round((c.sent+c.failed+c.skipped)/c.total*100):0;
+      const acts=c.status==='sending'?'<button class="btn small" data-act="pause" data-id="'+c.id+'">Pause</button>':c.status==='paused'?'<button class="btn small" data-act="resume" data-id="'+c.id+'">Resume</button><button class="btn small" data-act="cancel" data-id="'+c.id+'">Stop</button>':'';
+      return '<div class="camp"><div class="top"><div><div class="nm">'+esc(c.name)+'</div><div class="sub">'+esc(new Date(c.started_at||c.created_at).toLocaleDateString([],{month:'short',day:'numeric'}))+' · '+c.total+' clients</div></div><span class="pill '+esc(c.status)+'">'+esc(c.status)+'</span></div>'
+        +'<div class="bar"><i style="width:'+pct+'%"></i></div>'
+        +'<div class="stats"><span><b>'+c.sent+'</b> sent</span>'+(c.pending?'<span><b>'+c.pending+'</b> to go</span>':'')+(c.failed?'<span><b>'+c.failed+'</b> failed</span>':'')+(c.skipped?'<span><b>'+c.skipped+'</b> opted out</span>':'')+'<span class="won"><b>'+c.booked+'</b> booked · <b>'+money(c.revenue)+'</b></span></div>'
+        +(acts?'<div class="row" style="margin-top:10px">'+acts+'</div>':'')+'</div>';
+    }).join('');
+    el.querySelectorAll('[data-act]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api({action:b.dataset.act,id:b.dataset.id});await load(true);}catch(e){toast(e.message,true);b.disabled=false;}});
+  }
+  function narrative(){
+    const list=DATA.campaigns||[];const won=list.reduce((s,c)=>s+c.booked,0),rev=list.reduce((s,c)=>s+c.revenue,0);
+    const lapsed=(DATA.audiences||[]).find(a=>a.id==='lapsed');
+    let t=list.length?('Your campaigns brought back '+won+' client'+(won===1?'':'s')+' and '+money(rev)+'.'):'Lola picks who to text, writes it in your voice, sends it at the right hours, and tracks the bookings it brings in.';
+    if(lapsed&&lapsed.count&&DATA.avg_ticket)t+=' '+lapsed.count+' clients haven’t been in for '+(lapsed.days||60)+'+ days — about '+money(lapsed.count*DATA.avg_ticket)+' in visits if they all came back.';
+    $('narrative').textContent=t;
+  }
+  async function load(quiet){
+    try{DATA=await api();}catch(e){if(!quiet)$('audiences').innerHTML='<div class="empty">'+esc(e.message)+'</div>';return;}
+    $('setupWarn').hidden=!!DATA.tables_ready;
+    $('fromLine').textContent=(DATA.salon||'Your salon')+' · text message';
+    if(!quiet)renderPlan();
+    renderAudiences();renderCampaigns();narrative();update();
+    clearTimeout(poll);
+    if((DATA.campaigns||[]).some(c=>c.status==='sending'))poll=setTimeout(()=>load(true),8000);
+  }
+  $('msg').addEventListener('input',update);
+  $('days').addEventListener('change',()=>load(true));
+  $('btnPlan').onclick=()=>{const f=DATA.plan.first_campaign;$('msg').value=f.message;$('cname').value=f.name||'';if(f.segment&&f.segment!=='all'){SEG=f.segment;renderAudiences();}update();};
+  $('btnDraft').onclick=async()=>{const b=$('btnDraft');b.disabled=true;const old=b.textContent;b.textContent='Lola is writing…';
+    try{const d=await api({action:'draft',segment:SEG,days:Number($('days').value),goal:$('goal').value,include_link:$('withLink').checked});$('msg').value=d.message;if(!$('cname').value)$('cname').value=($('goal').value||(seg()&&seg().label)||'Campaign').slice(0,60);update();}
+    catch(e){toast(e.message,true);}finally{b.disabled=false;b.textContent=old;}};
+  $('btnTest').onclick=async()=>{const m=$('msg').value.trim();if(!m)return toast('Write the message first.',true);const b=$('btnTest');b.disabled=true;
+    try{const d=await api({action:'test',message:m});toast('Test sent to '+d.to+'.');}catch(e){toast(e.message,true);}finally{b.disabled=false;}};
+  $('btnLaunch').onclick=async()=>{const a=seg();const m=$('msg').value.trim();if(!a||!m)return;
+    const ok=await confirmDlg('Send to '+a.count+' client'+(a.count===1?'':'s')+'?','"'+(m.length>140?m.slice(0,140)+'…':m)+'"\n\n'+(DATA.sending_now?'Texts start now and go out a few at a time.':'It’s outside sending hours — texts start at 9am.')+' You can pause anytime.','Send campaign');
+    if(!ok)return;const b=$('btnLaunch');b.disabled=true;b.textContent='Launching…';
+    try{const d=await api({action:'launch',segment:SEG,days:Number($('days').value),message:m,name:$('cname').value});
+      toast(d.first_batch&&d.first_batch.sent?('Launched — '+d.first_batch.sent+' sent, the rest are on their way.'):('Launched for '+d.total+' clients'+(d.sending_now?'.':'; texts start at 9am.')));
+      $('msg').value='';$('cname').value='';$('goal').value='';await load(true);}
+    catch(e){toast(e.message,true);}finally{update();}};
+  (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+})();
+</script>
+<script src="/lola-stage.js" defer></script>
+</body>
+</html>
