@@ -1,0 +1,40 @@
+process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k';
+process.env.STRIPE_SECRET_KEY = 'sk_test_x'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_acct'; process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_conn';
+import { Readable } from 'node:stream';
+const { T } = await import('./fake-supabase.mjs');
+const Stripe = (await import('stripe')).default;
+const hook = (await import(new URL('../../api/stripe-webhook.js', import.meta.url).href)).default;
+const s = new Stripe('sk_test_x');
+let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
+T.tenants = [{ id: 't1', name: 'MMA', subscription_status: 'trial' }];
+T.deposits = [{ id: 'd1', tenant_id: 't1', status: 'pending', stripe_payment_intent_id: 'plink_123' }];
+T.billing_events = [];
+function send(event, secret = 'whsec_acct', tamper = false) {
+  const payload = JSON.stringify(event);
+  const header = s.webhooks.generateTestHeaderString({ payload, secret });
+  const req = Readable.from([Buffer.from(tamper ? payload.replace('t1', 't2') : payload)]);
+  req.method = 'POST'; req.headers = { 'stripe-signature': header };
+  return new Promise((resolve) => {
+    const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, body: o }); }, setHeader() {} };
+    hook(req, res);
+  });
+}
+let r = await send({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_9', customer: 'cus_9', metadata: { tenant_id: 't1', plan: 'pro' } } } });
+ok(r.status === 200 && T.tenants[0].subscription_status === 'active' && T.tenants[0].plan === 'pro' && T.tenants[0].stripe_customer_id === 'cus_9', 'paid checkout activates the salon');
+r = await send({ id: 'evt_2', type: 'checkout.session.completed', data: { object: { mode: 'payment', payment_link: 'plink_123', payment_intent: 'pi_5' } } });
+ok(T.deposits[0].status === 'paid' && T.deposits[0].stripe_payment_intent_id === 'pi_5', 'deposit link paid → deposit paid, refundable intent kept');
+r = await send({ id: 'evt_3', type: 'invoice.payment_failed', data: { object: { customer: 'cus_9' } } });
+ok(T.tenants[0].subscription_status === 'past_due', 'failed invoice → past_due');
+r = await send({ id: 'evt_3', type: 'invoice.payment_failed', data: { object: { customer: 'cus_9' } } });
+ok(r.body.duplicate === true, 'Stripe retry of the same event is ignored');
+r = await send({ id: 'evt_4', type: 'customer.subscription.updated', data: { object: { id: 'sub_9', customer: 'cus_9', status: 'active', cancel_at_period_end: true, current_period_end: 1893456000 } } });
+ok(T.tenants[0].subscription_status === 'canceling' && !!T.tenants[0].current_period_end, 'cancel at period end → canceling with end date');
+r = await send({ id: 'evt_5', type: 'customer.subscription.deleted', data: { object: { id: 'sub_9', customer: 'cus_9' } } });
+ok(T.tenants[0].subscription_status === 'canceled', 'subscription deleted → canceled');
+r = await send({ id: 'evt_6', type: 'payout.paid', account: 'acct_1', data: { object: { amount: 100 } } }, 'whsec_conn');
+ok(r.status === 200, 'connected-account event verified with the Connect secret');
+r = await send({ id: 'evt_7', type: 'checkout.session.completed', data: { object: { metadata: { tenant_id: 't1' } } } }, 'whsec_acct', true);
+ok(r.status === 400, 'tampered payload rejected');
+r = await send({ id: 'evt_8', type: 'invoice.payment_succeeded', data: { object: { customer: 'cus_9' } } }, 'whsec_wrong');
+ok(r.status === 400, 'wrong secret rejected');
+console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

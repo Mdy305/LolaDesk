@@ -153,10 +153,15 @@ async function gmbReply(){
   gmbState();
 }
 
-function gmbConnect(){
-  const slug=(queue&&queue.tenant&&queue.tenant.slug)||'';
-  location.href='/api/oauth/connect?provider=google_gmb&tenant='+encodeURIComponent(slug);
+function lolaOAuthConnect(provider, extra){
+  // Ask the server for a sealed sign-in link for THIS salon, then go.
+  var tok=''; try{ tok=localStorage.getItem('loladesk_token')||''; }catch(e){}
+  var q='/api/oauth/connect?format=json&provider='+encodeURIComponent(provider)+(extra||'');
+  return fetch(q,{headers:{Authorization:'Bearer '+tok}}).then(function(r){return r.json().catch(function(){return {};});})
+    .then(function(d){ if(d&&d.url){ location.href=d.url; } else { alert(d&&d.error==='sign_in_required'?'Please sign in again to connect.':'Could not start the connection: '+((d&&d.error)||'unknown error')); } })
+    .catch(function(){ alert('Could not reach LolaDesk — check your connection.'); });
 }
+function gmbConnect(){ return lolaOAuthConnect('google_gmb'); }
 
 async function gmbImport(){
   const result=await LolaUX.run(async()=>{

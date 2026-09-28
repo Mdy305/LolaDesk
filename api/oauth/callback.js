@@ -1,5 +1,6 @@
 import { getConnector } from '../lib/aggregator.js';
-import { getTenantBySlug, upsertIntegration } from '../lib/db.js';
+import { db, upsertIntegration } from '../lib/db.js';
+import { openState } from '../lib/oauth-state.js';
 
 export default async function handler(req, res){
   try{
@@ -11,12 +12,14 @@ export default async function handler(req, res){
     const error = url.searchParams.get('error');
     if(error){ res.writeHead(302, { Location: `/settings.html?connect=error&provider=${provider}` }); return res.end(); }
     if(!provider || !code){ res.writeHead(302, { Location: `/settings.html?connect=error&reason=missing_params` }); return res.end(); }
-    let state = {};
-    try{ state = JSON.parse(Buffer.from(stateRaw||'', 'base64url').toString('utf8')); }catch{}
-    const tenantSlug = state.tenant || 'demo';
+    // Only a state sealed by /api/oauth/connect for a signed-in owner counts.
+    const state = openState(stateRaw);
+    if(!state){
+      res.writeHead(302, { Location: `/settings.html?connect=error&provider=${encodeURIComponent(provider)}&reason=expired_or_invalid` }); return res.end();
+    }
     const connector = getConnector(provider);
     const tokens = provider === 'shopify' ? await connector.exchangeCode(code, { shop }) : await connector.exchangeCode(code);
-    const tenant = await getTenantBySlug(tenantSlug);
+    const { data: tenant } = await db().from('tenants').select('id,slug').eq('id', state.tid).maybeSingle();
     if(tenant?.id){
       // Tokens are encrypted at rest inside upsertIntegration — never
       // write access_token/refresh_token to the DB any other way.

@@ -34,6 +34,8 @@ import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
+import { salonTz, fmtSalon } from './lib/salon-time.js';
+import { zonedLocalToUtc } from './lib/timezone.js';
 
 // Resolve which salon this call is for. When a dialed `to` number is present
 // (a Telnyx-originated call), resolution goes through the STRICT inbound
@@ -42,15 +44,17 @@ import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMi
 // legacy getTenantByPhone path is kept only for callers that pass no
 // number at all (e.g. dashboard/slug-driven calls).
 async function resolveTenant(body){
-  if(body.tenant) return getTenantBySlug(body.tenant);
-  const to = body.to || body.To || body.called_number || '';
+  // The salon comes ONLY from the number that was called. A `tenant` slug in
+  // the body used to be trusted, which let anyone cancel/reschedule any
+  // salon's bookings or read a caller's memory.
+  const to = body.to || body.To || body.called_number || body.telnyx_agent_target || body.data?.payload?.telnyx_agent_target || '';
   const phone = to ? String(to).replace(/\D/g, '') : '';
   if(phone.length >= 8){
     const routing = await resolveInboundTenant({ to });
     if(routing.status === 'resolved') return routing.tenant;
     return null; // hard gate: unrouted number → no tenant, never demo data
   }
-  return getTenantByPhone(to);
+  return null;   // no called number → no salon (never fall back to demo data)
 }
 
 function findService(tenant, query){
@@ -199,11 +203,12 @@ function recommend_service(tenant, { goal }){
 async function check_availability(tenant, { service, date }){
   const svc = findService(tenant, service);
   const durationMin = parseDurationMin(svc?.durationMin ?? svc?.duration, 60);
-  const smart = await listAvailability({ tenant, date, durationMin });
+  const smart = await listAvailability({ tenant, date, durationMin, service });
+  const tzNow = await salonTz(tenant.id);
   if(smart?.slots?.length){
     const spokenSlots = smart.slots
       .slice(0, 3)
-      .map(s => new Date(s).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
+      .map(s => fmtSalon(s, tzNow, 'time'))
       .join(', ');
     return {
       speak: `I can offer ${spokenSlots}${service ? ` for ${service}` : ''}. Which one do you want?`,
@@ -229,10 +234,10 @@ async function check_availability(tenant, { service, date }){
       slots: [], needs_callback: true
     };
   }
-  // Naive open-slot logic: suggest a few gaps (real version inspects schedule).
+  // No invented times: offer to text real openings instead.
   return {
-    speak: `I have a few openings${date?` on ${date}`:''} for ${service||'that'}. Would morning or afternoon suit you better?`,
-    slots: ['10:00 AM','1:30 PM','4:00 PM']
+    speak: `Let me find the best ${service||'appointment'} time for you${date?` around ${date}`:''}. I can text you our next openings — what number should I use?`,
+    slots: [], needs_callback: true
   };
 }
 
@@ -246,7 +251,7 @@ async function book_appointment(tenant, body){
     if(tenant.id && client_phone){
       client = await upsertClient(tenant.id, { phone: client_phone, name: client_name });
     }
-    const startsAt = date && time ? new Date(`${date}T${to24(time)}`).toISOString() : null;
+    const startsAt = await salonInstant(tenant, date, time);
     const durationMin = parseDurationMin(s?.durationMin ?? s?.duration, 60);
     if(!startsAt){
       return {
@@ -287,7 +292,8 @@ async function book_appointment(tenant, body){
       });
       if(!safe.ok && safe.conflict){
         const av = await listAvailability({ tenant, date: startsAt, durationMin, stylist });
-        const options = (av.slots || []).slice(0, 3).map(x => new Date(x).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })).join(', ');
+        const tzB = await salonTz(tenant.id);
+        const options = (av.slots || []).slice(0, 3).map(x => fmtSalon(x, tzB, 'time')).join(', ');
         return {
           speak: `That time just got taken. I can do ${options || 'the next available slot'} instead.`,
           booked: false,
@@ -346,7 +352,7 @@ async function confirm_booking(tenant, { client_phone, client_name }){
     .limit(1);
   const next = rows?.[0];
   if(!next) return { speak:`I do not see an upcoming booking for ${client.name || 'that client'}. Want me to book one now?`, confirmed:false };
-  const when = new Date(next.starts_at || next.start_time).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  const when = fmtSalon(next.starts_at || next.start_time, await salonTz(tenant.id));
   return { speak:`Yes - you are confirmed for ${next.service?.name || next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
 }
 
@@ -369,18 +375,19 @@ async function reschedule_appointment(tenant, { booking_id, client_phone, new_da
     }
   }
   if(!bookingId) return { speak:'I could not identify which booking to reschedule yet. Please share the booking phone number.' };
-  const targetIso = new_date && new_time ? new Date(`${new_date}T${to24(new_time)}`).toISOString() : null;
+  const targetIso = await salonInstant(tenant, new_date, new_time);
   if(!targetIso) return { speak:'Please share the new date and time, and I will move it immediately.' };
   const out = await rescheduleBookingSafe({ tenantId: tenant.id, bookingId, newStartsAt: targetIso });
   if(!out.ok){
     if(out.conflict){
       const av = await listAvailability({ tenant, date: targetIso, durationMin: Number(out?.booking?.duration_min || 60) });
-      const options = (av.slots || []).slice(0, 3).map(x => new Date(x).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })).join(', ');
+      const tzR = await salonTz(tenant.id);
+      const options = (av.slots || []).slice(0, 3).map(x => fmtSalon(x, tzR, 'time')).join(', ');
       return { speak:`That new time is not available. I can offer ${options || 'the next open slot'} instead.`, rescheduled:false, conflict:true, slots:av.slots || [] };
     }
     return { speak:'I could not reschedule that just now. Please give me one moment and we can retry.', rescheduled:false };
   }
-  const when = new Date(targetIso).toLocaleString([], { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  const when = fmtSalon(targetIso, await salonTz(tenant.id));
   return { speak:`Done - your appointment is moved to ${when}.`, rescheduled:true, booking:out.booking };
 }
 
@@ -449,13 +456,22 @@ async function takeMessage(tenant, args){
 }
 
 function to24(t){
-  // accepts "2:00 PM" or "14:00" -> "14:00:00"
-  if(/^\d{1,2}:\d{2}$/.test(t)) return t+':00';
-  const m = String(t).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-  if(!m) return '10:00:00';
-  let h = +m[1]; const min = m[2]; const ap = (m[3]||'').toUpperCase();
-  if(ap==='PM' && h<12) h+=12; if(ap==='AM' && h===12) h=0;
+  // "2:00 PM", "2pm", "2 p.m.", "14:00", "14" -> "14:00:00". Unreadable -> null
+  // (it used to silently become 10:00 AM).
+  const m = String(t||'').trim().toLowerCase().replace(/\./g,'').match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if(!m) return null;
+  let h = +m[1]; const min = m[2] || '00'; const ap = m[3] || '';
+  if(h>23 || +min>59) return null;
+  if(!ap && h>=1 && h<=7) h+=12;            // "at 3" at a salon means 3 PM
+  if(ap==='pm' && h<12) h+=12; if(ap==='am' && h===12) h=0;
   return `${String(h).padStart(2,'0')}:${min}:00`;
+}
+// A caller's date + time are the SALON's local time (servers run in UTC).
+async function salonInstant(tenant, date, time){
+  const t = to24(time); if(!date || !t) return null;
+  const key = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : (isNaN(new Date(date)) ? null : new Date(date).toISOString().slice(0,10));
+  if(!key) return null;
+  return zonedLocalToUtc(key, t, await salonTz(tenant.id));
 }
 
 export const SKILLS = {

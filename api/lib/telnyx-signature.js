@@ -1,4 +1,5 @@
-import { createPublicKey, verify as verifySig } from 'crypto';
+import { verify as verifySig } from 'crypto';
+import { telnyxPublicKey } from './telnyx-webhook-verify.js';
 
 function header(req, name){
   return req.headers?.[name] || req.headers?.[name.toLowerCase()] || req.headers?.[name.toUpperCase()] || '';
@@ -23,7 +24,7 @@ export function verifyTelnyxSignature({ rawBody, signature, timestamp }){
 
   try{
     const payload = `${timestamp}|${rawBody}`;
-    const key = createPublicKey(publicKeyPem);
+    const key = telnyxPublicKey(publicKeyPem);
     const ok = verifySig(null, Buffer.from(payload, 'utf8'), key, Buffer.from(signature, 'base64'));
     return ok ? { ok: true } : { ok: false, reason: 'bad signature' };
   }catch(e){

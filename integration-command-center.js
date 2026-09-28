@@ -19,7 +19,10 @@
     if(item.action==='open_numbers') return location.href='numbers.html';
     if(item.action==='open_activation') return location.href='activation-studio.html';
     if(['connect','reconnect'].includes(item.action)&&!['voice','website','whatsapp'].includes(item.id)){
-      return location.href=`/api/oauth/connect?provider=${encodeURIComponent(item.id)}`;
+      var tok=''; try{ tok=localStorage.getItem('loladesk_token')||''; }catch(e){}
+      return fetch('/api/oauth/connect?format=json&provider='+encodeURIComponent(item.id),{headers:{Authorization:'Bearer '+tok}})
+        .then(r=>r.json().catch(()=>({}))).then(d=>{ if(d&&d.url) location.href=d.url; else alert('Could not start the connection: '+((d&&d.error)||'unknown error')); })
+        .catch(()=>alert('Could not reach LolaDesk — check your connection.'));
     }
     runHealth(item.id);
   }

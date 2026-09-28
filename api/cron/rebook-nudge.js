@@ -35,11 +35,11 @@ export default async function handler(req, res) {
 
       // Load tenant name + sending number.
       const { data: tenant } = await c.from('tenants')
-        .select('id, name, phone_e164')
+        .select('*')
         .eq('id', s.tenant_id).maybeSingle();
-      const { data: tnum } = await c.from('tenant_numbers')
-        .select('phone_e164').eq('tenant_id', s.tenant_id).maybeSingle();
-      const fromNumber = tnum?.phone_e164 || tenant?.phone_e164;
+      const { data: tnums } = await c.from('tenant_numbers').select('*').eq('tenant_id', s.tenant_id);
+      const tnum = (tnums || [])[0];
+      const fromNumber = tnum?.phone_number || tnum?.phone_e164 || tenant?.phone_number || tenant?.phone_e164;
       if (!tenant || !fromNumber) continue;
 
       // Bookings that were completed around windowStart–windowEnd.

@@ -1,5 +1,6 @@
 // Telnyx helpers. Sends calls + SMS via HTTPS; verifies webhook signatures.
 import crypto from 'crypto';
+import { telnyxPublicKey } from './telnyx-webhook-verify.js';
 
 const BASE = 'https://api.telnyx.com/v2';
 
@@ -74,7 +75,7 @@ export function verifyTelnyxSig(headers, rawBody) {
     const pub = process.env.TELNYX_PUBLIC_KEY;  // Telnyx dashboard → public key for this endpoint
     if (!sig || !ts || !pub) return false;
     const payload = ts + '|' + rawBody;
-    const key = crypto.createPublicKey({ key: Buffer.from(pub, 'base64'), format: 'der', type: 'spki' });
+    const key = telnyxPublicKey(pub);
     return crypto.verify(null, Buffer.from(payload), key, Buffer.from(sig, 'base64'));
   } catch { return false; }
 }

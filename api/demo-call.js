@@ -23,8 +23,16 @@ export default async function handler(req, res){
     // rate limit: max 3 requests per hour per phone
     const recent = await recentDemoRequestsByPhone(phoneE, 60);
     if(recent >= 3) return res.status(429).json({ error: 'rate_limited' });
+    // US/Canada numbers only (+1, valid area code) — blocks premium-rate
+    // international toll fraud through the demo line.
+    if(!/^\+1[2-9]\d{2}[2-9]\d{6}$/.test(String(phoneE||''))) return res.status(400).json({ error: 'us_canada_numbers_only' });
 
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
+    const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim() || null;
+    // Per-IP limit too: 5 demo calls per hour from one address.
+    if(ip){
+      const { count } = await c.from('demo_requests').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', new Date(Date.now() - 3600e3).toISOString());
+      if((count || 0) >= 5) return res.status(429).json({ error: 'rate_limited' });
+    }
     const { data } = await c.from('demo_requests').insert({ phone_number: phoneE, ip }).select().maybeSingle();
     const id = data?.id;
 

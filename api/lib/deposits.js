@@ -31,6 +31,7 @@ import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
 import { createPaymentLink } from './stripe.js';
 import { depositRequestText, depositKeptText, depositRefundText, depositUnpaidText } from './lola-persona.js';
+import { salonTz, fmtSalon } from './salon-time.js';
 
 export const DEPOSIT_DEFAULTS = Object.freeze({ percent: 25, min_cents: 0, grace_minutes: 0 });
 export const DEPOSIT_MAX_PERCENT = 100;
@@ -59,9 +60,7 @@ export function depositAmountCents(totalAmount, policy){
   return Math.max(Math.round(totalCents * pct / 100), min) || null;
 }
 
-const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
-  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-});
+const fmtWhen = (iso, tz) => fmtSalon(iso, tz);
 
 // Fire the deposit request for a freshly created confirmed booking. Never
 // throws — a deposit failure must never fail the booking it protects.
@@ -95,7 +94,7 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
     const link = await createLink({
       amountCents: cents,
       description: `${svc?.name || 'Appointment'} deposit — ${tenant.name || 'the salon'}`,
-      successUrl: `${process.env.APP_URL || 'https://www.loladesk.com'}/bookings.html?deposit=paid&booking=${booking.id}`
+      successUrl: `${process.env.APP_URL || 'https://www.loladesk.com'}/paid?salon=${encodeURIComponent(tenant.name || '')}`
     });
     const { data: deposit, error } = await c.from('deposits').insert({
       tenant_id: tenantId, booking_id: booking.id, amount: cents / 100,
@@ -103,7 +102,7 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
     }).select().maybeSingle();
     if(error) throw error;
 
-    const when = fmtWhen(booking.start_time);
+    const when = fmtWhen(booking.start_time, await salonTz(tenantId));
     await send({
       from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
       text: depositRequestText({
@@ -168,7 +167,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
       if(now.getTime() < cutoff){ result.skipped++; continue; } // window still open
       const claimed = await setDepositStatus(c, d.id, 'flagged', 'pending');
       if(!claimed){ result.skipped++; continue; }
-      if(['cancelled', 'canceled', 'declined', 'no_show', 'completed', 'arrived', 'in_progress'].includes(status)){
+      if(['cancelled', 'canceled', 'declined', 'no_show', 'no-show', 'completed', 'arrived', 'in_progress'].includes(status)){
         // Booking ended/abandoned without payment — nothing to enforce.
         await setDepositStatus(c, d.id, 'void', 'flagged');
         result.voided++;
@@ -181,7 +180,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
         const { data: svc } = b.service_id
           ? await c.from('services').select('name').eq('id', b.service_id).maybeSingle() : { data: null };
         await send({ from: t.phone_number, to: cl.phone, tenantId: d.tenant_id, type: 'SMS',
-          text: depositUnpaidText({ firstName: cl.name, salon: t.name, serviceName: svc?.name, when: fmtWhen(b.start_time) }) }).catch(() => {});
+          text: depositUnpaidText({ firstName: cl.name, salon: t.name, serviceName: svc?.name, when: fmtWhen(b.start_time, await salonTz(d.tenant_id)) }) }).catch(() => {});
       }
       result.flagged++;
       continue;
@@ -193,7 +192,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
       if(claimed) result.kept++; else result.skipped++; // applied to the visit — silent
       continue;
     }
-    if(status === 'no_show'){
+    if(status === 'no_show' || status === 'no-show'){
       const claimed = await setDepositStatus(c, d.id, 'kept', 'paid');
       if(!claimed){ result.skipped++; continue; }
       const cl = clMap[b.client_id]; const t = tMap[d.tenant_id];

@@ -20,6 +20,7 @@ import { bookingGateResponse } from './lib/billing-gate.js';
 import { createCanonicalBooking, makeConfirmationCode, sendConfirmationSMS } from './lib/booking-repository.js';
 import { offerRebooking } from './lib/rebooking.js';
 import { randomUUID } from 'node:crypto';
+import { whenForTenant } from './lib/salon-time.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -34,7 +35,7 @@ async function confirmSMS(c,tenantId,bookingId){
       c.from('clients').select('name,phone').eq('id',b.client_id).maybeSingle(),
       c.from('services').select('name').eq('id',b.service_id).maybeSingle()]);
     if(!cl?.phone||!t?.phone_number)return;
-    const when=new Date(b.start_time).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const when=await whenForTenant(tenantId,b.start_time);
     await sendSMS({from:t.phone_number,to:cl.phone,tenantId,
       text:confirmText({ verb:'Confirmed', salon:t.name, serviceName:sv?.name, when })});
   }catch(e){}
@@ -66,14 +67,11 @@ export default async function handler(req,res){
 
   try{
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    const slug=req.query?.t||body.slug;
-    let tenant=null;
-    if(slug){ tenant=await getTenantBySlug(slug); }
-    else{
-      const user=await getUserFromToken(bearer(req));
-      if(!user)return res.status(401).json({ok:false,error:'Not authenticated'});
-      tenant=await resolveTenantForUser(user);
-    }
+    // Owner data is only reachable with the owner's own login. (A ?t=<slug>
+    // shortcut used to skip auth entirely and expose any salon's clients.)
+    const user=await getUserFromToken(bearer(req));
+    if(!user)return res.status(401).json({ok:false,error:'Not authenticated'});
+    const tenant=await resolveTenantForUser(user);
     if(!tenant?.id)return res.status(404).json({ok:false,error:'Salon not found'});
     const T=tenant.id;
 

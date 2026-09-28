@@ -8,6 +8,7 @@ import { getTenantById } from './lib/operator-db.js';
 import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { holdAvailability } from './lib/availability-engine-v2.js';
 import { createCanonicalBooking, listServices, releaseHold } from './lib/booking-repository.js';
+import { whenForTenant } from './lib/salon-time.js';
 
 function bodyOf(req){
   if(typeof req.body==='string'){ try{return JSON.parse(req.body||'{}')}catch{return {}} }
@@ -86,7 +87,7 @@ export default async function handler(req,res){
     });
     await releaseHold(tenant.id,held.hold.hold_token,'converted');
 
-    const when=new Date(booking.start_time).toLocaleString('en-US',{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const when=await whenForTenant(tenant.id,booking.start_time,'long');
     return res.status(200).json({
       speak:`Perfect${client_name?`, ${String(client_name).split(' ')[0]}`:''}. You're with ${selectedStaff.name} for ${serviceRow.name} on ${when}. I'll text you the confirmation.`,
       booked:true,status:'confirmed',booking_id:booking.id,service_id:resolved.service.id,staff_id:selectedStaff.id

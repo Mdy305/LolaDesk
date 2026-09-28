@@ -4,6 +4,24 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+
+// Supabase query builders are "thenables" without a .catch() method, so any
+// `await c.from(...).insert(...).catch(...)` threw a TypeError (and dozens of
+// call sites across the API are written that way). Give every builder a real
+// .catch/.finally once, for every client in this process.
+(function patchPostgrestCatch(){
+  try{
+    const probe = createClient('http://localhost', 'x', { auth: { persistSession: false, autoRefreshToken: false } });
+    let proto = Object.getPrototypeOf(probe.from('_probe').select('*'));
+    while(proto && !Object.prototype.hasOwnProperty.call(proto, 'then')) proto = Object.getPrototypeOf(proto);
+    if(proto && typeof proto.catch !== 'function'){
+      Object.defineProperty(proto, 'catch', { configurable: true, writable: true, value: function(onRejected){ return this.then(undefined, onRejected); } });
+    }
+    if(proto && typeof proto.finally !== 'function'){
+      Object.defineProperty(proto, 'finally', { configurable: true, writable: true, value: function(f){ return this.then(v => { f && f(); return v; }, e => { f && f(); throw e; }); } });
+    }
+  }catch(_){ /* never block startup */ }
+})();
 import WebSocket from 'ws';
 import { encrypt, decrypt } from './crypto.js';
 
@@ -48,13 +66,8 @@ export const DEMO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export async function getTenantByPhone(toNumber){
   const c = db();
   if(!c) return demoTenant();
-  const phone = e164(toNumber);
-  const { data, error } = await c
-    .from('tenants').select('*')
-    .eq('phone_number', phone)
-    .maybeSingle();
-  if(error || !data) return demoTenant();
-  return data;
+  // Same duplicate-safe pick as the strict lookup; demo only on a true miss.
+  return (await getTenantByPhoneStrict(toNumber)) || demoTenant();
 }
 
 // STRICT. Same lookup as getTenantByPhone but returns null on a miss or DB
@@ -66,12 +79,20 @@ export async function getTenantByPhoneStrict(toNumber){
   if(!c) return null;
   const phone = e164(toNumber);
   if(!phone) return null;
+  // Duplicate salon rows (the same owner signed up twice) can share a number.
+  // maybeSingle() errors on 2+ rows, which used to make the salon's own line
+  // "not found". Pick one deterministically: paying first, then the oldest.
   const { data, error } = await c
     .from('tenants').select('*')
     .eq('phone_number', phone)
-    .maybeSingle();
-  if(error || !data || data.id === DEMO_TENANT_ID) return null;
-  return data;
+    .limit(10);
+  if(error || !data || !data.length) return null;
+  const live = data.filter(t => t && t.id !== DEMO_TENANT_ID);
+  if(!live.length) return null;
+  const score = (t) => (t.subscription_status === 'active' ? 4 : 0) + (t.status === 'active' ? 2 : 0) + (t.stripe_subscription_id ? 1 : 0);
+  live.sort((a, b) => score(b) - score(a) || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  if(live.length > 1) console.warn('[db] number', phone, 'is on', live.length, 'salon rows — using', live[0].id);
+  return live[0];
 }
 
 // ── Shared Jarvis line: which salon does this CALLER run? ──

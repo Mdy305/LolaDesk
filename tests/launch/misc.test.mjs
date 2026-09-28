@@ -1,0 +1,24 @@
+process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'service-key';
+const { T } = await import('./fake-supabase.mjs');
+const P = new URL('../../api/', import.meta.url).href;
+let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
+const { sealState, openState } = await import(P + 'lib/oauth-state.js');
+const s = sealState({ tid: 't1', provider: 'google_gmb' });
+ok(openState(s)?.tid === 't1', 'sealed OAuth state opens');
+const [d, sig] = s.split('.'); const forged = Buffer.from(JSON.stringify({ tid: 'victim', t: Date.now() })).toString('base64url') + '.' + sig;
+ok(openState(forged) === null, 'forged OAuth state rejected');
+ok(openState(Buffer.from(JSON.stringify({ tenant: 'victim' })).toString('base64url')) === null, 'old unsigned state rejected');
+const connect = (await import(P + 'oauth/connect.js')).default;
+const r = await new Promise((resolve) => { const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, body: o }); }, writeHead(c, h) { resolve({ status: c, headers: h }); }, end() {} };
+  connect({ url: '/api/oauth/connect?provider=google_gmb&tenant=mma&format=json', headers: { host: 'x' } }, res); });
+ok(r.status === 401, 'connect without a signed-in owner is refused');
+const { allowAnonymousSpeech } = await import(P + 'lib/voice-guard.js');
+const req = { headers: { 'x-forwarded-for': '9.9.9.9' } }; let n = 0; for (let i = 0; i < 40; i++) if (allowAnonymousSpeech(req)) n++;
+ok(n === 30, `anonymous voice capped at 30/hour per address (${n})`);
+ok(allowAnonymousSpeech({ headers: { 'x-forwarded-for': '9.9.9.9', authorization: 'Bearer ' + 'x'.repeat(40) } }), 'signed-in owner never capped');
+// public tenant: phone lookups with duplicate rows
+const { getTenantByPhoneStrict, getTenantByPhone } = await import(P + 'lib/db.js');
+T.tenants = [{ id: 'dup2', phone_number: '+13055550100', created_at: '2026-09-01' }, { id: 'dup1', phone_number: '+13055550100', created_at: '2026-08-01' }];
+ok((await getTenantByPhoneStrict('3055550100'))?.id === 'dup1', 'duplicate salon rows on one number → oldest, not "not found"');
+ok((await getTenantByPhone('3055550100'))?.id === 'dup1', 'legacy lookup: same pick, not the demo salon');
+console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

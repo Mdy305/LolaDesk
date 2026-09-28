@@ -3,6 +3,7 @@ import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 import { cancelText, confirmText, calendarLinkFor } from './lola-persona.js';
 import { requestDeposit } from './deposits.js';
+import { whenForTenant } from './salon-time.js';
 
 // Short, human-friendly confirmation code for client self-cancel. 6 chars,
 // unambiguous alphabet (no 0/O/1/I/L), crypto-random.
@@ -23,7 +24,7 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
       db2.from('services').select('name').eq('id',serviceId).maybeSingle()
     ]);
     if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
-    const when = new Date(startTime).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const when = await whenForTenant(tenantId, startTime);
     // Add-to-calendar rides the Booked/Rescheduled texts (the ones that put
     // the visit ON the calendar); the cancel text removes it, so it stays
     // link-free. The link is client-owned (code + their phone) — never an
@@ -89,12 +90,16 @@ export async function listStaff(tenantId, { activeOnly=true } = {}){
   return data || [];
 }
 
+// Which staff do which services (optional per-staff duration/price). Works
+// with either schema variant and never breaks availability: a missing table
+// or column just means "everyone does everything".
 export async function getStaffServices(tenantId){
   const c = db(); if(!c) return [];
-  const { data, error } = await c.from('staff_services')
-    .select('staff_id,service_id,custom_duration_minutes,custom_price,staff!inner(tenant_id)')
-    .eq('staff.tenant_id', tenantId);
-  if(error) throw error;
+  const { data: staff } = await c.from('staff').select('id').eq('tenant_id', tenantId);
+  const ids = (staff || []).map(s => s.id);
+  if(!ids.length) return [];
+  const { data, error } = await c.from('staff_services').select('*').in('staff_id', ids);
+  if(error) return [];
   return data || [];
 }
 
@@ -105,13 +110,15 @@ export async function getStaffSchedules(tenantId){
   return data || [];
 }
 
+// Time off overlapping [from, to). The table uses starts_at/ends_at (older
+// code expected start_time/end_time + approved); accept either, never throw.
 export async function getStaffTimeOff(tenantId, from, to){
   const c = db(); if(!c) return [];
-  const { data, error } = await c.from('staff_time_off').select('*')
-    .eq('tenant_id', tenantId).eq('approved', true)
-    .lt('start_time', to).gt('end_time', from);
-  if(error) throw error;
-  return data || [];
+  const { data, error } = await c.from('staff_time_off').select('*').eq('tenant_id', tenantId);
+  if(error) return [];
+  const f = new Date(from).getTime(), t = new Date(to).getTime();
+  return (data || []).filter(r => r.approved !== false).map(r => ({ ...r, start_time: r.start_time || r.starts_at, end_time: r.end_time || r.ends_at }))
+    .filter(r => r.start_time && r.end_time && new Date(r.start_time).getTime() < t && new Date(r.end_time).getTime() > f);
 }
 
 // Blocked time (lunch, breaks, days off) recorded by the owner on the

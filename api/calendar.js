@@ -1,4 +1,5 @@
 import { db, upsertClient } from './lib/db.js';
+import { resolvePolicy } from './lib/deposits.js';
 import { tenantForRequest } from './lib/tenant-context.js';
 import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { getAvailability, holdAvailability } from './lib/availability-engine-v2.js';
@@ -23,6 +24,31 @@ function addDaysKey(key,n){const [y,m,d]=key.split('-').map(Number);return new D
 
 // Compare phone numbers loosely: digits only, tolerate a leading US '1'.
 // '(555) 123-4567' and '+15551234567' both normalize to '5551234567'.
+// "Any available": find a stylist who is free for this service at exactly
+// this time (earliest match wins). Used when a booking/hold names a service
+// but no stylist.
+async function staffFreeAt(tenantId, serviceId, startsAt, excludeBookingId=null){
+  const av=await getAvailability({tenantId,serviceId,date:startsAt,limit:500,excludeBookingId});
+  const target=new Date(startsAt).toISOString();
+  return (av.slots||[]).find(x=>x.starts_at===target)?.staff_id || null;
+}
+
+// A moved booking keeps its real length (multi-service bookings run longer
+// than their first service's slot).
+function keepLength(current, slot){
+  const orig=new Date(current.end_time).getTime()-new Date(current.start_time).getTime();
+  const slotLen=new Date(slot.ends_at).getTime()-new Date(slot.starts_at).getTime();
+  return Number.isFinite(orig) && orig>slotLen ? new Date(new Date(slot.starts_at).getTime()+orig).toISOString() : slot.ends_at;
+}
+
+// Is the stylist free for the extra time a long booking needs after its slot?
+async function extraTimeFree(tenantId, staffId, fromIso, toIso, excludeId){
+  if(!staffId || toIso<=fromIso) return true;
+  const { data }=await db().from('bookings').select('id,status').eq('tenant_id',tenantId).eq('staff_id',staffId)
+    .lt('start_time',toIso).gt('end_time',fromIso);
+  return !(data||[]).some(b=>b.id!==excludeId && !/^cancel/i.test(b.status||''));
+}
+
 function normPhone(p){
   let d=String(p||'').replace(/\D/g,'');
   if(d.length===11 && d[0]==='1') d=d.slice(1);
@@ -39,6 +65,13 @@ export default async function handler(req,res){
     // Merge query params into the body so GET requests (public booking,
     // calendar links) carry service_id / staff_id / date like POST does.
     const body={ ...(req.query||{}), ...jsonBody(req) };
+    if(req.__publicBooking===true){
+      // Anonymous visitors never choose the client record, the price, or a
+      // long hold. (These fields used to be trusted from the browser.)
+      delete body.client_id; delete body.total_amount; delete body.tenant_id;
+      if(body.ttl_seconds!=null) body.ttl_seconds=Math.min(600,Math.max(60,Number(body.ttl_seconds)||300));
+      if(body.limit!=null) body.limit=Math.min(300,Math.max(1,Number(body.limit)||12));
+    }
     const tenant=await tenantForRequest(req,body);
     if(!tenant?.id){
       return res.status(req.__publicBooking===true?404:401).json({ ok:false,error:req.__publicBooking===true?'tenant_not_found':'not_authenticated' });
@@ -54,6 +87,17 @@ export default async function handler(req,res){
 
     if(action==='catalog'){
       const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
+      if(req.__publicBooking===true){
+        // Public: only what a client needs — never stylists' phones/emails.
+        const settings=await getBookingSettings(tenant.id).catch(()=>({}));
+        const dp=resolvePolicy(settings)||{};
+        return res.json({ ok:true,
+          deposit_policy: dp.enabled ? { enabled:true, type:'percent', amount:dp.percent, min_amount:(dp.min_cents||0)/100 } : null,
+          salon:{ name:tenant.name||'', location:tenant.location||'', phone:tenant.phone_number||'', hours:tenant.hours||'', timezone:settings?.timezone||'America/New_York',
+            cancellation_window_hours:settings?.cancellation_window_hours??null, deposit_required:!!dp.enabled },
+          services:services.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,description:x.description||'',price:x.price,duration_minutes:x.duration_minutes,category:x.category||null})),
+          staff:staff.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,role:x.role||''})) });
+      }
       return res.json({ ok:true,services,staff });
     }
 
@@ -165,6 +209,11 @@ export default async function handler(req,res){
         tenantId:tenant.id,serviceId:resolved.service.id,date:body.date||body.starts_at||new Date().toISOString(),
         staffId:body.staff_id || resolved.staff?.id || null,limit:Number(body.limit||12)
       });
+      if(req.__publicBooking===true){
+        // Public: slots only — not the salon's internal settings.
+        return res.json({ ok:out.ok!==false, error:out.error, time_zone:out.settings?.timezone||null,
+          slots:(out.slots||[]).map(x=>({ staff_id:x.staff_id, staff_name:x.staff_name, service_id:x.service_id, starts_at:x.starts_at, ends_at:x.ends_at, duration_minutes:x.duration_minutes, price:x.price, date:x.date })) });
+      }
       return res.json(out);
     }
 
@@ -174,9 +223,14 @@ export default async function handler(req,res){
         const client=await upsertClient(tenant.id,{phone:body.client_phone,name:body.client_name,email:body.client_email});
         clientId=client?.id||null;
       }
-      const resolved=body.service_id && body.staff_id
+      let resolved=body.service_id && body.staff_id
         ? {ok:true,service:{id:body.service_id},staff:{id:body.staff_id}}
         : await resolveBookingRequest(tenant.id,{service:body.service,stylist:body.stylist||body.staff});
+      if(body.service_id && !body.staff_id && body.starts_at){
+        const sid=await staffFreeAt(tenant.id,body.service_id,body.starts_at);
+        if(!sid) return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable'});
+        resolved={ok:true,service:{id:body.service_id},staff:{id:sid}};
+      }
       if(!resolved.ok || !resolved.staff?.id) return res.status(200).json({ok:false,needs:resolved.needs||'staff'});
       return res.json(await holdAvailability({
         tenantId:tenant.id,clientId,serviceId:resolved.service.id,staffId:resolved.staff.id,
@@ -194,6 +248,11 @@ export default async function handler(req,res){
       if(!clientId) return res.status(200).json({ok:false,needs:'client'});
 
       let serviceId=body.service_id||null, staffId=body.staff_id||null;
+      if(serviceId && !staffId && body.starts_at && !body.hold_token){
+        // "Any available" (the widget's default): pick whoever is free then.
+        staffId=await staffFreeAt(tenant.id,serviceId,body.starts_at);
+        if(!staffId) return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable'});
+      }
       if(!serviceId || !staffId){
         const resolved=await resolveBookingRequest(tenant.id,{service:body.service,stylist:body.stylist||body.staff});
         if(!resolved.ok || !resolved.staff?.id) return res.status(200).json({ok:false,needs:resolved.needs||'staff'});
@@ -287,9 +346,13 @@ export default async function handler(req,res){
           return res.status(200).json({ok:false,error:'code_phone_mismatch'});
         }
         if(new Date(startsAt)<=new Date()) return res.status(200).json({ok:false,error:'time_in_past'});
-        const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt,channel:'public_widget',ttlSeconds:120});
+        const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt,channel:'public_widget',ttlSeconds:120,excludeBookingId:current.id});
         if(!held.ok) return res.status(200).json(held);
-      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
+      const pubEnd=keepLength(current,held.slot);
+      if(pubEnd!==held.slot.ends_at && !(await extraTimeFree(tenant.id,body.staff_id||current.staff_id,held.slot.ends_at,pubEnd,current.id))){
+        await releaseHold(tenant.id,held.hold.hold_token,'released'); return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable'});
+      }
+      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:pubEnd,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
       await releaseHold(tenant.id,held.hold.hold_token,'converted');
       let publicOffer=null;
       if(updated){
@@ -361,7 +424,7 @@ export default async function handler(req,res){
           detail:'Target not moved; the later occurrences counted in moved_count were.'});
       }
     }
-    const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120});
+    const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120,excludeBookingId:current.id});
     if(!held.ok){
       // Series move: the later occurrences were already shifted (they passed
       // their checks), so a target-window collision is a partial-apply 409 —
@@ -373,7 +436,12 @@ export default async function handler(req,res){
       }
       return res.status(200).json(held);
     }
-    const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
+    const newEnd=keepLength(current,held.slot);
+    if(newEnd!==held.slot.ends_at && !(await extraTimeFree(tenant.id,body.staff_id||current.staff_id,held.slot.ends_at,newEnd,current.id))){
+      await releaseHold(tenant.id,held.hold.hold_token,'released');
+      return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable',detail:'Not enough free time for the whole appointment.'});
+    }
+    const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:newEnd,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
     await releaseHold(tenant.id,held.hold.hold_token,'converted');
     let dashOffer=null;
     if(updated){

@@ -3,6 +3,7 @@
 // Every value in the response is coerced to a plain string —
 // Telnyx rejects null / undefined / objects during save validation.
 import { db } from '../lib/db.js';
+import { tenantForCalledNumber } from './_tool-tenant.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -49,8 +50,8 @@ export default async function handler(req, res) {
     }
 
     const c = db();
-    const { data: tn } = await c.from('tenant_numbers')
-      .select('tenant_id').eq('phone_e164', to).maybeSingle();
+    const tnTenant = await tenantForCalledNumber(to);
+    const tn = tnTenant ? { tenant_id: tnTenant.id } : null;
     if (!tn?.tenant_id) {
       const p = emptyPayload();
       p.to = to;

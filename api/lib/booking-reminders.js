@@ -27,6 +27,7 @@ import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
 import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist } from './booking-repository.js';
 import { reminderText, waitlistOfferText, radarText } from './lola-persona.js';
+import { salonTz, fmtSalon } from './salon-time.js';
 
 // Bands: [claim lane, hours-before start, band span, settings gate].
 // With an hourly cron each band catches every due booking exactly once (each
@@ -63,7 +64,7 @@ async function enrich(client, bookings) {
     tenantIds.length ? client.from('tenants').select('id,name,phone_number').in('id', tenantIds) : { data: [] },
     clientIds.length ? client.from('clients').select('id,name,phone,whatsapp_enabled').in('id', clientIds) : { data: [] },
     serviceIds.length ? client.from('services').select('id,name').in('id', serviceIds) : { data: [] },
-    tenantIds.length ? client.from('booking_settings').select('tenant_id,reminder_sms,radar_sms').in('tenant_id', tenantIds) : { data: [] },
+    tenantIds.length ? client.from('booking_settings').select('*').in('tenant_id', tenantIds) : { data: [] },
     staffIds.length ? client.from('staff').select('id,name').in('id', staffIds) : { data: [] },
     tenantIds.length ? client.from('integrations').select('tenant_id,provider,status').in('tenant_id', tenantIds) : { data: [] }
   ]);
@@ -91,12 +92,10 @@ async function enrich(client, bookings) {
   }));
 }
 
-const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
-  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-});
+const fmtWhen = (iso, tz) => fmtSalon(iso, tz);
 
 export function buildReminderText(b, band = '24h') {
-  const when = fmtWhen(b.start_time);
+  const when = fmtWhen(b.start_time, b.settings?.timezone);
   const what = (b.service && b.service.name) || 'your appointment';
   const salon = (b.tenant && b.tenant.name) || 'the salon';
   if (band === '2h') return radarText({ salon, what, when, staffName: b.staff && b.staff.name });
@@ -159,7 +158,7 @@ export async function offerFreedSlot({ tenantId, serviceId = null, serviceName =
   // Consent gate: only text clients who explicitly opted in when they joined.
   const entry = matches.entries.find((e) => e.sms_consent === true);
   if (!entry || !entry.client_phone) return { skipped: true, reason: 'no_consent' };
-  const when = fmtWhen(freedAt);
+  const when = fmtWhen(freedAt, await salonTz(tenantId));
   const what = serviceName || entry.service_name || 'a spot';
   const salon = tenant.name || 'the salon';
   const text = waitlistOfferText({ salon, what, when });

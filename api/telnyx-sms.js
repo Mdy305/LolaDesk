@@ -4,7 +4,10 @@
  */
 import { getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
-export { sendSMS } from './lib/sms.js';
+// Imported (not only re-exported): a bare `export { … } from` does NOT make
+// sendSMS usable inside this file, so every reply here used to throw silently.
+import { sendSMS } from './lib/sms.js';
+export { sendSMS };
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -13,7 +16,7 @@ import { moderateImage, analyzeHairPhoto } from './lib/lola-photo-analysis.js';
 
 
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
-const START=['start','unstop','yes'];
+const START=['start','unstop'];   // not 'yes' — clients answer offers with yes
 const HELP=['help','info'];
 const kw=(t,l)=>l.includes(String(t||'').trim().toLowerCase());
 
@@ -39,7 +42,6 @@ function extract(raw){
     const mediaUrls = Array.isArray(p.media) ? p.media.map(m=>m?.url).filter(Boolean) : [];
     return { inbound:true, from:p.from?.phone_number||'', to:(Array.isArray(p.to)?p.to[0]?.phone_number:p.to?.phone_number)||'', text:p.text||'', type:p.type||'SMS', mediaUrls };
   }
-  if(raw.to&&raw.text&&raw.from&&!raw.data) return { outbound:true, ...raw };
   return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS', mediaUrls: [] };
 }
 
@@ -59,10 +61,9 @@ export default async function handler(req,res){
   const raw=incoming.parsed;
   const body=extract(raw);
 
-  if(body.outbound){
-    try{ const r=await sendSMS(raw); return res.status(200).json({ok:true,r}); }
-    catch(e){ return res.status(500).json({ok:false,error:String(e)}); }
-  }
+  // Delivery receipts (message.sent / message.finalized …) are not texts to answer.
+  if(raw?.data?.event_type && raw.data.event_type !== 'message.received') return res.status(200).json({ ok:true, ignored: raw.data.event_type });
+  if(!body.from || !body.to) return res.status(200).json({ ok:true, ignored:'no sender' });
 
   const fromN=e164(body.from), toN=e164(body.to), text=body.text||'', type=body.type||'SMS';
   const isWhatsApp = String(type).toUpperCase() === 'WHATSAPP';

@@ -66,8 +66,13 @@ export default async function handler(req, res) {
       const link = await s.paymentLink(line_items, { metadata });
       stripeId = link.id;
       url = link.url;
+    } else if (method === 'card' || method === 'tap') {
+      // No card reader / Payment Element is connected yet: creating an
+      // unconfirmed PaymentIntent here recorded a "sale" while no card was
+      // ever charged. Refuse honestly until Terminal is wired.
+      return res.status(400).json({ ok: false, error: 'Card-present payments are not connected yet. Use "Send payment link" or record cash.' });
     } else {
-      // Card / Tap-to-Pay via a PaymentIntent — front-end will confirm via Stripe Terminal or Payment Element.
+      // Other methods: PaymentIntent confirmed elsewhere.
       const pi = await s.createPaymentIntent({
         amount: total,
         currency: 'usd',

@@ -9,12 +9,14 @@ import { buildTenantVariables } from './lib/tenant-variables.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 
 function pickToNumber(b){
-  return b?.data?.payload?.to || b?.payload?.to || b?.to ||
+  // Telnyx AI Assistant dynamic-variables payloads name the numbers
+  // telnyx_agent_target (the salon line) and telnyx_end_user_target (the caller).
+  return b?.data?.payload?.telnyx_agent_target || b?.telnyx_agent_target || b?.data?.payload?.to || b?.payload?.to || b?.to ||
     b?.data?.payload?.to_number || b?.telephony_data?.to || b?.call?.to ||
     (Array.isArray(b?.to) ? b.to[0]?.phone_number : null) || b?.To || '';
 }
 function pickFromNumber(b){
-  return b?.data?.payload?.from || b?.payload?.from || b?.from ||
+  return b?.data?.payload?.telnyx_end_user_target || b?.telnyx_end_user_target || b?.data?.payload?.from || b?.payload?.from || b?.from ||
     b?.data?.payload?.from_number || b?.telephony_data?.from || b?.call?.from || b?.From || '';
 }
 
