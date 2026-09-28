@@ -80,8 +80,16 @@
     .lp-panel.lp-enter { transform: scale(.92) translateY(12px); opacity: 0; }
     /* One Lola: the old "go to dashboard" pill and the per-page atoms step aside. */
     #lolaPresencePill, [data-lola-atom], .lola-core-atom { display: none !important; }
+    /* Staged (calendar): Lola's big particle body is drawn by lola-stage.js; the orb becomes her touch target. */
+    .lp-staged .lp-orb { top: calc(22px + env(safe-area-inset-top, 0px)); right: calc(28px + env(safe-area-inset-right, 0px)); bottom: auto; width: 150px; height: 150px; }
+    .lp-staged .lp-orb canvas { display: none; }
+    .lp-staged .lp-orb:hover, .lp-staged .lp-orb:active { transform: none; }
+    .lp-staged .lp-panel { top: calc(186px + env(safe-area-inset-top, 0px)); bottom: auto; max-height: calc(100vh - 206px); transform-origin: 100% 0; }
+    .lp-staged .lp-nudge { top: calc(60px + env(safe-area-inset-top, 0px)); right: calc(192px + env(safe-area-inset-right, 0px)); bottom: auto; }
     @media (max-width: 1100px) { .lp-orb { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: 60px; height: 60px; } .lp-panel { bottom: calc(156px + env(safe-area-inset-bottom, 0px)); max-height: calc(100vh - 190px); } }
     @media (max-width: 520px) { .lp-panel { right: 8px; left: 8px; width: auto; } }
+    @media (max-width: 1100px) { .lp-staged .lp-orb { width: 112px; height: 112px; top: 14px; right: 16px; bottom: auto; } .lp-staged .lp-panel { top: 138px; bottom: auto; max-height: calc(100vh - 150px); } .lp-staged .lp-nudge { top: 44px; right: 140px; bottom: auto; } }
+    @media (max-width: 700px) { .lp-staged .lp-orb { width: 80px; height: 80px; top: 6px; right: 6px; } .lp-staged .lp-panel { top: 92px; left: 8px; right: 8px; width: auto; max-height: calc(100vh - 100px); } .lp-staged .lp-nudge { top: 92px; right: 8px; } }
     .lp-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px 18px; border-bottom: 1px solid var(--lp-line); }
     .lp-title { font-weight: 600; font-size: 16px; letter-spacing: -.01em; flex: 1; }
     .lp-title small { display: block; font-weight: 400; font-size: 12px; color: var(--lp-muted); letter-spacing: 0; }
@@ -186,6 +194,17 @@
     return { set mode(m) { S.mode = m; }, get mode() { return S.mode; }, set level(fn) { S.level = fn; }, set dark(d) { dark = d; } };
   }
 
+  // On the calendar her body is lola-stage.js; forward states and voice level to it.
+  function StageBody() {
+    let mode = 'idle';
+    const st = () => window.LolaStage;
+    return {
+      set mode(m) { mode = m; try { st() && st().setMode(m); } catch (_) {} }, get mode() { return mode; },
+      set level(fn) { try { st() && st().setLevel(fn); } catch (_) {} },
+      set dark(_) {},
+    };
+  }
+
   // ── voice out: Lola's own voice, driving her particles ──
   let audioCtx = null, currentAudio = null;
   async function speak(text, body) {
@@ -239,7 +258,8 @@
       if (a.navigate) { store.sset('lola.reopen', '1'); setTimeout(() => { location.href = a.navigate; }, 900); }
       if (a.refresh) {
         window.dispatchEvent(new CustomEvent('lola:refresh', { detail: a }));
-        if (a.refresh === 'bookings' && /calendar|dashboard|bookings/.test(pageName())) { store.sset('lola.reopen', '1'); setTimeout(() => location.reload(), 1600); }
+        if (a.refresh === 'bookings' && window.LolaCalendar && typeof window.LolaCalendar.reload === 'function') setTimeout(() => window.LolaCalendar.reload(), 400);
+        else if (a.refresh === 'bookings' && /calendar|dashboard|bookings/.test(pageName())) { store.sset('lola.reopen', '1'); setTimeout(() => location.reload(), 1600); }
       }
       if (a.client_id && pageName() !== 'client') window.dispatchEvent(new CustomEvent('lola:client', { detail: a }));
     }
@@ -319,7 +339,8 @@
     ['atom', 'atomOverlay'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });
 
     const style = document.createElement('style'); style.id = 'lp-css'; style.textContent = css(pageIsDark()); document.head.appendChild(style);
-    const root = document.createElement('div'); root.className = 'lp-root';
+    const staged = !!document.getElementById('lolaAnchor');
+    const root = document.createElement('div'); root.className = 'lp-root' + (staged ? ' lp-staged' : '');
     root.innerHTML = `
       <button class="lp-orb" type="button" aria-label="Talk to Lola (⌘J)" aria-expanded="false"><canvas></canvas></button>
       <section class="lp-panel lp-enter" role="dialog" aria-label="Lola" hidden>
@@ -341,7 +362,7 @@
     const orb = root.querySelector('.lp-orb'), panel = root.querySelector('.lp-panel'), threadEl = root.querySelector('.lp-thread');
     const chipsEl = root.querySelector('.lp-chips'), form = root.querySelector('.lp-form'), input = root.querySelector('.lp-input');
     const mic = root.querySelector('.lp-mic'), mute = root.querySelector('.lp-mute');
-    const body = Body(orb.querySelector('canvas'));
+    const body = staged ? StageBody() : Body(orb.querySelector('canvas'));
     body.dark = pageIsDark();
 
     const renderMute = () => { const m = store.get('lola.muted', false); mute.innerHTML = m ? ICON.off : ICON.on; mute.setAttribute('aria-label', m ? "Turn Lola's voice on" : "Mute Lola's voice"); };
@@ -395,8 +416,12 @@
     form.addEventListener('submit', (e) => { e.preventDefault(); send(input.value); });
 
     let awayBrief = null;
+    let closeTimer = null;
     function open() {
+      clearTimeout(closeTimer);
+      const wasHidden = panel.hidden;
       panel.hidden = false; orb.setAttribute('aria-expanded', 'true');
+      if (wasHidden) window.dispatchEvent(new Event('lola:panel-open'));
       const brief = awayBrief; awayBrief = null; clearAway();
       if (brief) remember('assistant', brief.say);
       renderThread(); renderChips(brief && brief.suggestions);
@@ -406,9 +431,12 @@
       if (body.mode === 'idle') body.mode = 'listening'; setTimeout(() => { if (body.mode === 'listening') body.mode = 'idle'; }, 1200);
     }
     function close() {
+      if (panel.hidden) return;
       panel.classList.add('lp-enter'); orb.setAttribute('aria-expanded', 'false');
-      setTimeout(() => { panel.hidden = true; }, 200); stopListening();
+      clearTimeout(closeTimer); closeTimer = setTimeout(() => { panel.hidden = true; window.dispatchEvent(new Event('lola:panel-close')); }, 200); stopListening();
     }
+    api.open = open; api.close = close;
+    api.listen = () => { open(); setTimeout(() => { if (!mic.hidden && !mic.classList.contains('on')) mic.click(); }, 120); };
     const toggle = () => (panel.hidden ? open() : close());
     orb.onclick = toggle;
     root.querySelector('.lp-close').onclick = close;
@@ -467,9 +495,12 @@
     if (store.sget('lola.reopen')) { store.sset('lola.reopen', null); open(); }
   }
 
+  const api = {};
   window.LolaEverywhere = {
     setContext(obj) { Object.assign(extraContext, obj || {}); },
-    open() { document.querySelector('.lp-orb')?.click(); },
+    open() { api.open && api.open(); },
+    close() { api.close && api.close(); },
+    listen() { api.listen && api.listen(); },
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();

@@ -1,7 +1,8 @@
 /* ============================================================
-   CALENDAR — day agenda + white atom
-   The atom breathes in the corner. Tap it: it grows, listens,
-   answers, shrinks back. Vanilla JS. Self-contained.
+   CALENDAR — day agenda, with Lola alive in the corner
+   Lola's body is lola-stage.js; her conversation is lola-everywhere.js.
+   This file renders the day, keeps it live (quiet refresh), tells
+   Lola which bookings are new, and lets you say "Lola" to talk.
    ============================================================ */
 
 (function () {
@@ -59,9 +60,12 @@
   }
 
   // ── Agenda fetch ─────────────────────────────────────────
-  async function loadAgenda() {
+  const seen = new Map();          // date -> Set of booking ids already on screen
+  let lastSig = '';
+  async function loadAgenda(opts = {}) {
     const el = document.getElementById('dayAgenda');
-    el.innerHTML = '<div class="day-loading">Loading&hellip;</div>';
+    const quiet = !!opts.quiet;
+    if (!quiet) { el.innerHTML = '<div class="day-loading">Loading&hellip;</div>'; lastSig = ''; }
     const dateStr = isoDate(activeDate());
     try {
       const r = await fetch(`/api/calendar?date=${dateStr}`, { credentials: 'include' });
@@ -74,10 +78,20 @@
       const rows = (Array.isArray(data) ? data
         : (data.bookings || data.appointments || data.rows || data.data || []))
         .filter(b => !/^cancel/i.test(String(b.status || '')));
-      if (!rows.length) return renderEmpty(el, dateStr);
-      renderAgenda(el, rows);
+      if (dateStr !== isoDate(activeDate())) return;          // the owner moved to another day meanwhile
+      const sig = JSON.stringify(rows.map(r => [r.id, r.start_time || r.starts_at, r.status, r.client_id, r.service_id, r.staff_id]));
+      if (quiet && sig === lastSig) return;                    // nothing changed: don't touch the page
+      lastSig = sig;
+      if (!rows.length) renderEmpty(el, dateStr); else renderAgenda(el, rows);
+      // Tell Lola which bookings are new, so she can greet them.
+      const had = seen.get(dateStr);
+      const now = Date.now();
+      const fresh = rows.filter(r => r.id && (had ? !had.has(String(r.id))
+        : (Date.parse(r.created_at || '') > now - 3 * 60e3))).map(r => String(r.id));
+      seen.set(dateStr, new Set(rows.map(r => String(r.id))));
+      window.dispatchEvent(new CustomEvent('lola:agenda', { detail: { date: dateStr, rows, fresh } }));
     } catch {
-      renderEmpty(el, dateStr);
+      if (!quiet) renderEmpty(el, dateStr);
     }
   }
 
@@ -99,7 +113,7 @@
       const sty = (r.staff && typeof r.staff === 'object' ? r.staff.name : r.stylist) || r.stylist_name || '';
       const st = String(r.status || '').toLowerCase();
       return `
-        <div class="appt${st === 'no-show' || st === 'no_show' ? ' appt-noshow' : ''}" data-booking-id="${escapeHtml(r.id || '')}">
+        <div class="appt${st === 'no-show' || st === 'no_show' ? ' appt-noshow' : ''}" data-booking-id="${escapeHtml(r.id || '')}" data-start="${escapeHtml(r.start_time || r.starts_at || '')}">
           <div class="appt-time">${escapeHtml(t)}</div>
           <div class="appt-body">
             <div class="appt-name">${escapeHtml(name)}</div>
@@ -153,248 +167,44 @@
   renderHead();
   loadAgenda();
 
-  // ── The Atom (canvas drawing) ─────────────────────────────
-  const canvas = document.getElementById('atomCanvas');
-  const g = canvas.getContext('2d');
-  const atomBtn = document.getElementById('atom');
-  const overlay = document.getElementById('atomOverlay');
-  const closeBtn = document.getElementById('atomOverlayClose');
-  const transcript = document.getElementById('atomTranscript');
-  const caption = document.getElementById('atomCaption');
+  // ── Keep the day live: quiet refresh while the page is visible ──
+  setInterval(() => {
+    if (document.hidden || document.querySelector('.lb-modal')) return;
+    loadAgenda({ quiet: true });
+  }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadAgenda({ quiet: true }); });
 
-  const W = canvas.width, H = canvas.height, CX = W/2, CY = H/2;
-  let level = 0;      // 0..1 realtime
-  let smoothed = 0;
-  let phase = 0;
-  let engaged = false;
+  // Lola (lola-everywhere.js) refreshes the day in place after she books,
+  // moves or cancels — no page reload, the conversation stays open.
+  window.LolaCalendar = {
+    reload: () => loadAgenda({ quiet: true }),
+    get date() { return isoDate(activeDate()); },
+  };
 
-  function draw() {
-    phase += 0.018;
-    smoothed += (level - smoothed) * 0.22;
-    const breath = 0.5 + 0.5 * Math.sin(phase);
-    const pulse = Math.max(smoothed, breath * 0.12);
-
-    g.clearRect(0, 0, W, H);
-
-    // Outer soft glow
-    const glowR = 32 + pulse * 40;
-    let grad = g.createRadialGradient(CX, CY, 4, CX, CY, glowR);
-    grad.addColorStop(0,    `rgba(255,255,255,${0.85 - pulse * 0.25})`);
-    grad.addColorStop(0.55, `rgba(215,230,255,${0.28 + pulse * 0.35})`);
-    grad.addColorStop(1,    'rgba(200,215,240,0)');
-    g.fillStyle = grad;
-    g.beginPath(); g.arc(CX, CY, glowR, 0, Math.PI * 2); g.fill();
-
-    // Core
-    const coreR = 18 + pulse * 5;
-    grad = g.createRadialGradient(CX - 4, CY - 4, 0, CX, CY, coreR);
-    grad.addColorStop(0,   'rgba(255,255,255,1)');
-    grad.addColorStop(0.7, 'rgba(240,245,255,0.96)');
-    grad.addColorStop(1,   'rgba(200,215,240,0.6)');
-    g.fillStyle = grad;
-    g.beginPath(); g.arc(CX, CY, coreR, 0, Math.PI * 2); g.fill();
-
-    // Thin ring
-    g.strokeStyle = `rgba(120,140,170,${0.12 + pulse * 0.35})`;
-    g.lineWidth = 0.8;
-    g.beginPath(); g.arc(CX, CY, coreR + 5 + pulse * 4, 0, Math.PI * 2); g.stroke();
-
-    requestAnimationFrame(draw);
-  }
-  requestAnimationFrame(draw);
-
-  // ── Audio (mic in + TTS out) ─────────────────────────────
-  const AC = window.AudioContext || window.webkitAudioContext;
-  const actx = AC ? new AC() : null;
-  let micStarted = false;
-
-  async function armMic() {
-    if (!actx || micStarted) return;
-    micStarted = true;
-    try {
-      if (actx.state === 'suspended') await actx.resume();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
-      const src = actx.createMediaStreamSource(stream);
-      const an = actx.createAnalyser();
-      an.fftSize = 512; an.smoothingTimeConstant = 0.6;
-      src.connect(an);
-      const buf = new Uint8Array(an.frequencyBinCount);
-      (function tick() {
-        an.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) {
-          const n = (buf[i] - 128) / 128;
-          sum += n * n;
-        }
-        level = Math.min(1, Math.sqrt(sum / buf.length) * 5);
-        requestAnimationFrame(tick);
-      })();
-    } catch (err) {
-      console.warn('[calendar] mic denied:', err && err.name);
-      micStarted = false;
-      caption.textContent = 'Mic blocked — enable in browser';
-    }
-  }
-
-  async function speak(text) {
-    if (!text || !actx) return;
-    caption.textContent = 'Speaking';
-    try {
-      const r = await fetch(`/api/speak-lola?text=${encodeURIComponent(text)}`, {
-        credentials: 'include'
-      });
-      if (!r.ok) throw new Error('tts ' + r.status);
-      const arr = await r.arrayBuffer();
-      const buf = await actx.decodeAudioData(arr.slice(0));
-      const src = actx.createBufferSource();
-      src.buffer = buf;
-      const an = actx.createAnalyser();
-      an.fftSize = 512; an.smoothingTimeConstant = 0.5;
-      src.connect(an); an.connect(actx.destination);
-      const data = new Uint8Array(an.frequencyBinCount);
-      let running = true;
-      src.onended = () => { running = false; level = 0; caption.textContent = 'Listening…'; };
-      src.start(0);
-      (function tick() {
-        if (!running) return;
-        an.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const n = (data[i] - 128) / 128;
-          sum += n * n;
-        }
-        level = Math.min(1, Math.sqrt(sum / data.length) * 4.5);
-        requestAnimationFrame(tick);
-      })();
-    } catch (err) {
-      console.warn('[calendar] tts failed:', err && err.message);
-      caption.textContent = 'Listening…';
-    }
-  }
-
-  async function askLola(question) {
-    const endpoints = ['/api/lola/ask', '/api/lola', '/api/lola-brain'];
-    for (const ep of endpoints) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ question, message: question, text: question })
-        });
-        if (!r.ok) continue;
-        const d = await r.json().catch(() => ({}));
-        const ans = d.answer || d.text || d.reply || d.message || '';
-        if (ans) return ans;
-      } catch { /* try next */ }
-    }
-    return '';
-  }
-
-  // ── Speech recognition (browser) ─────────────────────────
-  let recognition = null;
-  function startRecognition() {
-    const R = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!R) {
-      caption.textContent = 'Voice unsupported — Chrome/Safari only';
-      return null;
-    }
-    const rec = new R();
-    rec.lang = 'en-US';
-    rec.interimResults = true;
-    rec.continuous = false;
-    let finalText = '';
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const res = e.results[i];
-        if (res.isFinal) finalText += res[0].transcript;
-        else interim += res[0].transcript;
-      }
-      transcript.textContent = (finalText + interim).trim();
-      transcript.classList.add('show');
-    };
-    rec.onerror = (e) => {
-      console.warn('[calendar] rec error:', e.error);
-    };
-    rec.onend = async () => {
-      const q = finalText.trim();
-      if (!q) { setTimeout(disengage, 800); return; }
-      caption.textContent = 'Thinking';
-      const ans = await askLola(q);
-      if (ans) {
-        transcript.textContent = ans;
-        transcript.classList.add('show');
-        await speak(ans);
-        setTimeout(() => { transcript.classList.remove('show'); }, 6000);
-      } else {
-        transcript.textContent = "I couldn't reach the brain — try again.";
-        setTimeout(disengage, 2500);
-      }
-    };
-    try { rec.start(); } catch {}
-    return rec;
-  }
-
-  // ── Engage / disengage ────────────────────────────────────
-  function engage() {
-    if (engaged) return;
-    engaged = true;
-    atomBtn.classList.add('expanded');
-    overlay.classList.add('on');
-    caption.textContent = 'Listening…';
-    transcript.textContent = '';
-    transcript.classList.remove('show');
-    armMic();
-    recognition = startRecognition();
-  }
-  function disengage() {
-    if (!engaged) return;
-    engaged = false;
-    atomBtn.classList.remove('expanded');
-    overlay.classList.remove('on');
-    transcript.classList.remove('show');
-    if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
-    level = 0;
-  }
-
-  atomBtn.addEventListener('click', (e) => { e.stopPropagation(); engage(); });
-  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); disengage(); });
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) disengage(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') disengage(); });
-
-  // ── Wake-word: say "Lola" anywhere to open her ────────────
-  let wake = null;
+  // ── Say "Lola" to talk (armed after your first tap; browsers require it) ──
+  let wake = null, panelOpen = false;
   function armWake() {
     const R = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!R || wake) return;
+    if (!R || wake || panelOpen || document.hidden) return;
     try {
       wake = new R();
-      wake.lang = 'en-US';
-      wake.continuous = true;
-      wake.interimResults = true;
+      wake.lang = 'en-US'; wake.continuous = true; wake.interimResults = true;
       wake.onresult = (e) => {
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript.toLowerCase();
-          if (/\blola\b/.test(t) && !engaged) {
-            try { wake.stop(); } catch {}
-            engage();
+          if (/\blola\b/i.test(e.results[i][0].transcript) && window.LolaEverywhere && window.LolaEverywhere.listen) {
+            const w = wake; wake = null; try { w.onend = null; w.stop(); } catch (_) {}
+            setTimeout(() => window.LolaEverywhere.listen(), 250);
             return;
           }
         }
       };
-      wake.onend = () => {
-        wake = null;
-        if (!engaged) setTimeout(armWake, 500);
-      };
-      wake.onerror = () => { wake = null; };
+      wake.onend = () => { wake = null; if (!panelOpen) setTimeout(armWake, 800); };
+      wake.onerror = (e) => { const w = wake; wake = null; if (e && /not-allowed|service-not-allowed/.test(e.error)) { document.removeEventListener('click', armWake); } else if (w && !panelOpen) setTimeout(armWake, 2000); };
       wake.start();
-    } catch { wake = null; }
+    } catch (_) { wake = null; }
   }
-  // Kick off after the first user gesture (browsers require it)
+  function stopWake() { const w = wake; wake = null; if (w) { try { w.onend = null; w.stop(); } catch (_) {} } }
+  addEventListener('lola:panel-open', () => { panelOpen = true; stopWake(); });
+  addEventListener('lola:panel-close', () => { panelOpen = false; setTimeout(armWake, 1200); });
   document.addEventListener('click', armWake, { once: true });
-
-  console.info('[calendar] ready — atom lives top-right, tap or say "Lola"');
 })();

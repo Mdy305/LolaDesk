@@ -12,17 +12,8 @@
 </head>
 <body>
 
-<!-- The Atom — lives top-right, always -->
-<button id="atom" class="atom" aria-label="Talk to Lola">
-  <canvas id="atomCanvas" width="120" height="120"></canvas>
-</button>
-
-<!-- Fullscreen overlay when the atom is engaged -->
-<div id="atomOverlay" class="atom-overlay" aria-hidden="true">
-  <button id="atomOverlayClose" class="atom-overlay-close" aria-label="Close">&times;</button>
-  <div id="atomTranscript" class="atom-transcript"></div>
-  <div id="atomCaption" class="atom-caption">Listening&hellip;</div>
-</div>
+<!-- Lola lives here: lola-stage.js draws her body, lola-everywhere.js is her conversation -->
+<div id="lolaAnchor" aria-hidden="true"></div>
 
 <!-- Calendar view -->
 <main class="day">
@@ -44,6 +35,7 @@
 </main>
 
 <script src="/book-dialog.js" defer></script>
+<script src="/lola-stage.js" defer></script>
 <script src="/calendar.js" defer></script>
 </body>
 </html>
