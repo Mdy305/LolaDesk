@@ -18,6 +18,7 @@ import { dayBoundsUtc, localDateKey, zonedLocalToUtc } from './timezone.js';
 import { sendSms } from './sms.js';
 import { originateCallback } from './call-callback.js';
 import { awayBrief } from './owner-brief.js';
+import { learnBusiness, parseKnowledge } from './business-learn.js';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
@@ -54,6 +55,7 @@ export const OWNER_TOOLS = [
   fn('fill_gap', 'Offer an open slot to waitlisted and lapsed clients by text.', { date: dateArg, time: { type: 'string' }, duration_minutes: { type: 'integer' }, confirmed: confirmedArg }, ['date', 'time']),
   fn('away_brief', "What happened while the owner was away: calls, who needs a call back, bookings made and cancelled. Use for 'what did I miss', 'anything I should know'.", { hours: { type: 'integer', description: 'How far back, in hours (default 12).' } }),
   fn('set_alerts', 'Turn owner text alerts on or off (Lola texts the owner when a caller asks for them, is unhappy or was missed, or a booking in the next 48h is cancelled), and/or set the phone they go to.', { enabled: { type: 'boolean' }, phone: { type: 'string', description: "Owner's mobile number for alerts." } }),
+  fn('learn_business', "Read the salon's website and/or a menu the owner pastes, and learn services, prices, team, hours, FAQ, brand voice and marketing ideas. Use for 'learn my website', 'read my site', or when the owner pastes a price list.", { website: { type: 'string' }, notes: { type: 'string', description: 'Menu, prices or anything the owner pasted.' } }),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos'] } }, ['page']),
 ];
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
@@ -66,7 +68,7 @@ const PAGES = {
 };
 
 // ── owner-command detection: these skip the caller fast-paths in the brain ──
-const OWNER_VERBS = /\b(text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup|what did i miss|did i miss|while i was|alerts?|notify me|alert me)\b/i;
+const OWNER_VERBS = /\b(text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup|what did i miss|did i miss|while i was|alerts?|notify me|alert me|learn|read my|my website|my site|grow|campaign|marketing|promot\w*)\b/i;
 export function isOwnerCommand(text) { return OWNER_VERBS.test(String(text || '')); }
 
 const YES = /^\s*(yes|yeah|yep|yup|sure|ok(ay)?|do it|send( it)?|go( ahead)?|confirm(ed)?|please do|absolutely|correct|that'?s right)\b[\s.!]*$/i;
@@ -84,7 +86,22 @@ export async function ownerSystemPrompt(tenant) {
     'When the owner asks you to do something, call the matching tool. Never claim you did something unless a tool result says it happened.',
     'Keep spoken replies short: one or two sentences, warm and plain.',
     'For texts, calls, cancellations, moves, no-shows and gap fills, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
-  ].join('\n');
+    'You are also their marketing manager: when they ask how to grow, give 2-3 specific moves for THIS business (who to text, what offer, when), then offer to send the text with text_clients_segment.',
+    marketingBrief(tenant),
+  ].filter(Boolean).join('\n');
+}
+
+function marketingBrief(tenant) {
+  const k = parseKnowledge(tenant && tenant.knowledge);
+  const m = k.marketing || {};
+  const lines = [];
+  if (k.summary) lines.push(`About the business: ${k.summary}`);
+  if (k.positioning || k.tone) lines.push(`Brand: ${[k.positioning, k.tone].filter(Boolean).join(', ')}`);
+  if (k.audience || m.ideal_client) lines.push(`Ideal client: ${m.ideal_client || k.audience}`);
+  if (k.usp) lines.push(`What makes them special: ${k.usp}`);
+  if (Array.isArray(m.opportunities) && m.opportunities.length) lines.push(`Growth ideas you already identified: ${m.opportunities.join(' | ')}`);
+  if (m.first_campaign && m.first_campaign.message) lines.push(`Your suggested first campaign (${m.first_campaign.segment}): "${m.first_campaign.message}"`);
+  return lines.length ? `WHAT YOU KNOW ABOUT THIS BUSINESS:\n${lines.join('\n')}` : '';
 }
 
 // ── pending actions: parked until the owner says yes ──
@@ -236,6 +253,12 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
         const path = PAGES[String(args.page || '').toLowerCase()];
         if (!path) return { ok: false, say: "I don't know that page." };
         return { ok: true, say: `Opening ${args.page}.`, ui: { navigate: path } };
+      }
+
+      case 'learn_business': {
+        if (!args.website && !args.notes) return { ok: false, say: 'Send me your website address, or paste your menu with prices, and I\u2019ll learn it.' };
+        const out = await learnBusiness(c, tenant, { website: args.website, notes: args.notes });
+        return { ok: !!out.ok, say: out.say, suggestions: out.suggestions, ui: out.ok && out.report && (out.report.services_added || out.report.team_added) ? { refresh: 'services' } : undefined };
       }
 
       case 'away_brief': {

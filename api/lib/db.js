@@ -595,7 +595,10 @@ export async function saveTenantKnowledge(tenantId, knowledge){
 // ── Build the knowledge text block Lola uses on calls for this tenant ──
 export function tenantKnowledgePrompt(tenant){
   if(!tenant) return '';
-  const k = tenant.knowledge || {};
+  // LEARNED_KNOWLEDGE_PARSE: knowledge is JSON stored in a text column.
+  let k = tenant.knowledge || {};
+  if(typeof k === 'string'){ try{ const v = JSON.parse(k); k = (v && typeof v === 'object' && !Array.isArray(v)) ? v : { notes: k }; }catch{ k = k.trim() ? { notes: k } : {}; } }
+  if(!k || typeof k !== 'object' || Array.isArray(k)) k = {};
   const lines = [];
   if(tenant.name) lines.push(`Business: ${tenant.name}`);
   if(tenant.business_mode) lines.push(`Type: ${tenant.business_mode}`);
@@ -615,6 +618,14 @@ export function tenantKnowledgePrompt(tenant){
   // Owner-written "special instructions" from Settings > Lola AI — she follows
   // these verbatim on every call and text.
   if(tenant.instructions) lines.push(`Owner instructions: ${tenant.instructions}`);
+  if(k.usp) lines.push(`What makes us special: ${k.usp}`);
+  if(k.policies && (k.policies.cancellation_window_hours || k.policies.deposit || k.policies.notes)){
+    const p = k.policies;
+    lines.push(`Policies: ${[p.cancellation_window_hours ? `cancel at least ${p.cancellation_window_hours}h ahead` : '', p.deposit || '', p.notes || ''].filter(Boolean).join('; ')}`);
+  }
+  if(Array.isArray(k.faq) && k.faq.length) lines.push(`FAQ:\n${k.faq.slice(0, 8).map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}`);
+  if(k.documents_digest) lines.push(`From the owner's documents:\n${String(k.documents_digest).slice(0, 4000)}`);
+  if(k.notes) lines.push(`Owner notes: ${String(k.notes).slice(0, 2000)}`);
   if(k.upsells && k.upsells.length > 0) {
     const upsellText = k.upsells.map(u => `- When they ask for ${u.trigger}, suggest adding ${u.offer} for $${u.price} (Pitch: "${u.pitch}")`).join('\n');
     lines.push(`UPSELL PROTOCOL:\n${upsellText}`);

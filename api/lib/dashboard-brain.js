@@ -372,6 +372,7 @@ export async function dashboardBrainReply({ tenant, body, req }){
       return { status: 200, json: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant',
         content: [{ type: 'text', text: say }], intent: funcName, source: 'owner-tool',
         actions: out.ui ? [out.ui] : undefined, needs_confirmation: !!out.needs_confirmation,
+        suggestions: Array.isArray(out.suggestions) ? out.suggestions : undefined,
         model: result.model, provider: result.provider } };
     }
 
