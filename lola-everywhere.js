@@ -96,6 +96,7 @@
     .lp-confirm { display: flex; gap: 8px; align-self: flex-start; }
     .lp-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 14px 8px; }
     .lp-chip, .lp-btn { font: 500 13px inherit; font-family: inherit; color: var(--lp-ink); background: transparent; border: 1px solid var(--lp-line); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+    .lp-chip { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .lp-chip:hover, .lp-btn:hover { background: var(--lp-me); }
     .lp-btn.pri { background: var(--lp-acc); color: var(--lp-acc-ink); border-color: var(--lp-acc); font-weight: 600; }
     .lp-chip:focus-visible, .lp-btn:focus-visible { outline: 2px solid #ccff00; outline-offset: 2px; }
@@ -230,7 +231,7 @@
     const d = await r.json().catch(() => ({}));
     if (r.status === 401) throw new Error('Your session expired. Sign in again.');
     if (!r.ok) throw new Error(d?.error?.message || d?.error || `Lola couldn't answer (${r.status}).`);
-    return { text: d?.content?.[0]?.text || '…', actions: d.actions || [], confirm: !!d.needs_confirmation };
+    return { text: d?.content?.[0]?.text || '…', actions: d.actions || [], confirm: !!d.needs_confirmation, suggestions: Array.isArray(d.suggestions) ? d.suggestions.slice(0, 3) : [] };
   }
 
   function applyActions(actions) {
@@ -271,6 +272,40 @@
     });
     addEventListener('pagehide', markSeen);
     return prev;
+  }
+
+  // ── arrival: Lola gathers herself from across the page into her orb ──
+  function arrive(orb, dark, done) {
+    if (reduce) return done();
+    const cv = document.createElement('canvas');
+    cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147481999';
+    document.body.appendChild(cv);
+    const dpr = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const g = cv.getContext('2d'); g.scale(dpr, dpr);
+    const r = orb.getBoundingClientRect(), tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+    const n = Math.min(2600, Math.round(W * H / 380));
+    const P = [];
+    for (let i = 0; i < n; i++) {
+      const x = Math.random() * W, y = Math.random() * H;
+      P.push({ x0: x, y0: y, a: Math.atan2(y - ty, x - tx), d: Math.hypot(x - tx, y - ty), s: .6 + Math.random() * 1.4, lag: Math.random() * .35, glow: Math.random() < .12 });
+    }
+    const T = 2300, t0 = performance.now();
+    const ink = dark ? '245,245,247' : '29,29,31';
+    (function tick(now) {
+      const t = Math.min(1, (now - t0) / T);
+      g.clearRect(0, 0, W, H);
+      for (const p of P) {
+        const k = Math.min(1, Math.max(0, (t - p.lag) / (1 - p.lag)));
+        const e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;     // ease in-out
+        const rad = p.d * (1 - e), ang = p.a + e * 2.4;                            // spiral in
+        const x = tx + Math.cos(ang) * rad, y = ty + Math.sin(ang) * rad;
+        const al = (t < .15 ? t / .15 : 1) * (k > .9 ? (1 - k) * 10 : 1) * (dark ? .7 : .55);
+        g.fillStyle = p.glow ? `rgba(204,255,0,${al})` : `rgba(${ink},${al * .8})`;
+        g.fillRect(x, y, p.s, p.s);
+      }
+      if (t < 1) requestAnimationFrame(tick); else { cv.remove(); done(); }
+    })(t0);
   }
 
   // ── mount ─────────────────────────────────────────────────
@@ -324,7 +359,7 @@
     }
     function renderChips(list) {
       chipsEl.innerHTML = '';
-      (list && list.length ? list : suggestions()).forEach(s => { const b = document.createElement('button'); b.type = 'button'; b.className = 'lp-chip'; b.textContent = s; b.onclick = () => send(s); chipsEl.appendChild(b); });
+      (list && list.length ? list : suggestions()).forEach(s => { const b = document.createElement('button'); b.type = 'button'; b.className = 'lp-chip'; b.textContent = s; b.title = s; b.onclick = () => send(s); chipsEl.appendChild(b); });
     }
 
     let busy = false;
@@ -345,6 +380,7 @@
           row.children[0].onclick = () => send('yes'); row.children[1].onclick = () => send('no');
           threadEl.appendChild(row); threadEl.scrollTop = threadEl.scrollHeight;
         }
+        if (out.suggestions.length) renderChips(out.suggestions);
         body.mode = 'idle';
         speak(out.text, body);
         applyActions(out.actions);
@@ -410,7 +446,19 @@
       nudge.innerHTML = '<b>While you were away</b><span></span>'; nudge.lastChild.textContent = brief.headline || 'Tap to catch up';
       nudge.hidden = false; setTimeout(() => { nudge.hidden = true; }, 14000);
     };
-    setTimeout(() => checkAway(prevSeen), 1200);
+    // First landing after onboarding: Lola arrives, then says hello.
+    let welcome = null;
+    try { welcome = JSON.parse(store.sget('lola.welcome') || 'null'); } catch (_) {}
+    if (welcome || /[?&]welcome=1\b/.test(location.search)) {
+      store.sset('lola.welcome', null);
+      try { const u = new URL(location.href); u.searchParams.delete('welcome'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (_) {}
+      const w = welcome && welcome.say ? welcome : { say: "I'm here and answering your line. Tap me anytime, or press \u2318J. Tell me your website or paste your menu and I'll learn your salon.", suggestions: ['Learn my website', 'Catch me up on today'] };
+      body.mode = 'thinking';
+      setTimeout(() => arrive(orb, pageIsDark(), () => {
+        body.mode = 'speaking'; setTimeout(() => { if (body.mode === 'speaking') body.mode = 'idle'; }, 900);
+        remember('assistant', w.say); open(); renderChips(w.suggestions); speak(w.say, body);
+      }), 500);
+    } else setTimeout(() => checkAway(prevSeen), 1200);
 
     // Some pages rebuild <body>; keep Lola attached.
     setInterval(() => { if (!root.isConnected && document.body) { document.body.appendChild(root); if (!document.getElementById('lp-css')) document.head.appendChild(style); } }, 1500);

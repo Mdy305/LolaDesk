@@ -251,6 +251,40 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <div class="error" id="err4"></div>
     </div>
 
+    <!-- STEP 6 · LOLA LEARNS YOUR SALON — website or pasted menu → services, team, hours, brand, first campaign -->
+    <div class="step" data-step="6">
+      <div id="learnForm">
+        <div class="step-label">Teach Lola</div>
+        <h2>Let her learn<br/>your salon.</h2>
+        <p class="sub">Your website, your menu, or both. Lola reads it and learns your services, prices, team, hours and brand voice, then plans your first campaign. About 30 seconds.</p>
+        <div class="field"><label>Website</label><input class="input" id="learnSite" placeholder="yoursalon.com" autocomplete="url" inputmode="url"/></div>
+        <div class="field"><label>City</label><input class="input" id="learnCity" placeholder="Miami Beach, FL" autocomplete="address-level2"/></div>
+        <div class="field"><label>Or paste your menu &amp; prices</label><textarea class="input" id="learnNotes" rows="4" placeholder="Women's cut — $85&#10;Balayage — from $250 (3 hrs)&#10;Blowout — $55" style="resize:vertical;min-height:96px"></textarea></div>
+        <div class="field"><label>Instagram (optional)</label><input class="input" id="learnIg" placeholder="@yoursalon"/></div>
+        <div class="actions" style="gap:10px;flex-wrap:wrap">
+          <button class="btn-p" id="learnBtn" onclick="learnNow()">Teach Lola</button>
+          <button class="btn-g" onclick="skipLearn()">Skip for now</button>
+        </div>
+        <div class="error" id="err6"></div>
+      </div>
+      <div id="learnWork" style="display:none">
+        <div class="step-label" id="learnLabel">Lola is reading</div>
+        <h2 id="learnTitle">Learning your salon…</h2>
+        <div class="status" id="learnTicker">
+          <div class="srow running" id="l-read"><span class="dot"></span><div class="scopy"><b>Reading your website and menu</b><small>Every page that matters</small></div></div>
+          <div class="srow" id="l-menu"><span class="dot"></span><div class="scopy"><b>Learning services &amp; prices</b><small>So she can quote and book them</small></div></div>
+          <div class="srow" id="l-team"><span class="dot"></span><div class="scopy"><b>Learning your team &amp; hours</b><small>Who does what, and when you're open</small></div></div>
+          <div class="srow" id="l-brand"><span class="dot"></span><div class="scopy"><b>Learning your brand voice</b><small>So she sounds like you</small></div></div>
+          <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your first campaign</b><small>Your marketing, ready on day one</small></div></div>
+        </div>
+        <p class="sub" id="learnSay" style="display:none;margin-bottom:22px"></p>
+        <div class="actions" id="learnDone" style="display:none;gap:10px;flex-wrap:wrap">
+          <button class="btn-p" onclick="go(5);setOrb('speaking')">Continue</button>
+          <button class="btn-g" onclick="learnAgain()">Add more</button>
+        </div>
+      </div>
+    </div>
+
     <!-- STEP 5 · LIVE -->
     <div class="step" data-step="5">
       <div class="done-wrap">
@@ -276,7 +310,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
           </div>
           <div class="embed-note" id="embedNote"></div>
         </div>
-        <div class="actions" style="justify-content:center"><button class="btn-p" onclick="location.href='/calendar'">Open LolaDesk</button></div>
+        <div class="actions" style="justify-content:center"><button class="btn-p" onclick="location.href='/calendar?welcome=1'">Open LolaDesk</button></div>
       </div>
     </div>
 
@@ -295,6 +329,7 @@ const COPY=[
   ['Activation','Live in<br/>60 seconds.','Every step is a real Telnyx operation.'],
   ['Ready','Call her<br/>right now.','Your salon AI is live.']
 ];
+COPY[6]=['Lola learns','She reads your<br/>salon for you.','Website or menu: she learns services, prices, team, hours and your brand voice, then plans your first campaign.'];
 let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
 // Never let this flow dead-stop: every proxied API call gets a hard timeout
 // so a slow/failing backend can't leave a button disabled or the orb stuck
@@ -314,7 +349,7 @@ try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
 let orb;
 try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120});orb.setState('idle');}}catch(e){}
 function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
-function renderProgress(){document.getElementById('progress').innerHTML=[0,1,2,3,4,5].map((_,i)=>'<i class="'+(i<=S.step?'on':'')+'"></i>').join('');}
+function renderProgress(){const ORDER=[0,1,2,3,4,6,5],at=ORDER.indexOf(S.step);document.getElementById('progress').innerHTML=ORDER.map((_,i)=>'<i class="'+(i<=at?'on':'')+'"></i>').join('');}
 function go(n){
   S.step=n;
   document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on',Number(s.dataset.step)===n));
@@ -349,7 +384,7 @@ function autoContinue(){
   document.getElementById('doneNum').textContent=fmtPhone(S.autoAssigned);
   document.getElementById('doneCopy').textContent='Call '+fmtPhone(S.autoAssigned)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
   renderEmbed();
-  go(5);setOrb('speaking');
+  go(6);
 }
 function v(id){return(document.getElementById(id)||{}).value||'';}
 function fmtPhone(n){return String(n||'').replace(/^\+1(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3')||n;}
@@ -582,7 +617,7 @@ async function runActivation(){
     document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
     renderEmbed();
     finishMeter();
-    setTimeout(()=>{go(5);setOrb('speaking');},900);
+    setTimeout(()=>{go(6);},900);
   }catch(e){
     clearInterval(meterTimer);
     document.getElementById('err4').textContent=(e.name==='AbortError'?'Provisioning timed out — your number is still safe. Please try again.':e.message)||'Activation failed.';
@@ -640,6 +675,58 @@ try{
     setTimeout(()=>{sessionStorage.setItem('lola_heard','1');playPreview();},600);
   }
 }catch(e){}
+
+
+// ── STEP 6 · LOLA LEARNS YOUR SALON ──────────────────────────────
+let learnTick=null;
+function learnRows(n){['l-read','l-menu','l-team','l-brand','l-plan'].forEach((id,i)=>mark(id,i<n?'done':i===n?'running':''));}
+async function learnNow(){
+  const website=v('learnSite').trim(), notes=v('learnNotes').trim(), city=v('learnCity').trim(), instagram=v('learnIg').trim();
+  const err=document.getElementById('err6');
+  if(!website&&!notes){err.textContent='Add your website or paste your menu — or skip for now.';return;}
+  if(!S.token){err.textContent='Your session is missing. Skip for now; you can teach Lola from any page.';return;}
+  err.textContent='';
+  document.getElementById('learnForm').style.display='none';
+  document.getElementById('learnWork').style.display='block';
+  document.getElementById('learnSay').style.display='none';
+  document.getElementById('learnDone').style.display='none';
+  document.getElementById('learnTitle').textContent='Learning your salon…';
+  document.getElementById('learnLabel').textContent='Lola is reading';
+  setOrb('thinking');
+  let step=0; learnRows(0);
+  learnTick=setInterval(()=>{ if(step<4){step++;learnRows(step);} },5200);
+  let r;
+  try{ r=await fetchJson('/api/onboarding/learn',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({website,notes,city,instagram})},58000); }
+  catch(e){ r={ok:false,b:{say:e.name==='AbortError'?'That took too long. Try pasting your menu instead.':'The network dropped. Try again.'}}; }
+  clearInterval(learnTick);
+  const d=(r&&r.b)||{};
+  if(!r.ok||!d.ok){
+    document.getElementById('learnWork').style.display='none';
+    document.getElementById('learnForm').style.display='block';
+    err.textContent=d.say||d.error||'Lola couldn\'t read that. Try pasting your menu.';
+    setOrb('idle');return;
+  }
+  learnRows(5);
+  const p=d.profile||{};
+  const sub=(id,t)=>{const row=document.getElementById(id);if(row&&t)row.querySelector('small').textContent=t;};
+  sub('l-read',d.source&&d.source.website?d.source.website.replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,''):'Your menu');
+  sub('l-menu',(p.services||[]).length?(p.services.length+' services'+((p.services||[]).slice(0,3).map(x=>x.name).length?' · '+p.services.slice(0,3).map(x=>x.name).join(', '):'')):'None found yet — add them in Services');
+  sub('l-team',[(p.team||[]).length?p.team.slice(0,4).map(x=>x.name.split(' ')[0]).join(', '):'',p.hours_text||''].filter(Boolean).join(' · ')||'Add them in Team');
+  sub('l-brand',[p.positioning,p.tone].filter(Boolean).join(' · ')||'Warm and professional');
+  sub('l-plan',p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are');
+  document.getElementById('learnTitle').textContent='She knows your salon.';
+  document.getElementById('learnLabel').textContent='Lola learned';
+  const say=document.getElementById('learnSay'); say.textContent=d.say||''; say.style.display=d.say?'block':'none';
+  document.getElementById('learnDone').style.display='flex';
+  try{sessionStorage.setItem('lola.welcome',JSON.stringify({say:d.say||'',suggestions:d.suggestions||[]}));}catch(e){}
+  setOrb('speaking');
+  try{ if(d.say&&window.LolaAlive&&typeof window.LolaAlive.speak==='function') window.LolaAlive.speak(d.say); }catch(e){}
+}
+function learnAgain(){document.getElementById('learnWork').style.display='none';document.getElementById('learnForm').style.display='block';setOrb('idle');}
+function skipLearn(){
+  try{sessionStorage.setItem('lola.welcome',JSON.stringify({say:'Welcome to LolaDesk. I’m answering your line now. Tell me your website or paste your menu anytime and I’ll learn your salon.',suggestions:['Learn my website','Catch me up on today']}));}catch(e){}
+  go(5);setOrb('speaking');
+}
 
 go(0);renderProgress();
 </script>
