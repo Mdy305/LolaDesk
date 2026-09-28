@@ -64,7 +64,7 @@ export default async function handler(req, res){
       temperature: body.temperature
     };
 
-    const out = await dashboardBrainReply({ tenant, body: brainBody });
+    const out = await dashboardBrainReply({ tenant, body: brainBody, req });
     const reply = extractReply(out.json);
 
     // Brain degraded (upstream error with no deterministic fallback) → let

@@ -36,7 +36,7 @@ export default async function handler(req, res){
     }catch{}
     if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const out = await dashboardBrainReply({ tenant, body });
+    const out = await dashboardBrainReply({ tenant, body, req });
     return res.status(out.status).json(out.json);
   }catch(e){
     return res.status(500).json({ type:'error', error:{ type:'server_error', message: String(e) } });

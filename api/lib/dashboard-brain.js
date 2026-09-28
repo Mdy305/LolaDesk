@@ -25,6 +25,7 @@ import { resolveDate } from './operator-db.js';
 import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lola-skills.js';
 import { detectEliteIntent, deterministicEliteSkillReply } from './lola-elite-skills.js';
+import { OWNER_TOOLS, OWNER_TOOL_NAMES, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
 
 // Real, fresh business facts pulled from the SERVER's own tenant record —
 // not whatever the client happened to have cached. Phone calls already get
@@ -228,8 +229,10 @@ function lastUserText(messages){
  * Compute Lola's reply for a dashboard/direct-voice conversation.
  * Pure brain — no req/res, no telephony state. Returns { status, json }.
  */
-export async function dashboardBrainReply({ tenant, body }){
-  const messages = Array.isArray(body.messages) ? body.messages : [];
+export async function dashboardBrainReply({ tenant, body, req }){
+  // `let`: past conversation is merged in below (a `const` here made that
+  // assignment throw, silently skipping Lola's history).
+  let messages = Array.isArray(body.messages) ? body.messages : [];
 
   /* ── PERSISTENT MEMORY — Lola remembers everything ──────────────
      Every dashboard exchange persists to conversations/messages
@@ -254,7 +257,12 @@ export async function dashboardBrainReply({ tenant, body }){
     }
   }catch{ /* memory must never block the answer */ }
 
-  const systemPrompt = [body.system, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
+  let ownerPrompt = '';
+  try{ ownerPrompt = await ownerSystemPrompt(tenant); }catch{}
+  const systemPrompt = [ownerPrompt, body.system, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
+  // Owner commands (text/call/cancel/move/no-show/fill/revenue/brief…) go
+  // straight to the tool-calling brain, never the caller fast-paths.
+  const ownerCmd = isOwnerCommand(lastUserTextMsg);
 
   // Persist the turn regardless of which branch produced the reply.
   async function remember(replyText){
@@ -266,8 +274,18 @@ export async function dashboardBrainReply({ tenant, body }){
   }
 
   // ── Booking fast-path: write a real appointment from the sentence ──────
+  // A bare yes/no answers the action Lola just proposed — run exactly what was previewed.
   try{
-    const booking = extractBooking(lastUserTextMsg, tenant);
+    const pend = await takePendingAction({ tenant, text: lastUserTextMsg, req });
+    if(pend){
+      await remember(pend.say);
+      return { status: 200, json: { content:[{ type:'text', text: pend.say }], intent:'owner_action', source:'owner-tool',
+        actions: pend.ui ? [pend.ui] : undefined, needs_confirmation: !!pend.needs_confirmation } };
+    }
+  }catch(e){ /* fall through */ }
+
+  try{
+    const booking = ownerCmd ? null : extractBooking(lastUserTextMsg, tenant);
     if(booking){
       const result = await executeSkill(tenant, booking.client_phone || null, 'book_appointment', booking, SKILLS);
       if(result && (result.speak || result.booked !== undefined)){
@@ -285,7 +303,7 @@ export async function dashboardBrainReply({ tenant, body }){
 
   // ── Availability sight: let Lola see her calendar and answer openings ──
   try{
-    const aq = extractAvailabilityQuery(lastUserTextMsg, tenant);
+    const aq = ownerCmd ? null : extractAvailabilityQuery(lastUserTextMsg, tenant);
     if(aq){
       const result = await executeSkill(tenant, null, 'check_availability', aq, SKILLS);
       if(result && result.speak){
@@ -298,7 +316,7 @@ export async function dashboardBrainReply({ tenant, body }){
   // ── Skill fast-path (orchestrator) ─────────────────────────────────────
   try{
     if(lastUserTextMsg){
-      const intent = detectEliteIntent(lastUserTextMsg);
+      const intent = ownerCmd ? null : detectEliteIntent(lastUserTextMsg);
       if(intent){
         const reply = deterministicEliteSkillReply({ tenant, intent, channel:'voice' });
         if(reply){
@@ -317,7 +335,7 @@ export async function dashboardBrainReply({ tenant, body }){
     temperature: body.temperature ?? 0.7,
     // NOTE: ignore body.model — the dashboard hardcodes an Anthropic model
     // name that the Telnyx provider rejects. Let chat() pick a valid default.
-    tools: TOOLS
+    tools: [...TOOLS, ...OWNER_TOOLS]
   });
 
   if(!result.ok){
@@ -343,7 +361,19 @@ export async function dashboardBrainReply({ tenant, body }){
   if (result.tool_calls && result.tool_calls.length > 0) {
     const toolCall = result.tool_calls[0]; // Process first tool
     const funcName = toolCall.function.name;
-    const funcArgs = JSON.parse(toolCall.function.arguments || '{}');
+    let funcArgs = {};
+    try{ funcArgs = JSON.parse(toolCall.function.arguments || '{}') || {}; }catch{ funcArgs = {}; }
+
+    // Owner tools answer in their own words (previews, confirmations, results).
+    if (OWNER_TOOL_NAMES.has(funcName)) {
+      const out = await runOwnerTool({ tenant, name: funcName, args: funcArgs, req });
+      const say = out.say || 'Done.';
+      await remember(say);
+      return { status: 200, json: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant',
+        content: [{ type: 'text', text: say }], intent: funcName, source: 'owner-tool',
+        actions: out.ui ? [out.ui] : undefined, needs_confirmation: !!out.needs_confirmation,
+        model: result.model, provider: result.provider } };
+    }
 
     // Add the assistant's tool request to history
     messages.push({
