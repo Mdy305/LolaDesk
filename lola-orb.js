@@ -17,10 +17,15 @@
    · speaking   — resonance rings radiate OUTWARD from the core in
                   sync with the actual amplitude of her real
                   ElevenLabs voice (sound flowing out of her).
+   · oncall     — a real phone call is live on the line right now.
+                  Distinct cool blue palette (never confused with her
+                  own listening/speaking colors) at a steady bright
+                  energy, so the owner can tell at a glance — without
+                  reading any text — that Lola is on with a caller.
 
    API:
      const orb = LolaOrb.mount(canvas, { size, particles });
-     orb.setState('idle'|'ambient'|'listening'|'thinking'|'speaking');
+     orb.setState('idle'|'ambient'|'listening'|'thinking'|'speaking'|'oncall');
      orb.setLevel(0..1);     // audio resonance amplitude
      orb.flare();            // one-shot burst (wake word hit, go-live)
      orb.destroy();
@@ -44,7 +49,8 @@
     ambient:   { a:[204,255,0],  b:[72,108,0],  core:[222,255,92], glow:.38 },
     listening: { a:[220,255,102], b:[94,255,168],  core:[228,255,196], glow:.55 },
     thinking:  { a:[255,196,64], b:[204,255,0],  core:[255,232,168], glow:.50 },
-    speaking:  { a:[232,255,140], b:[128,255,190],  core:[255,255,255], glow:.62 }
+    speaking:  { a:[232,255,140], b:[128,255,190],  core:[255,255,255], glow:.62 },
+    oncall:    { a:[90,200,250],  b:[40,120,190],  core:[190,235,255], glow:.58 }
   };
 
   function lerp(a,b,t){ return a+(b-a)*t; }
@@ -95,7 +101,7 @@
     function setState(s){
       if(!PALETTES[s]) s='idle';
       st.state = s;
-      st.energyTarget = (s==='listening'||s==='speaking') ? 1 : s==='thinking' ? 0.65 : s==='ambient' ? 0.25 : 0;
+      st.energyTarget = (s==='listening'||s==='speaking'||s==='oncall') ? 1 : s==='thinking' ? 0.65 : s==='ambient' ? 0.25 : 0;
     }
     function setLevel(v){ st.level = Math.max(0, Math.min(1, v||0)); }
     function flare(){ st.flare = 1; if(!REDUCED) for(let k=0;k<3;k++) rings.push({ r:baseR*0.4, alpha:.7-k*.15, dir:1, w:2.5-k*.5 }); }

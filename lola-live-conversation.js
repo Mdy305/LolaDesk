@@ -20,6 +20,7 @@
   let focused = null;   // focused call id
   let ticker = null;
   let pendingTakeover = null; // call id awaiting a confirm click
+  let wasOnCall = false; // orb presence edge-detector — see updateOrbPresence()
 
   function el(id) { return document.getElementById(id); }
   function fmtDuration(sec) {
@@ -146,12 +147,55 @@
     }
   }
 
+  // The most recent transcript line of a call, for the orb's live sub-text —
+  // "Caller: ..." or "Lola: ...", trimmed. Returns null when nothing has
+  // been said yet (a call that just connected).
+  function latestLine(call) {
+    const t = Array.isArray(call?.transcript) ? call.transcript : [];
+    const last = t[t.length - 1];
+    if (!last) return null;
+    const role = String(last.role || last.speaker || '').toLowerCase();
+    const who = (role === 'client' || role === 'user' || role === 'caller') ? 'Caller' : 'Lola';
+    const content = String(last.content || last.text || '').trim();
+    return content ? (who + ': ' + content.slice(0, 110)) : null;
+  }
+
+  // Drives the dashboard's main orb from real call state (see app.js's
+  // 'oncall' orb state, added for this). Best-effort and fully optional:
+  // no-ops cleanly on any page that hasn't loaded app.js's orb (e.g. a
+  // page without the Home dashboard's orb markup).
+  function updateOrbPresence() {
+    const app = window.__lolaApp;
+    if (!app || typeof app.getOrbState !== 'function') return;
+    const onCallNow = state.calls.length > 0;
+    const current = app.getOrbState();
+    if (onCallNow) {
+      const call = state.calls.find((c) => c.id === focused) || state.calls[0];
+      const headline = call?.from ? ('Live call · ' + call.from) : 'Live call in progress';
+      const line = latestLine(call);
+      if (!wasOnCall) {
+        // Don't steal the orb from an active voice exchange the owner is
+        // already having with Lola — the call state keeps streaming in
+        // this panel either way, it just won't take over the orb.
+        if (current === 'listening' || current === 'thinking') { wasOnCall = true; return; }
+        app.setOrbState('oncall', line || headline);
+      } else if (current === 'oncall') {
+        app.setOrbLiveText(line || headline);
+      }
+      wasOnCall = true;
+    } else if (wasOnCall) {
+      wasOnCall = false;
+      if (current === 'oncall') app.setOrbState('idle');
+    }
+  }
+
   async function refresh() {
     try {
       const { status, data } = await api('/api/live-conversations');
       if (status === 401 || status === 403) {
         state.calls = []; state.whisper = null; state.ready = false; state.tenant = '';
         state.paused = false; state.signedOut = true;
+        updateOrbPresence();
         render();
         return;
       }
@@ -160,6 +204,7 @@
         // panel, not just the pill: whisper must stay disabled + explained.
         state.calls = []; state.whisper = null; state.ready = false; state.tenant = '';
         state.signedOut = false; state.paused = true;
+        updateOrbPresence();
         render();
         return;
       }
@@ -169,6 +214,7 @@
       state.tenant = data.tenant || '';
       state.paused = false; state.signedOut = false;
       if (focused && !state.calls.some((c) => c.id === focused)) focused = state.calls[0]?.id || null;
+      updateOrbPresence();
       render();
     } catch (e) {
       setPill('Live feed unavailable', 'idle');
