@@ -17,6 +17,7 @@ import { e164 } from './db.js';
 import { sendSms } from './sms.js';
 import { getBookingSettings } from './booking-repository.js';
 import { localDateKey, dayBoundsUtc } from './timezone.js';
+import { clientHistory, planSegments } from './client-history.js';
 
 export const SEGMENTS = {
   lapsed:   { label: "Haven't been in a while", about: 'Last visit more than {days} days ago', days: 60 },
@@ -24,6 +25,8 @@ export const SEGMENTS = {
   recent:   { label: 'Recent guests', about: 'Visited in the last 30 days — rebook them' },
   tomorrow: { label: 'Booked tomorrow', about: 'Reminders, add-ons, upgrades' },
   all:      { label: 'Everyone', about: 'Every client who can receive texts' },
+  due:          { label: 'Due for their next visit', about: 'Their usual rhythm says they’re due in the next 30 days — nothing booked yet' },
+  second_visit: { label: 'Came once — bring them back', about: 'First visit 3 weeks to 5 months ago, never returned' },
 };
 const FREQ_CAP_DAYS = 7;
 const ATTRIBUTION_DAYS = 14;
@@ -44,16 +47,26 @@ export const inSendingHours = (date, tz) => { const h = localHour(date, tz); ret
 
 /** Clients in an audience, ready to text (deduped by phone). */
 export async function loadClients(c, tenantId) { return rows(c.from('clients').select('*').eq('tenant_id', tenantId).limit(5000)); }
-export async function recentlyTexted(c, tenantId, now = new Date()) {
-  const since = new Date(now.getTime() - FREQ_CAP_DAYS * 864e5).toISOString();
+export async function recentlyTexted(c, tenantId, now = new Date(), capDays = FREQ_CAP_DAYS) {
+  const since = new Date(now.getTime() - Math.max(FREQ_CAP_DAYS, Number(capDays) || FREQ_CAP_DAYS) * 864e5).toISOString();
   const recent = await rows(c.from('lola_campaign_recipients').select('phone').eq('tenant_id', tenantId).eq('status', 'sent').gte('sent_at', since).limit(20000));
   return new Set(recent.map(r => r.phone));
 }
 
-export async function audience(c, tenantId, segment, { days, now = new Date(), tz, clients, capped: cappedSet } = {}) {
+export async function audience(c, tenantId, segment, { days, now = new Date(), tz, clients, capped: cappedSet, excludeBooked = false, history = null, capDays = FREQ_CAP_DAYS } = {}) {
   const seg = SEGMENTS[segment] ? segment : 'lapsed';
   const all = clients || await loadClients(c, tenantId);
   let pool = all.filter(cl => cl && e164(cl.phone) && !optedOut(cl));
+  // The plan's audiences come from real visit history (who is due, who came once).
+  if (seg === 'due' || seg === 'second_visit' || excludeBooked) {
+    const hist = history || await clientHistory(c, tenantId, { now, clients: all });
+    if (seg === 'due' || seg === 'second_visit') {
+      const ids = new Set(planSegments(hist, { now })[seg].map(h => h.client.id));
+      pool = pool.filter(cl => ids.has(cl.id));
+    } else {
+      pool = pool.filter(cl => !hist.get(cl.id)?.upcoming);     // already booked → leave them alone
+    }
+  }
   const d = Math.max(7, Math.min(730, Number(days) || SEGMENTS.lapsed.days));
   if (seg === 'lapsed') { const cut = now.getTime() - d * 864e5; pool = pool.filter(cl => cl.last_visit && Date.parse(cl.last_visit) < cut); }
   if (seg === 'recent') { const cut = now.getTime() - 30 * 864e5; pool = pool.filter(cl => cl.last_visit && Date.parse(cl.last_visit) >= cut); }
@@ -68,7 +81,7 @@ export async function audience(c, tenantId, segment, { days, now = new Date(), t
     pool = pool.filter(cl => ids.has(cl.id));
   }
   // Frequency cap: nobody gets a campaign text twice in a week.
-  const capped = cappedSet || await recentlyTexted(c, tenantId, now);
+  const capped = cappedSet || await recentlyTexted(c, tenantId, now, capDays);
   const seen = new Set(); const out = [];
   let cappedCount = 0;
   for (const cl of pool) {
@@ -86,11 +99,11 @@ export function personalize(message, first) {
   return t;
 }
 
-export async function createCampaign(c, tenant, { name, segment, days, message, createdBy = 'owner' }) {
+export async function createCampaign(c, tenant, { name, segment, days, message, createdBy = 'owner', excludeBooked = false, capDays }) {
   const msg = String(message || '').trim();
   if (!msg) return { ok: false, error: 'A message is required.' };
   if (msg.length > 480) return { ok: false, error: 'Keep the message under 480 characters (3 texts).' };
-  const aud = await audience(c, tenant.id, segment, { days });
+  const aud = await audience(c, tenant.id, segment, { days, excludeBooked, capDays });
   if (!aud.recipients.length) return { ok: false, error: 'Nobody in that audience can be texted right now.', capped: aud.capped };
   const seg = SEGMENTS[aud.segment];
   const ins = await c.from('lola_campaigns').insert({

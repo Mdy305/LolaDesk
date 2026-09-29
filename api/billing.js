@@ -10,6 +10,7 @@
  * ENV: STRIPE_SECRET_KEY, APP_URL
  */
 import { bearer, getUserFromToken } from './lib/auth.js';
+import { feeSummary } from './lib/booking-fees.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 
@@ -107,6 +108,8 @@ export default async function handler(req,res){
         cancel_at_period_end:sub?.cancel_at_period_end||false,
         has_payment_method:!!tenant.stripe_subscription_id,
         usage:usage||{calls_handled:0,sms_sent:0,bookings_made:0,minutes_used:0},
+        // What Lola booked for this salon this month, and LolaDesk's per-appointment fee.
+        lola_bookings:await feeSummary(c,{tenantId:tenant.id}).catch(()=>null),
         stripe_configured:!!sk()
       });
     }
