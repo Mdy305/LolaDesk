@@ -129,10 +129,11 @@ const orb = (window.LolaOrb && orbCanvas)
 // Expose the mounted orb so the resonance runtime (lola-resonance.js)
 // can drive its particle canvas live from Lola's real voice amplitude.
 window.__LOLA_ORB__ = orb;
-let orbState = 'idle'; // idle | listening | thinking | speaking | ambient
+let orbState = 'idle'; // idle | listening | thinking | speaking | ambient | oncall
 
-function setOrbState(s){
+function setOrbState(s, detail){
   const prevState = orbState;
+  if(!['idle','ambient','listening','thinking','speaking','oncall'].includes(s)) s = 'idle';
   orbState = s;
   orb.setState(s);
   // Lola's living state, for the resonance atom (lola-resonance.js).
@@ -141,6 +142,12 @@ function setOrbState(s){
   // The wake moment: any transition INTO listening (voice wake-word
   // "Hey Lola" or a manual tap) is when Lola visibly comes alive.
   if(s === 'listening' && prevState !== 'listening'){
+    orb.flare();
+    if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
+  }
+  // Same treatment the first moment a real phone call lands on the orb —
+  // this is the "watch Lola work" moment the core-app audit called for.
+  if(s === 'oncall' && prevState !== 'oncall'){
     orb.flare();
     if(window.LolaWakeBurst) window.LolaWakeBurst.trigger(document.getElementById('orbStage') || orbCanvas);
   }
@@ -158,10 +165,13 @@ function setOrbState(s){
     ambient: ['Hey Lola…','Listening for her name — just say it'],
     listening: ['Listening…','Speak now, I\'m all ears'],
     thinking: ['Thinking…','Working on it'],
-    speaking: ['Lola','Speaking…']
+    speaking: ['Lola','Speaking…'],
+    oncall: ['Lola is on a call','Live — the transcript is streaming below']
   };
   if(title) title.textContent = labels[s][0];
-  if(sub) sub.textContent = labels[s][1];
+  // A caller-in-progress transcript line (or any caller) overrides the
+  // generic sub-line, without replaying the whole state transition.
+  if(sub) sub.textContent = detail ? String(detail).slice(0,140) : labels[s][1];
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -180,6 +190,12 @@ function setOrbState(s){
 let _pulseTimer = null, _pulsePrevState = null;
 window.lolaPulse = function(text, tone){
   try{
+    // Never hijack the orb mid real-conversation (the owner talking to
+    // Lola) or mid live-call presence (a real phone call streaming on
+    // the orb) — a background "new booking" ping has no business
+    // interrupting either of those.
+    if(listening || orbState === 'thinking' || orbState === 'oncall') return;
+
     // Remember what the orb was doing so we can return to it. If a
     // second pulse arrives mid-flare, keep the ORIGINAL prev-state so
     // rapid-fire events don't leave the orb stuck "speaking".
@@ -679,24 +695,9 @@ window.toggleChatVoice = function(){
   listening ? stopListening() : startListening();
 };
 
-// Called by the live-activity poller when a new booking/call/message
-// comes in — a lighter reaction than a full wake (no burst, no mic),
-// just a resonance pulse and a brief label so it doesn't fight with
-// whatever the user is actually doing with the orb.
-window.lolaPulse = function(label){
-  orb.flare();
-  if(listening || orbState === 'speaking' || orbState === 'thinking') return; // don't interrupt an active exchange
-  const sub = document.getElementById('orbSub');
-  const title = document.getElementById('orbTitle');
-  if(!sub || !title) return;
-  const prevTitle = title.textContent, prevSub = sub.textContent;
-  title.textContent = 'New activity';
-  sub.textContent = label || 'Something just came in';
-  setTimeout(()=>{
-    if(listening || orbState === 'speaking' || orbState === 'thinking') return;
-    title.textContent = prevTitle; sub.textContent = prevSub;
-  }, 3200);
-};
+// NOTE: window.lolaPulse is defined once, above (LIVE PRESENCE section).
+// A second, weaker definition used to live here and silently shadow it —
+// removed as part of wiring the orb to real-time call presence.
 
 /* ── AMBIENT WAKE-WORD LISTENING ── */
 let ambientRecognition = null;
@@ -1121,13 +1122,25 @@ function init(){
   if(window.speechSynthesis){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = ()=>speechSynthesis.getVoices(); }
 }
 // The dashboard's own conversation loop, for lola-resonance.js (the atom's
-// tap, "Lola" wake word and suggestion chips all run through it).
+// tap, "Lola" wake word and suggestion chips all run through it) and for
+// lola-live-conversation.js (real phone calls driving the orb's "oncall"
+// presence — see setOrbState('oncall', ...) above).
 window.__lolaApp = {
   startListening: function(){ voiceTarget = 'orb'; startListening(); },
   stopListening: function(){ stopListening(); },
   isListening: function(){ return listening; },
   ask: function(text){ return processMessage(String(text||'')); },
-  setOrbState: function(s){ setOrbState(s); }
+  setOrbState: function(s, detail){ setOrbState(s, detail); },
+  getOrbState: function(){ return orbState; },
+  // Update the orb's live sub-line (e.g. the latest transcript line of an
+  // active call) without replaying the whole state transition. No-ops
+  // unless the orb is currently in the 'oncall' presence state, so it can
+  // never clobber a real voice exchange or any other state.
+  setOrbLiveText: function(text){
+    if(orbState !== 'oncall' || !text) return;
+    const sub = document.getElementById('orbSub');
+    if(sub) sub.textContent = String(text).slice(0,140);
+  }
 };
 init();
 
