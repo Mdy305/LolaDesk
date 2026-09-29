@@ -69,6 +69,48 @@
 .dlg .box{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;max-width:440px;width:100%}
 .dlg h3{margin:0 0 8px;font-size:18px}
 .dlg p{margin:0 0 18px;color:var(--text2);font-size:14px;line-height:1.55}
+.fp{margin-bottom:18px;background:radial-gradient(ellipse 70% 140% at 100% 0%,rgba(204,255,0,.08),transparent 60%),var(--surface)}
+.fp-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.fp-top h2{margin:0 0 6px}
+.fp-head{font-size:19px;font-weight:600;letter-spacing:-.01em;line-height:1.35;max-width:760px;margin:0}
+.fp-proj{font-size:13px;color:var(--text2);margin-top:6px}
+.fp-proj b{color:var(--accent)}
+.fp-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill.active{background:rgba(204,255,0,.14);color:var(--accent)}
+.pill.proposed{background:rgba(100,210,255,.14);color:#64d2ff}
+.switch{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text2);cursor:pointer;user-select:none}
+.switch input{appearance:none;width:34px;height:20px;border-radius:20px;background:rgba(255,255,255,.14);position:relative;cursor:pointer;transition:background .2s;margin:0}
+.switch input::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked{background:var(--accent)}
+.switch input:checked::after{transform:translateX(14px)}
+.fc{display:grid;grid-template-columns:repeat(30,minmax(0,1fr));gap:3px;align-items:end;height:74px;margin:18px 0 4px}
+.fc .d{position:relative;height:100%;border-radius:4px;background:rgba(255,255,255,.05);overflow:hidden}
+.fc .d i{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.28);border-radius:4px}
+.fc .d.gap{background:rgba(204,255,0,.12);box-shadow:inset 0 0 0 1px rgba(204,255,0,.35)}
+.fc .d.off{background:transparent}
+.fc-l{display:grid;grid-template-columns:repeat(30,minmax(0,1fr));gap:3px;font-size:9.5px;color:var(--text3);text-align:center}
+.fc-l span{white-space:nowrap;overflow:visible}
+.fc-key{display:flex;gap:14px;font-size:11.5px;color:var(--text3);margin-top:8px;flex-wrap:wrap}
+.fc-key span::before{content:'';display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:rgba(255,255,255,.28)}
+.fc-key .g::before{background:rgba(204,255,0,.35)}
+.fp-cols{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:18px;margin-top:18px}
+@media(max-width:900px){.fp-cols{grid-template-columns:1fr}.fc{gap:2px}.fc-l{font-size:8px}}
+.fp h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:600;margin:0 0 10px}
+.lev{margin:0;padding:0;list-style:none;display:grid;gap:9px}
+.lev li{display:flex;gap:10px;font-size:13.5px;line-height:1.5}
+.lev li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:8px;flex:none}
+.todo li::before{background:#64d2ff}
+.items{display:grid;gap:10px}
+.it{border:1px solid var(--border);border-radius:16px;padding:12px 14px;background:var(--bg2,#0c0c0e)}
+.it .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.it .when{font-size:12px;color:var(--text3);white-space:nowrap}
+.it .nm{font-weight:600;font-size:14px}
+.it .who{font-size:12px;color:var(--text2);margin-top:2px}
+.it .msg{font-size:13px;color:var(--text2);margin-top:8px;line-height:1.5;white-space:pre-wrap}
+.it .msg[contenteditable=true]{outline:1px solid var(--accent);border-radius:8px;padding:6px 8px;color:var(--text)}
+.it.skipped{opacity:.55}
+.it .res{font-size:12.5px;color:var(--text2);margin-top:8px}
+.it .res b{color:var(--accent)}
 </style>
 </head>
 <body data-page="marketing">
@@ -83,6 +125,44 @@
   </div>
 
   <div id="setupWarn" class="warn" hidden>One-time setup: run <b>sql/lola-marketing.sql</b> in Supabase (SQL Editor) to turn on campaigns.</div>
+
+  <div id="planWarn" class="warn" hidden>One-time setup: run <b>sql/revenue-engine.sql</b> in Supabase (SQL Editor) to turn on Lola’s 30-day plan.</div>
+
+  <section class="card fp" id="fillPlan" hidden>
+    <div class="fp-top">
+      <div>
+        <h2>Lola’s 30-day plan <span class="pill" id="fpStatus"></span></h2>
+        <p class="fp-head" id="fpHead"></p>
+        <div class="fp-proj" id="fpProj"></div>
+      </div>
+      <div class="fp-acts">
+        <label class="switch" title="Send each campaign on its day without asking"><input type="checkbox" id="fpAuto"> Autopilot</label>
+        <button class="btn small" id="fpRebuild">Refresh</button>
+        <button class="btn small" id="fpPause" hidden>Pause</button>
+        <button class="btn primary" id="fpApprove" hidden>Start the plan</button>
+      </div>
+    </div>
+    <div class="fc" id="fpBars" aria-label="How booked each of the next 30 days is"></div>
+    <div class="fc-l" id="fpDays"></div>
+    <div class="fc-key"><span>Booked</span><span class="g">Open days Lola is filling</span></div>
+    <div class="fp-cols">
+      <div>
+        <h3>What Lola sees</h3>
+        <ul class="lev" id="fpLevers"></ul>
+        <h3 style="margin-top:18px">Grow the list</h3>
+        <ul class="lev todo" id="fpTodo"></ul>
+      </div>
+      <div>
+        <h3>The calendar</h3>
+        <div class="items" id="fpItems"></div>
+      </div>
+    </div>
+  </section>
+  <section class="card fp" id="fillPlanEmpty" hidden>
+    <h2>Lola’s 30-day plan</h2>
+    <p class="fp-head">Lola maps every open chair for the next 30 days, finds who is due back, and schedules the campaigns to fill them.</p>
+    <div class="row" style="margin-top:14px"><button class="btn primary" id="fpBuild">Build my plan</button></div>
+  </section>
 
   <div class="mk-grid">
     <div style="display:grid;gap:18px">
@@ -199,15 +279,64 @@
     const list=DATA.campaigns||[];const won=list.reduce((s,c)=>s+c.booked,0),rev=list.reduce((s,c)=>s+c.revenue,0);
     const lapsed=(DATA.audiences||[]).find(a=>a.id==='lapsed');
     let t=list.length?('Your campaigns brought back '+won+' client'+(won===1?'':'s')+' and '+money(rev)+'.'):'Lola picks who to text, writes it in your voice, sends it at the right hours, and tracks the bookings it brings in.';
-    if(lapsed&&lapsed.count&&DATA.avg_ticket)t+=' '+lapsed.count+' clients haven’t been in for '+(lapsed.days||60)+'+ days — about '+money(lapsed.count*DATA.avg_ticket)+' in visits if they all came back.';
+    if(lapsed&&lapsed.count&&DATA.avg_ticket)t+=' '+lapsed.count+(lapsed.count===1?' client hasn’t':' clients haven’t')+' been in for '+(lapsed.days||60)+'+ days — about '+money(lapsed.count*DATA.avg_ticket)+' in visits if they all came back.';
     $('narrative').textContent=t;
   }
+
+  // ── Lola's 30-day plan ──
+  const fmtDate=k=>new Date(k+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'});
+  function renderFillPlan(){
+    const p=DATA.fill_plan;
+    $('planWarn').hidden=DATA.fill_plan_ready!==false;
+    $('fillPlan').hidden=!p; $('fillPlanEmpty').hidden=!!p||DATA.fill_plan_ready===false;
+    if(!p)return;
+    const st=p.strategy||{},fc=p.forecast||{};
+    $('fpStatus').textContent=p.status==='active'?(p.autopilot?'running · autopilot':'running'):p.status==='paused'?'paused':'waiting for your OK';
+    $('fpStatus').className='pill '+(p.status==='active'?'active':p.status==='paused'?'paused':'proposed');
+    $('fpHead').textContent=st.headline||'';
+    $('fpProj').innerHTML=st.projected_bookings?('Goal: '+esc(st.goal||'')+' · Lola expects about <b>'+st.projected_bookings+' booking'+(st.projected_bookings===1?'':'s')+'</b>'+(st.projected_revenue?' (<b>'+money(st.projected_revenue)+'</b>)':'')+' from this plan.'):esc(st.goal||'');
+    $('fpAuto').checked=!!p.autopilot;
+    $('fpApprove').hidden=p.status==='active';
+    $('fpApprove').textContent=p.status==='paused'?'Resume the plan':'Start the plan';
+    $('fpPause').hidden=p.status!=='active';
+    const days=(fc.days||[]).slice(0,30), gaps=new Set(fc.gap_days||[]);
+    $('fpBars').innerHTML=days.map(d=>{const off=!d.capacity_h;const u=Math.max(0,Math.min(1,d.util||0));
+      return '<div class="d'+(off?' off':'')+(gaps.has(d.date)?' gap':'')+'" title="'+esc(fmtDate(d.date))+(off?' · closed':' · '+Math.round(u*100)+'% booked, '+d.open_h+'h open')+'">'+(off?'':'<i style="height:'+Math.round(u*100)+'%"></i>')+'</div>';}).join('');
+    $('fpDays').innerHTML=days.map((d,i)=>'<span>'+(i%7===0||i===days.length-1?esc(d.weekday.slice(0,2)+' '+Number(d.date.slice(8))):'')+'</span>').join('');
+    $('fpLevers').innerHTML=(st.levers||[]).map(l=>'<li>'+esc(l)+'</li>').join('')||'<li>No open chairs to worry about right now.</li>';
+    $('fpTodo').innerHTML=(st.acquisition||[]).map(a=>'<li>'+esc(a.text)+'</li>').join('');
+    const items=(p.items||[]).slice().sort((a,b)=>a.send_on<b.send_on?-1:1);
+    $('fpItems').innerHTML=items.map(it=>{
+      const r=it.result;
+      const res=it.status==='sent'?'<div class="res">Sent to '+(r?r.sent:it.recipients||0)+' · <b>'+(r?r.booked:0)+' booked</b>'+(r&&r.revenue?' · <b>'+money(r.revenue)+'</b>':'')+'</div>'
+        :it.status==='skipped'?'<div class="res">Skipped — '+esc(({already_full:'those days filled up',no_audience:'nobody to text yet',owner:'you skipped it'})[it.reason]||it.reason||'')+'</div>':'';
+      const acts=it.status==='planned'?'<div class="row" style="margin-top:8px"><button class="btn small" data-edit="'+esc(it.key)+'">Edit</button><button class="btn small" data-skip="'+esc(it.key)+'">Skip</button></div>':'';
+      return '<div class="it '+esc(it.status)+'"><div class="top"><div class="nm">'+esc(it.name)+'</div><div class="when">'+(it.status==='sent'?'Sent ':'')+esc(fmtDate(it.send_on))+'</div></div>'
+        +'<div class="who">'+esc(it.audience_label||'')+' · '+it.audience+' client'+(it.audience===1?'':'s')+(it.day_text?' · aims at '+esc(it.day_text):'')+(it.est_bookings&&it.status==='planned'?' · ~'+it.est_bookings+' booking'+(it.est_bookings===1?'':'s'):'')+'</div>'
+        +'<div class="msg" data-msg="'+esc(it.key)+'">'+esc(it.message||'')+'</div>'+res+acts+'</div>';
+    }).join('')||'<div class="empty">No campaigns scheduled.</div>';
+    $('fpItems').querySelectorAll('[data-skip]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api({action:'plan_skip',id:p.id,key:b.dataset.skip});await load(true);}catch(e){toast(e.message,true);b.disabled=false;}});
+    $('fpItems').querySelectorAll('[data-edit]').forEach(b=>b.onclick=async()=>{
+      const m=$('fpItems').querySelector('[data-msg="'+CSS.escape(b.dataset.edit)+'"]');
+      if(m.getAttribute('contenteditable')==='true'){b.disabled=true;try{await api({action:'plan_edit',id:p.id,key:b.dataset.edit,message:m.textContent.trim()});toast('Saved.');await load(true);}catch(e){toast(e.message,true);b.disabled=false;}return;}
+      m.setAttribute('contenteditable','true');m.focus();b.textContent='Save';});
+  }
+  async function planAct(body,okMsg,btn){if(btn)btn.disabled=true;try{await api(body);if(okMsg)toast(okMsg);await load(true);}catch(e){toast(e.message,true);}finally{if(btn)btn.disabled=false;}}
+  $('fpApprove').onclick=async()=>{const p=DATA.fill_plan;const n=(p.items||[]).filter(i=>i.status==='planned').length;
+    const ok=await confirmDlg('Start Lola’s 30-day plan?',n+' campaign'+(n===1?'':'s')+' go out on their days, 10am–8pm, only to clients with nothing booked. Any campaign whose days fill up first is skipped. You can edit, skip or pause anytime.','Start the plan');
+    if(ok)planAct({action:'plan_approve',id:p.id},'The plan is live.',$('fpApprove'));};
+  $('fpPause').onclick=()=>planAct({action:'plan_pause',id:DATA.fill_plan.id},'Paused.',$('fpPause'));
+  $('fpAuto').onchange=async e=>{const on=e.target.checked;
+    if(on&&!await confirmDlg('Turn on Autopilot?','Lola sends each campaign on its day without asking, and rebuilds the plan every week so the next 30 days stay covered.','Turn on')){e.target.checked=false;return;}
+    planAct({action:'plan_autopilot',id:DATA.fill_plan.id,on},on?'Autopilot on.':'Autopilot off.');};
+  $('fpRebuild').onclick=()=>{const b=$('fpRebuild');b.textContent='Lola is planning…';planAct({action:'plan_build'},'Plan refreshed with today’s numbers.',b).finally(()=>b.textContent='Refresh');};
+  $('fpBuild').onclick=()=>{const b=$('fpBuild');b.textContent='Lola is planning…';planAct({action:'plan_build'},'Your 30-day plan is ready.',b).finally(()=>b.textContent='Build my plan');};
   async function load(quiet){
     try{DATA=await api();}catch(e){if(!quiet)$('audiences').innerHTML='<div class="empty">'+esc(e.message)+'</div>';return;}
     $('setupWarn').hidden=!!DATA.tables_ready;
     $('fromLine').textContent=(DATA.salon||'Your salon')+' · text message';
     if(!quiet)renderPlan();
-    renderAudiences();renderCampaigns();narrative();update();
+    renderAudiences();renderCampaigns();renderFillPlan();narrative();update();
     clearTimeout(poll);
     if((DATA.campaigns||[]).some(c=>c.status==='sending'))poll=setTimeout(()=>load(true),8000);
   }

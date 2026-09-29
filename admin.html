@@ -209,7 +209,9 @@ function renderKpis(){
   const paying = (m.by_status.active||0);
   document.getElementById('kpis').innerHTML = [
     ['Salons', m.tenants], ['Paying', paying], ['Trials', m.by_status.trial||0],
-    ['Bookings today', m.bookings_today], ['Messages today', m.messages_today], ['Calls today', m.calls_today]
+    ['Bookings today', m.bookings_today], ['Messages today', m.messages_today], ['Calls today', m.calls_today],
+    ['Lola bookings (month)', (m.booking_fees&&m.booking_fees.ready) ? m.booking_fees.lola_bookings : '—'],
+    ['Booking fees (month)', (m.booking_fees&&m.booking_fees.ready) ? '$'+(m.booking_fees.fees_cents/100).toFixed(0)+(m.booking_fees.policy&&m.booking_fees.policy.live?'':' · not billing yet') : '—']
   ].map(([l,v])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
 }
 

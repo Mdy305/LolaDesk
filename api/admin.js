@@ -15,6 +15,7 @@
  */
 import { bearer, getUserFromToken, isAdminEmail } from './lib/auth.js';
 import { db } from './lib/db.js';
+import { feeSummary } from './lib/booking-fees.js';
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -48,9 +49,11 @@ export default async function handler(req, res){
       byPlan[t.plan || 'none'] = (byPlan[t.plan || 'none'] || 0) + 1;
       byStatus[t.billing_status || 'trial'] = (byStatus[t.billing_status || 'trial'] || 0) + 1;
     }
+    const bookingFees = await feeSummary(c).catch(()=>null);
     return res.status(200).json({ ok:true,
       metrics: { tenants: tenants.length, by_plan: byPlan, by_status: byStatus,
-                 messages_today: msgsToday, calls_today: callsToday, bookings_today: bookingsToday },
+                 messages_today: msgsToday, calls_today: callsToday, bookings_today: bookingsToday,
+                 booking_fees: bookingFees },
       tenants });
   }
 

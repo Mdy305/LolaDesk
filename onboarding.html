@@ -276,12 +276,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
           <div class="srow" id="l-menu"><span class="dot"></span><div class="scopy"><b>Learning services &amp; prices</b><small>So she can quote and book them</small></div></div>
           <div class="srow" id="l-team"><span class="dot"></span><div class="scopy"><b>Learning your team &amp; hours</b><small>Who does what, and when you're open</small></div></div>
           <div class="srow" id="l-brand"><span class="dot"></span><div class="scopy"><b>Learning your brand voice</b><small>So she sounds like you</small></div></div>
-          <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your first campaign</b><small>Your marketing, ready on day one</small></div></div>
+          <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your next 30 days</b><small>Open chairs, who's due back, the campaigns to fill them</small></div></div>
         </div>
         <p class="sub" id="learnSay" style="display:none;margin-bottom:22px"></p>
         <div class="actions" id="learnDone" style="display:none;gap:10px;flex-wrap:wrap">
           <button class="btn-p" onclick="go(5);setOrb('speaking')">Continue</button>
           <button class="btn-g" onclick="learnAgain()">Add more</button>
+          <a class="btn-g" href="/campaigns" style="text-decoration:none;display:inline-flex;align-items:center">See the 30-day plan</a>
         </div>
       </div>
     </div>
@@ -715,7 +716,8 @@ async function learnNow(){
   sub('l-menu',(p.services||[]).length?(p.services.length+' services'+((p.services||[]).slice(0,3).map(x=>x.name).length?' · '+p.services.slice(0,3).map(x=>x.name).join(', '):'')):'None found yet — add them in Services');
   sub('l-team',[(p.team||[]).length?p.team.slice(0,4).map(x=>x.name.split(' ')[0]).join(', '):'',p.hours_text||''].filter(Boolean).join(' · ')||'Add them in Team');
   sub('l-brand',[p.positioning,p.tone].filter(Boolean).join(' · ')||'Warm and professional');
-  sub('l-plan',p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are');
+  const fp=d.fill_plan;
+  sub('l-plan',fp&&fp.headline?(fp.headline+(fp.campaigns?' '+fp.campaigns+' campaigns scheduled'+(fp.projected_bookings?' · ~'+fp.projected_bookings+' bookings':'')+'.':'')):(p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are'));
   document.getElementById('learnTitle').textContent='She knows your salon.';
   document.getElementById('learnLabel').textContent='Lola learned';
   const say=document.getElementById('learnSay'); say.textContent=d.say||''; say.style.display=d.say?'block':'none';

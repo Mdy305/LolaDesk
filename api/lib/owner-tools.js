@@ -20,6 +20,7 @@ import { originateCallback } from './call-callback.js';
 import { awayBrief } from './owner-brief.js';
 import { learnBusiness, parseKnowledge } from './business-learn.js';
 import { SEGMENTS, audience, createCampaign, startCampaign, campaignsWithStats, inSendingHours } from './marketing.js';
+import { buildFillPlan, latestPlan, setPlanStatus } from './fill-plan.js';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
@@ -45,6 +46,9 @@ export const OWNER_TOOLS = [
     message: { type: 'string', description: 'The text. Use {first_name} for personalization.' }, name: { type: 'string' }, confirmed: confirmedArg,
   }, ['segment', 'message']),
   fn('campaign_report', 'How recent marketing campaigns are doing: sent, bookings won, revenue.'),
+  fn('fill_plan', "Lola's 30-day plan to keep the chairs full: open hours, slow days, who is due back, the campaign calendar and projected bookings. action 'show' explains it, 'rebuild' refreshes it with today's numbers, 'approve' starts it, 'pause' stops it, 'autopilot' lets it run without asking. Use for 'how do we fill next month', 'marketing plan', 'strategy', 'fill my chairs'.", {
+    action: { type: 'string', enum: ['show', 'rebuild', 'approve', 'pause', 'autopilot'] }, confirmed: confirmedArg,
+  }),
   fn('text_clients_segment', 'Text a small group of clients right now (25 max): lapsed = not seen in N days, vip, or tomorrow = everyone booked tomorrow. For marketing to a larger audience use launch_campaign.', {
     segment: { type: 'string', enum: ['lapsed', 'vip', 'tomorrow'] },
     days: { type: 'integer', description: 'For lapsed: days since last visit (default 60).' },
@@ -276,6 +280,27 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
         const st = await startCampaign(c, tenant, made.campaign.id, { max: 15, deadline: Date.now() + 12000, tz });
         const first = st.batch?.sent || 0;
         return { ok: true, say: first >= made.total ? `Launched — all ${plural(made.total, 'text')} sent. I'll track who books.` : first ? `Launched. ${first} sent so far; the rest of the ${made.total} go out over the next few minutes. I'll track who books.` : `Launched for ${made.total} clients. ${st.batch?.reason === 'quiet_hours' ? 'Texts start at 9am.' : 'Sending now.'} I'll track who books.`, suggestions: ['How is my campaign doing?'] };
+      }
+
+      case 'fill_plan': {
+        const act = args.action || 'show';
+        let plan = await latestPlan(c, tenant.id).catch(() => null);
+        if (act === 'rebuild' || !plan) {
+          const r = await buildFillPlan(c, tenant, { reason: 'owner' });
+          if (!r.ok) return { ok: false, say: r.error };
+          plan = r.plan;
+        }
+        const st = plan.strategy || {}, items = plan.items || [];
+        const next = items.filter(it => it.status === 'planned').sort((a, b) => a.send_on < b.send_on ? -1 : 1);
+        const cal = next.slice(0, 4).map(it => `${new Date(it.send_on + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })}: ${it.name} (${plural(it.audience, 'client')})`).join('; ');
+        if (act === 'approve' || act === 'autopilot') {
+          if (!confirmed) return park(tenant.id, name, args, `${st.headline || ''} ${cal ? `First up — ${cal}.` : ''} ${act === 'autopilot' ? 'With Autopilot I send each campaign on its day without asking, and rebuild the plan every week.' : 'I send each campaign on its day, 10am–8pm, and skip any whose days have already filled.'} Start it?`.trim());
+          const r = await setPlanStatus(c, tenant, plan.id, act === 'autopilot' ? 'autopilot_on' : 'approve');
+          return r.ok ? { ok: true, say: `Done — the 30-day plan is live${act === 'autopilot' ? ' on Autopilot' : ''}. I'll report the bookings it brings in.`, actions: [{ navigate: '/campaigns' }] } : { ok: false, say: r.error };
+        }
+        if (act === 'pause') { const r = await setPlanStatus(c, tenant, plan.id, 'pause'); return { ok: r.ok, say: r.ok ? 'Paused. Nothing more goes out until you restart it.' : r.error }; }
+        const lev = (st.levers || []).slice(0, 3).join(' ');
+        return { ok: true, say: `${st.headline || ''} ${lev} ${cal ? `The calendar: ${cal}.` : ''} ${st.projected_bookings ? `I expect about ${plural(st.projected_bookings, 'booking')}${st.projected_revenue ? ` (~$${Number(st.projected_revenue).toLocaleString('en-US')})` : ''}.` : ''} ${plan.status === 'active' ? 'It’s running.' : 'Say "start the plan" and I’ll run it.'}`.replace(/\s+/g, ' ').trim(), suggestions: plan.status === 'active' ? ['How is my campaign doing?'] : ['Start the plan', 'Put it on autopilot'] };
       }
 
       case 'campaign_report': {

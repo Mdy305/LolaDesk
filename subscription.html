@@ -49,6 +49,7 @@
 <div id="statusBanner"></div>
 
 <div class="usage" id="usageGrid"></div>
+<div id="lolaBooked"></div>
 
 <h2 style="font-size:15px;font-weight:600;margin:24px 0 14px">Plans</h2>
 <div class="plans" id="plansGrid"></div>
@@ -83,6 +84,7 @@ async function load(){
     STATE=sr;
     renderBanner(sr);
     renderUsage(sr.usage||{});
+    renderLolaBooked(sr.lola_bookings, sr.status);
     renderPlans(pr.plans||[],sr);
     document.getElementById('cancelBtn').style.display=(sr.status==='active'&&!sr.cancel_at_period_end)?'':'none';
     document.getElementById('resumeBtn').style.display=sr.cancel_at_period_end?'':'none';
@@ -119,6 +121,22 @@ function renderUsage(u){
     '<div class="u-card"><div class="u-val">'+(u.bookings_made||0)+'</div><div class="u-lbl">Bookings made</div></div>'+
     '<div class="u-card"><div class="u-val">'+(u.sms_sent||0)+'</div><div class="u-lbl">Texts sent</div></div>'+
     '<div class="u-card"><div class="u-val">'+Math.round(u.minutes_used||0)+'</div><div class="u-lbl">Minutes used</div></div>';
+}
+
+// Lola's bookings this month and LolaDesk's per-appointment fee — the ROI in one line.
+function renderLolaBooked(f, status){
+  const el=document.getElementById('lolaBooked');
+  if(!el) return;
+  if(!f||!f.ready){ el.innerHTML=''; return; }
+  const money=(n)=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const cents=(n)=>'$'+(Number(n||0)/100).toFixed(2);
+  const p=f.policy||{};
+  const price=(p.flat_cents?cents(p.flat_cents):'')+(p.percent?(p.flat_cents?' + ':'')+p.percent+'%':'');
+  const trial=status==='trialing';
+  const fee=trial?'Free during your trial'+(f.waived_cents?' ('+cents(f.waived_cents)+' waived)':''):cents(f.fees_cents)+' this month';
+  el.innerHTML='<div class="card" style="margin-bottom:20px"><h3>Lola booked for you</h3>'+
+    '<div class="desc">'+(f.lola_bookings||0)+' appointment'+(f.lola_bookings===1?'':'s')+' this month from calls, texts, your website and campaigns — '+money(f.lola_revenue)+' in bookings.</div>'+
+    '<div class="desc" style="margin-top:6px">LolaDesk fee'+(price?' ('+price+' per appointment Lola books, only if it happens)':'')+': <b>'+fee+'</b>. Cancelled and no-show appointments are never charged; bookings you add yourself are always free.</div></div>';
 }
 
 function renderPlans(plans,s){

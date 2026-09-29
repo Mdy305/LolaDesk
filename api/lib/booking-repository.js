@@ -4,6 +4,7 @@ import { sendSMS } from '../telnyx-sms.js';
 import { cancelText, confirmText, calendarLinkFor } from './lola-persona.js';
 import { requestDeposit } from './deposits.js';
 import { whenForTenant } from './salon-time.js';
+import { recordFeeFor, voidFee } from './booking-fees.js';
 
 // Short, human-friendly confirmation code for client self-cancel. 6 chars,
 // unambiguous alphabet (no 0/O/1/I/L), crypto-random.
@@ -238,6 +239,8 @@ export async function createCanonicalBooking({ tenantId, clientId, serviceId=nul
   if(status==='confirmed'){
     markRebookingAcceptedSafe({ tenantId, clientId, serviceId }).catch(()=>{});
   }
+  // LolaDesk's per-appointment fee (ledger only; never fails the booking).
+  recordFeeFor(c, data).catch(()=>{});
   return data;
 }
 
@@ -271,6 +274,8 @@ export async function updateCanonicalBooking(tenantId, bookingId, patch, { sourc
   // so they stay silent. Series-wide cancels pass sendCancellation:false per
   // occurrence and send exactly ONE text at the call site (same contract as
   // series creation's one confirmation).
+  // Cancelled / no-show before it was billed → the salon owes nothing for it.
+  if(patch.status && /^(cancel|no[-_ ]?show)/i.test(String(patch.status))) voidFee(c, bookingId, String(patch.status).toLowerCase()).catch(()=>{});
   const isCancellation = CANCELED.has(String(patch.status||'').toLowerCase())
     && String(before.status||'').toLowerCase() === 'confirmed';
   if(isCancellation && sendCancellation){
