@@ -7,6 +7,7 @@
 // This endpoint has NO auth — it's called by Telnyx AI Assistant, not a
 // browser. Security is by shared secret in x-lola-tool-secret header.
 import { db } from '../lib/db.js';
+import { tenantForCalledNumber } from './_tool-tenant.js';
 
 function verifyToolAuth(req) {
   const secret = process.env.LOLA_TOOL_SECRET;
@@ -27,10 +28,8 @@ export default async function handler(req, res) {
     const c = db();
 
     // 1. Find the tenant by the "to" (their Lola number).
-    const { data: tn } = await c.from('tenant_numbers')
-      .select('tenant_id, phone_e164')
-      .eq('phone_e164', to)
-      .maybeSingle();
+    const tnTenant = await tenantForCalledNumber(to);
+    const tn = tnTenant ? { tenant_id: tnTenant.id } : null;
 
     if (!tn?.tenant_id) {
       return res.json({

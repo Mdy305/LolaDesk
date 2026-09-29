@@ -12,9 +12,25 @@ export function rawBody(req) {
   return JSON.stringify(req.body || {});
 }
 
+/**
+ * Build a KeyObject from TELNYX_PUBLIC_KEY in any of the forms people paste:
+ * the raw 32-byte base64 key the Telnyx portal shows, a DER/SPKI base64 key,
+ * or a full PEM block.
+ */
+export function telnyxPublicKey(pub) {
+  const v = String(pub || '').trim();
+  if (!v) return null;
+  if (v.includes('BEGIN PUBLIC KEY')) return crypto.createPublicKey(v);
+  const bytes = Buffer.from(v.replace(/\s+/g, ''), 'base64');
+  const der = bytes.length === 32 ? Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), bytes]) : bytes;
+  return crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
+}
+
 export function verifyTelnyxSignature(req, payload) {
   const publicKey = process.env.TELNYX_PUBLIC_KEY;
-  if (!publicKey) return process.env.NODE_ENV !== 'production';
+  // No key configured: accept (and say so) rather than silently dropping
+  // every call event. Set TELNYX_PUBLIC_KEY to enforce signatures.
+  if (!publicKey) { if (!globalThis.__lolaWarnedTelnyxKey) { globalThis.__lolaWarnedTelnyxKey = 1; console.warn('[telnyx] TELNYX_PUBLIC_KEY not set — webhook signatures are not being checked'); } return true; }
 
   const headers = req.headers || {};
   const signature = headers['telnyx-signature-ed25519'];
@@ -26,12 +42,8 @@ export function verifyTelnyxSignature(req, payload) {
 
   const message = Buffer.from(`${timestamp}|${payload}`);
   const signatureBytes = Buffer.from(String(signature), 'base64');
-  const key = publicKey.includes('BEGIN PUBLIC KEY')
-    ? publicKey
-    : `-----BEGIN PUBLIC KEY-----\n${publicKey.match(/.{1,64}/g)?.join('\n')}\n-----END PUBLIC KEY-----`;
-
   try {
-    return crypto.verify(null, message, key, signatureBytes);
+    return crypto.verify(null, message, telnyxPublicKey(publicKey), signatureBytes);
   } catch {
     return false;
   }

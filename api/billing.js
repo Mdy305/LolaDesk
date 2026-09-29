@@ -98,7 +98,9 @@ export default async function handler(req,res){
       return res.json({ok:true,
         plan:tenant.plan||'starter',
         plan_details:PLANS[tenant.plan||'starter'],
-        status:tenant.subscription_status||'trialing',
+        // The database default is 'trial'; the app speaks 'trialing' — so the
+        // days-left banner and the paywall actually show.
+        status:(tenant.subscription_status==='trial'||!tenant.subscription_status)?'trialing':tenant.subscription_status,
         trial_days_left:daysLeft,
         trial_ends_at:tenant.trial_ends_at,
         current_period_end:sub?.current_period_end?new Date(sub.current_period_end*1000).toISOString():tenant.current_period_end,

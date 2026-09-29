@@ -59,6 +59,10 @@
     if (fb2) fb2();
   };
 
+  // lola-resonance.js asks this before routing a tap (app.js replaces
+  // window.toggleVoice after this file loads, so the atom checks here).
+  global.LolaVoiceRouter = { primary: function () { return !!(global.LolaVoice && lolaPrimary); } };
+
   // Install the router synchronously (taps before the probe resolves fall
   // through to resonance, which is the safe default).
   global.toggleVoice = overrideToggle;

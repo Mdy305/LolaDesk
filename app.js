@@ -135,6 +135,8 @@ function setOrbState(s){
   const prevState = orbState;
   orbState = s;
   orb.setState(s);
+  // Lola's living state, for the resonance atom (lola-resonance.js).
+  if(prevState !== s){ try{ window.dispatchEvent(new CustomEvent('lola:app-state', { detail:{ mode:s } })); }catch(e){} }
 
   // The wake moment: any transition INTO listening (voice wake-word
   // "Hey Lola" or a manual tap) is when Lola visibly comes alive.
@@ -1118,6 +1120,15 @@ function init(){
   // warm up voices
   if(window.speechSynthesis){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = ()=>speechSynthesis.getVoices(); }
 }
+// The dashboard's own conversation loop, for lola-resonance.js (the atom's
+// tap, "Lola" wake word and suggestion chips all run through it).
+window.__lolaApp = {
+  startListening: function(){ voiceTarget = 'orb'; startListening(); },
+  stopListening: function(){ stopListening(); },
+  isListening: function(){ return listening; },
+  ask: function(text){ return processMessage(String(text||'')); },
+  setOrbState: function(s){ setOrbState(s); }
+};
 init();
 
 })();

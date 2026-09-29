@@ -224,6 +224,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       </div>
       <div class="error" id="err3"></div>
       <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
+      <button class="btn-g" onclick="renderEmbed();go(6)" style="width:100%;margin-top:10px;background:transparent;border-color:transparent;color:var(--muted)">Set up her number later</button>
     </div>
 
     <!-- STEP 4 · LIVE IN 60 — the meter -->
@@ -360,6 +361,7 @@ function go(n){
   renderProgress();
   setOrb(n===4?'thinking':n===5?'speaking':'idle');
   if(n===3)renderAutoState();
+  if(n===5&&S.slug){try{localStorage.setItem('loladesk_onboarded_'+S.slug,'1');}catch(e){}}
   // Step 1 has two internal phases (name-entry ↔ hear-your-lola). When
   // arriving at step 1 fresh (no salon name yet, or navigating back),
   // always show the name-entry phase.
@@ -728,7 +730,23 @@ function skipLearn(){
   go(5);setOrb('speaking');
 }
 
-go(0);renderProgress();
+// Came back after confirming the email (login sends new owners here with
+// ?resume=1): pick up at Lola's number, then learn → ready — not step 0.
+(async function boot(){
+  let tok='';try{tok=localStorage.getItem('loladesk_token')||'';}catch(e){}
+  if(Q.get('resume')==='1'&&tok){
+    try{
+      const r=await fetchJson('/api/auth/session',{headers:{Authorization:'Bearer '+tok}},8000);
+      const t=r.ok&&r.b&&r.b.tenant;
+      if(t){
+        S.token=tok;S.slug=t.slug||'';S.salonName=t.name||S.salonName;
+        if(t.phone_number){S.autoAssigned=t.phone_number;S.selectedNumber=t.phone_number;}
+        go(3);return;
+      }
+    }catch(e){}
+  }
+  go(0);renderProgress();
+})();
 </script>
 </body>
 </html>

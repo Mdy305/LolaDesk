@@ -25,20 +25,20 @@ export async function resolveTenantFromRequest(req) {
 
   // Try UUID first.
   if (raw && UUID_RX.test(raw)) {
-    const { data } = await c.from('tenants').select('id, name, slug, phone_e164').eq('id', raw).maybeSingle();
+    const { data } = await c.from('tenants').select('*').eq('id', raw).maybeSingle();
     if (data) return data;
   }
 
   // Try slug.
   if (raw) {
-    const { data } = await c.from('tenants').select('id, name, slug, phone_e164').eq('slug', raw).maybeSingle();
+    const { data } = await c.from('tenants').select('*').eq('slug', raw).maybeSingle();
     if (data) return data;
   }
 
   // Try subdomain of referer/origin.
   const sub = subdomainFromOrigin(req.headers?.origin || req.headers?.referer);
   if (sub) {
-    const { data } = await c.from('tenants').select('id, name, slug, phone_e164').eq('slug', sub).maybeSingle();
+    const { data } = await c.from('tenants').select('*').eq('slug', sub).maybeSingle();
     if (data) return data;
   }
 

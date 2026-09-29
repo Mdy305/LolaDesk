@@ -260,13 +260,13 @@
         if (bad >= 2 && level > 0) { setLevel(level - 1); bad = 0; }
       }
     }
-    requestAnimationFrame(frame);
+    rafId = requestAnimationFrame(frame);
   }
   { const C = center(); P.forEach(p => { p.x = C.x + (Math.random() - .5) * 4; p.y = C.y + (Math.random() - .5) * 4; }); }
-  requestAnimationFrame(frame);
+  let rafId = requestAnimationFrame(frame);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) running = false;
-    else if (!running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+    if (document.hidden) { running = false; cancelAnimationFrame(rafId); }
+    else if (!running) { running = true; last = performance.now(); cancelAnimationFrame(rafId); rafId = requestAnimationFrame(frame); }
   });
 
   // ── the calendar: welcome new bookings, glance at the next client ──

@@ -249,7 +249,7 @@ export async function createPaymentLink({ amountCents, description, successUrl }
         product_data: { name: description || 'Booking deposit' }
       }
     }],
-    after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/bookings.html` } }
+    after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/paid` } }
   };
   const link = await stripeRest('/payment_links', 'POST', body);
   return { id: link.id, url: link.url };

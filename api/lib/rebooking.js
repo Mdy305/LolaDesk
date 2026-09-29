@@ -21,6 +21,7 @@ import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
 import { getAvailability } from './availability-engine-v2.js';
 import { rebookingOfferText, rebookingExpiredText } from './lola-persona.js';
+import { fmtSalon } from './salon-time.js';
 
 export const REBOOK_DEFAULTS = Object.freeze({ interval_days: 42, window_days: 7 });
 
@@ -47,9 +48,7 @@ export function computeTargetDate(completedAt, intervalDays){
   return new Date(t + days * 86400000);
 }
 
-const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', {
-  weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-});
+const fmtWhen = (iso, tz) => fmtSalon(iso, tz);
 
 // Send the offer for a completed booking. Never throws — a failed offer must
 // never fail the status change that triggered it. Injectable deps for tests.
@@ -104,7 +103,7 @@ export async function offerRebooking({ tenantId, booking, policy = null, send = 
       from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
       text: rebookingOfferText({
         firstName: client.name, salon: tenant.name, serviceName: proposed.service_name,
-        when: fmtWhen(proposed.starts_at), staffName: proposed.staff_name
+        when: fmtWhen(proposed.starts_at, proposed.time_zone), staffName: proposed.staff_name
       })
     }).catch(() => {}); // a failed text never fails the completion
     return { ok: true, offer, proposed_start: proposed.starts_at };
@@ -168,7 +167,7 @@ export async function runRebookingSweep(now = new Date(), { send = sendSMS, avai
     const status = String(b?.status || '').toLowerCase();
 
     // The completed booking was cancelled/undone after the offer: expire quietly.
-    if(['cancelled', 'canceled', 'no_show'].includes(status)){
+    if(['cancelled', 'canceled', 'no_show', 'no-show'].includes(status)){
       if(await claim(c, o.id, 'expired', o.status)) result.expired++; else result.skipped++;
       continue;
     }
@@ -235,7 +234,7 @@ export async function runRebookingSweep(now = new Date(), { send = sendSMS, avai
             from: tenant.phone_number, to: client.phone, tenantId: o.tenant_id, type: 'SMS',
             text: rebookingOfferText({
               firstName: client.name, salon: tenant.name, serviceName: slot.service_name,
-              when: fmtWhen(slot.starts_at), staffName: slot.staff_name
+              when: fmtWhen(slot.starts_at, slot.time_zone), staffName: slot.staff_name
             })
           }).catch(() => {});
           result.retexted++;

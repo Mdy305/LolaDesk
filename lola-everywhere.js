@@ -25,8 +25,8 @@
   // ── where am I? ───────────────────────────────────────────
   const extraContext = {};
   function pageName() {
-    const p = location.pathname.replace(/\.html$/, '').replace(/^\//, '') || 'dashboard';
-    return p.split('/')[0];
+    const p = (location.pathname.replace(/\.html$/, '').replace(/^\//, '') || 'dashboard').split('/')[0];
+    return p === 'bookings' ? 'calendar' : p; // the Calendar lives at /bookings
   }
   function heading() {
     const t = (document.querySelector('#cpName, [data-client-name], .client-name, h1')?.textContent || '').trim();
@@ -185,36 +185,56 @@
         g.addColorStop(0, 'rgba(204,255,0,.95)'); g.addColorStop(.6, dark ? 'rgba(245,245,247,.5)' : 'rgba(29,29,31,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
         ctx2d.fillStyle = g; ctx2d.beginPath(); ctx2d.arc(w / 2, w / 2, r, 0, 6.2832); ctx2d.fill();
       }
-      requestAnimationFrame(frame);
+      raf = document.hidden ? 0 : requestAnimationFrame(frame);
     }
-    requestAnimationFrame(frame);
-    return { set mode(m) { S.mode = m; }, get mode() { return S.mode; }, set level(fn) { S.level = fn; }, set dark(d) { dark = d; } };
+    let raf = requestAnimationFrame(frame);
+    // Rest when the tab is in the background; pick up exactly once when it's back.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
+      else if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
+    });
+    return { set mode(m) { if (S.mode !== m) announce(m); S.mode = m; }, get mode() { return S.mode; }, set level(fn) { S.level = fn; }, set dark(d) { dark = d; } };
   }
+
+  // Lola's living state (idle · listening · thinking · speaking), for anything on the page
+  // that wants to breathe with her — the dashboard atom, badges, the calendar stage.
+  function announce(m) { try { window.dispatchEvent(new CustomEvent('lola:state', { detail: { mode: m } })); } catch (_) {} }
 
   // On the calendar her body is lola-stage.js; forward states and voice level to it.
   function StageBody() {
     let mode = 'idle';
     const st = () => window.LolaStage;
     return {
-      set mode(m) { mode = m; try { st() && st().setMode(m); } catch (_) {} }, get mode() { return mode; },
+      set mode(m) { if (mode !== m) announce(m); mode = m; try { st() && st().setMode(m); } catch (_) {} }, get mode() { return mode; },
       set level(fn) { try { st() && st().setLevel(fn); } catch (_) {} },
       set dark(_) {},
     };
   }
 
   // ── voice out: Lola's own voice, driving her particles ──
-  let audioCtx = null, currentAudio = null;
+  let audioCtx = null, currentAudio = null, speakSeq = 0;
   async function speak(text, body) {
     if (store.get('lola.muted', false) || !text) return;
+    const my = ++speakSeq;
     try {
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-      const a = new Audio(`/api/speak-lola?text=${encodeURIComponent(text.slice(0, 600))}`);
-      a.crossOrigin = 'anonymous'; currentAudio = a;
+      if (currentAudio) { const old = currentAudio; currentAudio = null; old.pause(); try { old.dispatchEvent(new Event('error')); } catch (_) {} }
+      // Fetch with the owner's session (so it's never rate-limited as anonymous)
+      // and keep the words out of URLs and logs.
+      const vr = await fetch('/api/speak-lola', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() }, body: JSON.stringify({ text: text.slice(0, 600) }) });
+      if (!vr.ok) throw new Error('voice ' + vr.status);
+      const blob = await vr.blob();
+      if (my !== speakSeq) return;                 // a newer reply is already speaking
+      const url = URL.createObjectURL(blob);
+      const a = new Audio(url); currentAudio = a;
+      a.addEventListener('ended', () => { try { URL.revokeObjectURL(url); } catch (_) {} }, { once: true });
       try {
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
         await audioCtx.resume();
         const src = audioCtx.createMediaElementSource(a), an = audioCtx.createAnalyser(); an.fftSize = 512;
         src.connect(an); an.connect(audioCtx.destination);
+        // Free the audio graph when she's done so long sessions don't pile up nodes.
+        a.addEventListener('ended', () => { try { src.disconnect(); an.disconnect(); } catch (_) {} }, { once: true });
+        a.addEventListener('error', () => { try { src.disconnect(); an.disconnect(); } catch (_) {} }, { once: true });
         const buf = new Uint8Array(an.fftSize);
         body.level = () => { an.getByteTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; s += v * v; } return Math.min(1, Math.sqrt(s / buf.length) * 4.2); };
       } catch (_) { body.level = () => 0.35 + 0.25 * Math.sin(performance.now() / 90); }
@@ -238,7 +258,9 @@
   function remember(role, text) { thread.push({ role, text, at: Date.now() }); thread = thread.slice(-40); store.set('lola.thread', thread); }
 
   async function ask(text) {
-    const history = thread.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.text }));
+    // send() has already remembered this turn — leave it out of history so it isn't sent twice.
+    const past = thread.slice(0, -1);
+    const history = past.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.text }));
     const r = await fetch('/api/lola', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },

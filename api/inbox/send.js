@@ -29,11 +29,9 @@ export default async function handler(req, res) {
     if (!thread?.client_phone) return res.status(404).json({ ok: false, error: 'thread_not_found' });
 
     // Get tenant's Telnyx number (from tenant_numbers or tenants.phone_e164).
-    const { data: tnum } = await c.from('tenant_numbers')
-      .select('phone_e164')
-      .eq('tenant_id', tenant.id)
-      .maybeSingle();
-    const fromNumber = tnum?.phone_e164 || tenant.phone_e164;
+    const { data: tnums } = await c.from('tenant_numbers').select('*').eq('tenant_id', tenant.id);
+    const tnum = (tnums || []).find(r => r.kind === 'primary') || (tnums || [])[0];
+    const fromNumber = tnum?.phone_number || tnum?.phone_e164 || tenant.phone_number || tenant.phone_e164;
     if (!fromNumber) return res.status(400).json({ ok: false, error: 'no_tenant_number' });
 
     // Send via Telnyx.

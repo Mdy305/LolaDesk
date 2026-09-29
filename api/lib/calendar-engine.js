@@ -47,29 +47,25 @@ async function resolveStaffId(tenantId, stylist){
 
 // ISO slots for a service/day. Canonical when the services table has rows;
 // a best-effort afternoon spread otherwise.
-export async function listAvailability({ tenant, date, durationMin = 60, stylist = null }){
+export async function listAvailability({ tenant, date, durationMin = 60, stylist = null, service = null }){
   const tenantId = tenant?.id;
   if(tenantId){
     try{
       const c = db();
       if(c){
-        const { data: services } = await c.from('services').select('id').eq('tenant_id', tenantId).eq('is_active', true).limit(1);
+        // The service the caller actually asked for (not just the first one).
+        const wanted = service ? await resolveServiceId(tenantId, service) : null;
+        const { data: services } = wanted ? { data: [{ id: wanted }] } : await c.from('services').select('id').eq('tenant_id', tenantId).eq('is_active', true).limit(1);
         if(services?.length){
           const staffId = stylist ? await resolveStaffId(tenantId, stylist) : null;
           const av = await getAvailability({ tenantId, serviceId: services[0].id, date: date || new Date().toISOString(), staffId, limit: 12 });
           if(av.ok && av.slots.length) return { slots: av.slots.map(s => s.starts_at) };
         }
       }
-    }catch(e){ /* fall through to naive */ }
+    }catch(e){ /* no invented times */ }
   }
-  const day = date ? new Date(date) : new Date();
-  const slots = [];
-  for(const t of ['12:00', '13:30', '15:00', '16:30', '18:00']){
-    const [h, m] = t.split(':').map(Number);
-    const d = new Date(day); d.setHours(h, m, 0, 0);
-    if(d.getTime() > Date.now()) slots.push(d.toISOString());
-  }
-  return { slots };
+  // Never invent openings (it used to offer made-up UTC times).
+  return { slots: [] };
 }
 
 
@@ -79,7 +75,14 @@ export async function createBookingSafe({ tenant, clientId = null, service, styl
     if(!tenantId) return { ok: false, error: 'tenant_required' };
     const startIso = new Date(startsAt).toISOString();
     const serviceId = await resolveServiceId(tenantId, service);
-    const staffId = await resolveStaffId(tenantId, stylist);
+    let staffId = await resolveStaffId(tenantId, stylist);
+    // No stylist named: take whoever is free at that exact time — never
+    // write a booking without a conflict check.
+    if(serviceId && !staffId){
+      const av = await getAvailability({ tenantId, serviceId, date: startIso, limit: 500 });
+      staffId = (av.slots || []).find(x => x.starts_at === startIso)?.staff_id || null;
+      if(!staffId) return { ok: false, conflict: true, error: 'slot_unavailable' };
+    }
 
     let hold = null;
     if(serviceId && staffId){
@@ -109,9 +112,10 @@ export async function rescheduleBookingSafe({ tenantId, bookingId, newStartsAt }
     const startIso = new Date(newStartsAt).toISOString();
 
     if(current.service_id && current.staff_id){
-      const held = await holdAvailability({ tenantId, clientId: current.client_id, serviceId: current.service_id, staffId: current.staff_id, startsAt: startIso, channel: 'lola_tools', ttlSeconds: 120 });
+      const held = await holdAvailability({ tenantId, clientId: current.client_id, serviceId: current.service_id, staffId: current.staff_id, startsAt: startIso, channel: 'lola_tools', ttlSeconds: 120, excludeBookingId: current.id });
       if(!held.ok) return { ok: false, conflict: true, booking: current };
-      const patch = { start_time: held.slot.starts_at, end_time: held.slot.ends_at, starts_at: held.slot.starts_at, duration_min: held.slot.duration_minutes };
+      // (starts_at is a generated column — writing it made every voice reschedule fail.)
+      const patch = { start_time: held.slot.starts_at, end_time: held.slot.ends_at };
       const booking = await updateCanonicalBooking(tenantId, bookingId, patch, { source: 'lola_tools', reason: 'rescheduled' });
       await releaseHold(tenantId, held.hold.hold_token, 'converted');
       return { ok: true, booking };

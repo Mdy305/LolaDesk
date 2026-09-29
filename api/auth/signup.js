@@ -42,6 +42,12 @@ export default async function handler(req, res){
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
 
     const user = await withBudget(createUser({ email, password, name }), 'create-user');
+    // Supabase answers a sign-up for an email that is ALREADY registered with
+    // a fake user (no identities) and no error. Creating a workspace for it
+    // made duplicate salons and told the owner to "check email" that never came.
+    if(Array.isArray(user?.identities) && user.identities.length === 0){
+      return res.status(409).json({ error: 'This email already has a LolaDesk account. Sign in instead.', code: 'already_registered' });
+    }
     // Create the workspace immediately so the confirmation link has a tenant to
     // activate, but leave it PENDING — no session, no live number — until the
     // owner confirms their email. That closes the open-signup surface: a random

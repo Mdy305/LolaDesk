@@ -4,7 +4,11 @@ import {
 } from './booking-repository.js';
 import { dayBoundsUtc, localWeekday, zonedLocalToUtc } from './timezone.js';
 
-function overlap(aStart,aEnd,bStart,bEnd){ return aStart < bEnd && bStart < aEnd; }
+// Compare instants, not strings: Postgres returns "…14:00:00+00:00" while we
+// build "…14:00:00.000Z", and as text those order wrongly at the same minute
+// (a slot ending exactly when the next booking starts looked like a clash).
+const ms=(v)=>typeof v==='number'?v:new Date(v).getTime();
+function overlap(aStart,aEnd,bStart,bEnd){ return ms(aStart) < ms(bEnd) && ms(bStart) < ms(aEnd); }
 
 function servicePhases(service, customDuration){
   const a1=Math.max(0,Number(service?.active_duration_1_min ?? 0));
@@ -51,14 +55,23 @@ function minuteToTimeText(minute){
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
 }
 
+// When an existing booking keeps its stylist busy. Its real end_time wins
+// (multi-service bookings run longer than their first service). Processing
+// gaps only open up when the booking is exactly that one service.
 function bookingBusySegments(booking,serviceById,allowProcessingOverlap){
+  const start=booking.start_time;
   const svc=serviceById.get(booking.service_id);
-  if(!svc || !allowProcessingOverlap) return [[booking.start_time,booking.end_time]];
+  const fallbackEnd=addMinutes(start,Number(svc?.duration_minutes||60));
+  const end=booking.end_time||fallbackEnd;
+  if(!svc || !allowProcessingOverlap) return [[start,end]];
   const phases=servicePhases(svc,null);
-  return activeSegments(booking.start_time,phases,true);
+  if(!phases.processing) return [[start,end]];
+  const spanMin=(new Date(end)-new Date(start))/60000;
+  if(Math.abs(spanMin-phases.total)>1) return [[start,end]];
+  return activeSegments(start,phases,true);
 }
 
-export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12}){
+export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
   const services=await listServices(tenantId);
@@ -110,8 +123,11 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
       if(timeOff.some(x=>x.staff_id===member.id && overlap(windowStart,windowEnd,x.start_time,x.end_time))) continue;
       if(blockedWindows.some(x=>(!x.staff_id||x.staff_id===member.id) && overlap(windowStart,windowEnd,x.start,x.end))) continue;
 
-      const requestedActive=activeSegments(startsAt,phases,settings.allow_processing_overlap!==false);
-      const memberBookings=existing.filter(x=>x.staff_id===member.id);
+      // The new appointment's buffers travel with it: nothing may sit within
+      // `before` minutes ahead of it or `after` minutes behind it.
+      const requestedActive=activeSegments(startsAt,phases,settings.allow_processing_overlap!==false)
+        .map(([s1,s2],i,arr)=>[i===0?addMinutes(s1,-before):s1, i===arr.length-1?addMinutes(s2,after):s2]);
+      const memberBookings=existing.filter(x=>x.staff_id===member.id && x.id!==excludeBookingId);
       const bookingConflict=memberBookings.some(b=>{
         const existingActive=bookingBusySegments(b,serviceById,settings.allow_processing_overlap!==false);
         return requestedActive.some(([a1,a2])=>existingActive.some(([b1,b2])=>overlap(a1,a2,b1,b2)));
@@ -131,16 +147,18 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
         processing_minutes:phases.processing,active_duration_2_min:phases.active2,
         price:custom?.custom_price ?? service.price,time_zone:timeZone,date:dateKey
       });
-      if(slots.length>=limit) return {ok:true,slots,service,settings};
     }
   }
-  return {ok:true,slots,service,settings};
+  // Earliest times first across ALL stylists (it used to stop after the first
+  // stylist's first 12 slots, so afternoons and other stylists never showed).
+  slots.sort((a,b)=>ms(a.starts_at)-ms(b.starts_at));
+  return {ok:true,slots:slots.slice(0,Math.max(1,Number(limit)||12)),service,settings};
 }
 
-export async function holdAvailability({tenantId,clientId=null,serviceId,staffId,startsAt,channel='voice',conversationId=null,ttlSeconds=300}){
+export async function holdAvailability({tenantId,clientId=null,serviceId,staffId,startsAt,channel='voice',conversationId=null,ttlSeconds=300,excludeBookingId=null}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
-  const av=await getAvailability({tenantId,serviceId,date:startsAt,staffId,limit:200});
+  const av=await getAvailability({tenantId,serviceId,date:startsAt,staffId,limit:500,excludeBookingId});
   const target=new Date(startsAt).toISOString();
   const match=av.slots.find(x=>x.staff_id===staffId && x.starts_at===target);
   if(!match) return {ok:false,conflict:true,error:'slot_unavailable',slots:av.slots.slice(0,5),time_zone:timeZone};

@@ -132,7 +132,11 @@ export async function ensureBookingBaseline(tenantId){
     }
     const rows = [];
     for(const sid of staffIds){
-      const days = have.get(sid) || new Set();
+      // Only brand-new staff (no schedule rows at all) get the default week.
+      // A day the owner removed (e.g. Sunday closed) must stay closed — it
+      // used to be re-added on every calendar load.
+      if(have.has(sid)) continue;
+      const days = new Set();
       for(const day of WEEK){
         if(!days.has(day)) rows.push({ tenant_id: tenantId, staff_id: sid, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' });
       }

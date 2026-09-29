@@ -22,7 +22,8 @@
     "docker:logs": "docker-compose logs -f app",
     "lint": "echo 'No linter configured'",
     "migrate:apply": "node scripts/apply-migrations.mjs",
-    "migrate:apply:verify": "node scripts/apply-migrations.mjs --verify"
+    "migrate:apply:verify": "node scripts/apply-migrations.mjs --verify",
+    "test:launch": "sh tests/launch/run.sh"
   },
   "devDependencies": {
     "pg": "^8.22.0"

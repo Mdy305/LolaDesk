@@ -1,17 +1,15 @@
 import { db, getTenantByPhone, getTenantBySlug } from './lib/db.js';
 import { upsertProviderMapping } from './lib/booking-repository.js';
 
-async function tenantFrom(req,body){
-  if(body.tenant_id){ const c=db(); const {data}=await c.from('tenants').select('*').eq('id',body.tenant_id).maybeSingle(); return data; }
-  if(body.tenant) return getTenantBySlug(body.tenant);
-  return getTenantByPhone(body.to || req.query?.to || '');
-}
+import { authenticatedTenant } from './lib/tenant-context.js';
+// Owner login only (tenant ids / slugs from the request are never trusted).
+async function tenantFrom(req){ return authenticatedTenant(req); }
 
 export default async function handler(req,res){
   try{
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
     const tenant=await tenantFrom(req,body);
-    if(!tenant?.id) return res.status(404).json({ok:false,error:'tenant_not_found'});
+    if(!tenant?.id) return res.status(401).json({ok:false,error:'not_authenticated'});
     const c=db();
     if(req.method==='GET'){
       let q=c.from('provider_mappings').select('*').eq('tenant_id',tenant.id);

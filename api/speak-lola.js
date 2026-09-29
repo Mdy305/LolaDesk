@@ -2,6 +2,7 @@
 // Returns audio/mpeg of Lola saying the text. Used by the voice preview
 // button in onboarding.html step 0 and the "hear her again" button on step 5.
 import { synthesize } from './lib/elevenlabs.js';
+import { allowAnonymousSpeech, hasBearer } from './lib/voice-guard.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,8 +10,10 @@ export default async function handler(req, res) {
 
   try {
     const text = String(req.query?.text || req.body?.text || '').slice(0, 600);
-    const voice_id = req.query?.voice_id || req.body?.voice_id;
+    // Only signed-in owners may pick a different voice; everyone else hears Lola.
+    const voice_id = hasBearer(req) ? (req.query?.voice_id || req.body?.voice_id) : undefined;
     if (!text) return res.status(400).json({ ok: false, error: 'missing_text' });
+    if (!allowAnonymousSpeech(req)) return res.status(429).json({ ok: false, error: 'rate_limited' });
 
     const audio = await synthesize({ text, voice_id });
     res.setHeader('Content-Type', 'audio/mpeg');
