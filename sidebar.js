@@ -3,13 +3,14 @@
    ════════════════════════════════════════════════════════════════
    Four places, nothing else:
 
-     Now       what's happening — today, inbox, live calls
-     Calendar  the book — schedule, services, checkout
-     Growth    filling the chairs — campaigns, revenue, reviews, banking
+     Now       what's happening — today, inbox, calls, operations, Lola Brain
+     Calendar  the book — schedule, services, checkout, inventory
+     Growth    filling the chairs — campaigns, marketer, opportunities,
+               revenue, reviews, banking
      Clients   the people
 
-   Settings, team, billing and phone numbers live behind the owner's
-   name at the bottom, where every account menu lives.
+   Settings, Teach Lola, Activate Lola, launch checklist, team, billing
+   and phone numbers live behind the owner's name at the bottom.
 
    Desktop: a quiet sidebar. The active place shows its pages beneath
    it; the others stay closed.
@@ -55,29 +56,38 @@
     { id: 'now', label: 'Now', href: '/dashboard',
       subs: [{ label: 'Today', href: '/dashboard', pages: ['dashboard', ''] },
              { label: 'Inbox', href: '/inbox', pages: ['inbox'] },
-             { label: 'Calls', href: '/calls', pages: ['calls', 'call-center', 'lola-live'] }],
-      pages: ['operator', 'brain-os', 'operations-os'] },
+             { label: 'Calls', href: '/calls', pages: ['calls', 'call-center', 'lola-live'] },
+             { label: 'Operations', href: '/operations-os', pages: ['operations-os', 'operator'] },
+             { label: 'Lola Brain', href: '/brain-os', pages: ['brain-os'], manager: true }],
+      pages: [] },
     { id: 'calendar', label: 'Calendar', href: '/bookings',
-      subs: [{ label: 'Schedule', href: '/bookings', pages: ['bookings', 'calendar'] },
+      subs: [{ label: 'Schedule', href: '/bookings', pages: ['bookings', 'calendar', 'booking-settings', 'booking-integrity'] },
              { label: 'Services', href: '/services', pages: ['services'] },
-             { label: 'Checkout', href: '/pos', pages: ['pos'] }],
-      pages: ['booking-settings', 'booking-integrity', 'inventory'] },
+             { label: 'Checkout', href: '/pos', pages: ['pos'] },
+             { label: 'Inventory', href: '/inventory', pages: ['inventory'] }],
+      pages: [] },
     { id: 'growth', label: 'Growth', href: '/campaigns', manager: true,
-      subs: [{ label: 'Campaigns', href: '/campaigns', pages: ['campaigns', 'marketing', 'marketer'] },
+      subs: [{ label: 'Campaigns', href: '/campaigns', pages: ['campaigns', 'marketing'] },
+             { label: 'Marketer', href: '/marketer', pages: ['marketer'], manager: true },
+             { label: 'Opportunities', href: '/growth-os', pages: ['growth-os'], manager: true },
              { label: 'Revenue', href: '/revenue', pages: ['revenue'], manager: true },
              { label: 'Reviews', href: '/reviews', pages: ['reviews'] },
              { label: 'Banking', href: '/banking', pages: ['banking', 'banking-payments', 'banking-policies'], owner: true }],
-      pages: ['growth-os', 'launch'] },
+      pages: [] },
     { id: 'clients', label: 'Clients', href: '/clients', subs: [], pages: ['clients', 'client'] },
   ];
 
+  // Everything about the account and Lola's setup lives behind the owner's name.
   const ACCOUNT = [
     { label: 'Settings', href: '/settings', owner: true, pages: ['settings'] },
+    { label: 'Teach Lola your salon', href: '/onboarding?learn=1', owner: true, pages: [] },
+    { label: 'Activate Lola', href: '/activation-studio', owner: true, pages: ['activation-studio'] },
+    { label: 'Launch checklist', href: '/launch', owner: true, pages: ['launch'] },
     { label: 'Team', href: '/team', manager: true, pages: ['team'] },
     { label: 'Billing', href: '/subscription', owner: true, pages: ['subscription'] },
     { label: 'Phone numbers', href: '/numbers', owner: true, pages: ['numbers', 'telecom'] },
   ];
-  const ACCOUNT_PAGES = ['settings', 'team', 'subscription', 'numbers', 'telecom', 'activation-studio'];
+  const ACCOUNT_PAGES = ['settings', 'team', 'subscription', 'numbers', 'telecom', 'activation-studio', 'launch'];
 
   const page = (location.pathname.split('/').pop() || '').replace(/\.html$/, '') || 'dashboard';
   const DATA_PAGE_ALIAS = { overview: 'dashboard', marketing: 'campaigns', brain: 'brain-os', operations: 'operations-os', growth: 'growth-os' };

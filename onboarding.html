@@ -687,7 +687,7 @@ async function learnNow(){
   const website=v('learnSite').trim(), notes=v('learnNotes').trim(), city=v('learnCity').trim(), instagram=v('learnIg').trim();
   const err=document.getElementById('err6');
   if(!website&&!notes){err.textContent='Add your website or paste your menu — or skip for now.';return;}
-  if(!S.token){err.textContent='Your session is missing. Skip for now; you can teach Lola from any page.';return;}
+  if(!S.token){err.textContent='Your session is missing. Skip for now; you can teach Lola any time from the menu under your name.';return;}
   err.textContent='';
   document.getElementById('learnForm').style.display='none';
   document.getElementById('learnWork').style.display='block';
@@ -736,6 +736,24 @@ function skipLearn(){
 // ?resume=1): pick up at Lola's number, then learn → ready — not step 0.
 (async function boot(){
   let tok='';try{tok=localStorage.getItem('loladesk_token')||'';}catch(e){}
+  // ?learn=1 — an existing salon re-teaching Lola from the app (account
+  // menu → "Teach Lola your salon"): straight to the Teach step, and back
+  // to the app when done. Never the number or account steps.
+  if(Q.get('learn')==='1'&&tok){
+    try{
+      const r=await fetchJson('/api/auth/session',{headers:{Authorization:'Bearer '+tok}},8000);
+      const t=r.ok&&r.b&&r.b.tenant;
+      if(t){
+        S.token=tok;S.slug=t.slug||'';S.salonName=t.name||S.salonName;S.fromApp=true;
+        if(t.website_url) setTimeout(()=>{const el=document.getElementById('learnSite');if(el&&!el.value)el.value=t.website_url;},0);
+        if(t.location) setTimeout(()=>{const el=document.getElementById('learnCity');if(el&&!el.value)el.value=t.location;},0);
+        document.querySelectorAll('#learnDone .btn-p').forEach(b=>{b.setAttribute('onclick',"location.href='/dashboard'");b.textContent='Back to LolaDesk';});
+        document.querySelectorAll('#learnForm .btn-g').forEach(b=>{b.setAttribute('onclick',"location.href='/dashboard'");b.textContent='Cancel';});
+        go(6);return;
+      }
+    }catch(e){}
+    location.replace('/login?next='+encodeURIComponent('/onboarding?learn=1'));return;
+  }
   if(Q.get('resume')==='1'&&tok){
     try{
       const r=await fetchJson('/api/auth/session',{headers:{Authorization:'Bearer '+tok}},8000);
