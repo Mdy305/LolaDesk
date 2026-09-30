@@ -1,7 +1,9 @@
 /**
  * api/lib/business-learn.js — Lola learns a salon in one pass.
  * ════════════════════════════════════════════════════════════════
- * Reads the owner's website (several pages) and/or a pasted menu, asks the
+ * Reads the owner's website (several pages), their Google Maps listing (hours,
+ * phone, rating, what reviewers say, the salons around them), their Instagram
+ * and/or a pasted menu, asks the
  * Telnyx brain for one structured profile — services & prices, team, hours,
  * policies, FAQ, brand voice, ideal client, growth ideas and a first campaign —
  * then writes it where the app actually reads it:
@@ -17,6 +19,8 @@
 import { chat } from './llm.js';
 import { safePublicUrl } from './onboarding-engine.js';
 import { ensureBookingBaseline } from './booking-seed.js';
+import { readMaps } from './google-places.js';
+import { readInstagram, igHandle } from './instagram-read.js';
 
 const PAGES = ['/', '/services', '/menu', '/pricing', '/prices', '/service-menu', '/team', '/stylists', '/staff', '/about', '/faq', '/policies'];
 const DEFAULT_STAFF = 'Any available team member';
@@ -225,6 +229,13 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
   if (!t.location && (profile.address || profile.city)) patch.location = profile.address || profile.city;
   if ((!Array.isArray(t.team) || !t.team.length) && profile.team.length) patch.team = profile.team;
   if (!t.website_url && source.website) patch.website_url = source.website;
+  const place = source.google?.place || null;
+  if (place) {
+    if (!t.location && place.address) patch.location = place.address;
+    if (!t.hours && !patch.hours && place.hours?.length) { patch.hours = place.hours.join('; ').slice(0, 400); report.hours = true; }
+    if (!t.google_review_url && place.review_link) { patch.google_review_url = place.review_link; report.reviews_on = true; }
+  }
+  if (!t.gmb_url && (place?.maps_url || source.maps_url)) patch.gmb_url = place?.maps_url || source.maps_url;
   const persona = toneToPersona(profile.tone, profile.positioning);
   if (persona && (!t.persona || t.persona === 'warm')) patch.persona = persona;
   const prior = parseKnowledge(t.knowledge);
@@ -239,7 +250,15 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
     policies: profile.policies,
     marketing: profile.marketing,
     instagram: source.instagram || prior.instagram || null,
-    learned: { at: new Date().toISOString(), website: source.website || null, pasted_menu: !!source.notes, services: profile.services.length, team: profile.team.length },
+    instagram_profile: source.instagram_profile || prior.instagram_profile || null,
+    google: place ? {
+      place_id: place.id, name: place.name, address: place.address, lat: place.lat, lng: place.lng, rating: place.rating, reviews_count: place.reviews_count,
+      review_link: place.review_link, maps_url: place.maps_url || source.maps_url, phone: place.phone, website: place.website, hours: place.hours,
+      photos_count: place.photos_count, type: place.type, price_level: place.price_level, status: place.status,
+      reviews: (place.reviews || []).slice(0, 5).map(r => ({ rating: r.rating, text: String(r.text || '').slice(0, 600), ago: r.ago })),
+      competitors: (source.google.competitors || []).slice(0, 12), fetched_at: new Date().toISOString(),
+    } : (source.maps_url ? { ...(prior.google || {}), maps_url: source.maps_url, pending: source.google?.reason || 'unread' } : (prior.google || null)),
+    learned: { at: new Date().toISOString(), website: source.website || null, maps: source.maps_url || null, pasted_menu: !!source.notes, services: profile.services.length, team: profile.team.length },
   });
   const up = await q(c.from('tenants').update(patch).eq('id', t.id));
   if (up.error) {
@@ -247,6 +266,11 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
     const core = {}; for (const k of ['services', 'hours', 'location', 'knowledge']) if (patch[k] !== undefined) core[k] = patch[k];
     const again = await q(c.from('tenants').update(core).eq('id', t.id));
     if (again.error) report.notes.push('tenant_update_failed');
+    // The review link is what turns the review engine on — try it on its own.
+    for (const k of ['google_review_url', 'gmb_url']) if (patch[k]) {
+      const one = await q(c.from('tenants').update({ [k]: patch[k] }).eq('id', t.id));
+      if (one.error && k === 'google_review_url') report.reviews_on = false;
+    }
   }
 
   // 4) Booking settings: timezone only for a brand-new calendar; cancellation window if stated.
@@ -266,6 +290,15 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
 }
 
 // ── Lola's words ─────────────────────────────────────────────
+/** Where the salon sits on the map among its neighbors (stars × how many vouched). */
+export function mapRank(place, competitors) {
+  if (!place) return null;
+  const score = (x) => (Number(x?.rating) || 0) * Math.log10((Number(x?.reviews_count) || 0) + 1);
+  const all = [place, ...(competitors || []).filter(x => x && x.id !== place.id)];
+  if (all.length < 2) return null;
+  const sorted = all.slice().sort((a, b) => score(b) - score(a));
+  return { rank: sorted.findIndex(x => x.id === place.id) + 1, of: all.length, leader: sorted[0].id === place.id ? sorted[1] : sorted[0] };
+}
 const money = (n) => '$' + Math.round(n).toLocaleString('en-US');
 export function learnedSay(profile, report, source = {}) {
   const bits = [];
@@ -274,32 +307,65 @@ export function learnedSay(profile, report, source = {}) {
   if (profile.hours_text) bits.push('your hours');
   if (profile.team.length) bits.push(`your team (${profile.team.slice(0, 3).map(t => t.name.split(' ')[0]).join(', ')}${profile.team.length > 3 ? '…' : ''})`);
   if (profile.faq.length) bits.push(`${profile.faq.length} common question${profile.faq.length === 1 ? '' : 's'}`);
-  const from = source.website ? `I read ${source.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}` : 'I read your menu';
+  const place = source.google?.place;
+  const from = source.website ? `I read ${source.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}${place ? ' and your Google Maps listing' : ''}`
+    : place ? 'I read your Google Maps listing' : 'I read your menu';
   let say = bits.length ? `${from} and learned ${bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits.at(-1) : bits[0]}.` : `${from}, but couldn't find services or prices. Paste your menu and I'll learn it.`;
+  if (place?.rating) {
+    const rank = mapRank(place, source.google.competitors || []);
+    say += ` On Google Maps you're ${place.rating.toFixed(1)}★ from ${place.reviews_count.toLocaleString('en-US')} reviews${rank ? ` — #${rank.rank} of ${rank.of} salons around you` : ''}.`;
+    if (report.reviews_on) say += ' I turned on Google review requests: every happy client gets your review link after their visit.';
+  }
   if (profile.tone || profile.positioning) say += ` I'll sound like your brand: ${String(profile.tone || profile.positioning).toLowerCase().replace(/\.$/, '')}.`;
   const fc = profile.marketing.first_campaign;
   if (fc) say += ` My first move: text your ${fc.segment === 'all' ? 'clients' : fc.segment === 'vip' ? 'VIP clients' : 'clients who haven’t been in for a while'}. Want to see the message?`;
   const suggestions = [];
   if (fc) suggestions.push(`Text my ${fc.segment === 'vip' ? 'VIP' : 'lapsed'} clients: ${fc.message}`);
   if (profile.marketing.opportunities.length) suggestions.push('How can I grow this month?');
+  if (place) suggestions.unshift('Show my growth plan');
   suggestions.push('Catch me up on today');
   return { say, suggestions: suggestions.slice(0, 3) };
 }
 
 /** One call: read → understand → write. */
-export async function learnBusiness(c, tenant, { website, notes, instagram, city, llm } = {}) {
-  const source = { website: null, notes: null, instagram: null };
+export async function learnBusiness(c, tenant, { website, notes, instagram, city, maps_url, llm } = {}) {
+  const source = { website: null, notes: null, instagram: null, maps_url: null, google: null, instagram_profile: null };
   const chunks = [];
   let readError = null;
+  // Google Maps first: it can also hand us the website the owner didn't type.
+  if (maps_url) {
+    source.maps_url = String(maps_url).trim().slice(0, 600);
+    const [g, ig] = await Promise.all([
+      readMaps(source.maps_url, { name: tenant.name, city }),
+      instagram ? readInstagram(instagram) : Promise.resolve(null),
+    ]);
+    source.google = g; source.instagram_profile = ig;
+    if (g?.ok) {
+      const p = g.place;
+      chunks.push([`=== GOOGLE MAPS LISTING ===`, p.name, p.address, p.phone ? `Phone: ${p.phone}` : '', p.website ? `Website: ${p.website}` : '',
+        p.hours.length ? `Hours: ${p.hours.join('; ')}` : '', p.summary, p.rating ? `Rating ${p.rating} from ${p.reviews_count} reviews` : '',
+        ...p.reviews.map(r => `Review (${r.rating}★): ${r.text}`)].filter(Boolean).join('\n'));
+      if (!website && p.website) website = p.website;
+    }
+  } else if (instagram) source.instagram_profile = await readInstagram(instagram);
   if (website) {
     try { const site = await readWebsite(website); source.website = site.url; source.instagram = site.instagram; chunks.push(site.text); }
     catch (e) { readError = e.message; }
   }
   if (notes && String(notes).trim()) { source.notes = String(notes).slice(0, 20000); chunks.push(`=== MENU / NOTES FROM THE OWNER ===\n${source.notes}`); }
   if (instagram) source.instagram = String(instagram).replace(/^@|https?:\/\/(www\.)?instagram\.com\//g, '').replace(/\/.*$/, '').slice(0, 40) || source.instagram;
+  if (source.instagram_profile?.read) chunks.push(`=== INSTAGRAM @${source.instagram_profile.handle} ===\n${source.instagram_profile.followers ?? '?'} followers, ${source.instagram_profile.posts ?? '?'} posts`);
   if (city) chunks.push(`=== LOCATION (from the owner) ===\n${String(city).slice(0, 120)}`);
-  if (!chunks.length || (!source.website && !source.notes)) {
-    return { ok: false, error: readError || 'Give me your website or paste your menu.', say: readError ? `${String(readError).replace(/\.?$/, '.')} Try pasting your menu instead.` : 'Give me your website or paste your menu and I’ll learn it.' };
+  if (!chunks.length || (!source.website && !source.notes && !source.google?.ok)) {
+    // Keep the Maps link even when it can't be read yet — the growth plan reads it later.
+    if (source.maps_url && !tenant.gmb_url) { try { await c.from('tenants').update({ gmb_url: source.maps_url }).eq('id', tenant.id); } catch (_) {} }
+    const mapsMiss = source.maps_url && !source.google?.ok
+      ? (source.google?.reason === 'no_key' ? 'I saved your Google Maps link — I’ll read it as soon as Google Maps is connected.' : 'I couldn’t find that place on Google Maps.')
+      : null;
+    const say = readError ? `${String(readError).replace(/\.?$/, '.')} Try pasting your menu instead.`
+      : mapsMiss ? `${mapsMiss} Add your website or paste your menu so I can learn the rest.`
+      : 'Give me your website or paste your menu and I’ll learn it.';
+    return { ok: false, error: readError || mapsMiss || 'Give me your website or paste your menu.', say, saved_maps: !!source.maps_url };
   }
   const corpus = chunks.join('\n\n');
   let raw = await understand({ name: tenant.name, businessMode: tenant.business_mode || 'salon', corpus, llm });

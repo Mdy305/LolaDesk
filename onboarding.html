@@ -274,11 +274,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <div id="learnForm">
         <div class="step-label">Teach Lola</div>
         <h2>Let her learn<br/>your salon.</h2>
-        <p class="sub">Your website, your menu, or both. Lola reads it and learns your services, prices, team, hours and brand voice, then plans your first campaign. About 30 seconds.</p>
+        <p class="sub">Three links. Lola reads your website, your Google Maps listing and your Instagram — services, prices, team, hours, what your reviewers say and the salons around you — then builds your growth plan. About 30 seconds.</p>
         <div class="field"><label>Website</label><input class="input" id="learnSite" placeholder="yoursalon.com" autocomplete="url" inputmode="url"/></div>
-        <div class="field"><label>City</label><input class="input" id="learnCity" placeholder="Miami Beach, FL" autocomplete="address-level2"/></div>
+        <div class="field"><label>Google Maps link</label><input class="input" id="learnMaps" placeholder="maps.app.goo.gl/… or your salon’s name and city" inputmode="url"/><small class="hint" style="display:block;font-size:12px;color:var(--muted);margin-top:6px">On Google Maps, open your salon → Share → Copy link.</small></div>
+        <div class="field"><label>Instagram</label><input class="input" id="learnIg" placeholder="@yoursalon or instagram.com/yoursalon"/></div>
         <div class="field"><label>Or paste your menu &amp; prices</label><textarea class="input" id="learnNotes" rows="4" placeholder="Women's cut — $85&#10;Balayage — from $250 (3 hrs)&#10;Blowout — $55" style="resize:vertical;min-height:96px"></textarea></div>
-        <div class="field"><label>Instagram (optional)</label><input class="input" id="learnIg" placeholder="@yoursalon"/></div>
         <div class="field"><label>Or drop your files</label>
           <label class="drop" id="learnDrop" tabindex="0"><input type="file" id="learnFiles" multiple accept=".pdf,.docx,.csv,.tsv,.txt,.md" hidden/>
             <b>Menu, price list, policies or client list</b>
@@ -295,19 +295,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <div class="step-label" id="learnLabel">Lola is reading</div>
         <h2 id="learnTitle">Learning your salon…</h2>
         <div class="status" id="learnTicker">
-          <div class="srow running" id="l-read"><span class="dot"></span><div class="scopy"><b>Reading your website and menu</b><small>Every page that matters</small></div></div>
+          <div class="srow running" id="l-read"><span class="dot"></span><div class="scopy"><b>Reading your website, Google Maps and Instagram</b><small>Every page, every review, the salons around you</small></div></div>
           <div class="srow" id="l-files" style="display:none"><span class="dot"></span><div class="scopy"><b>Reading your files</b><small>Documents and client lists</small></div></div>
           <div class="srow" id="l-menu"><span class="dot"></span><div class="scopy"><b>Learning services &amp; prices</b><small>So she can quote and book them</small></div></div>
           <div class="srow" id="l-team"><span class="dot"></span><div class="scopy"><b>Learning your team &amp; hours</b><small>Who does what, and when you're open</small></div></div>
           <div class="srow" id="l-brand"><span class="dot"></span><div class="scopy"><b>Learning your brand voice</b><small>So she sounds like you</small></div></div>
           <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your next 30 days</b><small>Open chairs, who's due back, the campaigns to fill them</small></div></div>
+          <div class="srow" id="l-grow"><span class="dot"></span><div class="scopy"><b>Building your growth plan</b><small>Where you stand on the map, and the moves worth the most</small></div></div>
         </div>
         <div class="strategy" id="learnStrategy" style="display:none" aria-live="polite"></div>
         <p class="sub" id="learnSay" style="display:none;margin-bottom:22px"></p>
         <div class="actions" id="learnDone" style="display:none;gap:10px;flex-wrap:wrap">
           <button class="btn-p" onclick="go(5);setOrb('speaking')">Continue</button>
           <button class="btn-g" onclick="learnAgain()">Add more</button>
-          <a class="btn-g" href="/campaigns" style="text-decoration:none;display:inline-flex;align-items:center">Review the plan in Marketing</a>
+          <a class="btn-g" href="/marketer" style="text-decoration:none;display:inline-flex;align-items:center">See your growth plan</a>
         </div>
       </div>
     </div>
@@ -356,7 +357,7 @@ const COPY=[
   ['Activation','Live in<br/>60 seconds.','Every step is a real Telnyx operation.'],
   ['Ready','Call her<br/>right now.','Your salon AI is live.']
 ];
-COPY[6]=['Lola learns','She reads your<br/>salon for you.','Website or menu: she learns services, prices, team, hours and your brand voice, then plans your first campaign.'];
+COPY[6]=['Lola learns','She reads your<br/>salon for you.','Your website, Google Maps and Instagram: she learns your salon, sees where you stand against the salons around you, and ranks the moves that bring in the most money.'];
 let S={step:0,salonName:'',ownerName:'',location:'',hours:'',website:'',email:'',token:'',selectedNumber:''};
 // Never let this flow dead-stop: every proxied API call gets a hard timeout
 // so a slow/failing backend can't leave a button disabled or the orb stuck
@@ -707,11 +708,11 @@ try{
 
 // ── STEP 6 · LOLA LEARNS YOUR SALON ──────────────────────────────
 let learnTick=null;
-function learnRows(n){['l-read','l-menu','l-team','l-brand','l-plan'].forEach((id,i)=>mark(id,i<n?'done':i===n?'running':''));}
+function learnRows(n){['l-read','l-menu','l-team','l-brand','l-plan','l-grow'].forEach((id,i)=>mark(id,i<n?'done':i===n?'running':''));}
 async function learnNow(){
-  const website=v('learnSite').trim(), notes=v('learnNotes').trim(), city=v('learnCity').trim(), instagram=v('learnIg').trim();
+  const website=v('learnSite').trim(), notes=v('learnNotes').trim(), maps_url=v('learnMaps').trim(), instagram=v('learnIg').trim(), city=S.location||'';
   const err=document.getElementById('err6');
-  if(!website&&!notes&&!S.files.length){err.textContent='Add your website, paste your menu, or drop a file — or skip for now.';return;}
+  if(!website&&!maps_url&&!notes&&!S.files.length){err.textContent='Add your website or Google Maps link, paste your menu, or drop a file — or skip for now.';return;}
   if(!S.token){err.textContent='Your session is missing. Skip for now; you can teach Lola any time from the menu under your name.';return;}
   err.textContent='';
   document.getElementById('learnForm').style.display='none';
@@ -722,7 +723,7 @@ async function learnNow(){
   document.getElementById('learnLabel').textContent='Lola is reading';
   setOrb('thinking');
   let step=0; learnRows(0);
-  learnTick=setInterval(()=>{ if(step<4){step++;learnRows(step);} },5200);
+  learnTick=setInterval(()=>{ if(step<5){step++;learnRows(step);} },5200);
   // Files first: client lists go to Clients, documents become Lola's knowledge
   // and join what she reads for the profile and the plan.
   let fileNotes='', filesMsg='';
@@ -746,7 +747,7 @@ async function learnNow(){
     fr.classList.remove('running'); fr.classList.add('done'); fr.querySelector('small').textContent=filesMsg||'Read';
   }
   const learnNotes=(notes+(fileNotes?'\n'+fileNotes:'')).slice(0,14000);
-  if(!website&&!learnNotes){
+  if(!website&&!maps_url&&!learnNotes){
     // Only a client list: nothing to learn a profile from — done.
     clearInterval(learnTick); learnRows(5);
     document.getElementById('learnTitle').textContent='Your clients are in.';
@@ -755,7 +756,7 @@ async function learnNow(){
     document.getElementById('learnDone').style.display='flex'; setOrb('speaking'); return;
   }
   let r;
-  try{ r=await fetchJson('/api/onboarding/learn',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({website,notes:learnNotes,city,instagram})},58000); }
+  try{ r=await fetchJson('/api/onboarding/learn',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({website,maps_url,notes:learnNotes,city,instagram})},58000); }
   catch(e){ r={ok:false,b:{say:e.name==='AbortError'?'That took too long. Try pasting your menu instead.':'The network dropped. Try again.'}}; }
   clearInterval(learnTick);
   const d=(r&&r.b)||{};
@@ -765,16 +766,18 @@ async function learnNow(){
     err.textContent=d.say||d.error||'Lola couldn\'t read that. Try pasting your menu.';
     setOrb('idle');return;
   }
-  learnRows(5);
+  learnRows(6);
   const p=d.profile||{};
   const sub=(id,t)=>{const row=document.getElementById(id);if(row&&t)row.querySelector('small').textContent=t;};
-  sub('l-read',d.source&&d.source.website?d.source.website.replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,''):'Your menu');
+  const gr=d.growth||null, gg=gr&&gr.google;
+  sub('l-read',[d.source&&d.source.website?d.source.website.replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,''):'',gg&&gg.rating?'Google Maps '+Number(gg.rating).toFixed(1)+'★ · '+Number(gg.reviews_count||0).toLocaleString()+' reviews':'',gr&&gr.instagram&&gr.instagram.followers?'@'+gr.instagram.handle+' · '+Number(gr.instagram.followers).toLocaleString()+' followers':''].filter(Boolean).join(' · ')||'Your menu');
+  sub('l-grow',gr?(gg&&gg.rank?'#'+gg.rank+' of '+gg.of+' salons around you'+(gr.moves&&gr.moves[0]?' · first move: '+gr.moves[0].title:''):(gr.moves&&gr.moves[0]?'First move: '+gr.moves[0].title:'Ready in Marketing')):'Ready in Marketing');
   sub('l-menu',(p.services||[]).length?(p.services.length+' services'+((p.services||[]).slice(0,3).map(x=>x.name).length?' · '+p.services.slice(0,3).map(x=>x.name).join(', '):'')):'None found yet — add them in Services');
   sub('l-team',[(p.team||[]).length?p.team.slice(0,4).map(x=>x.name.split(' ')[0]).join(', '):'',p.hours_text||''].filter(Boolean).join(' · ')||'Add them in Team');
   sub('l-brand',[p.positioning,p.tone].filter(Boolean).join(' · ')||'Warm and professional');
   const fp=d.fill_plan;
   sub('l-plan',fp&&fp.headline?(fp.headline+(fp.campaigns?' '+fp.campaigns+' campaigns scheduled'+(fp.projected_bookings?' · ~'+fp.projected_bookings+' bookings':'')+'.':'')):(p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are'));
-  renderStrategy(p.marketing||null, fp, filesMsg);
+  renderStrategy(p.marketing||null, fp, filesMsg, gr);
   document.getElementById('learnTitle').textContent='She knows your salon.';
   document.getElementById('learnLabel').textContent='Lola learned';
   const say=document.getElementById('learnSay'); say.textContent=d.say||''; say.style.display=d.say?'block':'none';
@@ -842,16 +845,22 @@ function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;',
   drop.addEventListener('drop',e=>addFiles(e.dataTransfer&&e.dataTransfer.files));
 })();
 // ── Her marketing strategy, shown in full (nothing is sent until you approve it) ──
-function renderStrategy(m,fp,filesMsg){
+function renderStrategy(m,fp,filesMsg,gr){
   const box=document.getElementById('learnStrategy'); if(!box) return;
   const ops=(m&&Array.isArray(m.opportunities)?m.opportunities:[]).slice(0,4);
   const fc=m&&m.first_campaign;
-  if(!m||(!m.ideal_client&&!ops.length&&!fc&&!(fp&&fp.headline))){box.style.display='none';return;}
-  box.innerHTML=`<h3>Lola's marketing strategy</h3>
+  const moves=(gr&&Array.isArray(gr.moves)?gr.moves:[]).slice(0,3);
+  if((!m||(!m.ideal_client&&!ops.length&&!fc))&&!(fp&&fp.headline)&&!moves.length){box.style.display='none';return;}
+  m=m||{};
+  const money=n=>'$'+Math.round(n||0).toLocaleString('en-US');
+  const gg=gr&&gr.google;
+  box.innerHTML=`<h3>Lola's growth plan</h3>
+    ${gg&&gg.rank?`<div class="who">On Google Maps you're #${gg.rank} of ${gg.of} salons around you · ${Number(gg.rating||0).toFixed(1)}★ from ${Number(gg.reviews_count||0).toLocaleString('en-US')} reviews${gg.leader?` · ${esc(gg.leader.name)} leads with ${Number(gg.leader.reviews_count||0).toLocaleString('en-US')}`:''}</div>`:''}
+    ${moves.length?`<ol>${moves.map(x=>`<li><b>${esc(x.title)}</b>${x.impact_usd?` — ~${money(x.impact_usd)}`:''}<br><span style="color:var(--muted)">${esc(x.why||'')}</span></li>`).join('')}</ol>`:''}
     ${m.ideal_client?`<div class="who">Your ideal client: ${esc(m.ideal_client)}</div>`:''}
-    ${ops.length?`<ol>${ops.map(o=>`<li>${esc(o)}</li>`).join('')}</ol>`:''}
+    ${!moves.length&&ops.length?`<ol>${ops.map(o=>`<li>${esc(o)}</li>`).join('')}</ol>`:''}
     ${fc?`<div class="msg"><small>First campaign · ${esc(fc.name||'')} · ${fc.segment==='vip'?'VIP clients':fc.segment==='all'?'Everyone':'Clients who haven’t been back'}</small>${esc(fc.message)}</div>`:''}
-    <div class="note">Nothing is sent until you approve it in Marketing.${filesMsg?' '+esc(filesMsg)+'.':''}</div>`;
+    <div class="note">Nothing is sent until you approve it in Marketing. Your full growth plan is in Marketing → Growth plan.${filesMsg?' '+esc(filesMsg)+'.':''}</div>`;
   box.style.display='block';
 }
 function learnAgain(){document.getElementById('learnWork').style.display='none';document.getElementById('learnForm').style.display='block';setOrb('idle');}
@@ -874,7 +883,8 @@ function skipLearn(){
       if(t){
         S.token=tok;S.slug=t.slug||'';S.salonName=t.name||S.salonName;S.fromApp=true;
         if(t.website_url) setTimeout(()=>{const el=document.getElementById('learnSite');if(el&&!el.value)el.value=t.website_url;},0);
-        if(t.location) setTimeout(()=>{const el=document.getElementById('learnCity');if(el&&!el.value)el.value=t.location;},0);
+        if(t.location) S.location=t.location;
+        if(t.gmb_url) setTimeout(()=>{const el=document.getElementById('learnMaps');if(el&&!el.value)el.value=t.gmb_url;},0);
         document.querySelectorAll('#learnDone .btn-p').forEach(b=>{b.setAttribute('onclick',"location.href='/dashboard'");b.textContent='Back to LolaDesk';});
         document.querySelectorAll('#learnForm .btn-g').forEach(b=>{b.setAttribute('onclick',"location.href='/dashboard'");b.textContent='Cancel';});
         go(6);return;
