@@ -12,6 +12,7 @@
  * or speaks from the dashboard.
  */
 import { db, tenantKnowledgePrompt } from './db.js';
+import { bookingLinkFor, telnyxSafeVariables } from './booking-link.js';
 
 const NEUTRAL_VARIABLES = {
   tenant_id: '',
@@ -57,7 +58,7 @@ export async function buildTenantVariables(tenant, scope = {}) {
     servicesFallback = tenant.services.map(s => s.name + (s.price ? ' $' + s.price : '') + (s.duration ? ' (' + s.duration + ')' : '')).join('; ');
   }
 
-  return {
+  return telnyxSafeVariables({
     tenant_id: tenant.id || '',
     to: toNumber,
     from: fromNumber,
@@ -68,11 +69,11 @@ export async function buildTenantVariables(tenant, scope = {}) {
     services: services || servicesFallback,
     staff: staffList,
     marketing_context: marketingContext,
-    booking_url: tenant.booking_url || ('https://www.loladesk.com/book.html?t=' + (tenant.slug || '')),
+    booking_url: bookingLinkFor(tenant),
     website_url: tenant.website_url || '',
     gmb_url: tenant.gmb_url || tenant.google_review_url || '',
     maps_url: tenant.gmb_url || '',
     knowledge: tenantKnowledgePrompt(tenant),
     ...memory
-  };
+  });
 }

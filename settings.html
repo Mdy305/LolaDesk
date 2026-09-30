@@ -77,7 +77,7 @@
       <div class="fld"><label>Business hours</label><input id="sHours" placeholder="Tue-Sat, Noon-8pm"/></div>
       <div class="fld"><label>Website</label><input id="sWebsite" placeholder="https://yoursalon.com"/></div>
       <div class="fld"><label>Google Business (Maps/GMB) link</label><input id="sGmb" placeholder="https://www.google.com/maps/place/Your+Salon"/></div>
-      <div class="fld"><label>Booking link</label><input id="sBookingUrl" readonly style="opacity:.7"/></div>
+      <div class="fld"><label>Booking link</label><input id="sBookingUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Your LolaDesk booking page"/><small id="sBookingHint" style="display:block;margin-top:6px;font-size:11.5px;color:var(--text3);line-height:1.4">Already book through Boulevard, Vagaro, Square or your own site? Paste that link. Leave it empty and clients book on your LolaDesk page.</small></div>
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveSalon()">Save salon details</button></div>
     <div class="msg" id="salonMsg"></div>
@@ -330,6 +330,17 @@ function tog(el){el.classList.toggle('on');}
 function on(id){return document.getElementById(id)?.classList.contains('on');}
 function setSw(id,v){const e=document.getElementById(id);if(e)e.classList.toggle('on',!!v);}
 function val(id){return document.getElementById(id)?.value||'';}
+// Mirrors api/lib/booking-link.js: the salon's own link, else its LolaDesk page.
+function lolaPage(t){const k=(t&&(t.slug||t.id))||'';return k?location.origin+'/book?t='+encodeURIComponent(k):'';}
+function isLolaPage(u){try{const x=new URL(u);return /(^|\.)loladesk\.com$/.test(x.hostname)&&/^\/book(\.html)?\/?$/.test(x.pathname);}catch(e){return false;}}
+function renderBookingLink(){
+  const own=String((TENANT&&TENANT.booking_url)||'').trim();
+  const custom=own&&!isLolaPage(own)?own:'';
+  const page=lolaPage(TENANT);
+  setVal('sBookingUrl',custom);
+  const inp=document.getElementById('sBookingUrl'); if(inp) inp.placeholder=page||'Your LolaDesk booking page';
+  const box=document.getElementById('bookLink'); if(box) box.textContent=custom||page||'—';
+}
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -348,9 +359,7 @@ async function load(){
     if(TENANT.operator_phone){
       document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
     }
-    const bookUrl=TENANT.booking_url||('https://www.loladesk.com/book.html?t='+(TENANT.slug||''));
-    setVal('sBookingUrl',bookUrl);
-    document.getElementById('bookLink').textContent=bookUrl;
+    renderBookingLink();
 
     // Phone status
     const ps=document.getElementById('phoneStatus');
@@ -493,9 +502,11 @@ async function saveSalon(){
   try{
     const r=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
       name:val('sName'),owner_name:val('sOwner'),location:val('sLocation'),
-      hours:val('sHours'),website_url:val('sWebsite'),gmb_url:val('sGmb')})});
+      hours:val('sHours'),website_url:val('sWebsite'),gmb_url:val('sGmb'),booking_url:val('sBookingUrl').trim()})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Save failed');
+    if(d.tenant) TENANT=Object.assign(TENANT||{},d.tenant);
+    renderBookingLink();
     msg('salonMsg','Saved. Lola now uses these details on every call.',true);
   }catch(e){msg('salonMsg',e.message,false);}
 }

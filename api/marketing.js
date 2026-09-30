@@ -19,12 +19,11 @@ import { sendSms } from './lib/sms.js';
 import { parseKnowledge } from './lib/business-learn.js';
 import { buildFillPlan, latestPlan, setPlanStatus, skipItem, editItem } from './lib/fill-plan.js';
 import { clientHistory } from './lib/client-history.js';
+import { bookingLinkFor } from './lib/booking-link.js';
 import { SEGMENTS, audience, loadClients, recentlyTexted, createCampaign, startCampaign, setStatus, campaignsWithStats, personalize, tenantTz, inSendingHours } from './lib/marketing.js';
 
 function bookingLink(req, tenant) {
-  if (tenant.booking_url) return tenant.booking_url;
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'www.loladesk.com';
-  return tenant.slug ? `https://${host}/book?t=${encodeURIComponent(tenant.slug)}` : null;
+  return bookingLinkFor(tenant) || null;
 }
 
 export default async function handler(req, res) {

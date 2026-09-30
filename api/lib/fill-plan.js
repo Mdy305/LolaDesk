@@ -21,6 +21,7 @@
  * Table: lola_fill_plans (sql/revenue-engine.sql).
  */
 import { chat } from './llm.js';
+import { bookingLinkFor as sharedBookingLink } from './booking-link.js';
 import { getBookingSettings, listStaff, getStaffSchedules } from './booking-repository.js';
 import { localDateKey, dayBoundsUtc, zonedLocalToUtc, localWeekday } from './timezone.js';
 import { clientHistory, planSegments } from './client-history.js';
@@ -181,9 +182,7 @@ async function writeCopy(items, { tenant, knowledge, link, llm = chat, timeoutMs
 }
 
 export function bookingLinkFor(tenant) {
-  if (tenant.booking_url) return tenant.booking_url;
-  const base = (process.env.APP_URL || 'https://www.loladesk.com').replace(/\/$/, '');
-  return tenant.slug ? `${base}/book?t=${encodeURIComponent(tenant.slug)}` : null;
+  return sharedBookingLink(tenant) || null;
 }
 
 export async function buildFillPlan(c, tenant, { now = new Date(), llm = chat, autopilot = null, reason = 'onboarding', copyTimeoutMs = 20000 } = {}) {
