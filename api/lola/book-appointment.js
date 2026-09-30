@@ -8,6 +8,8 @@ import { upsertClient, getClientByPhone, e164 } from '../lib/db.js';
 import { holdAvailability, getAvailability } from '../lib/availability-engine-v2.js';
 import { createCanonicalBooking, releaseHold } from '../lib/booking-repository.js';
 import { salonTz, fmtSalon } from '../lib/salon-time.js';
+import { db } from '../lib/db.js';
+import { gateNewBooking, turnedAway, CALLER_LINE } from '../lib/billing-enforce.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -20,6 +22,11 @@ export default async function handler(req, res) {
     if (!tenant) return res.status(404).json({ error: 'tenant_not_found' });
     const startIso = new Date(start_iso).toISOString();
     const tz = await salonTz(tenant.id);
+    // Trial over and unpaid (BILLING_ENFORCE): take a callback, text the owner.
+    if (gateNewBooking(tenant)) {
+      await turnedAway(db(), tenant, { channel: 'voice', caller: from_number, when: fmtSalon(startIso, tz, 'long') });
+      return res.json({ ok: false, blocked: true, message: CALLER_LINE });
+    }
 
     // Existing client first (never rename them to "Client"), else create.
     let client = await getClientByPhone(tenant.id, from_number).catch(() => null);

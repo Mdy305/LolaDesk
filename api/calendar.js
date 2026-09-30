@@ -12,6 +12,7 @@ import { ensureBookingBaseline } from './lib/booking-seed.js';
 import { dayBoundsUtc, localDateKey, zonedLocalToUtc } from './lib/timezone.js';
 import { offerFreedSlot } from './lib/booking-reminders.js';
 import { commitToExternalProvider } from './lib/booking-brain.js';
+import { gateNewBooking, turnedAway, WIDGET_LINE } from './lib/billing-enforce.js';
 
 function jsonBody(req){
   if(typeof req.body==='string') { try{return JSON.parse(req.body||'{}')}catch{return {}} }
@@ -82,6 +83,15 @@ export default async function handler(req,res){
     // the tenant is already bookable, so a healthy tenant pays one select.
     try{ await ensureBookingBaseline(tenant.id); }catch(e){ console.warn('[calendar] booking-seed', e.message); }
     const action=body.action || req.query?.action || (req.method==='GET'?'day':'');
+    // Trial over and unpaid (BILLING_ENFORCE): the website widget stops taking
+    // new bookings, offers the waitlist, and the owner is texted once.
+    if(req.__publicBooking===true && (action==='availability'||action==='hold'||action==='book') && gateNewBooking(tenant)){
+      // availability → no times, so the widget offers its waitlist (a lead the
+      // salon keeps); hold/book → the widget shows this sentence as-is.
+      if(action==='availability') return res.status(200).json({ ok:true, slots:[], blocked:true, message:WIDGET_LINE });
+      await turnedAway(db(), tenant, { channel:'widget', caller: body.client_phone||'' });
+      return res.status(200).json({ ok:false, error:WIDGET_LINE, blocked:true });
+    }
 
     if(action==='settings') return res.json({ ok:true, settings:await getBookingSettings(tenant.id) });
 
