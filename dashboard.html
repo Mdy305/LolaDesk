@@ -162,6 +162,16 @@ button{cursor:pointer;border:0;background:none;color:inherit}
    would otherwise see (core-app audit, empty-state finding). Shown only
    while overview.setup.isNew is true; disappears the moment any real
    call, booking or client shows up. */
+.lola-suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:14px}
+.lola-suggestion{
+  min-height:36px;padding:0 16px;border-radius:999px;cursor:pointer;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  color:var(--text2);font:500 13px/1 -apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;
+  transition:background .18s,border-color .18s,color .18s;
+}
+.lola-suggestion:hover{background:rgba(204,255,0,.08);border-color:rgba(204,255,0,.35);color:var(--text)}
+.lola-suggestion:focus-visible{outline:2px solid rgba(204,255,0,.7);outline-offset:2px}
+@media (pointer:coarse){.lola-suggestion{min-height:44px}}
 .setup-guide{margin-bottom:24px;padding:22px 22px 20px}
 /* ID+class specificity on purpose: front-desk-os.js injects
    `.kpi-row{display:flex!important}` at runtime, which beats any plain

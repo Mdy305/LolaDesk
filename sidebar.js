@@ -175,11 +175,14 @@ body.ln-shell{padding-left:236px}
   .ln-side{display:none!important}
   body.ln-shell{padding-left:0}
   #tenantMobileHeader{display:none!important}
-  .ln-top{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:120;height:52px;padding:0 12px 0 16px;
+  .ln-top{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:120;height:52px;padding:0 12px 0 16px;min-width:0;max-width:100vw;box-sizing:border-box;
     background:rgba(8,8,10,.86);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.06);
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   .ln-top-l{flex:1;min-width:0;display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none}
   .ln-top-l::-webkit-scrollbar{display:none}
+  .ln-top-l.fade-r{-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+  .ln-top-l.fade-l{-webkit-mask-image:linear-gradient(to left,#000 82%,transparent);mask-image:linear-gradient(to left,#000 82%,transparent)}
+  .ln-top-l.fade-l.fade-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent)}
   .ln-top-name{font-size:14px;font-weight:650;color:#f2f2f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ln-pill{flex:0 0 auto;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:500;color:#8a8a92;text-decoration:none}
   .ln-pill.is-active{background:rgba(255,255,255,.08);color:#f2f2f5}
@@ -203,6 +206,8 @@ body.ln-shell{padding-left:236px}
   .ln-bi-lola span{color:#ccff00}
   @keyframes lnBreath{0%,100%{box-shadow:0 0 0 4px #08080a,0 6px 22px rgba(204,255,0,.28)}50%{box-shadow:0 0 0 4px #08080a,0 6px 30px rgba(204,255,0,.5)}}
   body.ln-has-bar{padding-bottom:calc(62px + env(safe-area-inset-bottom,0px))}
+  .app>.main,.app>main{min-width:0}
+  .ln-pill{min-height:36px;display:inline-flex;align-items:center}
   body.ln-has-bar .lp-root:not(.lp-staged) .lp-orb{display:none!important}
   body.ln-has-bar .lp-panel{bottom:calc(74px + env(safe-area-inset-bottom,0px))!important}
   body.ln-has-bar .lp-nudge{right:12px!important;left:12px!important;bottom:calc(74px + env(safe-area-inset-bottom,0px))!important;max-width:none!important}
@@ -272,6 +277,25 @@ body.ln-shell{padding-left:236px}
     <div class="ln-acct">${meHTML(true)}</div>`;
   // A full-width row of its own (never inset by the page's padding).
   side.parentNode.insertBefore(top, side.nextSibling);
+
+  // Phone strip: the current page is always in view, and a soft edge shows
+  // when there are more pages to scroll to.
+  (function () {
+    const l = top.querySelector('.ln-top-l');
+    if (!l) return;
+    const edges = () => {
+      l.classList.toggle('fade-r', l.scrollLeft + l.clientWidth < l.scrollWidth - 4);
+      l.classList.toggle('fade-l', l.scrollLeft > 4);
+    };
+    const center = () => {
+      const act = l.querySelector('.is-active');
+      if (act) l.scrollLeft = Math.max(0, act.offsetLeft - (l.clientWidth - act.offsetWidth) / 2);
+      edges();
+    };
+    l.addEventListener('scroll', edges, { passive: true });
+    window.addEventListener('resize', center);
+    requestAnimationFrame(center);
+  })();
 
   const bar = document.createElement('nav');
   bar.className = 'ln-bar';

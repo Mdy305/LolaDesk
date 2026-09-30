@@ -4,6 +4,15 @@
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>Inventory — LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
+/* search + filters (were unstyled browser defaults) */
+.search-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
+.search-box{flex:1 1 260px;display:flex;align-items:center;gap:10px;min-height:44px;padding:0 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text3)}
+.search-box input{flex:1;min-width:0;min-height:40px;background:none;border:0;outline:0;color:var(--text);font-size:14px}
+.filter-pill{min-height:36px;padding:0 15px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:background .18s,border-color .18s,color .18s}
+.filter-pill:hover{border-color:var(--border2);color:var(--text)}
+.filter-pill.active{background:var(--accent);border-color:var(--accent);color:#0b0b0d}
+@media (pointer:coarse){.filter-pill{min-height:44px}}
+
 .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:18px}
 .inv-card{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:border-color .25s var(--spring),transform .25s var(--spring)}
 .inv-card:hover{border-color:var(--border2);transform:translateY(-1px)}

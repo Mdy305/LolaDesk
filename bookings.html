@@ -31,6 +31,13 @@
 .view-switch button.on{background:var(--accent);color:#10140a;box-shadow:0 4px 14px rgba(204,255,0,.25)}
 
 /* ── Calendar grid ── */
+/* Phone: the header never widens the page; every control is thumb-sized. */
+@media(max-width:760px){
+  .cal-nav,.cal-links{flex-wrap:wrap;row-gap:8px}
+  .cal-links{width:100%}
+  .cal-links .primary{flex:1 1 100%;min-height:44px;order:-1}
+  .view-switch button{min-height:36px}
+}
 .cal-wrap{background:var(--surface);border:.5px solid var(--border);border-radius:20px;overflow:auto;min-height:520px;box-shadow:0 22px 60px rgba(0,0,0,.3)}
 .cal-grid{display:grid;min-width:700px}
 .cal-corner{position:sticky;top:0;left:0;z-index:20;background:var(--bg2);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px}
