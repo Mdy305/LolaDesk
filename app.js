@@ -237,13 +237,13 @@ function drawRevLine(){
   x.clearRect(0,0,W,H);
   const pts=[0.3,0.35,0.32,0.45,0.4,0.55,0.5,0.62,0.58,0.72,0.68,0.85,0.8];
   const grad=x.createLinearGradient(0,0,W,0);
-  grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'#dcff66');
+  grad.addColorStop(0,'#f2f2f4'); grad.addColorStop(1,'#f5f5f7');
   // area
   x.beginPath();
   pts.forEach((p,i)=>{ const px=(i/(pts.length-1))*W, py=H-(p*H*0.85)-6; i?x.lineTo(px,py):x.moveTo(px,py); });
   x.lineTo(W,H); x.lineTo(0,H); x.closePath();
   const fill=x.createLinearGradient(0,0,0,H);
-  fill.addColorStop(0,'rgba(204,255,0,.18)'); fill.addColorStop(1,'rgba(204,255,0,0)');
+  fill.addColorStop(0,'rgba(242,242,244,.18)'); fill.addColorStop(1,'rgba(242,242,244,0)');
   x.fillStyle=fill; x.fill();
   // line
   x.beginPath();
@@ -251,8 +251,8 @@ function drawRevLine(){
   x.strokeStyle=grad; x.lineWidth=2; x.lineJoin='round'; x.stroke();
   // end dot
   const lx=W, ly=H-(pts[pts.length-1]*H*0.85)-6;
-  x.beginPath(); x.arc(lx-3,ly,3.5,0,Math.PI*2); x.fillStyle='#ccff00'; x.fill();
-  x.beginPath(); x.arc(lx-3,ly,7,0,Math.PI*2); x.fillStyle='rgba(204,255,0,.2)'; x.fill();
+  x.beginPath(); x.arc(lx-3,ly,3.5,0,Math.PI*2); x.fillStyle='#f2f2f4'; x.fill();
+  x.beginPath(); x.arc(lx-3,ly,7,0,Math.PI*2); x.fillStyle='rgba(242,242,244,.2)'; x.fill();
 }
 
 function drawDonut(){
@@ -261,7 +261,7 @@ function drawDonut(){
   const x=c.getContext('2d');
   const cx=60,cy=60,r=48,lw=14;
   x.clearRect(0,0,120,120);
-  const segs=[{v:48,c:'#ccff00'},{v:28,c:'#dcff66'},{v:16,c:'#8fd400'},{v:8,c:'#3a5a00'}];
+  const segs=[{v:48,c:'#f2f2f4'},{v:28,c:'#f5f5f7'},{v:16,c:'#c9c9cb'},{v:8,c:'#565658'}];
   let start=-Math.PI/2;
   segs.forEach(s=>{
     const ang=(s.v/100)*Math.PI*2;
@@ -282,7 +282,7 @@ function drawRevBars(){
   bars.forEach((b,i)=>{
     const bh=b*H*0.9, bx=i*bw+3, by=H-bh;
     const grad=x.createLinearGradient(0,by,0,H);
-    grad.addColorStop(0,'#ccff00'); grad.addColorStop(1,'rgba(204,255,0,.3)');
+    grad.addColorStop(0,'#f2f2f4'); grad.addColorStop(1,'rgba(242,242,244,.3)');
     x.fillStyle=grad;
     x.beginPath();
     if(x.roundRect) x.roundRect(bx,by,bw-6,bh,3); else x.rect(bx,by,bw-6,bh);
@@ -1075,13 +1075,13 @@ function drawPhoneOrb(){
     const halo = px.createRadialGradient(cx,cy,6,cx,cy,72);
     const hA = 0.12 + breath*0.12;
     halo.addColorStop(0,`rgba(204,255,0,${hA})`);
-    halo.addColorStop(1,'rgba(204,255,0,0)');
+    halo.addColorStop(1,'rgba(242,242,244,0)');
     px.fillStyle=halo; px.fillRect(0,0,150,150);
     // core
     const core = px.createRadialGradient(cx,cy,0,cx,cy,38);
     const cA = 0.25 + breath*0.2;
     core.addColorStop(0,`rgba(255,120,190,${cA})`);
-    core.addColorStop(1,'rgba(204,255,0,0)');
+    core.addColorStop(1,'rgba(242,242,244,0)');
     px.fillStyle=core; px.fillRect(0,0,150,150);
     for(let i=0;i<46;i++){
       const a=(i/46)*Math.PI*2;
@@ -1132,6 +1132,8 @@ window.__lolaApp = {
   ask: function(text){ return processMessage(String(text||'')); },
   setOrbState: function(s, detail){ setOrbState(s, detail); },
   getOrbState: function(){ return orbState; },
+  // One turn of a live phone call, resonating through her body ('lola' | 'caller').
+  voicePulse: function(who, seconds){ if(orb && typeof orb.voice==='function') orb.voice(who, seconds); },
   // Update the orb's live sub-line (e.g. the latest transcript line of an
   // active call) without replaying the whole state transition. No-ops
   // unless the orb is currently in the 'oncall' presence state, so it can

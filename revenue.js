@@ -253,7 +253,7 @@
     setTrend('kpiAvgTrend',      0);
     setTrend('kpiOccTrend',      0);
 
-    drawSpark('sparkRevenue',  trend.map(p => p.v), '#ccff00');
+    drawSpark('sparkRevenue',  trend.map(p => p.v), '#f2f2f4');
     drawSpark('sparkBookings', trend.map(p => state.dailyCount?.get(p.d) || 0), '#af52de');
     drawSpark('sparkAvg',      trend.map(p => p.v > 0 ? avgTicket : 0), '#ff2d92');
     drawSpark('sparkOcc',      trend.map(p => Math.min(100, (p.v / (rev / days || 1)) * occ)), '#34c759');
@@ -305,7 +305,7 @@
       const h = ((p.v || 0) / max) * (H - pad.t - pad.b);
       const x = pad.l + i * cellW + (cellW - barW) / 2;
       const y = H - pad.b - h;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="#ccff00" rx="2"/>`;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="#f2f2f4" rx="2"/>`;
     });
     // Y-axis: 3 gridlines
     let grid = '';

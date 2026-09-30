@@ -97,7 +97,7 @@
       banner.type='button';
       banner.title=ready?'Lola is live':(next||'Finish connecting Lola');
       banner.setAttribute('aria-label',ready?'Lola is live. Talk to Lola.':`Setup ${score}% complete. ${next||'Open Activation Studio.'}`);
-      banner.style.cssText=['display:flex','align-items:center','gap:8px','height:40px','padding:0 12px','border:1px solid '+(ready?'rgba(204,255,0,.22)':'rgba(255,179,64,.3)'),'border-radius:12px','background:'+(ready?'rgba(204,255,0,.07)':'rgba(255,179,64,.08)'),'color:#f2f2f5','font:inherit','cursor:pointer','white-space:nowrap'].join(';');
+      banner.style.cssText=['display:flex','align-items:center','gap:8px','height:40px','padding:0 12px','border:1px solid '+(ready?'rgba(242,242,244,.22)':'rgba(255,179,64,.3)'),'border-radius:12px','background:'+(ready?'rgba(242,242,244,.07)':'rgba(255,179,64,.08)'),'color:#f2f2f5','font:inherit','cursor:pointer','white-space:nowrap'].join(';');
       banner.innerHTML=`<span style="width:8px;height:8px;border-radius:50%;background:${ready?'#ccff00':'#ffb340'};box-shadow:0 0 10px ${ready?'rgba(204,255,0,.55)':'rgba(255,179,64,.5)'}"></span><span style="font-size:12px;font-weight:650">${ready?'Lola live':`Setup ${score}%`}</span>`;
       const actions=main.querySelector('.topbar-actions'); if(actions) actions.prepend(banner); else main.prepend(banner);
       banner.onclick=()=>{ if(action.kind==='talk') startDashboardVoice(); else location.href=action.href; };

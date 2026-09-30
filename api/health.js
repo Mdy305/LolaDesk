@@ -4,7 +4,7 @@
  * composed here and injected, keeping this file a thin transport layer.
  * Shape unchanged: { ok, provider, services, voice, timestamp }.
  */
-import { checkHealth, getUserSubscription } from './lib/elevenlabs.js';
+import { checkHealth, getUserSubscription, voiceProvider, telnyxVoice } from './lib/elevenlabs.js';
 import { platformHealth, healthSend } from './lib/health-gate.js';
 
 export default async function handler(req, res) {
@@ -41,9 +41,13 @@ export default async function handler(req, res) {
     if (voiceViable && !quotaExhausted && voice.message == null) voice.message = 'voice ready';
     if (quotaExhausted) {
       voice.message = `ElevenLabs account is OUT OF CREDITS (${sub.remaining ?? 0} remaining). ` +
-        `Top up at elevenlabs.io to hear Lola's voice here. Phone calls still work via Telnyx.`;
+        `Lola speaks through Telnyx (${telnyxVoice()}) until you top up.`;
     }
-    return { ok: voiceViable && !quotaExhausted, voice, quotaExhausted };
+    // Lola never goes silent: when ElevenLabs can't speak, Telnyx does.
+    voice.provider = voiceProvider();
+    voice.telnyxFallback = !!process.env.TELNYX_API_KEY;
+    const speaks = (voiceViable && !quotaExhausted) || voice.telnyxFallback;
+    return { ok: speaks, voice, quotaExhausted };
   };
 
   const result = await platformHealth({ voiceCheck });

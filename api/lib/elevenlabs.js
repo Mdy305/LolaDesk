@@ -38,7 +38,52 @@ export function isConfigured(){
  * renders exactly as the owner created it. One brain, one voice,
  * everywhere.
  */
+// ── Telnyx voice: Lola's voice when ElevenLabs is missing or out of credit ──
+// Same voice family her phone assistant speaks with (telnyx-assistant.js),
+// so the dashboard and the phone line sound like one Lola.
+//   LOLA_TELNYX_VOICE  optional, e.g. Telnyx.KokoroTTS.af_heart (default)
+//   VOICE_PROVIDER     optional: 'telnyx' to always speak through Telnyx
+export function telnyxVoice(){ return process.env.LOLA_TELNYX_VOICE || 'Telnyx.KokoroTTS.af_heart'; }
+export async function telnyxSpeech(text, { signal } = {}) {
+  const key = process.env.TELNYX_API_KEY;
+  if (!key) throw new Error('Missing TELNYX_API_KEY');
+  const r = await fetch('https://api.telnyx.com/v2/text-to-speech/speech', {
+    method: 'POST', signal,
+    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    body: JSON.stringify({ text: String(text).slice(0, 2500), voice: telnyxVoice(), output_type: 'binary_output' })
+  });
+  if (!r.ok) { let d = ''; try { d = await r.text(); } catch {} throw new Error(`Telnyx TTS ${r.status}: ${d.slice(0, 200)}`); }
+  const ct = String(r.headers.get('content-type') || '');
+  if (ct.includes('json')) {                       // base64 answer, just in case
+    const j = await r.json(); const b64 = j.base64_audio || j.data?.base64_audio;
+    if (!b64) throw new Error('Telnyx TTS: no audio');
+    return Buffer.from(b64, 'base64');
+  }
+  return Buffer.from(await r.arrayBuffer());
+}
+
+/** Which engine speaks right now, for health checks and the UI. */
+export function voiceProvider(){
+  if (process.env.VOICE_PROVIDER === 'telnyx') return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
+  if (process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
+  return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
+}
+
 export async function synthesize(textOrOpts, opts = {}) {
+  // Lola never goes silent: ElevenLabs (her configured voice) first, then
+  // Telnyx; or Telnyx only when VOICE_PROVIDER=telnyx.
+  const text = textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.text : textOrOpts;
+  const signal = (textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.signal : null) || (opts && opts.signal);
+  if (process.env.VOICE_PROVIDER === 'telnyx' || !process.env.ELEVENLABS_API_KEY) return telnyxSpeech(text, { signal });
+  try { return await synthesizeEleven(textOrOpts, opts); }
+  catch (e) {
+    if (!process.env.TELNYX_API_KEY || (signal && signal.aborted)) throw e;
+    console.warn('[voice] ElevenLabs unavailable, Lola speaks through Telnyx:', String(e && e.message).slice(0, 120));
+    return telnyxSpeech(text, { signal });
+  }
+}
+
+async function synthesizeEleven(textOrOpts, opts = {}) {
   // Accepts synthesize(text, opts) and synthesize({ text, format }) — both
   // call styles exist in the codebase (/api/speak-lola uses the object form).
   let text = textOrOpts;

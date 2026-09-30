@@ -7,13 +7,13 @@
 <title>Deposit received</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
-:root{--bg:#050506;--card:#111113;--line:#232328;--text:#f6f6f7;--muted:#92929b;--accent:#ccff00}
+:root{--bg:#050506;--card:#111113;--line:#232328;--text:#f6f6f7;--muted:#92929b;--accent:#f2f2f4}
 *{box-sizing:border-box;margin:0}
 body{min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .card{width:100%;max-width:420px;background:var(--card);border:.5px solid var(--line);border-radius:24px;padding:40px 28px;text-align:center;animation:in .5s cubic-bezier(.22,1,.36,1)}
 @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.orb{width:64px;height:64px;border-radius:50%;margin:0 auto 22px;background:radial-gradient(circle at 35% 30%,#f1ffc0,var(--accent) 55%,#7a9e00);box-shadow:0 0 40px rgba(204,255,0,.35);animation:breathe 3.2s ease-in-out infinite}
-@keyframes breathe{50%{transform:scale(1.06);box-shadow:0 0 60px rgba(204,255,0,.5)}}
+.orb{width:64px;height:64px;border-radius:50%;margin:0 auto 22px;background:radial-gradient(circle at 35% 30%,#f1ffc0,var(--lola,#ccff00) 55%,#7a9e00);box-shadow:0 0 40px rgba(204,255,0,.35);animation:breathe 3.2s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.06);box-shadow:0 0 60px rgba(242,242,244,.5)}}
 @media(prefers-reduced-motion:reduce){.orb,.card{animation:none}}
 h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin-bottom:10px}
 p{color:var(--muted);font-size:15px;line-height:1.6}

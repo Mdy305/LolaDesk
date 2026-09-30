@@ -128,7 +128,7 @@
 
   // ── Styles (scoped, self-contained) ─────────────────────────
   const CSS = `
-.ln-side{--ln-bg:#0b0b0d;--ln-line:rgba(255,255,255,.06);--ln-ink:#f2f2f5;--ln-ink2:#9a9aa3;--ln-ink3:#5c5c64;--ln-acc:#ccff00;
+.ln-side{--ln-bg:#0b0b0d;--ln-line:rgba(255,255,255,.06);--ln-ink:#f2f2f5;--ln-ink2:#9a9aa3;--ln-ink3:#5c5c64;--ln-acc:#f2f2f4;
   position:fixed;left:0;top:0;bottom:0;width:236px;height:auto;overflow-y:auto;box-sizing:border-box;display:flex;flex-direction:column;
   background:var(--ln-bg);border-right:1px solid var(--ln-line);padding:26px 14px 16px;z-index:40;
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
@@ -145,8 +145,8 @@ body.ln-shell{padding-left:236px}
 .ln-tab{position:relative;display:flex;align-items:center;gap:13px;height:42px;padding:0 12px;border-radius:11px;
   color:var(--ln-ink2);font-size:14px;font-weight:500;text-decoration:none;transition:background .18s,color .18s}
 .ln-tab:hover{background:rgba(255,255,255,.035);color:var(--ln-ink)}
-.ln-tab.is-active{color:var(--ln-ink);background:rgba(204,255,0,.055)}
-.ln-tab.is-active::before{content:'';position:absolute;left:-14px;top:11px;bottom:11px;width:2px;border-radius:2px;background:var(--ln-acc);box-shadow:0 0 12px rgba(204,255,0,.55)}
+.ln-tab.is-active{color:var(--ln-ink);background:rgba(242,242,244,.055)}
+.ln-tab.is-active::before{content:'';position:absolute;left:-14px;top:11px;bottom:11px;width:2px;border-radius:2px;background:var(--ln-acc);box-shadow:0 0 12px rgba(242,242,244,.55)}
 .ln-ico{width:19px;height:19px;flex:0 0 auto}
 .ln-tab.is-active .ln-ico{color:var(--ln-acc)}
 .ln-subs{display:flex;flex-direction:column;margin:2px 0 8px;padding-left:44px}
@@ -156,7 +156,7 @@ body.ln-shell{padding-left:236px}
 .ln-spacer{flex:1}
 .ln-find{display:flex;align-items:center;gap:10px;width:100%;height:38px;margin:0 0 14px;padding:0 12px;border-radius:11px;border:1px solid var(--ln-line);
   background:rgba(255,255,255,.025);color:var(--ln-ink3);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s}
-.ln-find:hover,.ln-find:focus-visible{color:var(--ln-ink2);border-color:rgba(204,255,0,.35);outline:none}
+.ln-find:hover,.ln-find:focus-visible{color:var(--ln-ink2);border-color:rgba(242,242,244,.35);outline:none}
 .ln-find .ln-ico{width:16px;height:16px}
 .ln-find span{flex:1;text-align:left}
 .ln-find kbd{font:inherit;font-size:11px;color:var(--ln-ink3)}
@@ -169,7 +169,7 @@ body.ln-shell{padding-left:236px}
 .ln-pal-box{width:min(640px,100%);max-height:min(560px,76vh);display:flex;flex-direction:column;background:#0e0e11;border:1px solid rgba(255,255,255,.1);
   border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.7);overflow:hidden}
 .ln-pal-in{display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.07)}
-.ln-pal-in .ln-ico{color:#ccff00;width:18px;height:18px}
+.ln-pal-in .ln-ico{color:#f2f2f4;width:18px;height:18px}
 .ln-pal-in input,#lnPalInput,#lnPalInput:focus{flex:1;height:56px!important;min-height:0!important;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;outline:0!important;padding:0!important;margin:0!important;color:#f2f2f5!important;font:inherit;font-size:17px!important;min-width:0;width:auto!important}
 .ln-pal-in input::placeholder{color:#5c5c64}
 .ln-pal-list{overflow-y:auto;padding:8px;overscroll-behavior:contain}
@@ -177,14 +177,14 @@ body.ln-shell{padding-left:236px}
 .ln-pal-i{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:8px 10px;border:0;border-radius:10px;background:none;color:#d6d6db;
   font:inherit;font-size:14px;text-align:left;cursor:pointer}
 .ln-pal-i small{margin-left:auto;color:#5c5c64;font-size:12px;white-space:nowrap}
-.ln-pal-i.on{background:rgba(204,255,0,.09);color:#fff}
-.ln-pal-i.on small{color:#ccff00}
+.ln-pal-i.on{background:rgba(242,242,244,.09);color:#fff}
+.ln-pal-i.on small{color:#f2f2f4}
 .ln-pal-dot{width:7px;height:7px;border-radius:50%;background:#3a3a40;flex:0 0 auto}
 .ln-pal-i.lola .ln-pal-dot{background:#ccff00;box-shadow:0 0 8px rgba(204,255,0,.7)}
 .ln-pal-foot{padding:10px 16px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;color:#5c5c64}
 .ln-pal-empty{padding:18px 12px;color:#6e6e73;font-size:13px}
 .ln-lola{display:flex;align-items:center;justify-content:space-between;width:100%;height:44px;margin:0 0 10px;padding:0 14px;
-  border:1px solid rgba(204,255,0,.22);border-radius:12px;background:rgba(204,255,0,.06);color:var(--ln-acc);
+  border:1px solid rgba(242,242,244,.22);border-radius:12px;background:rgba(242,242,244,.06);color:var(--ln-acc);
   font-family:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;transition:background .18s,border-color .18s}
 .ln-lola:hover{background:rgba(204,255,0,.1);border-color:rgba(204,255,0,.4)}
 .ln-lola kbd{font-family:inherit;font-size:11px;font-weight:500;line-height:1;color:rgba(204,255,0,.6);background:none;border:0;padding:0}
@@ -193,7 +193,7 @@ body.ln-shell{padding-left:236px}
   color:var(--ln-ink);text-align:left;cursor:pointer;font-family:inherit;transition:background .18s}
 .ln-me:hover,.ln-me[aria-expanded="true"],.ln-me.is-active{background:rgba(255,255,255,.04)}
 .ln-av{width:34px;height:34px;flex:0 0 34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#ccff00,#7fb300);color:#0b0b0d;font-weight:700;font-size:13px}
+  background:linear-gradient(135deg,#f2f2f4,#aaaaac);color:#0b0b0d;font-weight:700;font-size:13px}
 .ln-who{min-width:0;flex:1;line-height:1.25}
 .ln-who b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ln-who small{display:block;font-size:11px;color:var(--ln-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -206,10 +206,10 @@ body.ln-shell{padding-left:236px}
 .ln-menu a,.ln-menu button{display:block;width:100%;padding:10px 12px;border:0;border-radius:9px;background:transparent;
   color:#e6e6ea;font-family:inherit;font-size:13px;font-weight:500;line-height:1.2;text-align:left;text-decoration:none;cursor:pointer}
 .ln-menu a:hover,.ln-menu button:hover,.ln-menu a:focus-visible,.ln-menu button:focus-visible{background:rgba(255,255,255,.06);outline:none}
-.ln-menu a.is-active{color:#ccff00}
+.ln-menu a.is-active{color:#f2f2f4}
 .ln-menu hr{border:0;height:1px;background:rgba(255,255,255,.07);margin:5px 6px}
 .ln-menu .ln-out{color:#9a9aa3}
-.ln-side a:focus-visible,.ln-side button:focus-visible,.ln-bar a:focus-visible,.ln-bar button:focus-visible,.ln-top a:focus-visible,.ln-top button:focus-visible{outline:2px solid rgba(204,255,0,.7);outline-offset:2px}
+.ln-side a:focus-visible,.ln-side button:focus-visible,.ln-bar a:focus-visible,.ln-bar button:focus-visible,.ln-top a:focus-visible,.ln-top button:focus-visible{outline:2px solid rgba(242,242,244,.7);outline-offset:2px}
 
 /* Phone and tablet */
 .ln-top,.ln-bar{display:none}
@@ -242,13 +242,15 @@ body.ln-shell{padding-left:236px}
   .ln-bi{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;background:transparent;
     color:#6a6a72;font-size:10.5px;font-weight:500;font-family:inherit;text-decoration:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .ln-bi .ln-ico{width:22px;height:22px}
-  .ln-bi.is-active{color:#ccff00}
+  .ln-bi.is-active{color:#f2f2f4}
   .ln-bi.is-active span{color:#f2f2f5}
   .ln-orb{width:46px;height:46px;border-radius:50%;margin-top:-18px;
-    background:radial-gradient(circle at 38% 34%,#f1ffa6 0%,#ccff00 38%,#6f9a00 100%);
-    box-shadow:0 0 0 4px #08080a,0 6px 22px rgba(204,255,0,.35);animation:lnBreath 4.2s ease-in-out infinite}
+    background:radial-gradient(circle at 38% 34%,#f5f5f7 0%,#f2f2f4 38%,#929294 100%);
+    box-shadow:0 0 0 4px #08080a,0 6px 22px rgba(242,242,244,.35);animation:lnBreath 4.2s ease-in-out infinite}
   .ln-bi-lola span{color:#ccff00}
-  @keyframes lnBreath{0%,100%{box-shadow:0 0 0 4px #08080a,0 6px 22px rgba(204,255,0,.28)}50%{box-shadow:0 0 0 4px #08080a,0 6px 30px rgba(204,255,0,.5)}}
+  .ln-orb.ln-orb-gpu{position:relative;background:#050506;animation:none;box-shadow:0 0 0 4px #08080a}
+  .ln-orb.ln-orb-gpu canvas{pointer-events:none}
+  @keyframes lnBreath{0%,100%{box-shadow:0 0 0 4px #08080a,0 6px 22px rgba(242,242,244,.28)}50%{box-shadow:0 0 0 4px #08080a,0 6px 30px rgba(242,242,244,.5)}}
   body.ln-has-bar{padding-bottom:calc(62px + env(safe-area-inset-bottom,0px))}
   .app>.main,.app>main{min-width:0}
   .ln-pill{min-height:36px;display:inline-flex;align-items:center}
@@ -357,6 +359,35 @@ body.ln-shell{padding-left:236px}
     + '<button type="button" class="ln-bi ln-bi-lola" data-ln-lola aria-label="Talk to Lola"><span class="ln-orb"></span><span>Lola</span></button>'
     + right.map(barTab).join('');
   document.body.appendChild(bar);
+
+  // The Lola button on the phone bar is Lola herself: a small version of the
+  // same particle body, following her state everywhere on the page.
+  let barLola = null;
+  function mountBarLola() {
+    try { barLola && barLola.destroy(); } catch (_) {}
+    barLola = null;
+    const spot = bar.querySelector('.ln-bi-lola .ln-orb');
+    if (!spot || !matchMedia('(max-width:1100px)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const go = () => {
+      if (!window.LolaOrb || !spot.isConnected) return;
+      const c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true');
+      spot.appendChild(c);
+      const o = window.LolaOrb.mount(c, { size: 46, bleed: 0.3, maxTier: 0 });
+      if (!o || !o.gpu) { try { o && o.destroy(); } catch (_) {} c.remove(); return; }
+      spot.classList.add('ln-orb-gpu'); barLola = o;
+    };
+    if (window.LolaOrb) return go();
+    if (!window.__lolaOrbLoading) window.__lolaOrbLoading = new Promise((res) => {
+      const sc = document.createElement('script'); sc.src = '/lola-orb.js'; sc.async = true;
+      sc.onload = () => res(!!window.LolaOrb); sc.onerror = () => res(false); document.head.appendChild(sc);
+    });
+    window.__lolaOrbLoading.then((ok) => ok && go());
+  }
+  const LOLA_STATES = ['idle', 'listening', 'thinking', 'speaking', 'oncall'];
+  const followLola = (e) => { const m = e && e.detail && e.detail.mode; if (barLola && LOLA_STATES.includes(m)) barLola.setState(m); };
+  window.addEventListener('lola:state', followLola);
+  window.addEventListener('lola:app-state', followLola);
+  mountBarLola();
   document.body.classList.add('ln-has-bar');
 
   // ── Behaviour ────────────────────────────────────────────────
@@ -539,6 +570,7 @@ body.ln-shell{padding-left:236px}
       + '<button type="button" class="ln-bi ln-bi-lola" data-ln-lola aria-label="Talk to Lola"><span class="ln-orb"></span><span>Lola</span></button>'
       + vis.slice(2).map(barTab).join('');
     bar.querySelectorAll('[data-ln-lola]').forEach((b) => b.addEventListener('click', talkToLola));
+    mountBarLola();
   }
   window.addEventListener('lola:tenant-ready', (e) => applyIdentity(e.detail));
   if (window.LolaAuth && window.LolaAuth.ready) {

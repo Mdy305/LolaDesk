@@ -25,7 +25,7 @@
   --bg:#000;--bg2:#070708;--surface:#101012;--surface2:#16161a;
   --border:#1c1c20;--border2:#28282e;
   --text:#f4f4f7;--text2:#9a9aa2;--text3:#56565e;
-  --pink:#ccff00;--pink2:#dcff66;--pink3:#e6ff85;--pink-dim:rgba(204,255,0,.12);--pink-glow:rgba(204,255,0,.5);
+  --pink:#f2f2f4;--pink2:#f5f5f7;--pink3:#f5f5f7;--pink-dim:rgba(242,242,244,.12);--pink-glow:rgba(242,242,244,.5);
   --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
   --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
 }
@@ -76,8 +76,8 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 .position-pill{font-size:12px;letter-spacing:.06em;color:var(--text3);border:0.5px solid var(--border);border-radius:999px;padding:6px 12px;background:var(--surface)}
 .position-pill b{font-weight:600}
 .position-pill.lola{color:var(--pink2);border-color:rgba(204,255,0,.35);background:rgba(204,255,0,.06)}
-.voice-chip{background:rgba(204,255,0,.08);color:var(--text);border:1px solid rgba(204,255,0,.25);padding:11px 14px;border-radius:999px;font-size:13px}
-.voice-chip:hover{background:rgba(204,255,0,.15)}
+.voice-chip{background:rgba(242,242,244,.08);color:var(--text);border:1px solid rgba(242,242,244,.25);padding:11px 14px;border-radius:999px;font-size:13px}
+.voice-chip:hover{background:rgba(242,242,244,.15)}
 .voice-demo-status{font-size:12px;color:var(--text3);margin-top:10px;min-height:18px}
 
 /* REVEAL */
@@ -184,12 +184,13 @@ button{font-family:var(--ff);cursor:pointer;border:none}
 /* ghost variants stay light-ink (they sit on dark, not on volt) */
 .btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
 </style>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"LolaDesk","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"AI-powered front desk concierge for salons, spas, and med spas. Answers calls, books appointments, and grows revenue 24/7.","offers":[{"@type":"Offer","name":"Starter","price":"99","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"399","priceCurrency":"USD"},{"@type":"Offer","name":"Med-Spa","price":"599","priceCurrency":"USD"}],"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"127"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"LolaDesk","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"AI-powered front desk concierge for salons, spas, and med spas. Answers calls, books appointments, and grows revenue 24/7.","offers":[{"@type":"Offer","name":"Starter","price":"99","priceCurrency":"USD"},{"@type":"Offer","name":"Pro","price":"399","priceCurrency":"USD"},{"@type":"Offer","name":"Med-Spa","price":"599","priceCurrency":"USD"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does Lola actually sound like a real person?","acceptedAnswer":{"@type":"Answer","text":"Yes. Lola uses carrier-grade voice AI with natural pauses, inflection, and warmth. Callers consistently report not realizing they spoke to an AI."}},{"@type":"Question","name":"What booking platforms does Lola work with?","acceptedAnswer":{"@type":"Answer","text":"Square, Mindbody, Vagaro, Fresha, and Google Calendar. Lola checks real-time availability and books the right service in seconds."}},{"@type":"Question","name":"What happens if Lola cannot answer something?","acceptedAnswer":{"@type":"Answer","text":"Lola never guesses. If a question falls outside her playbook, she takes a message and routes it to you immediately."}},{"@type":"Question","name":"Can I cancel anytime?","acceptedAnswer":{"@type":"Answer","text":"Yes. No contracts, no cancellation fees. Cancel from your dashboard and service continues until the end of your billing period. The 14-day trial requires no credit card."}},{"@type":"Question","name":"Is Lola HIPAA-compliant for med spas?","acceptedAnswer":{"@type":"Answer","text":"The Med-Spa plan includes HIPAA-aware call handling and consultation intake flows."}},{"@type":"Question","name":"How long does setup take?","acceptedAnswer":{"@type":"Answer","text":"About five minutes. Enter your salon name, services, and pricing, connect your booking platform, and pick your Lola number. Lola starts answering immediately."}}]}</script>
 </head>
 <body>
 
 <script src="lola-alive.js"></script>
+<script src="lola-orb.js"></script>
 
 <nav class="nav" id="nav">
   <div class="nav-logo">LOLADESK</div>
@@ -516,6 +517,8 @@ document.querySelectorAll('.tcta').forEach(btn=>{
 })();
 
 function makeOrb(canvas, size){
+  // One Lola: the homepage shows the same million-particle body as the app.
+  if (canvas && window.LolaOrb) { try { const o = LolaOrb.mount(canvas, { size, ambient: size > 600 }); if (o && o.gpu) { o.setState('ambient'); return o; } if (o) o.destroy(); } catch (e) {} }
   const x = canvas.getContext('2d');
   const c = size/2;
   let t = Math.random()*10;
@@ -528,13 +531,13 @@ function makeOrb(canvas, size){
     const hA = 0.10 + breath*0.10;
     halo.addColorStop(0,`rgba(204,255,0,${hA})`);
     halo.addColorStop(0.5,`rgba(204,255,0,${hA*0.35})`);
-    halo.addColorStop(1,'rgba(204,255,0,0)');
+    halo.addColorStop(1,'rgba(242,242,244,0)');
     x.fillStyle=halo; x.fillRect(0,0,size,size);
     const core = x.createRadialGradient(c,c,0,c,c,size*0.26);
     const cA = 0.22 + breath*0.18;
     core.addColorStop(0,`rgba(255,130,195,${cA})`);
     core.addColorStop(0.5,`rgba(204,255,0,${cA*0.5})`);
-    core.addColorStop(1,'rgba(204,255,0,0)');
+    core.addColorStop(1,'rgba(242,242,244,0)');
     x.fillStyle=core; x.fillRect(0,0,size,size);
     for(let i=0;i<72;i++){
       const a=(i/72)*Math.PI*2;
