@@ -25,22 +25,27 @@ export default async function handler(req, res) {
     const c = db();
 
     // Join bookings to staff and payments (settled charges + tips).
-    const { data: staff } = await c.from('staff').select('id, name, first_name, last_name, role, color, active').eq('tenant_id', tenant.id);
+    const { data: staff } = await c.from('staff').select('*').eq('tenant_id', tenant.id);
     const staffList = staff || [];
 
+    // Bookings carry `status` (there is no `outcome` column — filtering on it
+    // returned nothing, so every stylist showed zero). Count what already
+    // happened and wasn't cancelled.
     const { data: bookings } = await c.from('bookings')
-      .select('id, staff_id, service_id, total_amount, outcome, start_time')
+      .select('*')
       .eq('tenant_id', tenant.id)
       .gte('start_time', since.toISOString())
-      .in('outcome', ['completed','arrived']);
-    const bkList = bookings || [];
+      .lte('start_time', new Date().toISOString());
+    const bkList = (bookings || []).filter(b => !/cancel|no.?show|declin/i.test(String(b.status || '')));
 
-    const revenueBy = {}; const countBy = {};
+    const revenueBy = {}; const countBy = {}; const minBy = {};
     for (const b of bkList) {
       const sid = b.staff_id;
       if (!sid) continue;
-      revenueBy[sid] = (revenueBy[sid] || 0) + Number(b.total_amount || 0);
+      revenueBy[sid] = (revenueBy[sid] || 0) + Number(b.total_amount ?? b.price ?? 0);
       countBy[sid] = (countBy[sid] || 0) + 1;
+      const mins = Number(b.duration_min) || ((Date.parse(b.end_time) - Date.parse(b.start_time)) / 60000) || 60;
+      minBy[sid] = (minBy[sid] || 0) + mins;
     }
 
     const rows = staffList.map(s => ({
@@ -48,9 +53,12 @@ export default async function handler(req, res) {
       name: s.first_name || s.last_name ? [s.first_name, s.last_name].filter(Boolean).join(' ') : s.name,
       role: s.role,
       color: s.color,
-      active: s.active,
-      revenue: revenueBy[s.id] || 0,
-      count: countBy[s.id] || 0
+      active: s.active ?? s.is_active,
+      revenue: revenueBy[s.id] || 0,                       // dollars (kept for older readers)
+      revenue_cents: Math.round((revenueBy[s.id] || 0) * 100),
+      count: countBy[s.id] || 0,
+      bookings: countBy[s.id] || 0,
+      hours: Math.round((minBy[s.id] || 0) / 6) / 10
     })).filter(r => r.revenue > 0 || r.count > 0);
 
     return res.json({ ok: true, staff: rows });

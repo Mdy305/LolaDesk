@@ -27,7 +27,7 @@
   };
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmt$ = c => `$${(Math.max(0, +c || 0) / 100).toFixed(2)}`;
+  const fmt$ = c => { const v = Math.max(0, +c || 0) / 100; return '$' + v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
   const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); };
   const fmtDT   = d => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }); };
   const daysAgo = d => { if (!d) return null; return Math.round((Date.now() - new Date(d).getTime()) / 86400000); };
@@ -36,6 +36,13 @@
   // ── Boot ────────────────────────────────────────────────
   async function boot() {
     await Promise.all([loadClient(), loadAppointments(), loadFormulas(), loadNotes(), loadConversations(), loadPhotos(), loadPayments(), loadTenant()]);
+    // Her real last visit is her latest past appointment (a stored field can lag).
+    if (state.client && state.appointments.length) {
+      const past = state.appointments.map(a => new Date(a.start_time || a.starts_at)).filter(d => !isNaN(d) && d <= Date.now()).sort((a, b) => b - a)[0];
+      if (past && (!state.client.last_visit_at || past > new Date(state.client.last_visit_at))) state.client.last_visit_at = past.toISOString();
+      const next = state.appointments.map(a => new Date(a.start_time || a.starts_at)).filter(d => !isNaN(d) && d > Date.now()).sort((a, b) => a - b)[0];
+      if (next && !state.client.next_visit_at) state.client.next_visit_at = next.toISOString();
+    }
     renderHead();
     renderTab();
     wireEvents();
@@ -50,7 +57,6 @@
 
   async function loadClient() {
     const endpoints = [
-      `/api/clients/${encodeURIComponent(clientId)}`,
       `/api/clients?id=${encodeURIComponent(clientId)}`,
       `/api/crm?client_id=${encodeURIComponent(clientId)}`
     ];
@@ -81,7 +87,8 @@
       tags: Array.isArray(row.tags) ? row.tags : (row.tags ? String(row.tags).split(',').map(t => t.trim()).filter(Boolean) : []),
       vip: !!(row.vip || row.is_vip),
       visit_count: parseInt(row.visit_count || row.total_visits || 0, 10) || 0,
-      lifetime_cents: parseInt(row.lifetime_cents || row.lifetime_value || row.ltv_cents || 0, 10) || 0,
+      // lifetime_value is stored in dollars (the CRM treats $1,000+ as VIP)
+      lifetime_cents: row.lifetime_cents != null ? (parseInt(row.lifetime_cents, 10) || 0) : row.ltv_cents != null ? (parseInt(row.ltv_cents, 10) || 0) : Math.round((+row.lifetime_value || 0) * 100),
       last_visit_at: row.last_visit_at || row.last_visit || null,
       next_visit_at: row.next_visit_at || row.next_appointment || null,
       cadence_days: parseInt(row.cadence_days || row.avg_days_between_visits || 0, 10) || 0,
@@ -94,15 +101,15 @@
 
   async function loadAppointments() {
     for (const ep of [
-      `/api/appointments?client_id=${encodeURIComponent(clientId)}&limit=50`,
-      `/api/calendar?client_id=${encodeURIComponent(clientId)}&limit=50`,
-      `/api/clients/${encodeURIComponent(clientId)}/appointments`
+      // every visit this client ever had, newest first (owner-only range read)
+      `/api/calendar?action=range&client_id=${encodeURIComponent(clientId)}&from=${new Date(Date.now() - 3650 * 864e5).toISOString().slice(0, 10)}&to=${new Date(Date.now() + 365 * 864e5).toISOString().slice(0, 10)}`
     ]) {
       try {
         const r = await fetch(ep, { credentials: 'include' });
         if (!r.ok) continue;
         const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.appointments || d.rows || d.data || []);
+        const rows = Array.isArray(d) ? d : (d.bookings || d.appointments || d.rows || d.data || []);
+        rows.sort((a, b) => String(b.start_time || '').localeCompare(String(a.start_time || '')));
         if (rows.length) { state.appointments = rows; return; }
       } catch (_) {}
     }
@@ -215,7 +222,7 @@
 
     // Stats
     document.getElementById('statLifetime').textContent = c.lifetime_cents ? fmt$(c.lifetime_cents) : '$0';
-    document.getElementById('statVisits').textContent   = c.visit_count || (state.appointments.filter(a => (a.status || 'confirmed') !== 'cancelled').length);
+    document.getElementById('statVisits').textContent   = c.visit_count || (state.appointments.filter(a => !/cancel|no.?show/i.test(a.status || '') && new Date(a.start_time || a.starts_at) <= Date.now()).length);
     document.getElementById('statLast').textContent     = c.last_visit_at ? (daysAgo(c.last_visit_at) + 'd ago') : '—';
     document.getElementById('statDue').textContent      = c.next_visit_at ? fmtDate(c.next_visit_at) : (c.cadence_days && c.last_visit_at ? nextDue(c) : '—');
   }
@@ -319,10 +326,10 @@
 
   function apptRow(a) {
     const when = fmtDT(a.start_time || a.starts_at || a.created_at);
-    const service = a.service || a.service_name || a.service_title || '';
-    const stylist = a.stylist_name || a.stylist || '';
+    const service = a.service_name || (a.service && typeof a.service === 'object' ? a.service.name : a.service) || a.service_title || '';
+    const stylist = a.staff_name || a.stylist_name || a.stylist || '';
     const status = (a.status || 'confirmed').toLowerCase();
-    const amt = parseInt(a.price_cents || a.total_cents || 0, 10) || 0;
+    const amt = a.price_cents != null ? (+a.price_cents || 0) : a.total_cents != null ? (+a.total_cents || 0) : Math.round((+(a.total_amount ?? a.price) || 0) * 100);
     const statusCls = status === 'cancelled' ? 'cancelled' : status === 'no_show' || status === 'no-show' ? 'no-show' : '';
     return `
       <div class="appt-row">

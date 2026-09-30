@@ -138,6 +138,33 @@ export default async function handler(req,res){
       return res.json({ ok:true,items:(items||[]).map(i=>({ ...i,service:sM[i.service_id]||null })) });
     }
 
+    // Reports (Revenue, retention): every booking in a date range, owner-only.
+    // The calendar only ever answered one day or one week, so the Revenue
+    // page's trend, services, staff and retention came back empty.
+    if(action==='range'){
+      if(req.__publicBooking===true) return res.status(404).json({ ok:false, error:'not_found' });
+      const settings0=await getBookingSettings(tenant.id);
+      const tz=settings0?.timezone||'America/New_York';
+      const key=(v,d)=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?String(v):d;
+      const today=localDateKey(new Date(),tz);
+      let fromKey=key(body.from,today), toKey=key(body.to,today);
+      if(fromKey>toKey) [fromKey,toKey]=[toKey,fromKey];
+      const span=(Date.parse(toKey)-Date.parse(fromKey))/864e5;
+      const clientId=body.client_id?String(body.client_id):null;   // one client's history (client profile)
+      const maxSpan=clientId?3700:400;
+      if(span>maxSpan) fromKey=addDaysKey(toKey,-maxSpan);
+      const start=new Date(zonedLocalToUtc(fromKey,'00:00:00',tz)), end=new Date(zonedLocalToUtc(addDaysKey(toKey,1),'00:00:00',tz));
+      const [services,staff,bookings]=await Promise.all([listServices(tenant.id),listStaff(tenant.id),listBookings(tenant.id,start.toISOString(),end.toISOString(),{ clientId })]);
+      const sv=new Map((services||[]).map(x=>[x.id,x])), st=new Map((staff||[]).map(x=>[x.id,x]));
+      const rows=(bookings||[]).map(b=>({ id:b.id, start_time:b.start_time, end_time:b.end_time, status:b.status, source:b.source||null,
+        duration_min:b.duration_min||(sv.get(b.service_id)?.duration_minutes)||null,
+        total_amount:Number(b.total_amount ?? b.price ?? sv.get(b.service_id)?.price ?? 0)||0,
+        client_id:b.client_id||null, client_name:b.client_name||null,
+        service_id:b.service_id||null, service_name:sv.get(b.service_id)?.name || (typeof b.service==='string'?b.service:null),
+        staff_id:b.staff_id||null, staff_name:st.get(b.staff_id)?.name || b.stylist || null }));
+      return res.json({ ok:true, from:fromKey, to:toKey, timezone:tz, bookings:rows });
+    }
+
     if(action==='day' || action==='week'){
       const [services,staff]=await Promise.all([listServices(tenant.id),listStaff(tenant.id)]);
       const date=req.query?.date || body.date || new Date().toISOString();
