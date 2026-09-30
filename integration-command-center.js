@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   const LABEL={healthy:'Healthy',attention:'Needs attention',blocked:'Blocked',not_connected:'Not connected',link_only:'Link only'};
-  const TONE={healthy:'#ccff00',attention:'#ffcc66',blocked:'#ff7a6d',not_connected:'#8a8a92',link_only:'#8fd3ff'};
+  const TONE={healthy:'#f2f2f4',attention:'#ffcc66',blocked:'#ff7a6d',not_connected:'#8a8a92',link_only:'#8fd3ff'};
   const GLYPH={voice:'T',whatsapp:'W',square:'□',boulevard:'B',fresha:'F',vagaro:'V',mindbody:'M',shopify:'S',google_calendar:'G',website:'↗'};
 
   function token(){try{return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}catch{return '';}}
@@ -44,7 +44,7 @@
     const list=document.getElementById('integrationsList');
     if(!list) return;
     const header=`<div style="padding:14px 0 16px;border-bottom:.5px solid var(--border);display:flex;align-items:center;gap:14px">
-      <div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:rgba(204,255,0,.1);border:1px solid rgba(204,255,0,.3);font-weight:750">${Number(data.score||0)}</div>
+      <div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:rgba(242,242,244,.1);border:1px solid rgba(242,242,244,.3);font-weight:750">${Number(data.score||0)}</div>
       <div style="flex:1"><div style="font-size:14px;font-weight:650">Integration health</div><div style="font-size:11px;color:var(--text3)">${data.healthy||0} of ${data.total||0} systems verified · ${data.blockers?.length||0} launch blockers</div></div>
       <button class="connect-btn connect" id="refreshIntegrationHealth">Run diagnostics</button>
     </div>`;

@@ -18,17 +18,17 @@
 .wday .wd{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-bottom:5px}
 .wday .wn{font-size:21px;font-weight:300;letter-spacing:-.02em;color:var(--text)}
 .wday .wc{font-size:10px;color:var(--text3);margin-top:3px;height:12px}
-.wday.today{border-color:rgba(204,255,0,.45);background:linear-gradient(180deg,rgba(204,255,0,.08),rgba(204,255,0,.02))}
-.wday.today .wn{color:var(--accent);text-shadow:0 0 18px rgba(204,255,0,.35)}
-.wday.today::after{content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;border-radius:2px;background:var(--accent);box-shadow:0 0 10px rgba(204,255,0,.6)}
+.wday.today{border-color:rgba(242,242,244,.45);background:linear-gradient(180deg,rgba(242,242,244,.08),rgba(242,242,244,.02))}
+.wday.today .wn{color:var(--accent);text-shadow:0 0 18px rgba(242,242,244,.35)}
+.wday.today::after{content:'';position:absolute;bottom:0;left:20%;right:20%;height:2px;border-radius:2px;background:var(--accent);box-shadow:0 0 10px rgba(242,242,244,.6)}
 .wday.sel{border-color:var(--border2)}
-.wday .wd-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(204,255,0,.7);margin-left:4px;vertical-align:middle}
+.wday .wd-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(242,242,244,.7);margin-left:4px;vertical-align:middle}
 @media(max-width:760px){.wday{padding:9px 2px 8px}.wday .wn{font-size:17px}.wday .wc{display:none}}
 
 /* ── View switcher ── */
 .view-switch{display:inline-flex;gap:2px;background:var(--surface);border:.5px solid var(--border);border-radius:999px;padding:3px;backdrop-filter:blur(20px)}
 .view-switch button{border:0;background:transparent;color:var(--text2);font-size:12.5px;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer;transition:all .2s var(--spring)}
-.view-switch button.on{background:var(--accent);color:#10140a;box-shadow:0 4px 14px rgba(204,255,0,.25)}
+.view-switch button.on{background:var(--accent);color:#10140a;box-shadow:0 4px 14px rgba(242,242,244,.25)}
 
 /* ── Calendar grid ── */
 /* Phone: the header never widens the page; every control is thumb-sized. */
@@ -46,7 +46,7 @@
 .cal-head .ro{font-size:11px;color:var(--text3);margin-top:2px}
 .cal-time{position:sticky;left:0;z-index:5;background:var(--surface);border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;padding:6px 8px;text-align:right;font-size:10.5px;color:var(--text3)}
 .cal-slot{border-right:.5px solid var(--border);border-bottom:.5px solid var(--border);height:64px;position:relative;cursor:pointer;transition:background .15s}
-.cal-slot:hover{background:rgba(204,255,0,.04)}
+.cal-slot:hover{background:rgba(242,242,244,.04)}
 .cal-slot:hover::after{content:"+ book";position:absolute;top:6px;left:8px;font-size:10px;color:var(--accent);font-weight:500;letter-spacing:.04em}
 
 /* ── Appointment card ── */
@@ -58,7 +58,7 @@
 .appt .cli{font-size:10.5px;color:var(--text2);display:flex;align-items:center;gap:6px}
 .appt .ca{width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,var(--svc,var(--accent)),#1a1a1a);display:inline-flex;align-items:center;justify-content:center;font-size:7.5px;font-weight:700;color:#080808;flex-shrink:0}
 .appt .st{margin-left:auto;font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:999px}
-.appt .st.confirmed{background:rgba(204,255,0,.14);color:var(--accent)}
+.appt .st.confirmed{background:rgba(242,242,244,.14);color:var(--accent)}
 .appt .st.completed{background:rgba(255,255,255,.1);color:var(--text2)}
 .appt .st.pending{background:rgba(255,179,64,.14);color:var(--warning)}
 .appt .st.cancelled{background:rgba(255,115,105,.14);color:var(--danger)}
@@ -98,7 +98,7 @@
 .wk-day-head{position:sticky;top:0;z-index:6;background:var(--bg2);border-bottom:.5px solid var(--border);padding:12px 10px;display:flex;align-items:baseline;gap:7px;backdrop-filter:blur(20px)}
 .wk-day-head .wn{font-size:17px;font-weight:300}
 .wk-day-head .wd{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3)}
-.wk-day.today .wk-day-head{border-bottom-color:rgba(204,255,0,.4)}
+.wk-day.today .wk-day-head{border-bottom-color:rgba(242,242,244,.4)}
 .wk-day.today .wk-day-head .wn{color:var(--accent)}
 .wk-appt{margin:8px 8px 6px;padding:8px 10px;border-radius:12px;border-left:3px solid var(--svc,var(--accent));background:rgba(255,255,255,.045);cursor:pointer;transition:transform .18s var(--spring);animation:apptIn .35s var(--spring-snap) both}
 .wk-appt:hover{transform:translateY(-1px);background:rgba(255,255,255,.07)}
@@ -129,19 +129,19 @@
 .mw.open .modal{transform:none}
 .modal .grab{width:38px;height:4px;border-radius:4px;background:rgba(255,255,255,.18);margin:2px auto 16px}
 @media(min-width:640px){.modal .grab{display:none}}
-.modal-kicker{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:rgba(204,255,0,.75);margin-bottom:6px;font-weight:600}
+.modal-kicker{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:rgba(242,242,244,.75);margin-bottom:6px;font-weight:600}
 .modal h3{font-size:22px;font-weight:600;letter-spacing:-.02em;margin-bottom:4px}
 .modal .msub{font-size:12.5px;color:var(--text3);margin-bottom:18px}
 .fld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .fld label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
 .fld input,.fld select,.fld textarea{background:var(--surface);border:.5px solid var(--border);border-radius:12px;padding:11px 13px;color:var(--text);font-size:14px;outline:none;font-family:inherit;width:100%;transition:border-color .15s}
-.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:rgba(204,255,0,.5);box-shadow:0 0 0 3px rgba(204,255,0,.07)}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:rgba(242,242,244,.5);box-shadow:0 0 0 3px rgba(242,242,244,.07)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .macts{display:flex;gap:10px;margin-top:8px}
 .macts button{flex:1;padding:13px;border-radius:12px;font-size:14px;font-weight:650;cursor:pointer;border:none;transition:transform .12s var(--spring)}
 .macts button:active{transform:scale(.97)}
 .macts .ghost{background:transparent;border:.5px solid var(--border);color:var(--text2)}
-.macts .primary{background:var(--accent);color:#10140a;box-shadow:0 4px 16px rgba(204,255,0,.25)}
+.macts .primary{background:var(--accent);color:#10140a;box-shadow:0 4px 16px rgba(242,242,244,.25)}
 .macts .primary:hover{background:var(--accent2)}
 .macts .danger{background:transparent;border:.5px solid rgba(255,115,105,.35);color:var(--danger)}
 .mstatus{font-size:12px;color:var(--text3);margin-top:10px;min-height:16px}
@@ -149,7 +149,7 @@
 .detail-row{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:.5px solid rgba(255,255,255,.05);font-size:13.5px}
 .detail-row .dr-l{width:86px;color:var(--text3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;flex-shrink:0}
 .detail-row .dr-v{color:var(--text);font-weight:500}
-.detail-av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#080808}
+.detail-av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#565658);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#080808}
 
 /* Empty */
 .empty-cal{padding:80px 20px;text-align:center;color:var(--text3);font-size:14px;line-height:2}
@@ -158,7 +158,7 @@
 
 /* ── Waitlist ── */
 .wl-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
-.wl-btn:hover{border-color:rgba(204,255,0,.35);color:var(--text)}
+.wl-btn:hover{border-color:rgba(242,242,244,.35);color:var(--text)}
 .wl-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:#10140a;font-size:10px;font-weight:750;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .wl-badge.zero{background:rgba(255,255,255,.1);color:var(--text3)}
 .wl-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto}
@@ -194,7 +194,7 @@
     <a href="booking-settings.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Settings</a>
     <button class="wl-btn" onclick="openWaitlist()" title="Clients waiting for a slot to open">Waitlist <span class="wl-badge zero" id="wlCount">0</span></button>
     <button class="block-btn" onclick="openBlock()" title="Mark lunch, a break, or a day off on the staff grid">⏱ Block time</button>
-    <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:var(--accent);color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(204,255,0,.25)">+ New booking</button>
+    <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:var(--accent);color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(242,242,244,.25)">+ New booking</button>
   </div>
 </div>
 <div class="week-strip" id="weekStrip" style="display:none"></div>
@@ -391,7 +391,7 @@ function renderWeek(){
       const color=svcColor(b.service_id);
       const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':(b.status==='in_progress'?'in_progress':(b.status==='no_show'?'no_show':'confirmed')));
       html+='<div class="wk-appt" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
-        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(204,255,0,.14);color:var(--accent)">'+st+'</span></div>'
+        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</span></div>'
         +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
         +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'—')+'</div></div>';
     });
@@ -416,7 +416,7 @@ function renderAgenda(){
       +'<div class="ag-t">'+fmtT(new Date(b.start_time))+'<small>'+fmtDur(b.service?.duration_minutes)+'</small></div>'
       +'<div class="ag-cli"><div class="ag-av" style="--svc:'+color+'">'+esc(initials(clientName(b.client)))+'</div>'
       +'<div><div class="ag-name">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</div>'
-      +'<div class="ag-meta"><span style="color:var(--text)">'+esc(b.service?.name||'Appointment')+'</span> · '+esc(b.staff?.name||'—')+' <span class="st '+st+'" style="font-size:8.5px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:rgba(204,255,0,.14);color:var(--accent)">'+st+'</span></div></div></div>'
+      +'<div class="ag-meta"><span style="color:var(--text)">'+esc(b.service?.name||'Appointment')+'</span> · '+esc(b.staff?.name||'—')+' <span class="st '+st+'" style="font-size:8.5px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</span></div></div></div>'
       +'<div class="ag-amt">$'+Number(b.total_amount||0).toLocaleString()+'<small>'+(b.source||'dashboard')+'</small></div></div>';
   });
   html+='</div>';
@@ -601,7 +601,7 @@ function showDetail(idOrBk){
     +'<div class="detail-av" style="background:linear-gradient(135deg,'+color+',#2a2a2a)">'+esc(initials(clientName(b.client)))+'</div>'
     +'<div><div style="font-size:16px;font-weight:650">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★ VIP</span>':'')+'</div>'
     +'<div style="font-size:12px;color:var(--text3)">'+esc(clientPhone(b.client)||'no phone on file')+'</div></div>'
-    +'<div class="st '+st+'" style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(204,255,0,.14);color:var(--accent)">'+st+'</div></div>'
+    +'<div class="st '+st+'" style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Service</div><div class="dr-v">'+esc(b.service?.name||'—')+(b.service?.price?' · $'+Number(b.service.price).toLocaleString():'')+'</div></div>'
     +'<div id="bkLineItems"></div>'
     +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'—')+'</div></div>'

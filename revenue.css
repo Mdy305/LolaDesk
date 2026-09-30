@@ -12,9 +12,9 @@
   --ink-mute:  #6e6e73;
   --line:      rgba(255,255,255,0.07);
   --line-strong:rgba(255,255,255,0.13);
-  --brand:     #ccff00;
+  --brand:     #f2f2f4;
   --brand-ink: #0a0a0b;
-  --brand-soft:rgba(204,255,0,0.12);
+  --brand-soft:rgba(242,242,244,0.12);
   --success:   #30d158;
   --warning:   #ff9f0a;
   --danger:    #ff453a;

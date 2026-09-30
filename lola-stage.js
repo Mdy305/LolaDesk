@@ -34,9 +34,13 @@
   // ── theme: follow the page underneath ──
   let dark = false;
   function readTheme() {
-    let el = document.body, rgb = null;
-    while (el) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) { rgb = c.match(/\d+/g).map(Number); break; } el = el.parentElement; }
-    dark = rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.5 : matchMedia('(prefers-color-scheme: dark)').matches;
+    // Read the surface Lola actually sits on (walk up from her anchor, then the
+    // app shell). The OS light/dark setting is only a last resort — LolaDesk's
+    // app is dark, and a light-mode Mac used to turn her into grey ink here.
+    const bgOf = (el) => { while (el && el !== document.documentElement) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c.match(/\d+(\.\d+)?/g).map(Number); el = el.parentElement; } return null; };
+    let rgb = bgOf(anchor) || bgOf(document.querySelector('.main, main, .app')) || bgOf(document.body);
+    if (!rgb) { const c = getComputedStyle(document.documentElement).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) rgb = c.match(/\d+/g).map(Number); }
+    dark = rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.5 : true;
   }
   readTheme();
   const INK = () => (dark ? '245,245,247' : '29,29,31'), GLOW = '204,255,0';
@@ -127,6 +131,30 @@
     try { localStorage.setItem('lola.detail', String(LEVELS[i])); } catch (_) {}
   }
 
+  // ── Her body: the SAME Lola as everywhere (lola-orb.js), mounted in her spot.
+  // This file keeps what only the calendar has — the particles that fly out
+  // to frame each new booking. Without the engine, the old core draws.
+  let body = null;
+  function mountBody() {
+    if (!window.LolaOrb || reduce || body) return;
+    const c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true');
+    c.style.cssText = 'position:absolute;pointer-events:none';
+    if (getComputedStyle(anchor).position === 'static') anchor.style.position = 'relative';
+    anchor.appendChild(c);
+    let o = null;
+    try { o = window.LolaOrb.mount(c, { size: anchor.clientWidth || 120, bleed: 0.4 }); } catch (_) { o = null; }
+    if (!o || !o.gpu) { try { o && o.destroy(); } catch (_) {} c.remove(); return; }
+    body = o; body.setState(S.mode === 'listening' || S.mode === 'thinking' || S.mode === 'speaking' ? S.mode : 'idle');
+  }
+  if (window.LolaOrb) setTimeout(mountBody, 0);
+  else {
+    if (!window.__lolaOrbLoading) window.__lolaOrbLoading = new Promise((res) => {
+      const sc = document.createElement('script'); sc.src = '/lola-orb.js'; sc.async = true;
+      sc.onload = () => res(!!window.LolaOrb); sc.onerror = () => res(false); document.head.appendChild(sc);
+    });
+    window.__lolaOrbLoading.then((ok) => ok && mountBody());
+  }
+
   // ── worker particles: the ones that fly out to the calendar ──
   const N = hasGL ? (reduce ? 400 : small ? 800 : 1500) : (reduce ? 400 : small ? 700 : 1100);
   const P = [];
@@ -196,11 +224,12 @@
     const C = center(), R = S.R * C.scale;
     const breathe = 1 + Math.sin(S.t * 1.25) * (reduce ? 0.02 : 0.045), tilt = 0.38 + Math.sin(S.t * 0.4) * 0.08;
     ctx.clearRect(0, 0, W, H);
-    const haloR = R * (2.2 + S.amp * 1.1);
+    if (body) body.feed(S.amp);
+    const haloR = body ? 0 : R * (2.2 + S.amp * 1.1);
     const g = ctx.createRadialGradient(C.x, C.y, 0, C.x, C.y, haloR);
     g.addColorStop(0, `rgba(${GLOW},${(dark ? 0.08 : 0.04) + S.glow * (dark ? 0.2 : 0.11) + S.amp * 0.12})`);
     g.addColorStop(1, `rgba(${GLOW},0)`);
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(C.x, C.y, haloR, 0, Math.PI * 2); ctx.fill();
+    if (haloR) { ctx.fillStyle = g; ctx.beginPath(); ctx.arc(C.x, C.y, haloR, 0, Math.PI * 2); ctx.fill(); }
 
     const onScreen = C.y > -R * 3 && C.y < H + R * 3;
     if (hasGL) {
@@ -213,9 +242,10 @@
       gl.uniform1f(loc.u_think, S.think); gl.uniform1f(loc.u_breath, breathe); gl.uniform1f(loc.u_dpr, DPR);
       gl.uniform1f(loc.u_alpha, Math.max(0.03, Math.min(0.9, (dark ? 44 : 78) / Math.sqrt(coreN) * (C.scale < 0.7 ? 0.8 : 1))));
       gl.uniform1f(loc.u_flow, reduce ? 0.4 : 1);
-      const ink = INK().split(',').map(v => parseFloat(v) / 255);
-      gl.uniform3fv(loc.u_ink, ink); gl.uniform3fv(loc.u_glow, [0.8, 1, 0]);
-      if (onScreen) gl.drawArrays(gl.POINTS, 0, coreN);
+      // Same Lola as everywhere: on dark pages her body is her own lime, not ink.
+      const ink = dark ? [0.72, 0.96, 0.12] : INK().split(',').map(v => parseFloat(v) / 255);
+      gl.uniform3fv(loc.u_ink, ink); gl.uniform3fv(loc.u_glow, dark ? [0.88, 1, 0.32] : [0.8, 1, 0]);
+      if (onScreen && !body) gl.drawArrays(gl.POINTS, 0, coreN);
     }
 
     // workers
@@ -244,7 +274,7 @@
     for (let i = 0; i < 6; i++) {
       const list = buckets[i]; if (!list.length) continue;
       const acc = i >= 3, lvl = i % 3;
-      ctx.fillStyle = acc ? `rgba(${dark ? GLOW : '127,163,0'},${Math.min(1, alphaFor[lvl] + 0.1)})` : `rgba(${INK()},${alphaFor[lvl]})`;
+      ctx.fillStyle = acc ? `rgba(${dark ? '236,255,170' : '127,163,0'},${Math.min(1, alphaFor[lvl] + 0.1)})` : `rgba(${dark ? '190,240,40' : INK()},${alphaFor[lvl]})`;
       ctx.beginPath();
       for (const p of list) { const r = p.sz * (0.7 + lvl * 0.35) * (0.4 + 0.6 * p.vis); ctx.moveTo(p.x + r, p.y); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); }
       ctx.fill();
@@ -289,11 +319,12 @@
 
   window.LolaStage = {
     anchor,
-    setMode(m) { if (MODE[m]) S.mode = m; },
+    setMode(m) { if (MODE[m]) S.mode = m; if (body) body.setState(m === 'oncall' || MODE[m] ? m : 'idle'); },
+    voice(who, sec) { if (body) body.voice(who, sec); },
     get mode() { return S.mode; },
     setLevel(fn) { S.levelFn = typeof fn === 'function' ? fn : null; },
     mission,
-    get particles() { return hasGL ? coreN : 0; },
+    get particles() { return body ? body.particles : hasGL ? coreN : 0; },
     setDetail(n) { const i = LEVELS.indexOf(n); if (i >= 0) setLevel(i); },
   };
 })();

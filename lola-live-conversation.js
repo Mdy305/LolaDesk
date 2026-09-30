@@ -164,7 +164,32 @@
   // 'oncall' orb state, added for this). Best-effort and fully optional:
   // no-ops cleanly on any page that hasn't loaded app.js's orb (e.g. a
   // page without the Home dashboard's orb markup).
+  // Each NEW line of a live call makes Lola resonate: her words radiate out,
+  // the caller's draw in. Only the newest line plays (a poll can bring several).
+  const seenLines = new Map();
+  let fastPoll = null;
+  function resonateNewLines() {
+    const app = window.__lolaApp;
+    for (const call of state.calls) {
+      const t = Array.isArray(call?.transcript) ? call.transcript : [];
+      const before = seenLines.has(call.id) ? seenLines.get(call.id) : t.length;
+      seenLines.set(call.id, t.length);
+      if (t.length > before && app && typeof app.voicePulse === 'function' && app.getOrbState() === 'oncall') {
+        const last = t[t.length - 1];
+        const role = String(last.role || last.speaker || '').toLowerCase();
+        const who = (role === 'client' || role === 'user' || role === 'caller') ? 'caller' : 'lola';
+        const words = String(last.content || last.text || '').trim().split(/\s+/).filter(Boolean).length;
+        app.voicePulse(who, Math.max(1.2, Math.min(7, words * 0.32)));
+      }
+    }
+    // While a call is live, listen closely (every 2.5s); otherwise the normal pace.
+    const live = state.calls.length > 0;
+    if (live && !fastPoll) fastPoll = setInterval(() => { if (!document.hidden) refresh(); }, 2500);
+    if (!live && fastPoll) { clearInterval(fastPoll); fastPoll = null; }
+  }
+
   function updateOrbPresence() {
+    try { resonateNewLines(); } catch (_) {}
     const app = window.__lolaApp;
     if (!app || typeof app.getOrbState !== 'function') return;
     const onCallNow = state.calls.length > 0;

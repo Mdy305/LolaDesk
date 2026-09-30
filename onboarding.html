@@ -5,7 +5,7 @@
 <title>LolaDesk — Start</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#050506;--surface:#141416;--surface2:#19191d;--line:#25252b;--text:#f6f6f7;--muted:#92929b;--dim:#5c5c65;--accent:#ccff00;--accent2:#e4ff78;--glow:rgba(204,255,0,.18);--danger:#ff6b60;--font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif}
+:root{--bg:#050506;--surface:#141416;--surface2:#19191d;--line:#25252b;--text:#f6f6f7;--muted:#92929b;--dim:#5c5c65;--accent:#f2f2f4;--accent2:#f5f5f7;--glow:rgba(242,242,244,.18);--danger:#ff6b60;--font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased}
 .shell{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
 .presence{border-right:1px solid var(--line);padding:52px 56px;display:flex;flex-direction:column;justify-content:space-between;background:radial-gradient(ellipse at 30% 60%,rgba(204,255,0,.04),transparent 70%)}
@@ -34,6 +34,22 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .step h2{font-size:38px;letter-spacing:-.04em;line-height:1.06;font-weight:520;margin-bottom:12px}
 .sub{color:var(--muted);font-size:14px;line-height:1.75;margin-bottom:32px;max-width:460px}
 .field{margin-bottom:16px}
+.drop{display:flex;flex-direction:column;gap:4px;border:1px dashed #34343c;border-radius:14px;padding:18px 16px;cursor:pointer;transition:border-color .18s,background .18s;background:rgba(255,255,255,.015)}
+.drop:hover,.drop:focus-visible,.drop.over{border-color:#8e8e93;background:rgba(255,255,255,.035);outline:none}
+.drop b{font-size:13.5px;font-weight:600;color:var(--text)}
+.drop small{font-size:12px;color:var(--muted);line-height:1.5}
+.files{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.file{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:9px 12px}
+.file span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file em{font-style:normal;color:var(--muted);font-size:11.5px;white-space:nowrap}
+.file button{background:none;border:0;color:var(--muted);font-size:16px;cursor:pointer;padding:0 2px;line-height:1}
+.strategy{margin:6px 0 24px;border:1px solid var(--line);border-radius:18px;background:var(--surface);padding:20px 20px 16px}
+.strategy h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.strategy .who{color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:14px}
+.strategy ol{margin:0 0 14px;padding-left:18px;color:var(--text);font-size:13px;line-height:1.7}
+.strategy .msg{border-radius:14px;background:#0c0c0e;border:1px solid var(--line);padding:12px 14px;font-size:13px;line-height:1.55;color:var(--text)}
+.strategy .msg small{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.strategy .note{font-size:11.5px;color:var(--dim);margin-top:10px}
 .field label{display:block;font-size:11px;color:var(--muted);margin:0 0 7px 1px;letter-spacing:.04em}
 .input{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:13px;padding:14px 15px;outline:none;font-size:14px;font-family:inherit;transition:.18s}
 .input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.07)}
@@ -45,7 +61,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .num-card{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--surface);cursor:pointer;transition:.15s}
 .owned-divider{display:flex;align-items:center;gap:12px;margin:16px 0 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.14em}
 .owned-divider::before,.owned-divider::after{content:'';flex:1;height:1px;background:var(--line)}
-.num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 9px;border-radius:999px;background:rgba(112,255,0,.12);color:#70FF00;border:1px solid rgba(112,255,0,.3);white-space:nowrap}
+.num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 9px;border-radius:999px;background:rgba(242,242,244,.12);color:#f2f2f4;border:1px solid rgba(242,242,244,.3);white-space:nowrap}
 .num-card:hover,.num-card.on{border-color:var(--text);background:rgba(255,255,255,.04)}
 .num-card.on{box-shadow:0 0 0 1px var(--text)}
 .num-number{font-size:16px;font-weight:500;letter-spacing:.02em}
@@ -79,15 +95,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:12px}
 
 /* ── Auto-assigned live number ── */
-.auto-num{display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(112,255,0,.07),transparent);border:1px solid rgba(112,255,0,.32);border-radius:18px;padding:20px;margin-bottom:22px;box-shadow:0 0 40px rgba(112,255,0,.08)}
-.auto-num .num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:rgba(112,255,0,.14);color:#70FF00;border:1px solid rgba(112,255,0,.4);white-space:nowrap}
+.auto-num{display:flex;align-items:center;gap:16px;background:linear-gradient(180deg,rgba(242,242,244,.07),transparent);border:1px solid rgba(242,242,244,.32);border-radius:18px;padding:20px;margin-bottom:22px;box-shadow:0 0 40px rgba(242,242,244,.08)}
+.auto-num .num-badge{font-size:11px;font-weight:650;letter-spacing:.04em;padding:4px 10px;border-radius:999px;background:rgba(242,242,244,.14);color:#f2f2f4;border:1px solid rgba(242,242,244,.4);white-space:nowrap}
 .auto-num b{font-size:20px;letter-spacing:-.02em;display:block}
 .auto-num small{font-size:12px;color:var(--muted);line-height:1.6;margin-top:3px;display:block}
-.auto-live{font-size:10px;color:#70FF00;text-transform:uppercase;letter-spacing:.18em;margin-bottom:10px}
+.auto-live{font-size:10px;color:#f2f2f4;text-transform:uppercase;letter-spacing:.18em;margin-bottom:10px}
 
 /* ── Voice preview ── */
 .voice-preview{display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:28px}
-.voice-btn{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f1ffc0,#ccff00 55%,#7a9e00);border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 52px;transition:transform .2s}
+.voice-btn{width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f5f5f7,#f2f2f4 55%,#969698);border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 52px;transition:transform .2s}
 .voice-btn:hover{transform:scale(1.06)}
 .voice-btn.playing{animation:speak .9s ease-in-out infinite}
 @keyframes speak{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
@@ -263,6 +279,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <div class="field"><label>City</label><input class="input" id="learnCity" placeholder="Miami Beach, FL" autocomplete="address-level2"/></div>
         <div class="field"><label>Or paste your menu &amp; prices</label><textarea class="input" id="learnNotes" rows="4" placeholder="Women's cut — $85&#10;Balayage — from $250 (3 hrs)&#10;Blowout — $55" style="resize:vertical;min-height:96px"></textarea></div>
         <div class="field"><label>Instagram (optional)</label><input class="input" id="learnIg" placeholder="@yoursalon"/></div>
+        <div class="field"><label>Or drop your files</label>
+          <label class="drop" id="learnDrop" tabindex="0"><input type="file" id="learnFiles" multiple accept=".pdf,.docx,.csv,.tsv,.txt,.md" hidden/>
+            <b>Menu, price list, policies or client list</b>
+            <small>PDF, Word, CSV or text. Lola learns from documents; a client list goes straight into Clients.</small></label>
+          <div class="files" id="learnFileList"></div>
+        </div>
         <div class="actions" style="gap:10px;flex-wrap:wrap">
           <button class="btn-p" id="learnBtn" onclick="learnNow()">Teach Lola</button>
           <button class="btn-g" onclick="skipLearn()">Skip for now</button>
@@ -274,16 +296,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <h2 id="learnTitle">Learning your salon…</h2>
         <div class="status" id="learnTicker">
           <div class="srow running" id="l-read"><span class="dot"></span><div class="scopy"><b>Reading your website and menu</b><small>Every page that matters</small></div></div>
+          <div class="srow" id="l-files" style="display:none"><span class="dot"></span><div class="scopy"><b>Reading your files</b><small>Documents and client lists</small></div></div>
           <div class="srow" id="l-menu"><span class="dot"></span><div class="scopy"><b>Learning services &amp; prices</b><small>So she can quote and book them</small></div></div>
           <div class="srow" id="l-team"><span class="dot"></span><div class="scopy"><b>Learning your team &amp; hours</b><small>Who does what, and when you're open</small></div></div>
           <div class="srow" id="l-brand"><span class="dot"></span><div class="scopy"><b>Learning your brand voice</b><small>So she sounds like you</small></div></div>
           <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your next 30 days</b><small>Open chairs, who's due back, the campaigns to fill them</small></div></div>
         </div>
+        <div class="strategy" id="learnStrategy" style="display:none" aria-live="polite"></div>
         <p class="sub" id="learnSay" style="display:none;margin-bottom:22px"></p>
         <div class="actions" id="learnDone" style="display:none;gap:10px;flex-wrap:wrap">
           <button class="btn-p" onclick="go(5);setOrb('speaking')">Continue</button>
           <button class="btn-g" onclick="learnAgain()">Add more</button>
-          <a class="btn-g" href="/campaigns" style="text-decoration:none;display:inline-flex;align-items:center">See the 30-day plan</a>
+          <a class="btn-g" href="/campaigns" style="text-decoration:none;display:inline-flex;align-items:center">Review the plan in Marketing</a>
         </div>
       </div>
     </div>
@@ -637,7 +661,7 @@ function renderEmbed(){
   const codeEl=document.getElementById('embedCode');
   if(!box||!codeEl||!S.slug){if(box)box.style.display='none';return;}
   const base=location.origin||'https://www.loladesk.com';
-  EMBED='<script src="'+base+'/booking-widget.js" data-tenant="'+S.slug+'" data-accent="#ccff00" data-mode="inline"><\/script>';
+  EMBED='<script src="'+base+'/booking-widget.js" data-tenant="'+S.slug+'" data-accent="#f2f2f4" data-mode="inline"><\/script>';
   codeEl.textContent=EMBED;
   document.getElementById('embedLink').href=base+'/book?t='+encodeURIComponent(S.slug);
   box.style.display='block';
@@ -687,7 +711,7 @@ function learnRows(n){['l-read','l-menu','l-team','l-brand','l-plan'].forEach((i
 async function learnNow(){
   const website=v('learnSite').trim(), notes=v('learnNotes').trim(), city=v('learnCity').trim(), instagram=v('learnIg').trim();
   const err=document.getElementById('err6');
-  if(!website&&!notes){err.textContent='Add your website or paste your menu — or skip for now.';return;}
+  if(!website&&!notes&&!S.files.length){err.textContent='Add your website, paste your menu, or drop a file — or skip for now.';return;}
   if(!S.token){err.textContent='Your session is missing. Skip for now; you can teach Lola any time from the menu under your name.';return;}
   err.textContent='';
   document.getElementById('learnForm').style.display='none';
@@ -699,8 +723,39 @@ async function learnNow(){
   setOrb('thinking');
   let step=0; learnRows(0);
   learnTick=setInterval(()=>{ if(step<4){step++;learnRows(step);} },5200);
+  // Files first: client lists go to Clients, documents become Lola's knowledge
+  // and join what she reads for the profile and the plan.
+  let fileNotes='', filesMsg='';
+  if(S.files.length){
+    const fr=document.getElementById('l-files'); fr.style.display='';
+    const auth={'Content-Type':'application/json',Authorization:'Bearer '+S.token};
+    let docs=0, clients=0, failed=0;
+    for(const f of S.files){
+      try{
+        if(f.kind==='contacts'){
+          const r1=await fetchJson('/api/client-import',{method:'POST',headers:auth,body:JSON.stringify({raw_text:f.text})},30000);
+          if(r1.ok&&r1.b){clients+=Number(r1.b.saved||r1.b.created||r1.b.imported||0)||0;}else failed++;
+        }else{
+          const r2=await fetchJson('/api/knowledge',{method:'POST',headers:auth,body:JSON.stringify({kind:'document',filename:f.name,text:f.text})},45000);
+          if(r2.ok) docs++; else failed++;
+          fileNotes+='\n\n# '+f.name+'\n'+f.text;
+        }
+      }catch(e){failed++;}
+    }
+    filesMsg=[docs?docs+(docs===1?' document':' documents')+' learned':'',clients?clients.toLocaleString()+' clients added':'',failed?failed+' could not be read':''].filter(Boolean).join(' · ');
+    fr.classList.remove('running'); fr.classList.add('done'); fr.querySelector('small').textContent=filesMsg||'Read';
+  }
+  const learnNotes=(notes+(fileNotes?'\n'+fileNotes:'')).slice(0,14000);
+  if(!website&&!learnNotes){
+    // Only a client list: nothing to learn a profile from — done.
+    clearInterval(learnTick); learnRows(5);
+    document.getElementById('learnTitle').textContent='Your clients are in.';
+    document.getElementById('learnLabel').textContent='Lola learned';
+    const say=document.getElementById('learnSay'); say.textContent=(filesMsg||'Done')+'. Add your website or menu any time so she can quote your services.'; say.style.display='block';
+    document.getElementById('learnDone').style.display='flex'; setOrb('speaking'); return;
+  }
   let r;
-  try{ r=await fetchJson('/api/onboarding/learn',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({website,notes,city,instagram})},58000); }
+  try{ r=await fetchJson('/api/onboarding/learn',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({website,notes:learnNotes,city,instagram})},58000); }
   catch(e){ r={ok:false,b:{say:e.name==='AbortError'?'That took too long. Try pasting your menu instead.':'The network dropped. Try again.'}}; }
   clearInterval(learnTick);
   const d=(r&&r.b)||{};
@@ -719,6 +774,7 @@ async function learnNow(){
   sub('l-brand',[p.positioning,p.tone].filter(Boolean).join(' · ')||'Warm and professional');
   const fp=d.fill_plan;
   sub('l-plan',fp&&fp.headline?(fp.headline+(fp.campaigns?' '+fp.campaigns+' campaigns scheduled'+(fp.projected_bookings?' · ~'+fp.projected_bookings+' bookings':'')+'.':'')):(p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are'));
+  renderStrategy(p.marketing||null, fp, filesMsg);
   document.getElementById('learnTitle').textContent='She knows your salon.';
   document.getElementById('learnLabel').textContent='Lola learned';
   const say=document.getElementById('learnSay'); say.textContent=d.say||''; say.style.display=d.say?'block':'none';
@@ -726,6 +782,77 @@ async function learnNow(){
   try{sessionStorage.setItem('lola.welcome',JSON.stringify({say:d.say||'',suggestions:d.suggestions||[]}));}catch(e){}
   setOrb('speaking');
   try{ if(d.say&&window.LolaAlive&&typeof window.LolaAlive.speak==='function') window.LolaAlive.speak(d.say); }catch(e){}
+}
+// ── Files: read in the browser, sorted into client lists vs documents ──
+S.files=[];
+const PHONE_RE=/(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
+function looksLikeContacts(name,text){
+  if(!/\.(csv|tsv|txt)$/i.test(name)) return false;
+  const lines=text.split(/\r?\n/).filter(l=>l.trim()).slice(0,200);
+  if(lines.length<3) return false;
+  const head=lines[0].toLowerCase();
+  if(/phone|mobile|cell|tel/.test(head)&&/name|first|client|customer/.test(head)) return true;
+  const withPhone=lines.filter(l=>PHONE_RE.test(l)).length;
+  const withPrice=lines.filter(l=>/\$\s?\d/.test(l)).length;
+  return withPhone/lines.length>0.6&&withPrice/lines.length<0.2;
+}
+function loadScriptOnce(src){return new Promise((res,rej)=>{if(document.querySelector('script[src="'+src+'"]'))return res();const sc=document.createElement('script');sc.src=src;sc.onload=res;sc.onerror=()=>rej(new Error('load '+src));document.head.appendChild(sc);});}
+async function fileText(file){
+  const n=file.name.toLowerCase();
+  if(/\.(txt|md|csv|tsv)$/.test(n)) return await file.text();
+  if(n.endsWith('.pdf')){
+    await loadScriptOnce('/vendor/pdf.min.js');
+    const lib=window.pdfjsLib; lib.GlobalWorkerOptions.workerSrc='/vendor/pdf.worker.min.js';
+    const pdf=await lib.getDocument({data:await file.arrayBuffer()}).promise; let out='';
+    for(let i=1;i<=Math.min(pdf.numPages,30);i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n';}
+    return out;
+  }
+  if(n.endsWith('.docx')){
+    await loadScriptOnce('/vendor/mammoth.browser.min.js');
+    const r=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()}); return r.value||'';
+  }
+  throw new Error('unsupported');
+}
+function renderFiles(){
+  const box=document.getElementById('learnFileList'); if(!box) return;
+  box.innerHTML=S.files.map((f,i)=>`<div class="file"><span>${esc(f.name)}</span><em>${f.kind==='contacts'?'Client list':'Document'} · ${f.info}</em><button type="button" aria-label="Remove ${esc(f.name)}" data-i="${i}">×</button></div>`).join('');
+  box.querySelectorAll('button').forEach(b=>b.onclick=()=>{S.files.splice(+b.dataset.i,1);renderFiles();});
+}
+async function addFiles(list){
+  const err=document.getElementById('err6'); err.textContent='';
+  for(const file of Array.from(list||[]).slice(0,8)){
+    if(file.size>15*1024*1024){err.textContent=file.name+' is over 15 MB.';continue;}
+    try{
+      const text=((await fileText(file))||'').replace(/\u0000/g,'').trim();
+      if(!text){err.textContent=file.name+' has no readable text (a scanned photo?). Paste the menu instead.';continue;}
+      const kind=looksLikeContacts(file.name,text)?'contacts':'document';
+      const rows=text.split(/\r?\n/).filter(l=>l.trim()).length;
+      S.files.push({name:file.name,text:text.slice(0,kind==='contacts'?400000:20000),kind,info:kind==='contacts'?Math.max(0,rows-1).toLocaleString()+' rows':(text.length<1000?text.length+' characters':Math.round(text.length/1000)+'k characters')});
+    }catch(e){err.textContent='Lola can read PDF, Word, CSV and text files. '+file.name+' is not one of those.';}
+  }
+  renderFiles();
+}
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+(function wireDrop(){
+  const drop=document.getElementById('learnDrop'), input=document.getElementById('learnFiles'); if(!drop||!input) return;
+  input.addEventListener('change',()=>{addFiles(input.files);input.value='';});
+  drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click();}});
+  ['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',e=>addFiles(e.dataTransfer&&e.dataTransfer.files));
+})();
+// ── Her marketing strategy, shown in full (nothing is sent until you approve it) ──
+function renderStrategy(m,fp,filesMsg){
+  const box=document.getElementById('learnStrategy'); if(!box) return;
+  const ops=(m&&Array.isArray(m.opportunities)?m.opportunities:[]).slice(0,4);
+  const fc=m&&m.first_campaign;
+  if(!m||(!m.ideal_client&&!ops.length&&!fc&&!(fp&&fp.headline))){box.style.display='none';return;}
+  box.innerHTML=`<h3>Lola's marketing strategy</h3>
+    ${m.ideal_client?`<div class="who">Your ideal client: ${esc(m.ideal_client)}</div>`:''}
+    ${ops.length?`<ol>${ops.map(o=>`<li>${esc(o)}</li>`).join('')}</ol>`:''}
+    ${fc?`<div class="msg"><small>First campaign · ${esc(fc.name||'')} · ${fc.segment==='vip'?'VIP clients':fc.segment==='all'?'Everyone':'Clients who haven’t been back'}</small>${esc(fc.message)}</div>`:''}
+    <div class="note">Nothing is sent until you approve it in Marketing.${filesMsg?' '+esc(filesMsg)+'.':''}</div>`;
+  box.style.display='block';
 }
 function learnAgain(){document.getElementById('learnWork').style.display='none';document.getElementById('learnForm').style.display='block';setOrb('idle');}
 function skipLearn(){

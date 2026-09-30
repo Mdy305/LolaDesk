@@ -33,7 +33,7 @@ body:not([data-page]) .cmd-dock{width:min(760px,calc(100vw - 300px))!important}
 .lola-presence-particle{position:absolute;width:3px;height:3px;border-radius:50%;background:#ccff00;box-shadow:0 0 9px rgba(204,255,0,.75);opacity:.16;animation:lolaDrift var(--d,7s) ease-in-out infinite alternate;animation-delay:var(--delay,0s)}
 @keyframes lolaDrift{0%{transform:translate3d(0,0,0) scale(.55);opacity:.08}45%{opacity:.58}100%{transform:translate3d(var(--x,12px),var(--y,-18px),0) scale(1.5);opacity:.18}}
 .lola-orb-stage canvas{filter:drop-shadow(0 0 20px rgba(204,255,0,.24));animation:lolaPresence 4.8s ease-in-out infinite}
-@keyframes lolaPresence{0%,100%{transform:scale(.985);filter:drop-shadow(0 0 16px rgba(204,255,0,.20))}50%{transform:scale(1.025);filter:drop-shadow(0 0 34px rgba(204,255,0,.34))}}
+@keyframes lolaPresence{0%,100%{transform:scale(.985);filter:drop-shadow(0 0 16px rgba(242,242,244,.20))}50%{transform:scale(1.025);filter:drop-shadow(0 0 34px rgba(242,242,244,.34))}}
 .lola-orb-stage[data-lola-state="thinking"] canvas{animation-duration:1.6s}
 .lola-orb-stage[data-lola-state="speaking"] canvas{animation-duration:.8s}
 

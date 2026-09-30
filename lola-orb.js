@@ -213,7 +213,11 @@
     canvas.classList.add('lola-gpu');
     if (canvas.parentElement) canvas.parentElement.classList.add('lola-gpu-stage');
 
-    const ceiling = deviceCeiling(ambient);
+    let ceiling = deviceCeiling(ambient);
+    // small Lolas stay light: a 46px Lola doesn't need a million particles
+    const autoMax = stageSize < 140 ? 0 : stageSize < 260 ? 2 : 5;
+    if (typeof opts.maxTier !== 'number') opts.maxTier = autoMax;
+    ceiling = Math.max(0, Math.min(ceiling, opts.maxTier, autoMax));
     let tier = tierStore();
     if (!(tier >= 0)) tier = Math.min(ceiling, ceiling >= 5 ? 3 : 2);
     tier = Math.min(tier, ceiling);
@@ -270,6 +274,10 @@
     function feed(v, bands){ st.feed = Math.max(0, Math.min(1, +v || 0)); if (bands) st.bands = [0,1,2].map(i => Math.max(0, Math.min(1, +bands[i] || 0))); }
     function setBands(l, m, hh){ st.bands = [l||0, m||0, hh||0]; }
     function flare(){ st.flare = 1; }
+    // A turn of speech without changing her state (a live phone call keeps
+    // her blue): 'lola' radiates outward, 'caller' draws inward. The rhythm
+    // is generated here — syllables inside words inside phrases.
+    function voice(who, seconds){ st.vw = who === 'caller' ? 'caller' : 'lola'; st.vUntil = st.t + Math.max(0.6, Math.min(8, +seconds || 2)); st.vT0 = st.t; }
 
     // Tuner: climb toward the ceiling while she's smooth, step down (and stay down) if not.
     let fAcc = 0, fN = 0, good = 0, bad = 0, ceil = Math.max(tier, ceiling);
@@ -296,7 +304,14 @@
       W.speak  += ((s==='speaking'?1:0) - W.speak)*e;
       W.call   += ((s==='oncall'?1:0) - W.call)*e;
       W.ambient+= ((s==='ambient'?1:0) - W.ambient)*e;
-      const raw = Math.max(st.level, st.feed);
+      let vAmp = 0; const vOn = st.vUntil && st.t < st.vUntil;
+      if (vOn) {
+        const u = st.t - st.vT0, fade = Math.min(1, u * 4, (st.vUntil - st.t) * 3);
+        vAmp = fade * (0.22 + 0.62 * Math.pow(Math.abs(Math.sin(u * 7.1)) * Math.abs(Math.sin(u * 2.3 + 1)), 0.7)) * (Math.sin(u * 0.9) > -0.6 ? 1 : 0.2);
+      }
+      W.vSpeak = (W.vSpeak || 0) + (((vOn && st.vw === 'lola') ? 0.75 : 0) - (W.vSpeak || 0)) * e;
+      W.vListen = (W.vListen || 0) + (((vOn && st.vw === 'caller') ? 0.7 : 0) - (W.vListen || 0)) * e;
+      const raw = Math.max(st.level, st.feed, vAmp);
       st.lvl += (raw - st.lvl) * Math.min(1, dt*16);
       for (let i=0;i<3;i++) st.bandsSm[i] += (Math.max(st.bands[i], raw*[0.8,0.6,0.35][i]) - st.bandsSm[i]) * Math.min(1, dt*14);
       st.flare *= Math.pow(0.12, dt);
@@ -336,10 +351,13 @@
       gl.uniform1f(U.u_tilt, 0.38 + 0.05*Math.sin(st.t*0.21)); gl.uniform1f(U.u_breath, breath); gl.uniform1f(U.u_dpr, st.dpr);
       // constant brightness at any detail: more particles → each one finer
       // same glow at any size: a bigger Lola spreads the particles thinner
-      const areaK = Math.min(3.5, Math.max(0.6, Math.pow(((st.stage || stageSize) * 0.30) / 96, 2)));
-      gl.uniform1f(U.u_alpha, Math.min(1, 26000/count) * (ambient ? 0.45 : 0.62) * (st.dpr < 1.5 ? 1.35 : 1) * areaK);
+      // Same glow at any size and screen: set by how densely her particles
+      // cover each device pixel. Small Lolas get a little lift so they read.
+      const rDev = Math.max(4, Rpx), coverK = count / (Math.PI * rDev * rDev) * Math.pow(st.dpr, 2);
+      const small = Rpx / st.dpr < 40 ? 2.1 : Rpx / st.dpr < 70 ? 1.4 : 1;
+      gl.uniform1f(U.u_alpha, Math.min(1, (ambient ? 0.42 : 0.68) / coverK * small));
       gl.uniform1f(U.u_amp, st.lvl); gl.uniform1f(U.u_low, st.bandsSm[0]); gl.uniform1f(U.u_mid, st.bandsSm[1]); gl.uniform1f(U.u_high, st.bandsSm[2]);
-      gl.uniform1f(U.u_listen, W.listen); gl.uniform1f(U.u_think, W.think); gl.uniform1f(U.u_speak, W.speak); gl.uniform1f(U.u_call, W.call); gl.uniform1f(U.u_flare, st.flare);
+      gl.uniform1f(U.u_listen, Math.min(1, W.listen + (W.vListen || 0))); gl.uniform1f(U.u_think, W.think); gl.uniform1f(U.u_speak, Math.min(1, W.speak + (W.vSpeak || 0))); gl.uniform1f(U.u_call, W.call); gl.uniform1f(U.u_flare, st.flare);
       gl.uniform1f(U.u_edge, Math.min(st.W, st.H)*0.5);
       gl.uniform3fv(U.u_a, st.pal.a); gl.uniform3fv(U.u_b, st.pal.b); gl.uniform3fv(U.u_core, st.pal.core);
       gl.drawArrays(gl.POINTS, 0, count);
@@ -357,7 +375,7 @@
     schedule();
 
     return {
-      gpu:true, setState, setLevel, setBands, feed, flare,
+      gpu:true, setState, setLevel, setBands, feed, flare, voice,
       get state(){ return st.state; },
       get particles(){ return count; },
       setDetail(i){ tier = Math.max(0, Math.min(TIERS.length-1, i|0)); if (tier > ceil) ceil = tier; count = Math.min(TIERS[tier], CAP); },
@@ -563,13 +581,13 @@
 
     return {
       gpu:false, setState, setLevel, flare,
-      setBands(){}, feed(v){ setLevel(v); }, particles:N,
+      setBands(){}, feed(v){ setLevel(v); }, voice(){ flare(); }, particles:N,
       get state(){ return st.state; },
       destroy(){ st.dead = true; cancelAnimationFrame(st.raf); }
     };
   }
 
-  function nullOrb(){ return { gpu:false, setState(){}, setLevel(){}, setBands(){}, feed(){}, flare(){}, destroy(){}, state:'idle', particles:0 }; }
+  function nullOrb(){ return { gpu:false, setState(){}, setLevel(){}, setBands(){}, feed(){}, flare(){}, voice(){}, destroy(){}, state:'idle', particles:0 }; }
 
   /* ── audio → resonance bridges (best-effort, never throw) ── */
   let sharedCtx = null;

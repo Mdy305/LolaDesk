@@ -57,7 +57,11 @@
   function pageIsDark() {
     let el = document.body, rgb = null;
     while (el) { const c = getComputedStyle(el).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) { rgb = c.match(/\d+/g).map(Number); break; } el = el.parentElement; }
-    if (!rgb) return matchMedia('(prefers-color-scheme: dark)').matches;
+    if (!rgb) {   // body is transparent: read the app shell LolaDesk paints (dark), not the OS setting
+      let m = document.querySelector('.main, main, .app');
+      while (m && !rgb) { const c = getComputedStyle(m).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) rgb = c.match(/\d+/g).map(Number); m = m.parentElement; }
+      if (!rgb) return true;
+    }
     return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.5;
   }
   function css(dark) {
@@ -123,8 +127,51 @@
     @media (prefers-reduced-motion: reduce) { .lp-orb, .lp-panel { transition: none; } .lp-mic.on { animation: none; } }`;
   }
 
-  // ── Lola's body: GPU micro-particles (fallback: soft gradient orb) ──
+  // ── Lola's body — the SAME body as everywhere else (lola-orb.js) ──
+  // One engine, one Lola: on dark pages the floating orb is a small version of
+  // the million-particle body on Today. Legacy GPU dots stay as the fallback.
+  function loadOrbEngine() {
+    if (window.LolaOrb) return Promise.resolve(true);
+    if (!window.__lolaOrbLoading) window.__lolaOrbLoading = new Promise((res) => {
+      const sc = document.createElement('script'); sc.src = '/lola-orb.js'; sc.async = true;
+      sc.onload = () => res(!!window.LolaOrb); sc.onerror = () => res(false); document.head.appendChild(sc);
+    });
+    return window.__lolaOrbLoading;
+  }
+  function OrbBody(canvas) {
+    if (!window.LolaOrb || reduce) return null;
+    const size = (canvas.parentElement && canvas.parentElement.clientWidth) || 72;
+    let o = null;
+    try { o = window.LolaOrb.mount(canvas, { size, bleed: 0.2, maxTier: 1 }); } catch (_) { o = null; }
+    if (!o || !o.gpu) { try { o && o.destroy(); } catch (_) {} return null; }
+    const M = { idle: 'idle', listening: 'listening', thinking: 'thinking', speaking: 'speaking', oncall: 'oncall' };
+    let mode = 'idle', levelFn = null, raf = 0;
+    (function tick() { try { o.feed(typeof levelFn === 'function' ? (levelFn() || 0) : 0); } catch (_) {} raf = requestAnimationFrame(tick); })();
+    return { set mode(m) { if (mode !== m) announce(m); mode = m; o.setState(M[m] || 'idle'); }, get mode() { return mode; },
+      set level(fn) { levelFn = fn; }, set dark(d) {}, voice(who, sec) { o.voice(who, sec); }, orb: o, destroy() { cancelAnimationFrame(raf); o.destroy(); } };
+  }
   function Body(canvas) {
+    const own = pageIsDark() && !reduce;
+    if (own) { const b = OrbBody(canvas); if (b) return b; }
+    const legacy = LegacyBody(canvas);
+    if (!own) return legacy;
+    // Engine not on this page yet: start with the legacy dots, then swap in
+    // the real body on a fresh canvas the moment the engine arrives.
+    let cur = legacy, st = { mode: 'idle', level: null };
+    const proxy = { set mode(m) { st.mode = m; cur.mode = m; }, get mode() { return cur.mode; }, set level(fn) { st.level = fn; cur.level = fn; }, set dark(d) { cur.dark = d; }, voice(w, s) { cur.voice && cur.voice(w, s); } };
+    loadOrbEngine().then((ok) => {
+      if (!ok || !canvas.isConnected) return;
+      const fresh = document.createElement('canvas'); fresh.setAttribute('aria-hidden', 'true');
+      canvas.replaceWith(fresh);
+      const b = OrbBody(fresh);
+      if (!b) { fresh.replaceWith(canvas); return; }
+      legacy.destroy && legacy.destroy();
+      b.level = st.level; b.mode = st.mode; cur = b;
+    });
+    return proxy;
+  }
+
+  function LegacyBody(canvas) {
     const S = { mode: 'idle', amp: 0, target: 0, R: 0.62, t: 0, ay: 0, spin: 0.25, think: 0 };
     const MODE = { idle: { R: 0.62, spin: 0.25, think: 0 }, listening: { R: 0.8, spin: 0.35, think: 0 }, thinking: { R: 0.55, spin: 1.8, think: 1 }, speaking: { R: 0.72, spin: 0.45, think: 0 } };
     let gl = null, prog, loc = {}, n = 0, dark = false, ctx2d = null;
@@ -164,7 +211,9 @@
     }
     if (!gl) ctx2d = canvas.getContext('2d');
     let last = performance.now();
+    let dead = false;
     function frame(now) {
+      if (dead) return;
       const dt = Math.min(.05, (now - last) / 1000); last = now; S.t += dt;
       const M = MODE[S.mode] || MODE.idle, e = 1 - Math.pow(.001, dt);
       S.R += (M.R - S.R) * e; S.spin += (M.spin - S.spin) * e; S.think += (M.think - S.think) * e;
@@ -193,7 +242,7 @@
       if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
       else if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
     });
-    return { set mode(m) { if (S.mode !== m) announce(m); S.mode = m; }, get mode() { return S.mode; }, set level(fn) { S.level = fn; }, set dark(d) { dark = d; } };
+    return { set mode(m) { if (S.mode !== m) announce(m); S.mode = m; }, get mode() { return S.mode; }, set level(fn) { S.level = fn; }, set dark(d) { dark = d; }, destroy() { dead = true; cancelAnimationFrame(raf); } };
   }
 
   // Lola's living state (idle · listening · thinking · speaking), for anything on the page
@@ -208,6 +257,7 @@
       set mode(m) { if (mode !== m) announce(m); mode = m; try { st() && st().setMode(m); } catch (_) {} }, get mode() { return mode; },
       set level(fn) { try { st() && st().setLevel(fn); } catch (_) {} },
       set dark(_) {},
+      voice(who, sec) { try { st() && st().voice && st().voice(who, sec); } catch (_) {} },
     };
   }
 
@@ -383,6 +433,41 @@
     const mic = root.querySelector('.lp-mic'), mute = root.querySelector('.lp-mute');
     const body = staged ? StageBody() : Body(orb.querySelector('canvas'));
     body.dark = pageIsDark();
+
+    // Connected to the phone line on every page: during a live Telnyx call
+    // Lola turns call-blue and each new line of the call resonates through her.
+    // (Today runs its own, richer version — lola-live-conversation.js.)
+    if (!document.getElementById('orbCanvas')) (function watchCalls() {
+      const seen = new Map(); let onCall = false, timer = 0, busy = false, stopped = false;
+      async function tick() {
+        if (busy || stopped) return; timer = 0; busy = true;
+        try { await check(); } finally { busy = false; }
+      }
+      async function check() {
+        if (document.hidden || !token()) { timer = setTimeout(tick, 15000); return; }
+        let calls = [];
+        try {
+          const r = await fetch('/api/live-conversations', { headers: { Authorization: 'Bearer ' + token() } });
+          if (r.status === 401 || r.status === 403 || r.status === 404) { stopped = true; return; }   // not for this user: stop quietly
+          if (r.ok) { const d = await r.json(); calls = Array.isArray(d.active_calls) ? d.active_calls : []; }
+        } catch (_) {}
+        const live = calls.length > 0;
+        if (live && !onCall && (body.mode === 'idle' || !body.mode)) { body.mode = 'oncall'; onCall = true; }
+        if (!live && onCall) { if (body.mode === 'oncall') body.mode = 'idle'; onCall = false; }
+        for (const c of calls) {
+          const t = Array.isArray(c.transcript) ? c.transcript : [];
+          const before = seen.has(c.id) ? seen.get(c.id) : t.length; seen.set(c.id, t.length);
+          if (onCall && t.length > before && body.voice) {
+            const last = t[t.length - 1], role = String(last.role || last.speaker || '').toLowerCase();
+            const words = String(last.content || last.text || '').split(/\s+/).filter(Boolean).length;
+            body.voice(/client|user|caller/.test(role) ? 'caller' : 'lola', Math.max(1.2, Math.min(7, words * 0.32)));
+          }
+        }
+        timer = setTimeout(tick, live ? 3000 : 15000);
+      }
+      setTimeout(tick, 2500);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && !timer && !busy) tick(); });
+    })();
 
     const renderMute = () => { const m = store.get('lola.muted', false); mute.innerHTML = m ? ICON.off : ICON.on; mute.setAttribute('aria-label', m ? "Turn Lola's voice on" : "Mute Lola's voice"); };
     renderMute();

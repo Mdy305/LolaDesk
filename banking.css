@@ -17,7 +17,7 @@
 /* CONNECT PANEL — the not-connected state */
 .connect-hero{background:linear-gradient(180deg,var(--surface),var(--surface2));border:.5px solid var(--border);border-radius:var(--r);padding:36px 30px;text-align:center;margin-bottom:22px;position:relative;overflow:hidden}
 .connect-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% -20%,var(--accent-dim),transparent 60%);pointer-events:none}
-.connect-orb{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#3a5a00);display:inline-flex;align-items:center;justify-content:center;color:#10140a;box-shadow:0 8px 32px var(--accent-glow);position:relative;margin-bottom:18px}
+.connect-orb{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#f5f5f7,#8e8e93);display:inline-flex;align-items:center;justify-content:center;color:#0a0a0b;box-shadow:0 8px 32px rgba(255,255,255,.08);position:relative;margin-bottom:18px}
 .connect-orb svg{width:28px;height:28px}
 .connect-title{font-size:22px;font-weight:600;letter-spacing:-.02em;color:var(--text);margin-bottom:8px;position:relative}
 .connect-sub{font-size:14px;color:var(--text2);line-height:1.55;max-width:440px;margin:0 auto 22px;position:relative}
@@ -154,7 +154,7 @@
 .pay-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .pay-icon.charge{background:var(--accent-dim);color:var(--accent)}
 .pay-icon.tip{background:rgba(90,200,250,.14);color:var(--info)}
-.pay-icon.deposit{background:rgba(220,255,102,.14);color:var(--accent2)}
+.pay-icon.deposit{background:rgba(245,245,247,.14);color:var(--accent2)}
 .pay-icon.refund{background:rgba(255,90,77,.14);color:var(--danger)}
 .pay-icon.fee{background:rgba(255,179,64,.14);color:var(--warning)}
 .pay-body{min-width:0}
