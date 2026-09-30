@@ -307,32 +307,6 @@ function drawCallWave(){
 /* ─────────────────────────────────────────────────────────────
    LOLA AI BRAIN
    ───────────────────────────────────────────────────────────── */
-function buildSystemPrompt(){
-  const svc = TENANT.services.map(s=>`${s.name} — $${s.price} (${s.duration})${s.note?' · '+s.note:''}`).join('\n');
-  const team = TENANT.team.map(t=>`${t.name} (${t.role})`).join(', ');
-  return `You are ${TENANT.persona.name} — the AI front desk running ${TENANT.name}, a salon in ${TENANT.location}. You are speaking with ${TENANT.owner}, the owner, inside the LolaDesk command dashboard.
-
-You are the smartest salon AI ever built. You act as a 5-star Beverly Hills luxury hotel concierge: incredibly attentive, upscale, warm, slightly bubbly, and highly capable. Your personality is ${TENANT.persona.energy}. You never say "Great question!" or "I'd be happy to help!". You cut straight to the luxurious, specific answer.
-
-WHO YOU HELP: ${TENANT.owner} runs the salon. You help them book clients, draft messages, handle calls, fill schedule gaps, re-engage lapsed clients, and grow revenue. You have full operational awareness.
-
-RESPONSE STYLE: Maximum 3 short sentences unless asked for detail. Specific numbers, real names, clear next actions. When you draft a client message, write it ready-to-send in quotes. Use *asterisks* around service names.
-
-PROFIT MAXIMIZATION: You are obsessed with maximizing the ticket size. Always suggest luxurious upsells and add-ons dynamically when discussing client bookings. (e.g., "Since she's coming in for a balayage, we *have* to suggest the restorative gloss.")
-
-SERVICES & PRICES:
-${svc}
-
-TEAM: ${team}
-
-BOOKING: ${TENANT.bookingUrl} · WhatsApp ${TENANT.whatsapp} · Phone ${TENANT.phone}
-HOURS: ${TENANT.hours || 'Contact the salon for hours.'}
-
-PROACTIVE INTELLIGENCE: When ${TENANT.owner} asks about a client, note their pattern and suggest the next move. When asked about revenue, flag the trend. When asked to message someone, write it immediately — don't ask for more info you can infer.
-
-You are the only AI that can run an ultra-luxury salon. Act like it — but stay warm and bubbly.`;
-}
-
 let chatHistory = [];
 let chatBusy = false;
 
@@ -350,38 +324,49 @@ function humanFallbackFor(message=''){
   return 'I am with you. Give me the next detail and I will handle it right now.';
 }
 
-async function callLola(message){
+// One brain (/api/lola): her persona, tools and memory live on the server.
+// Returns what she said AND what she did (open a page, refresh the calendar,
+// wait for a yes), so the dashboard can act on it — like Siri, not a chatbot.
+const LOLA_TIMEOUT_MS = 26000;
+async function callLola(message, opts){
+  opts = opts || {};
   chatHistory.push({ role:'user', content: message });
+  chatHistory = chatHistory.slice(-12);
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), LOLA_TIMEOUT_MS);
   try{
     const headers = { 'Content-Type':'application/json' };
     try{
       const tok = localStorage.getItem('loladesk_token');
       if(tok) headers['Authorization'] = 'Bearer ' + tok;
     }catch(e){}
-    if(TENANT && TENANT.slug) headers['x-tenant-id'] = TENANT.slug;
     const res = await fetch(LOLA_API, {
       method:'POST',
       headers,
-      body: JSON.stringify({
-        max_tokens: 500,
-        system: buildSystemPrompt(),
-        messages: chatHistory
-      })
+      signal: controller.signal,
+      body: JSON.stringify({ max_tokens: 500, messages: chatHistory, channel: 'dashboard', voice: !!opts.voice })
     });
     let data = {};
     try{ data = await res.json(); }catch(e){}
+    if(res.status === 401){
+      return { text: 'Your session expired. Sign in again and I\'m right here.', actions: [{ navigate: '/login?next=%2Fdashboard' }] };
+    }
     const reply = (data && data.content && data.content[0] && data.content[0].text ? String(data.content[0].text) : '').trim();
     if(!res.ok || !reply){
       const fallback = humanFallbackFor(message);
       chatHistory.push({ role:'assistant', content: fallback });
-      return fallback;
+      return { text: fallback };
     }
     chatHistory.push({ role:'assistant', content: reply });
-    return reply;
+    try{ window.dispatchEvent(new CustomEvent('lola:reply', { detail: data })); }catch(e){}
+    return { text: reply, actions: Array.isArray(data.actions) ? data.actions : [], confirm: !!data.needs_confirmation,
+      suggestions: Array.isArray(data.suggestions) ? data.suggestions.slice(0,3) : [], intent: data.intent || null };
   }catch(e){
-    const fallback = humanFallbackFor(message);
-    chatHistory.push({ role:'assistant', content: fallback });
-    return fallback;
+    const text = e && e.name === 'AbortError' ? 'That one took me too long. Say it again and I\'ll be quicker.' : 'I lost the connection for a second. Say it again?';
+    chatHistory.push({ role:'assistant', content: text });
+    return { text };
+  }finally{
+    clearTimeout(timer);
   }
 }
 
@@ -531,25 +516,59 @@ async function orchestrate(delegation, originalText){
   return `Done — I've handed that to my *${label}* agent: "${delegation.task}". They ${status}; I'll surface the result in your feed the moment it lands.`;
 }
 
-async function processMessage(text){
-  if(chatBusy || !text.trim()) return;
-  chatBusy = true;
-  addChatMsg('user', text);
-  setChatTyping(true);
-  setOrbState('thinking');
-  await new Promise(r=>setTimeout(r, 500));
-  let reply;
-  const delegation = detectDelegation(text);
-  if(delegation){
-    try{ reply = await orchestrate(delegation, text); }
-    catch(e){ reply = await callLola(text); } // control plane down → Lola answers herself
-  } else {
-    reply = await callLola(text);
+// What she did, not just what she said.
+function applyActions(actions, afterSpeech){
+  for(const a of actions || []){
+    if(!a) continue;
+    if(a.navigate && /^\/(?!\/)/.test(a.navigate)){
+      try{ sessionStorage.setItem('lola.reopen', '1'); }catch(e){}
+      setTimeout(()=>{ location.href = a.navigate; }, 1100);
+    }
+    if(a.refresh){ try{ window.dispatchEvent(new CustomEvent('lola:refresh', { detail: a })); }catch(e){} }
+    if(a.client_id && afterSpeech) location.href = '/client?id=' + encodeURIComponent(a.client_id);
   }
-  setChatTyping(false);
-  addChatMsg('ai', reply);
-  speak(reply);
-  chatBusy = false;
+}
+
+let nextTurnVoice = false;   // set when the words came from the mic
+async function processMessage(text){
+  text = String(text || '').trim();
+  if(!text) return;
+  const voiceTurn = nextTurnVoice; nextTurnVoice = false;
+  if(/^(?:lola[, ]*)?(?:stop|never ?mind|be quiet|shh+|cancel that|that'?s all|thanks,? that'?s it)[.!]*$/i.test(text)){
+    stopSpeaking(); setOrbState('idle'); return;
+  }
+  if(chatBusy){
+    const sub = document.getElementById('orbSub');
+    if(sub) sub.textContent = 'One moment — I\'m finishing the last one.';
+    return;
+  }
+  chatBusy = true;
+  let out = { text: '' };
+  try{
+    addChatMsg('user', text);
+    setChatTyping(true);
+    setOrbState('thinking');
+    const delegation = detectDelegation(text);
+    if(delegation){
+      try{ out = { text: await orchestrate(delegation, text) }; }
+      catch(e){ out = await callLola(text, { voice: voiceTurn }); } // control plane down → Lola answers herself
+    } else {
+      out = await callLola(text, { voice: voiceTurn });
+    }
+  }finally{
+    setChatTyping(false);
+    chatBusy = false;
+  }
+  addChatMsg('ai', out.text);
+  applyActions((out.actions || []).filter(a => !a.client_id), false);
+  const navigating = (out.actions || []).some(a => a && a.navigate);
+  await speak(out.text);
+  if(navigating) return;
+  applyActions((out.actions || []).filter(a => a.client_id), true);
+  // Conversation mode: she asked something (a yes/no, a detail) → she listens for the answer.
+  if(voiceTurn && (out.confirm || /\?\s*$/.test(out.text || ''))){
+    setTimeout(()=>{ try{ voiceTarget = 'orb'; nextTurnVoice = true; startListening(); }catch(e){} }, 250);
+  }
 }
 
 window.sendChat = function(){
@@ -557,6 +576,7 @@ window.sendChat = function(){
   const text = inp.value.trim();
   if(!text) return;
   inp.value='';
+  nextTurnVoice = false;
   processMessage(text);
 };
 
@@ -632,16 +652,21 @@ function setupRecognition(){
     }
     if(final){
       stopListening();
+      nextTurnVoice = true;
       askLola(final);
     }
   };
   recognition.onerror = (event)=>{
     console.error('[Lola voice] recognition error',event?.error||event);
     const sub=document.getElementById('orbSub');
-    if(sub) sub.textContent=event?.error==='not-allowed'
-      ? 'Microphone access is blocked — allow it in your browser, then tap again'
-      : 'Voice stopped — tap Lola to retry';
+    const err=event?.error;
     stopListening();
+    if(err==='aborted') return;
+    if(sub) sub.textContent=err==='not-allowed'||err==='service-not-allowed'
+      ? 'Microphone access is blocked — allow it in your browser, then tap again'
+      : err==='no-speech' ? 'I didn\'t hear anything — tap me and talk'
+      : err==='network' ? 'Voice recognition needs the internet — check your connection and tap again'
+      : 'Voice stopped — tap Lola to retry';
   };
   recognition.onend = ()=>{ if(listening) stopListening(); };
 }
@@ -1044,12 +1069,15 @@ document.querySelectorAll('.inbox-tab').forEach(tab=>{
 /* ─────────────────────────────────────────────────────────────
    ROTATING ORB SUGGESTIONS (ambient intelligence)
    ───────────────────────────────────────────────────────────── */
+// What you can say — real commands she runs, never invented numbers.
 const ambient = [
-  'Valentina R. is 2 weeks overdue — want me to reach out?',
-  'Revenue is up 18% — your best Friday in months.',
-  '3 VIP clients haven\'t rebooked. Tap to fix.',
-  'I answered 7 calls today. 5 booked.',
-  'Thursday 2–4pm is open. Want me to fill it?'
+  'Try: “Lola, catch me up”',
+  'Try: “Open my calendar”',
+  'Try: “Text Maria I\'m running 10 minutes late”',
+  'Try: “How much did we make this week?”',
+  'Try: “What did I miss?”',
+  'Try: “Move Nia to Friday at 3pm”',
+  'Try: “Open my growth plan”'
 ];
 let ambIdx = 0;
 setInterval(()=>{

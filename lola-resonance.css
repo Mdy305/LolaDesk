@@ -75,17 +75,27 @@ body[data-lola-resonance] .lola-resonance-caption.speaking { opacity: 0; }
 /* Live transcript (fades in/out) */
 body[data-lola-resonance] .lola-resonance-transcript {
   position: fixed;
-  top: 8vh;
+  bottom: 16vh;
   left: 50%;
-  transform: translateX(-50%);
-  max-width: min(90vw, 640px);
-  color: rgba(255,255,255,0.85);
-  font: 300 18px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  transform: translate(-50%, 6px);
+  width: max-content;
+  max-width: min(calc(100vw - 32px), 620px);
+  padding: 13px 18px;
+  border-radius: 18px;
+  background: rgba(16,16,19,0.82);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  color: #f5f5f7;
+  font: 400 15.5px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  letter-spacing: -0.005em;
   text-align: center;
   opacity: 0;
-  transition: opacity 500ms ease;
+  transition: opacity 400ms ease, transform 400ms ease;
   pointer-events: none;
   user-select: none;
+  z-index: 60;
 }
-
+body[data-lola-resonance] .lola-resonance-transcript.show { transform: translate(-50%, 0); }
 body[data-lola-resonance] .lola-resonance-transcript.show { opacity: 1; }

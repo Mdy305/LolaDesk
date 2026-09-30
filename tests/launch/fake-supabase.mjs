@@ -38,7 +38,7 @@ class Q {
   range(a, b) { this.lim = b + 1; return this; }
   insert(p) { this.op = 'insert'; this.p = p; return this; }
   update(p) { this.op = 'update'; this.p = p; return this; }
-  upsert(p) { this.op = 'upsert'; this.p = p; return this; }
+  upsert(p, o) { this.op = 'upsert'; this.p = p; this.conflict = o && o.onConflict ? String(o.onConflict).split(',').map(x => x.trim()) : null; return this; }
   delete() { this.op = 'delete'; return this; }
   single() { this.one = true; return this; }
   maybeSingle() { this.maybe = true; return this; }
@@ -49,7 +49,9 @@ class Q {
     if (globalThis.__missing && globalThis.__missing.has(this.t)) return { data: null, error: { message: `relation "${this.t}" does not exist` } };
     if (this.op === 'insert' || this.op === 'upsert') {
       const list = (Array.isArray(this.p) ? this.p : [this.p]).map(p => ({ id: p.id || ('id_' + Math.random().toString(36).slice(2, 9)), created_at: new Date().toISOString(), ...p }));
-      rows.push(...list); return pick(list);
+      if (this.op === 'upsert' && this.conflict) for (const n of list) { const i = rows.findIndex(r => this.conflict.every(k => r[k] === n[k])); if (i >= 0) { Object.assign(rows[i], n, { id: rows[i].id }); list[list.indexOf(n)] = rows[i]; continue; } rows.push(n); }
+      else rows.push(...list);
+      return pick(list);
     }
     let out = rows.filter(r => this.f.every(f => match(r, f)));
     if (this.op === 'update') { out.forEach(r => Object.assign(r, this.p)); return pick(out); }
