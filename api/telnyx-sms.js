@@ -7,6 +7,8 @@ import { resolveInboundTenant } from './lib/tenant-resolver.js';
 // Imported (not only re-exported): a bare `export { … } from` does NOT make
 // sendSMS usable inside this file, so every reply here used to throw silently.
 import { sendSMS } from './lib/sms.js';
+import { db } from './lib/db.js';
+import { isHotLead, escalateLead, relayOwnerReply } from './lib/lead-relay.js';
 export { sendSMS };
 import { answerOwner } from './lib/owner-brain.js';
 import { chat } from './lib/llm.js';
@@ -110,6 +112,20 @@ export default async function handler(req,res){
     return res.status(200).json({ ok:true, ignored:'no_tenant', routing: routing.status });
   }
   const tName=row.name;
+
+  // ── The owner texting their own salon line ──
+  // If a hot lead is open, the text goes to that client (Lola relays it).
+  // Otherwise the owner is talking to Lola, their assistant — never treated as a client.
+  if(row.operator_phone && fromN && fromN === e164(row.operator_phone)){
+    try{ const rel = await relayOwnerReply(db(), row, { text }); if(rel.handled) return res.status(200).json({ ok:true, handled:'owner_relay', sent: rel.sent }); }catch{}
+    let conv=null, hist=[];
+    try{ conv = await getOrStartConversation(row.id, { channel:'operator', agent:'jarvis' }); if(conv?.id) hist = await getConversationHistory(conv.id, 10); }catch{}
+    const brain = await answerOwner(row, hist, text, { channel:'sms' }).catch(()=>({ ok:false }));
+    const reply = brain && brain.ok ? brain.text : "I can text you your day, revenue, or who's due. When a hot lead comes in, reply to my alert and I'll pass your message on.";
+    try{ if(conv?.id){ await logMessage({ conversationId: conv.id, tenantId: row.id, role:'user', agent:'jarvis', content:text }); await logMessage({ conversationId: conv.id, tenantId: row.id, role:'assistant', agent:'jarvis', content:reply }); } }catch{}
+    try{ await sendSMS({ from: toN, to: fromN, text: reply, tenantId: row.id, skipOptOut:true, type }); }catch{}
+    return res.status(200).json({ ok:true, handled:'owner_chat' });
+  }
 
   // 10DLC compliance
   if(kw(text,STOP)){
@@ -225,6 +241,13 @@ export default async function handler(req,res){
     }catch{}
   }
 
+  // Something a person should close: text the owner, and tell the client they will.
+  if(isHotLead(text)){
+    try{
+      const alert = await escalateLead(db(), row, { channel, phone: fromN, name: client?.name || '', text, conversationId: conv?.id || null });
+      if(alert && alert.texted) reply = String(reply).trim() + ' I\u2019ve also let the owner know, so they can text you personally.';
+    }catch{}
+  }
   try{ await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id,type}); }catch(e){ console.error(`[${channel}] send err:`,e.message); }
   return res.status(200).json({ok:true});
 }

@@ -376,7 +376,7 @@ try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
 let orb;
 try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120,bleed:.2});orb.setState('idle');}}catch(e){}
 function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
-function renderProgress(){const ORDER=[0,1,2,3,4,6,5],at=ORDER.indexOf(S.step);document.getElementById('progress').innerHTML=ORDER.map((_,i)=>'<i class="'+(i<=at?'on':'')+'"></i>').join('');}
+function renderProgress(){const ORDER=[1,2,3,4,6,5],at=ORDER.indexOf(S.step);document.getElementById('progress').innerHTML=ORDER.map((_,i)=>'<i class="'+(i<=at?'on':'')+'"></i>').join('');}
 function go(n){
   S.step=n;
   document.querySelectorAll('.step').forEach(s=>s.classList.toggle('on',Number(s.dataset.step)===n));
@@ -893,7 +893,9 @@ function skipLearn(){
       }
     }catch(e){}
   }
-  go(0);renderProgress();
+  // Start with the salon's name: she introduces herself with it on the next
+  // beat. (A generic voice sample first said the same thing twice.)
+  go(1);renderProgress();
 })();
 </script>
 </body>

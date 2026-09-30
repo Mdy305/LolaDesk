@@ -64,10 +64,22 @@ export default async function handler(req, res){
       });
     }
 
+    // Is this salon's setup finished? Decided here (not by the browser's memory),
+    // so an owner on a new device lands in the app, not back in onboarding.
+    let setup_done = false;
+    if (c && tenant?.id) {
+      try {
+        if (tenant.phone_number) setup_done = true;
+        if (!setup_done) { const { data: nums } = await c.from('tenant_numbers').select('id').eq('tenant_id', tenant.id).limit(1); setup_done = !!(nums && nums.length); }
+        if (!setup_done) { const { data: ob } = await c.from('tenant_onboarding').select('status').eq('tenant_id', tenant.id).maybeSingle(); setup_done = /complete|done|live/i.test(String(ob?.status || '')); }
+      } catch (_) { setup_done = !!tenant.phone_number; }
+    }
+
     return res.status(200).json({
       session: sess.session,
       user: sess.user,
       tenant: tenant || null,
+      setup_done,
       onboarding_required: !tenant
     });
   }catch(e){

@@ -31,6 +31,7 @@ import {
   getTenantBySlug, upsertWebVisitor, getClientMemory, setClientMemory,
   getOrStartConversation, getConversationHistory, logMessage, logUsage
 } from './lib/db.js';
+import { db as __db } from './lib/db.js';
 import { chat } from './lib/llm.js';
 import {
   detectLolaIntent, deterministicSkillReply, buildLolaSystemPrompt,
@@ -83,6 +84,7 @@ function fallbackAnswer(tenant, text){
   return `Hi! I'm Lola, ${tenant.name}'s assistant. Ask me about services, prices, hours — or let's get you booked in.`;
 }
 
+import { isHotLead, escalateLead, attachLeadPhone, PHONE_IN_TEXT } from './lib/lead-relay.js';
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*'); // embedded on tenant sites
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -149,6 +151,17 @@ export default async function handler(req, res){
     const r = await chat({ system, messages: [...history, { role:'user', content: message }], maxTokens: 260, temperature: 0.7, source: 'widget' }).catch(()=>({ ok:false }));
     reply = (r?.ok && String(r.text||'').trim()) ? String(r.text).trim() : fallbackAnswer(tenant, message);
   }
+
+  // Hot lead on the website: the owner gets a text; Lola asks for a number if needed.
+  try{
+    const said = (message.match(PHONE_IN_TEXT) || [])[0] || '';
+    if(said && conv?.id) await attachLeadPhone(__db(), tenant, { conversationId: conv.id, phone: said });
+    if(isHotLead(message)){
+      const alert = await escalateLead(__db(), tenant, { channel:'web', phone: said || profile?.phone || '', name: profile?.name || '', text: message, conversationId: conv?.id || null });
+      if(alert && alert.texted && (said || profile?.phone)) reply = String(reply).trim() + ' I\u2019ve let the owner know; they\u2019ll text you personally.';
+      else if(alert && alert.relayId && !(said || profile?.phone)) reply = String(reply).trim() + ' What\u2019s the best number for the owner to text you?';
+    }
+  }catch{}
 
   try{
     if(conv?.id){
