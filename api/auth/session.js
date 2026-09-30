@@ -2,7 +2,7 @@
  * GET /api/auth/session  (Authorization: Bearer <access_token>)
  * Returns authenticated user, tenant and tenant membership role.
  */
-import { getUserFromToken, bearer } from '../lib/auth.js';
+import { getUserFromToken, bearer, isAdminEmail } from '../lib/auth.js';
 import { resolveTenantAccessForUser } from '../lib/tenant-access.js';
 
 export default async function handler(req,res){
@@ -19,7 +19,9 @@ export default async function handler(req,res){
       user,
       tenant:access?.tenant||null,
       role:access?.role||null,
-      onboarding_required:!access?.tenant
+      onboarding_required:!access?.tenant,
+      // the LolaDesk operator (ADMIN_EMAILS) — shows Command in the account menu
+      platform_admin:isAdminEmail(user.email)
     });
   }catch(e){return res.status(401).json({error:String(e&&e.message||e)});}
 }

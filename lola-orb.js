@@ -335,7 +335,9 @@
       gl.uniform1f(U.u_t, st.t); gl.uniform1f(U.u_R, Rpx); gl.uniform1f(U.u_rot, st.rot); gl.uniform1f(U.u_swirl, st.swirl);
       gl.uniform1f(U.u_tilt, 0.38 + 0.05*Math.sin(st.t*0.21)); gl.uniform1f(U.u_breath, breath); gl.uniform1f(U.u_dpr, st.dpr);
       // constant brightness at any detail: more particles → each one finer
-      gl.uniform1f(U.u_alpha, Math.min(1, 26000/count) * (ambient ? 0.45 : 0.62) * (st.dpr < 1.5 ? 1.35 : 1));
+      // same glow at any size: a bigger Lola spreads the particles thinner
+      const areaK = Math.min(3.5, Math.max(0.6, Math.pow(((st.stage || stageSize) * 0.30) / 96, 2)));
+      gl.uniform1f(U.u_alpha, Math.min(1, 26000/count) * (ambient ? 0.45 : 0.62) * (st.dpr < 1.5 ? 1.35 : 1) * areaK);
       gl.uniform1f(U.u_amp, st.lvl); gl.uniform1f(U.u_low, st.bandsSm[0]); gl.uniform1f(U.u_mid, st.bandsSm[1]); gl.uniform1f(U.u_high, st.bandsSm[2]);
       gl.uniform1f(U.u_listen, W.listen); gl.uniform1f(U.u_think, W.think); gl.uniform1f(U.u_speak, W.speak); gl.uniform1f(U.u_call, W.call); gl.uniform1f(U.u_flare, st.flare);
       gl.uniform1f(U.u_edge, Math.min(st.W, st.H)*0.5);

@@ -45,6 +45,7 @@
 
   // ── The map ─────────────────────────────────────────────────
   const I = {
+    find: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     now: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>',
     growth: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
@@ -56,15 +57,18 @@
     { id: 'now', label: 'Now', href: '/dashboard',
       subs: [{ label: 'Today', href: '/dashboard', pages: ['dashboard', ''] },
              { label: 'Inbox', href: '/inbox', pages: ['inbox'] },
-             { label: 'Calls', href: '/calls', pages: ['calls', 'call-center', 'lola-live'] },
-             { label: 'Operations', href: '/operations-os', pages: ['operations-os', 'operator'] },
+             { label: 'Calls', href: '/calls', pages: ['calls', 'call-center'] },
+             { label: 'Operations', href: '/operations-os', pages: ['operations-os'] },
+             { label: 'Mission Control', href: '/operator', pages: ['operator'], platform: true },
              { label: 'Lola Brain', href: '/brain-os', pages: ['brain-os'], manager: true }],
       pages: [] },
     { id: 'calendar', label: 'Calendar', href: '/bookings',
-      subs: [{ label: 'Schedule', href: '/bookings', pages: ['bookings', 'calendar', 'booking-settings', 'booking-integrity'] },
+      subs: [{ label: 'Schedule', href: '/bookings', pages: ['bookings', 'calendar'] },
+             { label: 'Booking rules', href: '/booking-settings', pages: ['booking-settings'], manager: true },
              { label: 'Services', href: '/services', pages: ['services'] },
              { label: 'Checkout', href: '/pos', pages: ['pos'] },
-             { label: 'Inventory', href: '/inventory', pages: ['inventory'] }],
+             { label: 'Inventory', href: '/inventory', pages: ['inventory'] },
+             { label: 'Booking health', href: '/booking-integrity', pages: ['booking-integrity'], manager: true }],
       pages: [] },
     { id: 'growth', label: 'Growth', href: '/campaigns', manager: true,
       subs: [{ label: 'Campaigns', href: '/campaigns', pages: ['campaigns', 'marketing'] },
@@ -85,7 +89,10 @@
     { label: 'Launch checklist', href: '/launch', owner: true, pages: ['launch'] },
     { label: 'Team', href: '/team', manager: true, pages: ['team'] },
     { label: 'Billing', href: '/subscription', owner: true, pages: ['subscription'] },
-    { label: 'Phone numbers', href: '/numbers', owner: true, pages: ['numbers', 'telecom'] },
+    { label: 'Phone numbers', href: '/numbers', owner: true, pages: ['numbers'] },
+    { label: 'Telecom & texting', href: '/telecom', owner: true, pages: ['telecom'] },
+    { label: 'Lola full screen', href: '/lola-live', pages: ['lola-live'] },
+    { label: 'LolaDesk Command', href: '/admin', platform: true, pages: ['admin'] },
   ];
   const ACCOUNT_PAGES = ['settings', 'team', 'subscription', 'numbers', 'telecom', 'activation-studio', 'launch'];
 
@@ -111,7 +118,10 @@
   try { role = sessionStorage.getItem('lolaNavRole') || 'owner'; } catch (_) {}
   const canManage = () => ['owner', 'admin', 'manager'].includes(role);
   const canOwn = () => ['owner', 'admin'].includes(role);
-  const allowed = (x) => (!x.owner || canOwn()) && (!x.manager || canManage());
+  // platform: only the LolaDesk operator (ADMIN_EMAILS on the server) sees Command
+  let platform = false;
+  try { platform = sessionStorage.getItem('lolaNavPlatform') === '1'; } catch (_) {}
+  const allowed = (x) => (!x.owner || canOwn()) && (!x.manager || canManage()) && (!x.platform || platform);
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const svg = (d, cls) => `<svg class="${cls || 'ln-ico'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -144,6 +154,35 @@ body.ln-shell{padding-left:236px}
 .ln-sub:hover{color:var(--ln-ink2)}
 .ln-sub.is-active{color:var(--ln-ink)}
 .ln-spacer{flex:1}
+.ln-find{display:flex;align-items:center;gap:10px;width:100%;height:38px;margin:0 0 14px;padding:0 12px;border-radius:11px;border:1px solid var(--ln-line);
+  background:rgba(255,255,255,.025);color:var(--ln-ink3);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s}
+.ln-find:hover,.ln-find:focus-visible{color:var(--ln-ink2);border-color:rgba(204,255,0,.35);outline:none}
+.ln-find .ln-ico{width:16px;height:16px}
+.ln-find span{flex:1;text-align:left}
+.ln-find kbd{font:inherit;font-size:11px;color:var(--ln-ink3)}
+.ln-tfind{display:none}
+/* Go anywhere: every page, Lola's actions, live client search */
+.ln-pal{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.62);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  display:flex;justify-content:center;align-items:flex-start;padding:calc(12vh + env(safe-area-inset-top,0px)) 16px 16px;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.ln-pal[hidden]{display:none}
+.ln-pal-box{width:min(640px,100%);max-height:min(560px,76vh);display:flex;flex-direction:column;background:#0e0e11;border:1px solid rgba(255,255,255,.1);
+  border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.7);overflow:hidden}
+.ln-pal-in{display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+.ln-pal-in .ln-ico{color:#ccff00;width:18px;height:18px}
+.ln-pal-in input,#lnPalInput,#lnPalInput:focus{flex:1;height:56px!important;min-height:0!important;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;outline:0!important;padding:0!important;margin:0!important;color:#f2f2f5!important;font:inherit;font-size:17px!important;min-width:0;width:auto!important}
+.ln-pal-in input::placeholder{color:#5c5c64}
+.ln-pal-list{overflow-y:auto;padding:8px;overscroll-behavior:contain}
+.ln-pal-h{padding:10px 10px 6px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#5c5c64}
+.ln-pal-i{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:8px 10px;border:0;border-radius:10px;background:none;color:#d6d6db;
+  font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.ln-pal-i small{margin-left:auto;color:#5c5c64;font-size:12px;white-space:nowrap}
+.ln-pal-i.on{background:rgba(204,255,0,.09);color:#fff}
+.ln-pal-i.on small{color:#ccff00}
+.ln-pal-dot{width:7px;height:7px;border-radius:50%;background:#3a3a40;flex:0 0 auto}
+.ln-pal-i.lola .ln-pal-dot{background:#ccff00;box-shadow:0 0 8px rgba(204,255,0,.7)}
+.ln-pal-foot{padding:10px 16px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;color:#5c5c64}
+.ln-pal-empty{padding:18px 12px;color:#6e6e73;font-size:13px}
 .ln-lola{display:flex;align-items:center;justify-content:space-between;width:100%;height:44px;margin:0 0 10px;padding:0 14px;
   border:1px solid rgba(204,255,0,.22);border-radius:12px;background:rgba(204,255,0,.06);color:var(--ln-acc);
   font-family:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;transition:background .18s,border-color .18s}
@@ -183,6 +222,8 @@ body.ln-shell{padding-left:236px}
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
   .ln-top-l{flex:1;min-width:0;display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none}
   .ln-top-l::-webkit-scrollbar{display:none}
+  .ln-tfind{display:grid;place-items:center;flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d6d6db;cursor:pointer;padding:0}
+  .ln-tfind .ln-ico{width:18px;height:18px}
   .ln-top-l.fade-r{-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
   .ln-top-l.fade-l{-webkit-mask-image:linear-gradient(to left,#000 82%,transparent);mask-image:linear-gradient(to left,#000 82%,transparent)}
   .ln-top-l.fade-l.fade-r{-webkit-mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent);mask-image:linear-gradient(to right,transparent,#000 14%,#000 86%,transparent)}
@@ -259,6 +300,7 @@ body.ln-shell{padding-left:236px}
   side.setAttribute('aria-label', 'LolaDesk');
   side.innerHTML = `
     <a class="ln-brand" href="/dashboard" aria-label="LolaDesk home"><span class="ln-mark">LOLA</span><span class="ln-salon" data-ln-salon></span></a>
+    <button type="button" class="ln-find" data-ln-find aria-label="Go anywhere">${svg(I.find)}<span>Go anywhere</span><kbd>⌘K</kbd></button>
     <nav class="ln-tabs" aria-label="Primary">${tabsHTML()}</nav>
     <div class="ln-spacer"></div>
     <button type="button" class="ln-lola" data-ln-lola>Talk to Lola <kbd>⌘J</kbd></button>
@@ -277,6 +319,7 @@ body.ln-shell{padding-left:236px}
     <div class="ln-top-l">${subsNow.length > 1
       ? subsNow.map((s) => `<a class="ln-pill${isSub(s) ? ' is-active' : ''}" href="${s.href}"${isSub(s) ? ' aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')
       : '<span class="ln-top-name" data-ln-salon></span>'}</div>
+    <button type="button" class="ln-tfind" data-ln-find aria-label="Go anywhere">${svg(I.find)}</button>
     <div class="ln-acct">${meHTML(true)}</div>`;
   // A full-width row of its own (never inset by the page's padding).
   side.parentNode.insertBefore(top, side.nextSibling);
@@ -353,6 +396,120 @@ body.ln-shell{padding-left:236px}
     location.replace('/login');
   });
 
+  // ── Go anywhere (⌘K): every page, Lola's actions, live client search ──
+  const EXTRA = [
+    { label: 'Payments', href: '/banking-payments', owner: true, group: 'Growth', k: 'charges tips refunds deposits stripe' },
+    { label: 'Deposit & no-show policies', href: '/banking-policies', owner: true, group: 'Growth', k: 'deposit no show fee policy' },
+  ];
+  const ACTIONS = [
+    { label: 'Talk to Lola', run: () => talkToLola(), group: 'Lola', lola: true, k: 'voice ask speak jarvis' },
+    { label: 'Lola full screen', href: '/lola-live', group: 'Lola', lola: true, k: 'voice immersive orb' },
+    { label: 'Teach Lola your salon', href: '/onboarding?learn=1', owner: true, group: 'Lola', lola: true, k: 'learn website menu import' },
+    { label: 'Ask Lola what to do first', run: () => askLola('What should I do first today?'), group: 'Lola', lola: true, k: 'priorities today' },
+  ];
+  function destinations() {
+    const out = [];
+    TABS.filter(allowed).forEach((t) => {
+      if (!t.subs.length) out.push({ label: t.label, href: t.href, group: t.label });
+      t.subs.filter(allowed).forEach((x) => out.push({ label: x.label, href: x.href, group: t.label }));
+    });
+    EXTRA.filter(allowed).forEach((x) => out.push(x));
+    ACCOUNT.filter(allowed).forEach((x) => out.push({ label: x.label, href: x.href, group: 'Account' }));
+    return ACTIONS.filter(allowed).concat(out);
+  }
+  function askLola(text) {
+    const L = window.LolaEverywhere;
+    if (L && typeof L.ask === 'function' && document.querySelector('.lp-root')) { L.open && L.open(); L.ask(text); return; }
+    if (typeof window.openChat === 'function' && document.getElementById('orbMic')) { window.openChat(); const i = document.getElementById('cmdInput'); if (i) { i.value = text; i.form ? i.form.requestSubmit() : i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } return; }
+    location.href = '/brain-os?q=' + encodeURIComponent(text);
+  }
+  let pal = null, palItems = [], palIdx = 0, palSeq = 0, palClients = [], palPending = false;
+  function palBuild() {
+    pal = document.createElement('div');
+    pal.className = 'ln-pal'; pal.hidden = true;
+    pal.setAttribute('role', 'dialog'); pal.setAttribute('aria-modal', 'true'); pal.setAttribute('aria-label', 'Go anywhere');
+    pal.innerHTML = `<div class="ln-pal-box"><div class="ln-pal-in">${svg(I.find)}<input type="text" id="lnPalInput" placeholder="Go anywhere, find a client, or ask Lola…" autocomplete="off" spellcheck="false" aria-controls="lnPalList"></div>
+      <div class="ln-pal-list" id="lnPalList" role="listbox"></div><div class="ln-pal-foot">↑ ↓ to move · Enter to open · Esc to close</div></div>`;
+    document.body.appendChild(pal);
+    const input = pal.querySelector('input');
+    pal.addEventListener('mousedown', (e) => { if (e.target === pal) palClose(); });
+    input.addEventListener('input', () => { palIdx = 0; palRender(); palSearch(input.value); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); palIdx = Math.min(palItems.length - 1, palIdx + 1); palMark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); palIdx = Math.max(0, palIdx - 1); palMark(); }
+      else if (e.key === 'Enter') { e.preventDefault(); palGo(palItems[palIdx] && palItems[palIdx].pending ? palItems.find((x, i) => i > palIdx && !x.pending) : palItems[palIdx]); }
+      else if (e.key === 'Escape') { e.preventDefault(); palClose(); }
+    });
+  }
+  const norm = (v) => String(v || '').toLowerCase();
+  function palRender() {
+    const q = norm(pal.querySelector('input').value).trim();
+    let items = destinations().filter((d) => !q || norm(d.label + ' ' + d.group + ' ' + (d.k || '') + ' ' + (d.href || '')).includes(q));
+    if (palPending && !palClients.length) items.push({ label: 'Searching clients…', group: 'Clients', pending: true });
+    items = items.concat(palClients.map((c) => ({ label: c.name, sub: c.phone || 'Client', href: '/client?id=' + encodeURIComponent(c.id), group: 'Clients found' })));
+    if (q) items.push({ label: 'Ask Lola: “' + pal.querySelector('input').value.trim() + '”', run: () => askLola(pal.querySelector('input').value.trim()), group: 'Lola', lola: true });
+    palItems = items;
+    let html = '', last = '';
+    items.forEach((it, i) => {
+      if (it.group !== last) { html += `<div class="ln-pal-h">${esc(it.group)}</div>`; last = it.group; }
+      html += `<button type="button" role="option" class="ln-pal-i${it.lola ? ' lola' : ''}${i === palIdx ? ' on' : ''}" data-i="${i}"><span class="ln-pal-dot"></span>${esc(it.label)}<small>${it.pending ? '' : esc(it.sub || (it.href ? it.href.split('?')[0] : 'Lola'))}</small></button>`;
+    });
+    const list = pal.querySelector('.ln-pal-list');
+    list.innerHTML = html || '<div class="ln-pal-empty">Nothing matches.</div>';
+    list.querySelectorAll('.ln-pal-i').forEach((b) => {
+      b.addEventListener('click', () => palGo(palItems[+b.dataset.i]));
+      b.addEventListener('mousemove', () => { if (palIdx !== +b.dataset.i) { palIdx = +b.dataset.i; palMark(); } });
+    });
+  }
+  function palMark() {
+    pal.querySelectorAll('.ln-pal-i').forEach((b) => b.classList.toggle('on', +b.dataset.i === palIdx));
+    const on = pal.querySelector('.ln-pal-i.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+  }
+  let palTimer = 0;
+  function palSearch(q) {
+    clearTimeout(palTimer); palClients = []; palPending = false;
+    q = String(q || '').trim(); if (q.length < 2) return;
+    palPending = true;
+    const my = ++palSeq;
+    palTimer = setTimeout(async () => {
+      try {
+        let token = (window.LolaAuth && window.LolaAuth.token) || ''; if (!token) token = localStorage.getItem('loladesk_token') || '';
+        const r = await fetch('/api/clients?q=' + encodeURIComponent(q) + '&limit=6', { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+        if (my !== palSeq) return;
+        palPending = false;
+        if (!r.ok) { palRender(); return; }
+        const d = await r.json(); const rows = Array.isArray(d) ? d : (d.clients || d.data || d.rows || []);
+        palClients = rows.slice(0, 6).map((c) => ({ id: c.id, name: c.name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.phone || 'Client', phone: fmtPhone(c.phone || c.phone_number || '') })).filter((c) => c.id);
+        if (my === palSeq && !pal.hidden) palRender();
+      } catch (_) { if (my === palSeq) { palPending = false; if (!pal.hidden) palRender(); } }
+    }, 160);
+  }
+  function fmtPhone(v) { const d = String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(v || ''); }
+  function palGo(it) {
+    if (!it || it.pending) return;
+    palClose();
+    if (it.run) it.run(); else if (it.href) location.href = it.href;
+  }
+  let palReturn = null;
+  function palOpen() {
+    if (!pal) palBuild();
+    palReturn = document.activeElement;
+    pal.hidden = false; palIdx = 0; palClients = [];
+    const input = pal.querySelector('input'); input.value = '';
+    palRender(); input.focus();
+  }
+  function palClose() { if (!pal || pal.hidden) return; pal.hidden = true; try { palReturn && palReturn.focus && palReturn.focus(); } catch (_) {} }
+  window.LolaNavFind = { open: palOpen, close: palClose };
+  // Capture phase: this one palette answers ⌘K on every page (older per-page
+  // ⌘K handlers knew 8 destinations, or none).
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'k') {
+      e.preventDefault(); e.stopImmediatePropagation(); e.stopPropagation();
+      if (pal && !pal.hidden) palClose(); else palOpen();
+    }
+  }, true);
+  document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-ln-find]'); if (b) { e.preventDefault(); palOpen(); } });
+
   // ── Identity + role, from the live session ──────────────────
   const ROLE_LABEL = { owner: 'Owner', admin: 'Administrator', manager: 'Manager', front_desk: 'Front Desk', frontdesk: 'Front Desk', stylist: 'Stylist', staff: 'Team Member' };
   function applyIdentity(auth) {
@@ -366,9 +523,10 @@ body.ln-shell{padding-left:236px}
     document.querySelectorAll('[data-ln-name]').forEach((el) => { el.textContent = first; });
     document.querySelectorAll('[data-ln-role]').forEach((el) => { el.textContent = (ROLE_LABEL[r] || r.replace(/_/g, ' ')) + (business ? ' · ' + business : ''); });
     document.querySelectorAll('[data-ln-initial]').forEach((el) => { el.textContent = (first[0] || '·').toUpperCase(); });
-    if (r !== role) {
-      role = r;
-      try { sessionStorage.setItem('lolaNavRole', r); } catch (_) {}
+    const pf = auth.platform_admin === true;
+    if (r !== role || pf !== platform) {
+      role = r; platform = pf;
+      try { sessionStorage.setItem('lolaNavRole', r); sessionStorage.setItem('lolaNavPlatform', pf ? '1' : '0'); } catch (_) {}
       rerenderGated();
     }
   }

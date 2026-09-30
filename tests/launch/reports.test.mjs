@@ -42,4 +42,16 @@ ok(pr && pr.bookings === 2 && pr.revenue === 305 && pr.revenue_cents === 30500, 
 ok(an && an.bookings === 1 && an.revenue_cents === 5500, 'cancelled and future bookings are not counted (Ana: 1, $55)');
 ok(pr.hours === 2, 'hours come from real durations');
 
+// Client search covers the whole book, not just the newest page.
+for (let i = 0; i < 40; i++) T.clients.push({ id: 'n' + i, tenant_id: TID, first_name: 'New' + i, phone: '+1786555' + String(1000 + i), created_at: new Date(now - i * 1000).toISOString() });
+T.clients.push({ id: 'old', tenant_id: TID, first_name: 'Nicole', last_name: 'Thomas', name: 'Nicole Thomas', phone: '+13055550211', created_at: new Date(now - 400 * DAY).toISOString() });
+r = await run('clients.js', { query: { q: 'nicole', limit: '6' } });
+ok((r.clients || []).some(c => c.id === 'old'), 'search finds an older client even with a small limit');
+r = await run('clients.js', { query: { q: 'nicole thomas', limit: '6' } });
+ok((r.clients || []).length === 1 && r.clients[0].id === 'old', 'full-name search');
+r = await run('clients.js', { query: { q: '555-0211', limit: '6' } });
+ok((r.clients || []).some(c => c.id === 'old'), 'phone search by digits');
+r = await run('clients.js', { query: { limit: '5' } });
+ok((r.clients || []).length === 5, 'plain list still pages');
+
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

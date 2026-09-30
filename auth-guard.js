@@ -107,7 +107,7 @@
   const ready=loadSession().then(({data,token})=>{
     if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
     const role=String(data.role||'staff').toLowerCase();
-    window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready}; loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
+    window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready,platform_admin:data.platform_admin===true}; loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
   }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session renewal failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
   window.LolaAuth={ready};
 })();
