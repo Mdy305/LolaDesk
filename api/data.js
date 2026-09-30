@@ -167,23 +167,40 @@ export default async function handler(req,res){
       case 'overview':
       default: {
         const since=new Date(Date.now()-30*86400000).toISOString();
-        const [cl,ca,bk,usage, upsellEvents]=await Promise.all([
+        const [cl,ca,bk,usage,upsellEvents,everCalls,everBookings,servicesCount]=await Promise.all([
           c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
           c.from('bookings').select('price:total_amount').eq('tenant_id',tid).gte('start_time',since).then(r=>r.data||[]).catch(()=>[]),
           getUsageStatus(tid, tenant.plan).catch(()=>null),
-          c.from('usage_events').select('units').eq('tenant_id',tid).eq('kind','upsell').gte('created_at',since).then(r=>r.data||[]).catch(()=>[])
+          c.from('usage_events').select('units').eq('tenant_id',tid).eq('kind','upsell').gte('created_at',since).then(r=>r.data||[]).catch(()=>[]),
+          // All-time (not just 30d) — this is what decides whether the salon
+          // has EVER had a real call, for the new-tenant empty state below.
+          c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
+          c.from('bookings').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
+          c.from('services').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0)
         ]);
         const rev=bk.reduce((s,r)=>s+Number(r.price||0),0);
         const upsellRev=upsellEvents.reduce((s,r)=>s+Number(r.units||0),0);
         const upsellRate = rev > 0 ? Math.max(0, Math.min(100, Math.round((upsellRev / rev) * 100))) : 0;
+        // A brand-new salon: nothing has happened yet, anywhere, ever. This
+        // is the "wall of zeros" the core-app audit flagged — Home should
+        // greet this with a guided first-run instead of cold numbers.
+        const isNew = cl===0 && everCalls===0 && everBookings===0;
         return res.status(200).json({ tenant:tenant.name,
-          kpis:{ 
+          kpis:{
             clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev),
             upsellRevenue: upsellRev,
             upsellRate: `${upsellRate}%`
           },
-          usage });
+          usage,
+          setup:{
+            isNew,
+            phoneNumber: tenant.phone_number || null,
+            bookingUrl: tenant.booking_url || (tenant.slug ? `${(process.env.APP_URL||'https://www.loladesk.com').replace(/\/$/,'')}/book?t=${encodeURIComponent(tenant.slug)}` : null),
+            servicesCount,
+            clientsCount: cl
+          }
+        });
       }
     }
   }catch(e){
@@ -234,7 +251,8 @@ function demo(resource, tenant){
         usage:{voice_call:210,sms_sent:980,ai_token:3100},
         percentages:{voice_call:35,sms_sent:39,ai_token:39},
         mostUsedKind:'sms_sent',mostUsedPercent:39,mostUsedLabel:'texts sent',
-        nearLimit:false,overLimit:false}}
+        nearLimit:false,overLimit:false},
+      setup:{isNew:false,phoneNumber:null,bookingUrl:null,servicesCount:12,clientsCount:165}}
   };
   return D[resource]||D.overview;
 }

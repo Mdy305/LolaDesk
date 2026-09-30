@@ -1,9 +1,9 @@
 /* LolaDesk shared tenant workspace shell. Runs on every authenticated app page. */
 (function(){
   if(window.LolaTenantWorkspace) return;
-  const APP_PAGES=['dashboard','clients','bookings','calls','inbox','marketing','revenue','team','settings','numbers','subscription','marketer','lola-live'];
+  const APP_PAGES=['dashboard','clients','bookings','calls','inbox','marketing','campaigns','revenue','team','settings','numbers','subscription','marketer','lola-live'];
   const OWNER_ONLY=['settings','numbers','subscription'];
-  const MANAGER_ONLY=['marketing','revenue','team','marketer'];
+  const MANAGER_ONLY=['marketing','campaigns','revenue','team','marketer'];
   const path=location.pathname.split('/').pop().replace(/\.html$/,'')||'dashboard';
   const q=(s,r=document)=>r.querySelector(s), qa=(s,r=document)=>Array.from(r.querySelectorAll(s));
   const text=(el,v)=>{if(el&&v!=null)el.textContent=String(v)};
@@ -37,6 +37,7 @@
       if(!APP_PAGES.includes(p)) return;
       const restricted=(OWNER_ONLY.includes(p)&&!canOwn(role))||(MANAGER_ONLY.includes(p)&&!canManage(role));
       if(restricted){a.hidden=true;a.setAttribute('aria-hidden','true');a.setAttribute('tabindex','-1');return;}
+      if(a.closest('[data-lola-nav]')) return; // sidebar.js owns its own active state
       const active=p===path||(path==='dashboard'&&p==='dashboard');
       a.classList.toggle('active',active);
       if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
@@ -45,7 +46,7 @@
     if(blocked) location.replace('dashboard.html?access=limited');
   }
   function addMobileHeader(auth){
-    if(q('#tenantMobileHeader')||innerWidth>820)return;
+    if(window.LolaNav||q('#tenantMobileHeader')||innerWidth>820)return; // sidebar.js provides the phone nav
     const business=tenantName(auth.tenant);
     const bar=document.createElement('header');bar.id='tenantMobileHeader';
     bar.innerHTML=`<button type="button" aria-label="Open navigation" data-workspace-menu>☰</button><strong>${esc(business)}</strong><button type="button" aria-label="Talk to Lola" data-lola-voice>L</button>`;
