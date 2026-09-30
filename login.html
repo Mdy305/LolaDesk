@@ -2,277 +2,327 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>Sign in — LolaDesk</title>
+<meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="canonical" href="https://www.loladesk.com/login">
 <style>
+/* One Lola, one conversation. Lime is hers alone; everything else is ink. */
 *{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#000;--surface:#101012;--surface2:#16161a;
-  --border:#1c1c20;--border2:#28282e;
-  --text:#f4f4f7;--text2:#9a9aa2;--text3:#56565e;
-  --pink:#f2f2f4;--pink2:#f5f5f7;--pink-dim:rgba(242,242,244,.12);--pink-glow:rgba(242,242,244,.5);
-  
-  --ff-serif:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-  --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-}
-body{background:var(--bg);color:var(--text);font-family:var(--ff);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
-button{font-family:var(--ff);cursor:pointer;border:none}
-input{font-family:var(--ff)}
+:root{--bg:#000;--surface:#0f0f12;--surface2:#16161a;--line:#1f1f24;--line2:#2b2b31;--ink:#f5f5f7;--ink2:#a1a1a8;--ink3:#5f5f67;--danger:#ff6b60;
+  --ff:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--ff);-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;overflow-x:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
 a{color:inherit;text-decoration:none}
+.top{display:flex;align-items:center;justify-content:space-between;padding:calc(20px + env(safe-area-inset-top,0px)) 24px 0;gap:16px}
+.mark{font-size:14px;font-weight:600;letter-spacing:.24em}
+.start{font-size:13px;color:var(--ink2);padding:9px 14px;border:1px solid var(--line2);border-radius:999px;transition:color .15s,border-color .15s}
+.start:hover,.start:focus-visible{color:var(--ink);border-color:#4a4a52;outline:none}
+.preview{margin:14px 24px 0;padding:12px 14px;border:1px solid #4a3a12;background:#1a1408;border-radius:12px;font-size:13px;line-height:1.5;color:#f3d38a}
+.preview a{text-decoration:underline}
 
-.bg-orb{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;height:760px;pointer-events:none;opacity:.4;z-index:0}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:12px 20px calc(28px + env(safe-area-inset-bottom,0px));width:100%;max-width:560px;margin:0 auto}
+.lola{position:relative;width:min(260px,62vw);aspect-ratio:1;display:grid;place-items:center;cursor:pointer;border-radius:50%;outline:none;-webkit-tap-highlight-color:transparent}
+.lola canvas{position:absolute;inset:0;width:100%;height:100%}
+.lola .name{position:relative;z-index:2;font-size:22px;font-weight:500;letter-spacing:.3em;text-indent:.3em;text-shadow:0 0 18px rgba(0,0,0,.6);pointer-events:none}
+.lola:focus-visible::after{content:'';position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
+.state{margin-top:14px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink3);min-height:14px}
+.says{margin-top:10px;min-height:56px;text-align:center;font-size:clamp(19px,4.6vw,23px);line-height:1.38;letter-spacing:-.01em;font-weight:400;max-width:30ch;text-wrap:balance}
+.you{margin-top:6px;min-height:18px;font-size:13px;color:var(--ink3);text-align:center;max-width:44ch}
 
-.back{position:absolute;top:28px;left:32px;font-size:13px;color:var(--text2);display:flex;align-items:center;gap:7px;z-index:5;transition:color .2s}
-.back:hover{color:var(--text)}
+.composer{margin-top:22px;width:100%;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 16px;border:1px solid var(--line2);border-radius:999px;background:var(--surface);transition:border-color .15s}
+.composer:focus-within{border-color:#55555d}
+.composer input{flex:1;min-width:0;background:none;border:0;outline:0;font-size:15px;height:40px}
+.composer input::placeholder{color:var(--ink3)}
+.icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--ink2);flex:0 0 auto;transition:background .15s,color .15s}
+.icon:hover,.icon:focus-visible{background:var(--surface2);color:var(--ink);outline:none}
+.icon.on{color:#0a0a0b;background:var(--ink)}
+.icon svg{width:18px;height:18px}
+.chips{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{font-size:13px;color:var(--ink2);padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:transparent;transition:color .15s,border-color .15s}
+.chip:hover,.chip:focus-visible{color:var(--ink);border-color:var(--line2);outline:none}
 
-.card{position:relative;z-index:2;width:100%;max-width:400px;text-align:center}
-.logo{font-size:18px;font-weight:600;letter-spacing:.2em;margin-bottom:8px}
-.logo-sub{font-size:9px;letter-spacing:.42em;color:var(--text3);margin-bottom:48px}
-
-/* VOICE ORB */
-.voice-orb{width:180px;height:180px;margin:0 auto 28px;position:relative;cursor:pointer;transition:transform .3s}
-.voice-orb:hover{transform:scale(1.04)}
-.voice-orb canvas{position:absolute;inset:0}
-.voice-orb-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:500;letter-spacing:.26em;text-indent:.26em}
-
-.voice-title{font-family:var(--ff-serif);font-size:30px;font-style:italic;font-weight:300;margin-bottom:8px}
-.voice-tagline{font-size:11px;letter-spacing:.08em;color:var(--pink2);margin-bottom:10px;font-weight:500}
-.voice-state{font-size:13px;color:var(--text3);min-height:20px;margin-bottom:8px;transition:color .3s}
-.voice-state.listening{color:var(--pink2)}
-.voice-transcript{font-size:13px;font-style:italic;color:var(--pink2);min-height:18px;margin-bottom:24px}
-
-.divider{display:flex;align-items:center;gap:14px;margin:28px 0;color:var(--text3);font-size:11px;letter-spacing:.1em}
-.divider::before,.divider::after{content:'';flex:1;height:0.5px;background:var(--border)}
-
-.field{margin-bottom:12px;text-align:left}
-.label{font-size:12px;color:var(--text2);margin-bottom:6px;display:block}
-.input{width:100%;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:13px 16px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
-.input:focus{border-color:var(--pink)}
-.input::placeholder{color:var(--text3)}
-
-.btn{width:100%;padding:14px;border-radius:100px;font-size:14px;font-weight:600;transition:all .2s;margin-top:8px}
-.btn-primary{background:var(--pink);color:#10140a}
-.btn-primary:hover{background:var(--pink2);box-shadow:0 4px 20px var(--pink-glow)}
-.btn-google{background:var(--surface);color:var(--text);border:0.5px solid var(--border2);display:flex;align-items:center;justify-content:center;gap:10px}
-.btn-google:hover{border-color:var(--text3)}
-
-.foot{font-size:13px;color:var(--text3);margin-top:24px}
-.foot a{color:var(--pink2)}
-</style>
-<style>
-/* ═══ VOLT CONTRAST — neon surfaces take dark ink, Apple-style ═══ */
-.btn-primary, .price-btn.primary, .pcta.primary, .buy-btn, .ob-btn,
-.connect-btn, .btn.btn-primary { color:#10140a !important; }
-
-.snd,.me{color:#10140a}</style>
-<style>
-/* ghost variants stay light-ink (they sit on dark, not on volt) */
-.btn-ghost, .ob-btn-ghost, .ob-btn.ob-btn-ghost, .price-btn.ghost { color: var(--text, #f5f6f0) !important; }
+.sheet{width:100%;margin-top:22px;padding:20px;border:1px solid var(--line);border-radius:20px;background:var(--surface);display:flex;flex-direction:column;gap:10px}
+.sheet[hidden]{display:none}
+.sheet h2{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.sheet p{font-size:13px;color:var(--ink2);line-height:1.55}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;color:var(--ink2)}
+.input{width:100%;background:#0a0a0c;border:1px solid var(--line2);border-radius:12px;padding:13px 14px;font-size:15px;outline:none;transition:border-color .15s}
+.input:focus{border-color:#6a6a72}
+.input::placeholder{color:var(--ink3)}
+.btn{width:100%;padding:14px;border-radius:999px;font-size:15px;font-weight:600;transition:opacity .15s,background .15s}
+.btn-primary{background:var(--ink);color:#0a0a0b}
+.btn-primary:hover{background:#fff}
+.btn-primary:disabled{opacity:.5;cursor:default}
+.btn-ghost{border:1px solid var(--line2);color:var(--ink);display:flex;align-items:center;justify-content:center;gap:10px}
+.btn-ghost:hover{border-color:#4a4a52}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.link{font-size:13px;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+.link:hover{color:var(--ink)}
+.msg{font-size:13px;min-height:18px;color:var(--ink2);line-height:1.5}
+.msg.err{color:var(--danger)}
+.alt{margin-top:16px;font-size:13px;color:var(--ink3);text-align:center}
+.alt button{color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<header class="top">
+  <a class="mark" href="/" aria-label="LolaDesk home">LOLADESK</a>
+  <a class="start" href="/onboarding">New salon? Start free</a>
+</header>
+<div class="preview" id="previewNote" hidden>You're on a preview copy of LolaDesk, which may not have sign-in set up. <a href="https://www.loladesk.com/login">Sign in at loladesk.com</a>.</div>
 
-<canvas class="bg-orb" id="bgOrb" width="760" height="760"></canvas>
+<main>
+  <div class="lola" id="lola" role="button" tabindex="0" aria-label="Talk to Lola">
+    <canvas id="lolaCanvas" aria-hidden="true"></canvas>
+    <span class="name">LOLA</span>
+  </div>
+  <div class="state" id="state" aria-hidden="true"></div>
+  <p class="says" id="says" aria-live="polite"></p>
+  <p class="you" id="you"></p>
 
-<a href="/" class="back">
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6"/></svg>
-  Back
-</a>
-
-<div class="card">
-  <div class="logo">LOLADESK</div>
-  <div class="logo-sub">AI FRONT DESK</div>
-
-  <div class="voice-orb" id="voiceOrb" onclick="toggleVoice()" role="button" tabindex="0" aria-label="Tap to sign in by voice">
-    <canvas id="orbCanvas" width="180" height="180"></canvas>
-    <div class="voice-orb-label">LOLA</div>
+  <form class="composer" id="composer" autocomplete="off">
+    <input id="ask" type="text" placeholder="Talk to Lola, or say &ldquo;sign me in&rdquo;" aria-label="Talk to Lola" maxlength="500"/>
+    <button type="button" class="icon" id="mic" aria-label="Speak to Lola"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <button type="submit" class="icon" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+  </form>
+  <div class="chips" id="chips">
+    <button type="button" class="chip" data-say="Sign me in">Sign me in</button>
+    <button type="button" class="chip" data-say="Call my phone so I can hear you">Call my phone</button>
+    <button type="button" class="chip" data-say="What can you do for my salon?">What can you do?</button>
   </div>
 
-  <div class="voice-title">Welcome back.</div>
-  <div class="voice-tagline">Jarvis talks. Alexa answers. Lola executes.</div>
-  <div class="voice-state" id="voiceState">Tap Lola and say "sign me in"</div>
-  <div class="voice-transcript" id="voiceTranscript"></div>
+  <!-- Sign in -->
+  <form class="sheet" id="signin" hidden>
+    <h2>Sign in</h2>
+    <div class="field"><label for="email">Email</label><input class="input" id="email" type="email" autocomplete="email" placeholder="you@salon.com" required/></div>
+    <div class="field"><label for="password">Password</label><input class="input" id="password" type="password" autocomplete="current-password" placeholder="Your password" required/></div>
+    <button class="btn btn-primary" id="signinBtn" type="submit">Sign in</button>
+    <button class="btn btn-ghost" type="button" id="google"><svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.3h5.9c-.3 1.4-1 2.5-2.2 3.3v2.8h3.6c2.1-1.9 3.2-4.8 3.2-8.2z"/><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.6l-3.6-2.8c-1 .7-2.3 1.1-3.6 1.1-2.8 0-5.1-1.9-6-4.4H2.3v2.9C4.1 20.6 7.8 23 12 23z"/><path fill="#FBBC05" d="M6 14.3c-.2-.7-.4-1.4-.4-2.3s.1-1.6.4-2.3V6.8H2.3C1.5 8.3 1 10.1 1 12s.5 3.7 1.3 5.2L6 14.3z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .5 4.1 1.6l3.1-3.1C17.4 2.1 14.9 1 12 1 7.8 1 4.1 3.4 2.3 6.8L6 9.7c.9-2.5 3.2-4.3 6-4.3z"/></svg>Continue with Google</button>
+    <div class="row"><button type="button" class="link" id="forgotLink">Forgot password?</button></div>
+    <p class="msg" id="signinMsg" role="status"></p>
+  </form>
 
-  <div class="divider">OR</div>
+  <!-- Two-step code -->
+  <form class="sheet" id="mfa" hidden>
+    <h2>Enter your code</h2>
+    <p>Open your authenticator app and type the 6-digit code for LolaDesk.</p>
+    <input class="input" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"/>
+    <button class="btn btn-primary" type="submit">Continue</button>
+    <p class="msg" id="mfaMsg" role="status"></p>
+  </form>
 
-  <div class="field">
-    <label class="label">Email</label>
-    <input class="input" id="email" type="email" placeholder="you@salon.com" autocomplete="email" required/>
-  </div>
-  <div class="field">
-    <label class="label">Password</label>
-    <input class="input" id="password" type="password" placeholder="••••••••" autocomplete="current-password" required/>
-  </div>
-  <button class="btn btn-primary" onclick="signIn()">Sign in</button>
-  <button class="btn btn-google" onclick="signInWithGoogle()">
-    <svg width="17" height="17" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.3h5.9c-.3 1.4-1 2.5-2.2 3.3v2.8h3.6c2.1-1.9 3.2-4.8 3.2-8.2z"/><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.6l-3.6-2.8c-1 .7-2.3 1.1-3.6 1.1-2.8 0-5.1-1.9-6-4.4H2.3v2.9C4.1 20.6 7.8 23 12 23z"/><path fill="#FBBC05" d="M6 14.3c-.2-.7-.4-1.4-.4-2.3s.1-1.6.4-2.3V6.8H2.3C1.5 8.3 1 10.1 1 12s.5 3.7 1.3 5.2L6 14.3z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .5 4.1 1.6l3.1-3.1C17.4 2.1 14.9 1 12 1 7.8 1 4.1 3.4 2.3 6.8L6 9.7c.9-2.5 3.2-4.3 6-4.3z"/></svg>
-    Continue with Google
-  </button>
+  <!-- Forgot password -->
+  <form class="sheet" id="forgot" hidden>
+    <h2>Reset your password</h2>
+    <p>Lola will email you a link to set a new one.</p>
+    <input class="input" id="forgotEmail" type="email" autocomplete="email" placeholder="you@salon.com"/>
+    <button class="btn btn-primary" type="submit">Email me a link</button>
+    <p class="msg" id="forgotMsg" role="status"></p>
+  </form>
 
-  <div class="foot">New here? <a href="/start">Set up your salon →</a></div>
-</div>
+  <!-- Hear her on a real call -->
+  <form class="sheet" id="callme" hidden>
+    <h2>Hear Lola on a real call</h2>
+    <p>She'll call your phone now, the way she answers your salon. US and Canada numbers.</p>
+    <input class="input" id="callPhone" type="tel" autocomplete="tel" placeholder="(305) 555-0123"/>
+    <button class="btn btn-primary" type="submit">Call me</button>
+    <p class="msg" id="callMsg" role="status"></p>
+  </form>
 
-<script src="lola-orb.js"></script>
-<script src="lola-alive.js"></script>
+  <p class="alt" id="alt"><button type="button" id="showSignin">Sign in with email</button></p>
+</main>
+
+<script src="/lola-orb.js"></script>
+<script src="/lola-alive.js"></script>
 <script>
-// ── orb — the same neural particle Lola as the dashboard ──
-// One Lola everywhere: identical engine, so the Lola an owner meets at
-// sign-in IS the Lola on their dashboard. Legacy renderer kept only as
-// a fallback if lola-orb.js somehow failed to load.
-function makeOrb(canvas, size, getActive){
-  if(window.LolaOrb){
-    // the small orb is Lola herself; the big one behind is her quiet ambient light
-    const inst = LolaOrb.mount(canvas, size > 400 ? { size, ambient: true } : { size, bleed: 0.35 });
-    (function sync(){
-      const want = (getActive && getActive()) ? 'listening' : 'ambient';
-      if(inst.state !== want) inst.setState(want);
-      requestAnimationFrame(sync);
-    })();
-    return inst;
+(function(){
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const hour = new Date().getHours();
+  const hello = hour < 5 ? 'Good evening' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  if (/\.vercel\.app$/i.test(location.hostname)) $('previewNote').hidden = false;
+
+  // ── Lola: the same body as everywhere else ──
+  const orb = window.LolaOrb ? LolaOrb.mount($('lolaCanvas'), { size: $('lola').clientWidth || 240, bleed: 0.45 }) : { setState(){}, feed(){}, flare(){}, voice(){} };
+  const STATE = { idle: '', listening: 'Listening', thinking: 'Thinking', speaking: 'Lola' };
+  function setState(s){ orb.setState(s === 'idle' ? 'ambient' : s); $('state').textContent = STATE[s] || ''; }
+  setState('idle');
+
+  // ── Her words, typed out as she says them ──
+  let typing = 0;
+  function say(text){
+    clearInterval(typing); const el = $('says'); el.textContent = ''; let i = 0;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = text; return; }
+    typing = setInterval(() => { i += 2; el.textContent = text.slice(0, i); if (i >= text.length) clearInterval(typing); }, 18);
   }
-  const x = canvas.getContext('2d');
-  const c = size/2; let t = Math.random()*10; const R = size*0.30;
-  (function loop(){
-    x.clearRect(0,0,size,size);
-    const active = getActive && getActive();
-    const breath = 0.5 + Math.sin(t*1.3)*0.5;
-    const energy = active ? 1 : 0.32;
-    x.globalCompositeOperation='lighter';
-    const halo=x.createRadialGradient(c,c,size*0.04,c,c,size*0.49);
-    const hA=0.10+breath*0.10+energy*0.12;
-    halo.addColorStop(0,`rgba(204,255,0,${hA})`);halo.addColorStop(0.5,`rgba(204,255,0,${hA*0.35})`);halo.addColorStop(1,'rgba(242,242,244,0)');
-    x.fillStyle=halo;x.fillRect(0,0,size,size);
-    const core=x.createRadialGradient(c,c,0,c,c,size*0.26);
-    const cA=0.22+breath*0.18+energy*0.2;
-    core.addColorStop(0,`rgba(255,130,195,${cA})`);core.addColorStop(0.5,`rgba(204,255,0,${cA*0.5})`);core.addColorStop(1,'rgba(242,242,244,0)');
-    x.fillStyle=core;x.fillRect(0,0,size,size);
-    for(let i=0;i<64;i++){
-      const a=(i/64)*Math.PI*2;
-      const r=R+Math.sin(t*.8+i*.4)*size*0.03+Math.sin(t*1.4+i*.85)*size*0.016+(active?Math.sin(t*3+i)*size*0.04:0)+breath*size*0.012;
-      const px=c+Math.cos(a)*r,py=c+Math.sin(a)*r;
-      const al=0.25+Math.abs(Math.sin(t*.6+i*.3))*0.4+energy*0.2;
-      const sz=size*0.008+Math.abs(Math.sin(t*.9+i))*size*0.006;
-      x.beginPath();x.arc(px,py,sz,0,Math.PI*2);
-      x.fillStyle=`rgba(255,${90+Math.sin(t+i*.2)*60},${175+Math.sin(t+i)*30},${al})`;x.fill();
-    }
-    for(let i=0;i<30;i++){
-      const a=(i/30)*Math.PI*2+t*.25;
-      const r=R*0.4+Math.sin(t*1.2+i*.55)*size*0.04;
-      const px=c+Math.cos(a)*r,py=c+Math.sin(a)*r;
-      x.beginPath();x.arc(px,py,size*0.006,0,Math.PI*2);
-      x.fillStyle=`rgba(255,185,218,${0.2+Math.abs(Math.sin(t*.9+i))*0.32})`;x.fill();
-    }
-    x.globalCompositeOperation='source-over';
-    t+=0.015;requestAnimationFrame(loop);
-  })();
-}
-let listening=false;
-let speaking=false;
-makeOrb(document.getElementById('orbCanvas'),180,()=>speaking?'speaking':(listening?'listening':'ambient'));
-makeOrb(document.getElementById('bgOrb'),760,()=>false);
+  say(hello + '. I’m Lola. Want to sign in, or see what I can do?');
 
-// ── voice sign-in ──
-let recognition=null;
-function setupSR(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR)return;
-  recognition=new SR();recognition.continuous=false;recognition.interimResults=true;recognition.lang='en-US';
-  recognition.onresult=(e)=>{
-    let txt='';for(let i=e.resultIndex;i<e.results.length;i++)txt+=e.results[i][0].transcript;
-    document.getElementById('voiceTranscript').textContent=txt;
-    if(e.results[e.results.length-1].isFinal){
-      stopListening();
-      // Lola is ALIVE here: she hears, thinks, and answers — via the
-      // open-source neurologic path (browser STT + intent brain + TTS
-      // fallback). Voice NEVER bypasses auth: sign-in still requires the
-      // email/password below.
-      respond(txt.trim());
-    }
-  };
-  recognition.onerror=()=>stopListening();
-  recognition.onend=()=>{ if(listening) stopListening(); };
-}
-function startListening(){
-  if(!recognition)setupSR();
-  if(!recognition){ alert('Voice needs Chrome, Edge or Safari. Use email below.'); return; }
-  listening=true;
-  document.getElementById('voiceState').textContent='Listening…';
-  document.getElementById('voiceState').classList.add('listening');
-  document.getElementById('voiceTranscript').textContent='';
-  try{recognition.start();}catch(e){}
-}
-function stopListening(){
-  listening=false;
-  document.getElementById('voiceState').classList.remove('listening');
-  if(recognition)try{recognition.stop();}catch(e){}
-}
-async function respond(text){
-  const state=document.getElementById('voiceState');
-  const reply = window.LolaAlive ? LolaAlive.reply(text) : '';
-  if(reply) document.getElementById('voiceTranscript').textContent=reply;
-  if(window.LolaAlive){
-    speaking=true;
-    state.textContent='Lola is replying…';
-    const s = await LolaAlive.speak(reply || 'How can I help you today?');
-    speaking=false;
-    state.textContent = s.engine==='elevenlabs' ? 'Tap Lola and speak again' : "Lola's voice is warming up — tap again in a moment";
-  } else {
-    state.textContent='Tap Lola and speak again';
+  // ── Her voice (Telnyx or ElevenLabs, whichever speaks), resonating through her ──
+  let voiceOn = false, audio = null;
+  async function speak(text){
+    if (!voiceOn || !text) return;
+    try { if (audio) { audio.pause(); audio = null; } } catch (_) {}
+    try {
+      const r = await fetch('/api/speak-lola?text=' + encodeURIComponent(text.slice(0, 500)));
+      if (!r.ok) return;
+      const url = URL.createObjectURL(await r.blob());
+      audio = new Audio(url);
+      let meter = null;
+      audio.onplay = () => { setState('speaking'); try { meter = LolaOrb.attachAudioElement(orb, audio); } catch (_) {} if (!meter || !meter.stop) orb.voice && orb.voice('lola', Math.min(8, text.split(/\s+/).length * 0.33)); };
+      audio.onended = audio.onerror = () => { try { meter && meter.stop(); } catch (_) {} setState('idle'); URL.revokeObjectURL(url); };
+      await audio.play();
+    } catch (_) { setState('idle'); }
   }
-}
-window.toggleVoice=()=> listening?stopListening():startListening();
-document.getElementById('voiceOrb').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleVoice();}});
 
-window.signInWithGoogle=()=>{
-  // Preserve the post-login destination across the Google round-trip via
-  // sessionStorage (survives the redirect, keeps redirectTo free of query
-  // params so it matches the allow-listed callback URL exactly).
-  const next = new URLSearchParams(location.search).get('next');
-  try{ if(next) sessionStorage.setItem('loladesk_oauth_next', next); }catch(e){}
-  document.getElementById('voiceState').textContent='Opening Google…';
-  window.location.href='/api/auth/google';
-};
+  // ── The conversation: her real brain on Telnyx ──
+  const history = [];
+  async function talk(text, byVoice){
+    text = String(text || '').trim(); if (!text) return;
+    if (byVoice) voiceOn = true;
+    $('you').textContent = '“' + text + '”'; $('ask').value = '';
+    if (/\b(pass(word|code)|pwd)\b\s*(is|:|=)\s*\S+/i.test(text)) {
+      // never let a password travel through the conversation
+      $('you').textContent = ''; say('Please never tell me your password. Type it in the sign-in form instead.'); open('signin'); return;
+    }
+    setState('thinking');
+    history.push({ role: 'user', text });
+    let reply = '', action = 'none';
+    try {
+      const r = await fetch('/api/lola/concierge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history: history.slice(-8) }) });
+      const d = await r.json().catch(() => ({}));
+      reply = d.reply || ''; action = d.action || 'none';
+    } catch (_) {}
+    if (!reply) { reply = (window.LolaAlive && LolaAlive.reply(text)) || 'I can’t reach my brain right now, but you can still sign in below.'; if (/sign|log/i.test(text)) action = 'show_signin'; }
+    history.push({ role: 'lola', text: reply });
+    say(reply); setState('idle'); orb.flare && action !== 'none' && orb.flare();
+    act(action); speak(reply);
+  }
+  function act(a){
+    if (a === 'show_signin') open('signin');
+    else if (a === 'reset_password') { $('forgotEmail').value = $('email').value; open('forgot'); }
+    else if (a === 'call_me') open('callme');
+    else if (a === 'start_signup') setTimeout(() => { location.href = '/onboarding'; }, voiceOn ? 3200 : 1400);
+    else if (a === 'open_pricing') setTimeout(() => { location.href = '/pricing'; }, voiceOn ? 3200 : 1400);
+  }
+  const SHEETS = ['signin', 'mfa', 'forgot', 'callme'];
+  function open(id){
+    SHEETS.forEach((s) => { $(s).hidden = s !== id; });
+    $('alt').hidden = id === 'signin' || id === 'mfa';
+    const first = $(id).querySelector('input'); if (first && !first.value) setTimeout(() => first.focus(), 60);
+  }
 
-window.signIn=async ()=>{
-  const email=(document.getElementById('email').value||'').trim();
-  const password=document.getElementById('password').value||'';
-  const stateEl=document.getElementById('voiceState');
-  if(!email||!password){ stateEl.textContent='Enter your email and password.'; return; }
-  stateEl.textContent='Signing you in…';
-  try{
-    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,password})});
-    const d=await r.json();
-    if(!r.ok) throw new Error(d.error||'Login failed');
-    if(d.session){
-      localStorage.setItem('loladesk_token', d.session.access_token||'');
-      localStorage.setItem('loladesk_refresh', d.session.refresh_token||'');
-      if(d.tenant) localStorage.setItem('loladesk_tenant_id', d.tenant.id||'');
-    }
-    const next = new URLSearchParams(location.search).get('next');
-    if(!d.tenant){
-      window.location.href = 'onboarding.html';
-      return;
-    }
-    // A new salon (no number yet, or created in the last 3 days and never
-    // finished setup) continues onboarding where it left off.
-    try{
-      const t=d.tenant, fresh=t.created_at && (Date.now()-Date.parse(t.created_at) < 3*86400e3);
-      const done=localStorage.getItem('loladesk_onboarded_'+(t.slug||''))==='1';
-      if((!t.phone_number || fresh) && !done){ window.location.href='onboarding.html?resume=1'; return; }
-    }catch(_){}
-    window.location.href = next ? decodeURIComponent(next) : 'calendar.html';
-  }catch(e){ stateEl.textContent = e.message||'Invalid email or password'; }
-};
-document.getElementById('password').addEventListener('keydown',e=>{ if(e.key==='Enter') signIn(); });
-setupSR();
-  // Prefill email when arriving from onboarding (returning user).
-  try{
-    const qp = new URLSearchParams(location.search).get('email');
-    if(qp){ const el = document.getElementById('email'); if(el) el.value = qp; const pw = document.querySelector('input[type=password]'); if(pw) pw.focus(); }
-  }catch(e){}
+  $('composer').addEventListener('submit', (e) => { e.preventDefault(); talk($('ask').value, false); });
+  $('chips').addEventListener('click', (e) => { const c = e.target.closest('[data-say]'); if (c) { voiceOn = true; talk(c.dataset.say, false); } });
+  $('showSignin').addEventListener('click', () => open('signin'));
+  $('forgotLink').addEventListener('click', () => { $('forgotEmail').value = $('email').value; open('forgot'); });
+
+  // ── Hearing: tap her (or the mic) and speak ──
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false, mic = null;
+  function stopListening(){ listening = false; $('mic').classList.remove('on'); try { rec && rec.stop(); } catch (_) {} try { mic && mic.stop(); } catch (_) {} mic = null; }
+  async function listen(){
+    if (!SR) { $('ask').focus(); say('Type to me here. Voice works in Chrome, Edge and Safari.'); return; }
+    if (listening) { stopListening(); setState('idle'); return; }
+    voiceOn = true; listening = true; $('mic').classList.add('on'); setState('listening'); orb.flare && orb.flare();
+    try { mic = await LolaOrb.attachMic(orb); } catch (_) {}
+    rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
+    let final = '';
+    rec.onresult = (e) => { let t = ''; for (let i = e.resultIndex; i < e.results.length; i++) { t += e.results[i][0].transcript; if (e.results[i].isFinal) final += e.results[i][0].transcript; } $('you').textContent = t; };
+    rec.onerror = () => { stopListening(); setState('idle'); };
+    rec.onend = () => { const was = listening; stopListening(); if (was && final.trim()) talk(final, true); else if (was) setState('idle'); };
+    try { rec.start(); } catch (_) { stopListening(); setState('idle'); }
+  }
+  $('mic').addEventListener('click', listen);
+  $('lola').addEventListener('click', listen);
+  $('lola').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); listen(); } });
+
+  // ── Sign in ──
+  function safeNext(){ const n = new URLSearchParams(location.search).get('next') || ''; return n.charAt(0) === '/' && n.charAt(1) !== '/' ? n : ''; }
+  function land(d){
+    if (!d.tenant) { location.href = '/onboarding'; return; }
+    try { localStorage.setItem('loladesk_tenant_id', d.tenant.id || ''); } catch (_) {}
+    if (d.setup_done === false) { location.href = '/onboarding?resume=1'; return; }
+    location.href = safeNext() || '/dashboard';
+  }
+  function keep(session){ try { localStorage.setItem('loladesk_token', session.access_token || ''); localStorage.setItem('loladesk_refresh', session.refresh_token || ''); } catch (_) {} }
+  let challenge = null;
+  $('signin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('email').value.trim(), password = $('password').value, msg = $('signinMsg');
+    if (!email || !password) { msg.className = 'msg err'; msg.textContent = 'Enter your email and password.'; return; }
+    msg.className = 'msg'; msg.textContent = 'Signing you in…'; $('signinBtn').disabled = true; setState('thinking');
+    try {
+      const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(friendly(d.error, r.status));
+      if (d.mfa_required) { challenge = d.mfa_challenge; open('mfa'); say('One more step. Enter the code from your authenticator app.'); setState('idle'); return; }
+      if (!d.session) throw new Error('Sign-in didn’t return a session. Try again.');
+      keep(d.session); say('Welcome back.'); setState('speaking'); land(d);
+    } catch (err) {
+      msg.className = 'msg err'; msg.textContent = err.message; setState('idle');
+    } finally { $('signinBtn').disabled = false; }
+  });
+  function friendly(e, status){
+    const s = String(e || '');
+    if (/invalid login|invalid credentials|invalid email or password/i.test(s)) return 'That email and password don’t match. Try again, or reset your password.';
+    if (/not confirmed/i.test(s)) return 'Confirm your email first: open the link we sent you, then sign in.';
+    if (/not configured|supabase/i.test(s) || status >= 500) return 'Sign-in isn’t available on this address right now.' + (/\.vercel\.app$/i.test(location.hostname) ? ' Use loladesk.com.' : ' Try again in a minute.');
+    return s || 'Sign-in failed. Try again.';
+  }
+  $('mfa').addEventListener('submit', async (e) => {
+    e.preventDefault(); const msg = $('mfaMsg'); msg.className = 'msg'; msg.textContent = 'Checking…';
+    try {
+      const r = await fetch('/api/auth/mfa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'verify', mfa_challenge: challenge, code: $('mfaCode').value.trim() }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.session) throw new Error(d.error === 'Invalid code' ? 'That code didn’t work. Try the newest one.' : (d.error || 'That code didn’t work.'));
+      keep(d.session); land(d);
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; }
+  });
+  $('google').addEventListener('click', () => {
+    const n = safeNext(); try { if (n) sessionStorage.setItem('loladesk_oauth_next', n); } catch (_) {}
+    location.href = '/api/auth/google';
+  });
+
+  // ── Forgot password ──
+  $('forgot').addEventListener('submit', async (e) => {
+    e.preventDefault(); const msg = $('forgotMsg'), email = $('forgotEmail').value.trim();
+    msg.className = 'msg'; msg.textContent = 'Sending…';
+    try {
+      const r = await fetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'request', email }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Couldn’t send the link. Try again.');
+      msg.textContent = 'If ' + email + ' has a LolaDesk account, a reset link is on its way. Check your inbox.';
+      say('Done. Check your email for the link.'); speak('Done. Check your email for the link.');
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; }
+  });
+
+  // ── A real phone call from Lola ──
+  $('callme').addEventListener('submit', async (e) => {
+    e.preventDefault(); const msg = $('callMsg'), phone = $('callPhone').value.trim();
+    msg.className = 'msg'; msg.textContent = 'Dialing…'; setState('thinking');
+    try {
+      const r = await fetch('/api/demo-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 429) throw new Error('I’ve called that number a few times already. Try again in an hour.');
+      if (d.error === 'us_canada_numbers_only') throw new Error('I can call US and Canada numbers.');
+      if (!r.ok) throw new Error('I couldn’t place the call. Check the number and try again.');
+      if (d.telnyx && d.telnyx.data) { msg.textContent = 'Calling you now. Pick up and talk to me.'; say('Calling you now. Pick up and talk to me.'); orb.setState('oncall'); $('state').textContent = 'Calling'; return; }
+      msg.textContent = 'Got your number. The call line isn’t switched on here yet, so the LolaDesk team will call you.'; setState('idle');
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; setState('idle'); }
+  });
+
+  // Arriving from onboarding with an email: go straight to the form.
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('email')) { $('email').value = qp.get('email'); open('signin'); $('password').focus(); }
+  else if (qp.get('next')) open('signin');
+})();
 </script>
 </body>
 </html>
