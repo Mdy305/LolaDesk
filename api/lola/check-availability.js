@@ -7,6 +7,8 @@ import { verifyToolAuth, tenantForCalledNumber } from './_tool-tenant.js';
 import { getAvailability } from '../lib/availability-engine-v2.js';
 import { salonTz, fmtSalon } from '../lib/salon-time.js';
 import { localDateKey } from '../lib/timezone.js';
+import { db } from '../lib/db.js';
+import { gateNewBooking, turnedAway, CALLER_LINE } from '../lib/billing-enforce.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -17,6 +19,11 @@ export default async function handler(req, res) {
     if (!to_number || !service_id) return res.status(400).json({ error: 'missing_params' });
     const tenant = await tenantForCalledNumber(to_number);
     if (!tenant) return res.status(404).json({ error: 'tenant_not_found' });
+    // Trial over and unpaid (BILLING_ENFORCE): take a callback, text the owner.
+    if (gateNewBooking(tenant)) {
+      await turnedAway(db(), tenant, { channel: 'voice', caller: body.from_number || body.from || '', when: date ? String(date).slice(0, 10) : '' });
+      return res.json({ ok: false, blocked: true, message: CALLER_LINE, slots: [] });
+    }
     const tz = await salonTz(tenant.id);
     const today = localDateKey(new Date(), tz);
     const add = (k, n) => { const [y, m, d] = k.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };

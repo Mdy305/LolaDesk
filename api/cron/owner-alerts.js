@@ -14,6 +14,7 @@ import { db, e164 } from '../lib/db.js';
 import { getBookingSettings } from '../lib/booking-repository.js';
 import { sendSms } from '../lib/sms.js';
 import { awayBrief, alertText } from '../lib/owner-brief.js';
+import { runTrialReminders } from '../lib/billing-enforce.js';
 
 const MIN_GAP = 30 * 60e3;
 const FIRST_LOOKBACK = 20 * 60e3;
@@ -75,5 +76,8 @@ export default async function handler(req, res) {
   const c = db();
   if (!c) return res.status(503).json({ ok: false, error: 'Database not configured' });
   const results = await runOwnerAlerts(c);
-  return res.status(200).json({ ok: true, sent: results.filter(r => r.sent).length, results });
+  // Trial ending in 3 days / 1 day → proof of value + the link to keep Lola
+  // (only with BILLING_ENFORCE on).
+  const trial = await runTrialReminders(c).catch((e) => [{ error: String(e?.message || e) }]);
+  return res.status(200).json({ ok: true, sent: results.filter(r => r.sent).length, results, trial_reminders: trial });
 }
