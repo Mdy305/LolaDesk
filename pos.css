@@ -12,7 +12,8 @@
   --pos-ink:       #f5f5f7;
   --pos-ink-soft:  rgba(245,245,247,0.72);
   --pos-ink-mute:  rgba(245,245,247,0.45);
-  --pos-brand:     #0a84ff;
+  --pos-brand:     #ccff00;   /* LolaDesk lime — same accent as every page */
+  --pos-brand-ink: #0a0a0b;
   --pos-success:   #30d158;
   --pos-warning:   #ff9f0a;
   --pos-danger:    #ff453a;
@@ -304,7 +305,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tip-btn:hover { background: rgba(255,255,255,0.06); color: var(--pos-ink); }
 .tip-btn.on {
   background: var(--pos-brand);
-  color: #fff;
+  color: var(--pos-brand-ink);
   border-color: var(--pos-brand);
 }
 
@@ -328,12 +329,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 .pay-btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.06); }
-.pay-btn.primary { background: var(--pos-brand); border-color: var(--pos-brand); color: #fff; }
-.pay-btn.primary:hover { background: #0071e3; }
+.pay-btn.primary { background: var(--pos-brand); border-color: var(--pos-brand); color: var(--pos-brand-ink); }
+.pay-btn.primary:hover { background: #d8ff3d; }
 .pay-icon { font-size: 24px; }
 .pay-label { font-size: 15px; font-weight: 600; }
 .pay-sub   { font-size: 11px; color: var(--pos-ink-mute); }
-.pay-btn.primary .pay-sub { color: rgba(255,255,255,0.7); }
+.pay-btn.primary .pay-sub { color: rgba(10,10,11,0.62); }
 
 /* ── Atom position (top-right on POS) ─────────────────────── */
 .pos-atom {
@@ -421,9 +422,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .pay-actions .primary {
   background: var(--pos-brand);
   border-color: var(--pos-brand);
-  color: #fff;
+  color: var(--pos-brand-ink);
 }
-.pay-actions .primary:hover { background: #0071e3; }
+.pay-actions .primary:hover { background: #d8ff3d; }
 .pay-actions .primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .pay-status {
   padding: 14px 18px;

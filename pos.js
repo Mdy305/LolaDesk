@@ -60,7 +60,8 @@
           id: 'svc:' + (x.id || x.slug || x.name),
           name: x.name || x.title || 'Service',
           sub: x.duration_minutes ? `${x.duration_minutes} min` : (x.duration || ''),
-          price_cents: Math.round(parseFloat(x.price_cents || x.price || 0) || 0) || (Math.round(parseFloat(x.price || 0) * 100)),
+          // services store price in dollars ($250), price_cents only when the source says so
+          price_cents: x.price_cents != null ? Math.round(parseFloat(x.price_cents) || 0) : Math.round((parseFloat(x.price) || 0) * 100),
           kind: 'service',
           category: 'services'
         }));
@@ -70,7 +71,8 @@
   }
 
   async function loadProducts() {
-    const endpoints = ['/api/products', '/api/inventory', '/api/inventory/list'];
+    // the real catalog lives at /api/salon?resource=products (same as Inventory)
+    const endpoints = ['/api/salon?resource=products'];
     for (const ep of endpoints) {
       try {
         const r = await fetch(ep, { credentials: 'include' });
@@ -82,7 +84,7 @@
           id: 'prd:' + (x.id || x.sku || x.name),
           name: x.name || x.title || 'Product',
           sub: x.sku || x.category || '',
-          price_cents: Math.round(parseFloat(x.price_cents || 0) || (parseFloat(x.price || 0) * 100)) || 0,
+          price_cents: x.price_cents != null ? Math.round(parseFloat(x.price_cents) || 0) : Math.round((parseFloat(x.price) || 0) * 100),
           kind: 'product',
           category: 'products'
         }));

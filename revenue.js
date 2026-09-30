@@ -23,6 +23,27 @@
   const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(0,0,0,0); return d; };
   const rangeDays = () => parseInt(state.range, 10) || 30;
 
+  // One source for bookings in a range, one money rule. Bookings keep
+  // dollars (total_amount: 250) — the page works in cents.
+  const apptCache = new Map();
+  async function appts(fromDaysAgo) {
+    const from = iso(daysAgo(fromDaysAgo)), to = iso(new Date()), k = from + to;
+    if (!apptCache.has(k)) apptCache.set(k, (async () => {
+      try {
+        const r = await fetch(`/api/calendar?action=range&from=${from}&to=${to}`, { credentials: 'include' });
+        if (!r.ok) return [];
+        const d = await r.json();
+        const rows = Array.isArray(d) ? d : (d.bookings || d.appointments || d.rows || d.data || []);
+        const now = Date.now();
+        return rows.filter(a => new Date(a.start_time || a.starts_at) <= now && !/cancel|no.?show/i.test(a.status || ''));
+      } catch (_) { return []; }
+    })());
+    return apptCache.get(k);
+  }
+  const centsOf = a => a.price_cents != null ? (+a.price_cents || 0) : a.total_cents != null ? (+a.total_cents || 0) : Math.round((+(a.total_amount ?? a.price ?? a.amount) || 0) * 100);
+  const svcOf = a => a.service_name || (a.service && typeof a.service === 'object' ? a.service.name : a.service) || a.service_title || 'Other';
+  const staffOf = a => a.staff_name || (a.staff && typeof a.staff === 'object' ? a.staff.name : null) || a.stylist_name || a.stylist || 'Unassigned';
+
   // ── Boot ─────────────────────────────────────────────────
   async function boot() {
     document.querySelectorAll('.rv-r').forEach(b => {
@@ -37,6 +58,8 @@
   }
 
   async function load() {
+    apptCache.clear();
+    appts(rangeDays() - 1).then(rows => { const m = new Map(); rows.forEach(a => { const k = iso(new Date(a.start_time || a.starts_at)); m.set(k, (m.get(k) || 0) + 1); }); state.dailyCount = m; });
     await Promise.all([
       loadMetrics(),
       loadServices(),
@@ -82,20 +105,14 @@
     }
     // Fall back to computing from appointments
     try {
-      const from = iso(daysAgo(rangeDays() - 1));
-      const to = iso(new Date());
-      const r = await fetch(`/api/calendar?from=${from}&to=${to}&limit=2000`, { credentials: 'include' });
-      if (!r.ok) return;
-      const d = await r.json();
-      const rows = Array.isArray(d) ? d : (d.appointments || d.rows || d.data || []);
+      const rows = await appts(rangeDays() - 1);
       // Bucket by date
       const buckets = new Map();
       for (const a of rows) {
         const t = new Date(a.start_time || a.starts_at || a.created_at);
         if (isNaN(t)) continue;
         const k = iso(t);
-        const price = parseInt(a.price_cents || a.total_cents || 0, 10) || 0;
-        buckets.set(k, (buckets.get(k) || 0) + price);
+        buckets.set(k, (buckets.get(k) || 0) + centsOf(a));
       }
       // Fill zero days
       const out = [];
@@ -112,7 +129,8 @@
       const r = await fetch(`/api/stripe/payments?range=${state.range}&group_by=service&limit=200`, { credentials: 'include' });
       if (!r.ok) throw new Error('no group');
       const d = await r.json();
-      const rows = Array.isArray(d) ? d : (d.rows || d.data || d.services || []);
+      const rows = Array.isArray(d) ? d : (d.payments || d.rows || d.data || d.services || []);
+      if (!rows.length) throw new Error('no payments yet');
       // Try to detect service grouping in the response
       const grouped = new Map();
       for (const p of rows) {
@@ -126,18 +144,9 @@
     } catch (_) {
       // Fall back: derive from appointments
       try {
-        const from = iso(daysAgo(rangeDays() - 1));
-        const to = iso(new Date());
-        const r = await fetch(`/api/calendar?from=${from}&to=${to}&limit=2000`, { credentials: 'include' });
-        if (!r.ok) return;
-        const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.appointments || d.rows || d.data || []);
+        const rows = await appts(rangeDays() - 1);
         const grouped = new Map();
-        for (const a of rows) {
-          const name = a.service || a.service_name || a.service_title || 'Other';
-          const amt = parseInt(a.price_cents || a.total_cents || 0, 10) || 0;
-          grouped.set(name, (grouped.get(name) || 0) + amt);
-        }
+        for (const a of rows) grouped.set(svcOf(a), (grouped.get(svcOf(a)) || 0) + centsOf(a));
         state.services = Array.from(grouped, ([name, revenue_cents]) => ({ name, revenue_cents }))
           .sort((a, b) => b.revenue_cents - a.revenue_cents)
           .slice(0, 8);
@@ -147,8 +156,7 @@
 
   async function loadStaff() {
     for (const ep of [
-      `/api/revenue/staff?range=${state.range}`,
-      `/api/staff?range=${state.range}`
+      `/api/revenue/staff?range=${state.range}`
     ]) {
       try {
         const r = await fetch(ep, { credentials: 'include' });
@@ -158,28 +166,23 @@
         if (!rows.length) continue;
         state.staff = rows.map(x => ({
           name: x.name || x.stylist_name || x.staff_name || 'Stylist',
-          bookings: parseInt(x.bookings || x.appointment_count || 0, 10) || 0,
+          bookings: parseInt(x.bookings ?? x.count ?? x.appointment_count ?? 0, 10) || 0,
           hours: parseFloat(x.hours || (parseInt(x.total_minutes || 0, 10) / 60)) || 0,
-          revenue_cents: parseInt(x.revenue_cents || x.revenue || 0, 10) || 0
+          revenue_cents: x.revenue_cents != null ? (parseInt(x.revenue_cents, 10) || 0) : Math.round((+x.revenue || 0) * 100)
         })).sort((a, b) => b.revenue_cents - a.revenue_cents);
         return;
       } catch (_) {}
     }
     // Fall back: derive from appointments
     try {
-      const from = iso(daysAgo(rangeDays() - 1));
-      const to = iso(new Date());
-      const r = await fetch(`/api/calendar?from=${from}&to=${to}&limit=2000`, { credentials: 'include' });
-      if (!r.ok) return;
-      const d = await r.json();
-      const rows = Array.isArray(d) ? d : (d.appointments || d.rows || d.data || []);
+      const rows = await appts(rangeDays() - 1);
       const bucket = new Map();
       for (const a of rows) {
-        const name = a.stylist_name || a.stylist || a.staff_name || 'Unassigned';
+        const name = staffOf(a);
         const p = bucket.get(name) || { name, bookings: 0, hours: 0, revenue_cents: 0 };
         p.bookings += 1;
         p.hours += (parseInt(a.duration_minutes || a.duration_min || 60, 10) || 60) / 60;
-        p.revenue_cents += parseInt(a.price_cents || a.total_cents || 0, 10) || 0;
+        p.revenue_cents += centsOf(a);
         bucket.set(name, p);
       }
       state.staff = Array.from(bucket.values()).sort((a, b) => b.revenue_cents - a.revenue_cents);
@@ -189,12 +192,7 @@
   async function loadRetention() {
     // Compute rebooking rate by monthly cohort. We look back rangeDays()+90.
     try {
-      const from = iso(daysAgo(rangeDays() + 90 - 1));
-      const to = iso(new Date());
-      const r = await fetch(`/api/calendar?from=${from}&to=${to}&limit=5000`, { credentials: 'include' });
-      if (!r.ok) return;
-      const d = await r.json();
-      const rows = Array.isArray(d) ? d : (d.appointments || d.rows || d.data || []);
+      const rows = await appts(rangeDays() + 90 - 1);
       // Group by client_id — first visit month = cohort
       const clients = new Map();
       for (const a of rows) {
@@ -255,8 +253,8 @@
     setTrend('kpiAvgTrend',      0);
     setTrend('kpiOccTrend',      0);
 
-    drawSpark('sparkRevenue',  trend.map(p => p.v), '#0071e3');
-    drawSpark('sparkBookings', trend.map(p => Math.random() > 0.5 ? 1 : 0), '#af52de'); // placeholder if no daily bookings
+    drawSpark('sparkRevenue',  trend.map(p => p.v), '#ccff00');
+    drawSpark('sparkBookings', trend.map(p => state.dailyCount?.get(p.d) || 0), '#af52de');
     drawSpark('sparkAvg',      trend.map(p => p.v > 0 ? avgTicket : 0), '#ff2d92');
     drawSpark('sparkOcc',      trend.map(p => Math.min(100, (p.v / (rev / days || 1)) * occ)), '#34c759');
   }
@@ -307,7 +305,7 @@
       const h = ((p.v || 0) / max) * (H - pad.t - pad.b);
       const x = pad.l + i * cellW + (cellW - barW) / 2;
       const y = H - pad.b - h;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="#0071e3" rx="2"/>`;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="#ccff00" rx="2"/>`;
     });
     // Y-axis: 3 gridlines
     let grid = '';

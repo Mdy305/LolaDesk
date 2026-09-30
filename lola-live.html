@@ -35,6 +35,7 @@
   }
   #stage{
     position:relative;
+    overflow:hidden;
     width:100vw;
     height:100vh;
     display:flex;
@@ -140,11 +141,20 @@
   @media(prefers-reduced-motion:reduce){
     .word.on,.transcript.on{transition:none}
   }
+  /* Full-screen Lola: the million-particle body, centered */
+  .gpu-wrap{position:absolute;left:50%;top:50%;width:min(64vmin,560px);height:min(64vmin,560px);transform:translate(-50%,-50%);pointer-events:none;z-index:1}
+  .exit{position:fixed;top:calc(18px + env(safe-area-inset-top,0px));left:calc(18px + env(safe-area-inset-left,0px));z-index:5;display:inline-flex;align-items:center;gap:8px;
+    padding:10px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(10,10,12,.6);color:var(--text);text-decoration:none;
+    font-size:13px;letter-spacing:.02em;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);min-height:40px}
+  .exit:hover,.exit:focus-visible{border-color:rgba(204,255,0,.5);outline:none}
 </style>
+<script src="/lola-orb.js"></script>
 </head>
 <body>
+<a class="exit" href="/dashboard" aria-label="Back to LolaDesk">&larr; LolaDesk</a>
 <div id="stage">
   <canvas id="atom"></canvas>
+  <div class="gpu-wrap" id="gpuWrap"><canvas id="gpu"></canvas></div>
   <div class="center">
     <div class="word" id="state">Listening</div>
     <button class="tap" id="tap" aria-label="Talk to Lola"></button>
@@ -175,8 +185,10 @@ let W = 0, H = 0, cx = 0, cy = 0;
 
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = canvas.clientWidth = window.innerWidth;
-  H = canvas.clientHeight = window.innerHeight;
+  // clientWidth/Height are read-only: assigning them threw in strict mode
+  // and left this page black on every load.
+  W = window.innerWidth;
+  H = window.innerHeight;
   canvas.width = W * DPR;
   canvas.height = H * DPR;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -185,6 +197,17 @@ function resize() {
 }
 window.addEventListener('resize', resize, { passive: true });
 resize();
+
+// Lola's million-particle body (lola-orb.js). Without a GPU the original atom stays.
+let gpu = null;
+try {
+  if (window.LolaOrb) {
+    const g = LolaOrb.mount($('gpu'), { size: $('gpuWrap').clientWidth || 420, bleed: 0.45 });
+    if (g && g.gpu) { gpu = g; canvas.style.display = 'none'; }
+    else { if (g) g.destroy(); $('gpuWrap').remove(); }
+  }
+} catch (e) { gpu = null; }
+addEventListener('keydown', (e) => { if (e.key === 'Escape') location.href = '/dashboard'; });
 
 // ─── State ────────────────────────────────────────────────────
 const STATE = { IDLE:'idle', LISTENING:'listening', THINKING:'thinking', SPEAKING:'speaking', ERROR:'error' };
@@ -197,6 +220,7 @@ let breath = 0;
 
 function setState(s) {
   state = s;
+  if (gpu) gpu.setState(s === STATE.ERROR ? 'idle' : s);
   if (s === STATE.IDLE) {
     stateEl.classList.remove('on');
     hintEl.classList.remove('hidden');
@@ -241,6 +265,7 @@ function drawAtom() {
 
   // Smooth amplitude
   amplitude += (amplitudeTarget - amplitude) * 0.18;
+  if (gpu) { gpu.feed(amplitude); requestAnimationFrame(drawAtom); return; }
 
   ctx.clearRect(0, 0, W, H);
 

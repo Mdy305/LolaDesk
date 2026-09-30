@@ -51,24 +51,32 @@ export default async function handler(req, res) {
       const limit = Math.min(500, Number(req.query?.limit) || 100);
       const offset = Number(req.query?.offset) || 0;
 
+      // Search the whole book, then page. (Filtering after .range() only
+      // searched the newest `limit` clients — with limit=6, almost nobody.)
+      const safe = q.replace(/[^a-z0-9@.+\-\s']/g, ' ').trim();
+      const digits = q.replace(/\D/g, '');
       let query = c.from('clients')
         .select('id, first_name, last_name, name, phone, email, visit_count, no_show_count, created_at')
         .eq('tenant_id', tenant.id)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .order('created_at', { ascending: false });
+      if (safe) {
+        const like = `%${safe.split(/\s+/)[0]}%`;   // widest word at the database; every word checked below
+        query = query.or([`name.ilike.${like}`, `first_name.ilike.${like}`, `last_name.ilike.${like}`, `email.ilike.${like}`, digits.length >= 3 ? `phone.ilike.%${digits}%` : null].filter(Boolean).join(',')).limit(5000);
+      } else {
+        query = query.range(offset, offset + limit - 1);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
 
       let list = data || [];
       if (q) {
-        list = list.filter(c => (
-          String(c.name || '').toLowerCase().includes(q) ||
-          String(c.first_name || '').toLowerCase().includes(q) ||
-          String(c.last_name || '').toLowerCase().includes(q) ||
-          String(c.phone || '').includes(q) ||
-          String(c.email || '').toLowerCase().includes(q)
-        ));
+        const words = q.split(/\s+/).filter(Boolean);
+        list = list.filter(c => {
+          const hay = [c.name, c.first_name, c.last_name, c.email, [c.first_name, c.last_name].filter(Boolean).join(' ')].map(v => String(v || '').toLowerCase()).join(' | ');
+          const phone = String(c.phone || '').replace(/\D/g, '');
+          return words.every(w => hay.includes(w)) || (digits.length >= 3 && phone.includes(digits));
+        }).slice(offset, offset + limit);
       }
 
       return res.json({ ok: true, clients: list });

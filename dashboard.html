@@ -270,6 +270,12 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   transition:transform .12s ease-out,filter .12s ease-out;
 }
 .lola-orb-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+/* GPU Lola: her light is in the particles — no CSS glow re-rendering a
+   million points every frame, and her aura spills past the stage. */
+.lola-orb-stage.lola-gpu-stage,.lola-orb-stage.lola-gpu-stage[data-state]{filter:none!important}
+.lola-orb-stage canvas.lola-gpu{pointer-events:none;z-index:0}
+.lola-orb-zone:has(.lola-gpu) .lola-presence-field{display:none}
+.lola-orb-stage.lola-gpu-stage .lola-name{text-shadow:0 0 18px rgba(0,0,0,.55)}
 /* The orb IS her voice made visible — the whole stage breathes with
    the real amplitude of her ElevenLabs audio while she speaks. */
 .lola-orb-stage[data-state="speaking"]{

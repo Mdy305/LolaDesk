@@ -124,7 +124,7 @@ function renderInsights(){
    ───────────────────────────────────────────────────────────── */
 const orbCanvas = document.getElementById('orbCanvas');
 const orb = (window.LolaOrb && orbCanvas)
-  ? LolaOrb.mount(orbCanvas, { size: 320 })
+  ? LolaOrb.mount(orbCanvas, { size: (orbCanvas.parentElement && orbCanvas.parentElement.clientWidth) || 320, bleed: 0.3 })
   : { setState(){}, setLevel(){}, flare(){}, destroy(){} };
 // Expose the mounted orb so the resonance runtime (lola-resonance.js)
 // can drive its particle canvas live from Lola's real voice amplitude.
