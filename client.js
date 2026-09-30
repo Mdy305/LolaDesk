@@ -9,7 +9,8 @@
 
   const clientId = new URLSearchParams(location.search).get('id') || '';
   if (!clientId) {
-    document.body.innerHTML = '<div style="padding:40px;text-align:center;color:#86868b">No client id — open with ?id=…</div>';
+    // A client page with no client: go to the client list instead of a dead end.
+    location.replace('/clients');
     return;
   }
 

@@ -172,6 +172,22 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 .lola-suggestion:hover{background:rgba(204,255,0,.08);border-color:rgba(204,255,0,.35);color:var(--text)}
 .lola-suggestion:focus-visible{outline:2px solid rgba(204,255,0,.7);outline-offset:2px}
 @media (pointer:coarse){.lola-suggestion{min-height:44px}}
+/* Header: greeting left, the one metric right — at every desktop width.
+   front-desk-os.js injects .dash-header{align-items:flex-end!important} and
+   .kpi-row{width:100%!important}; at laptop widths that pushed the greeting to
+   the right edge and stretched the metric across the page. These selectors
+   outrank it on specificity inside the !important tier. */
+.main .dash-header{display:flex!important;flex-direction:row!important;align-items:flex-end!important;justify-content:space-between!important;gap:24px!important;flex-wrap:nowrap}
+.main .dash-header .dash-greeting{min-width:0;flex:1 1 auto;text-align:left}
+.main .dash-header .kpi-row{width:auto!important;flex:0 0 auto;margin:0!important}
+.main .dash-header .kpi-row .kpi{text-align:right;border-left:0!important;padding:0!important}
+@media(max-width:760px){
+  .main .dash-header{flex-direction:column!important;align-items:flex-start!important;gap:12px!important}
+  .main .dash-header .kpi-row .kpi{text-align:left}
+}
+/* The command dock floats over the page — make it solid so text never shows through. */
+.cmd-dock{background:rgba(12,12,14,.94)!important;backdrop-filter:blur(22px) saturate(1.2);-webkit-backdrop-filter:blur(22px) saturate(1.2);border-radius:28px}
+.main{padding-bottom:150px}
 .setup-guide{margin-bottom:24px;padding:22px 22px 20px}
 /* ID+class specificity on purpose: front-desk-os.js injects
    `.kpi-row{display:flex!important}` at runtime, which beats any plain
@@ -992,7 +1008,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   const businessName = tenant && (tenant.name || tenant.business_name) ? (tenant.name || tenant.business_name) : "Your business";
 
   const hour = new Date().getHours();
-  const timeWord = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const timeWord = hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   text("greetingTime", timeWord);
   text("greetingName", ownerName);
