@@ -29,6 +29,10 @@
   const caption = document.createElement('div');
   caption.className = 'lola-resonance-caption';
   caption.textContent = 'Tap to speak — or press ⌘J';
+  // The dashboard orb already says "Tap to speak or type a command" right
+  // under Lola; a second, fixed caption at the bottom repeated it and sat
+  // underneath the command dock (desktop) and the tab bar (phone).
+  if (document.getElementById('orbSub')) caption.hidden = true;
   document.body.appendChild(caption);
   const transcript = document.createElement('div');
   transcript.className = 'lola-resonance-transcript';

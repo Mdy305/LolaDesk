@@ -449,3 +449,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
     max-height: 50vh;
   }
 }
+
+/* Thumb-sized on touch screens */
+@media (pointer:coarse){ .btn-ghost{min-height:44px} }
