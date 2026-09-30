@@ -84,7 +84,14 @@
     if(!isDashboard()||!['owner','admin','manager'].includes(role)) return;
     loadReadiness(token).then(data=>{
       const main=document.querySelector('.main'); if(!main||document.getElementById('launchReadinessBanner')) return;
-      const score=Number(data.score||0),next=Array.isArray(data.next_actions)?data.next_actions[0]:'',ready=!!data.can_go_live;
+      // /api/launch-readiness returns {ready, checks:[{name,ready,detail}]} — derive the
+      // score from it (reading data.score, which it never sends, showed 0% for every salon).
+      const checks=Array.isArray(data.checks)?data.checks:[];
+      const done=checks.filter(c=>c&&c.ready).length;
+      const score=Number.isFinite(Number(data.score))?Number(data.score):(checks.length?Math.round(done/checks.length*100):0);
+      const ready=!!(data.can_go_live||data.ready||(checks.length&&done===checks.length));
+      const firstGap=checks.find(c=>c&&!c.ready);
+      const next=Array.isArray(data.next_actions)&&data.next_actions[0]?data.next_actions[0]:(firstGap?(firstGap.detail||firstGap.name):'');
       const action=ready?{label:'Talk to Lola',kind:'talk'}:actionFor();
       const banner=document.createElement('button'); banner.id='launchReadinessBanner';
       banner.type='button';

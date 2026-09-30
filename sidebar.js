@@ -119,12 +119,15 @@
   // ── Styles (scoped, self-contained) ─────────────────────────
   const CSS = `
 .ln-side{--ln-bg:#0b0b0d;--ln-line:rgba(255,255,255,.06);--ln-ink:#f2f2f5;--ln-ink2:#9a9aa3;--ln-ink3:#5c5c64;--ln-acc:#ccff00;
-  position:sticky;top:0;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;
+  position:fixed;left:0;top:0;bottom:0;width:236px;height:auto;overflow-y:auto;box-sizing:border-box;display:flex;flex-direction:column;
   background:var(--ln-bg);border-right:1px solid var(--ln-line);padding:26px 14px 16px;z-index:40;
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .ln-side *{box-sizing:border-box}
-body.ln-shell .ln-side{position:fixed;left:0;top:0;bottom:0;width:236px}
+/* Pinned, not sticky: pages set overflow on html AND body, which turns body
+   into a scroll box and silently breaks position:sticky (the sidebar used
+   to scroll away with the page). The content makes room for it instead. */
 body.ln-shell{padding-left:236px}
+@media (min-width:1101px){ .app.ln-app{display:block!important;padding-left:236px;box-sizing:border-box} .app.ln-app>.main,.app.ln-app>main{width:auto;max-width:none} }
 .ln-brand{display:block;padding:0 12px 26px;text-decoration:none;color:var(--ln-ink)}
 .ln-mark{display:block;font-size:19px;font-weight:650;letter-spacing:.2em;line-height:1}
 .ln-salon{display:block;margin-top:7px;font-size:11.5px;color:var(--ln-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px}
@@ -262,7 +265,7 @@ body.ln-shell{padding-left:236px}
     <div class="ln-acct">${meHTML(false)}</div>`;
 
   const app = document.querySelector('.app');
-  if (app) app.insertBefore(side, app.firstChild);
+  if (app) { app.classList.add('ln-app'); app.insertBefore(side, app.firstChild); }
   else { document.body.classList.add('ln-shell'); document.body.insertBefore(side, document.body.firstChild); }
 
   // Phone: top strip (this place's pages + the owner) and the bottom bar.
