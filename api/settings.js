@@ -7,6 +7,7 @@
  * else's salon by guessing an id. Returns { tenant } on success.
  */
 import { getUserFromToken, bearer } from './lib/auth.js';
+import { normalizeBookingUrl } from './lib/booking-link.js';
 import { db, updateTenantFields } from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 
@@ -51,6 +52,11 @@ export default async function handler(req, res){
     const KNOWN = ['name','owner_name','location','hours','booking_url','website_url','gmb_url','knowledge','autopilot_enabled','yelp_review_url','google_review_url','instructions','missed_call_textback','review_requests'];
     for(const k of KNOWN){
       if(body[k] !== undefined) patch[k] = body[k];
+    }
+    if(patch.booking_url !== undefined){
+      const b = normalizeBookingUrl(patch.booking_url);
+      if(!b.ok) return res.status(400).json({ ok:false, error:b.error, field:'booking_url' });
+      patch.booking_url = b.value;
     }
     // Report any posted fields we could not persist (e.g. the Settings page's
     // voice/capabilities/messaging toggles that have no backend column yet) so

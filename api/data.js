@@ -18,6 +18,7 @@ import { listProviders } from './lib/aggregator.js';
 import { getUsageStatus } from './lib/usage.js';
 import { summarizeTopology, listControlPlaneAgents } from './lib/agent-topology.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { bookingLinkFor } from './lib/booking-link.js';
 
 function ago(ts){
   if(!ts) return '';
@@ -196,7 +197,7 @@ export default async function handler(req,res){
           setup:{
             isNew,
             phoneNumber: tenant.phone_number || null,
-            bookingUrl: tenant.booking_url || (tenant.slug ? `${(process.env.APP_URL||'https://www.loladesk.com').replace(/\/$/,'')}/book?t=${encodeURIComponent(tenant.slug)}` : null),
+            bookingUrl: bookingLinkFor(tenant) || null,
             servicesCount,
             clientsCount: cl
           }

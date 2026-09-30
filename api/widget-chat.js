@@ -26,6 +26,7 @@
  * ENV: WIDGET_EMBED_SECRET (falls back to OPERATOR_TOOLS_SECRET)
  */
 import crypto from 'crypto';
+import { bookingLinkFor } from './lib/booking-link.js';
 import {
   getTenantBySlug, upsertWebVisitor, getClientMemory, setClientMemory,
   getOrStartConversation, getConversationHistory, logMessage, logUsage
@@ -62,9 +63,7 @@ function limited(id){
 // LolaDesk's hosted booking page for this salon — so every tenant's chat
 // widget always lands visitors on a working booking flow (book?t=slug).
 function bookingUrlFor(tenant){
-  if (tenant.booking_url) return tenant.booking_url;
-  const app = (process.env.APP_URL || 'https://www.loladesk.com').replace(/\/+$/, '');
-  return `${app}/book?t=${encodeURIComponent(tenant.slug || '')}`;
+  return bookingLinkFor(tenant);
 }
 
 function fallbackAnswer(tenant, text){

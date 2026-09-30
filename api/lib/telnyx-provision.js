@@ -287,8 +287,9 @@ async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAp
     telnyx_phone_id: phoneNumberId || null,
     texml_app_id: texmlAppId || null,
     provisioning_status: 'active',
-    provisioned_at: new Date().toISOString(),
-    booking_url: tenant.booking_url || appUrl() + '/book.html?t=' + tenant.slug
+    provisioned_at: new Date().toISOString()
+    // booking_url is the owner's choice (Settings). Unset → bookingLinkFor()
+    // serves the salon's LolaDesk page, computed fresh, never frozen here.
   }).eq('id', tenant.id);
   if(tenantErr) throw new Error('Provisioning persist failed updating tenants (' + tenant.id + '): ' + tenantErr.message);
 
