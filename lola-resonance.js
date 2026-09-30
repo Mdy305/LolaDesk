@@ -115,8 +115,19 @@
     if (state.mode === 'speaking' && !tts) raw = Math.max(raw, 0.3 + 0.2 * Math.sin(now / 90)); // Lola speaking in the panel
     const breath = reduce ? 0 : 0.04 * (0.5 + 0.5 * Math.sin(now / 1400));
     smoothed += (Math.max(raw, breath) - smoothed) * 0.25;
-    stage.style.transform = `scale(${(1 + smoothed * 0.18).toFixed(3)})`;
-    stage.style.filter = `drop-shadow(0 0 ${(20 + smoothed * 90).toFixed(1)}px rgba(204,255,0,${(0.25 + smoothed * 0.65).toFixed(2)}))`;
+    const body = window.__LOLA_ORB__;
+    if (body && body.gpu) {
+      // A million-particle Lola: her voice shapes the particles themselves.
+      const src = tts || mic;
+      let bands = null;
+      if (src && window.LolaOrb && LolaOrb.bandsOf) { src.fbuf = src.fbuf || new Uint8Array(src.an.frequencyBinCount); src.an.getByteFrequencyData(src.fbuf); bands = LolaOrb.bandsOf(src.fbuf); }
+      body.feed(raw, bands);
+      stage.style.transform = `scale(${(1 + smoothed * 0.035).toFixed(3)})`;
+      stage.style.filter = '';
+    } else {
+      stage.style.transform = `scale(${(1 + smoothed * 0.18).toFixed(3)})`;
+      stage.style.filter = `drop-shadow(0 0 ${(20 + smoothed * 90).toFixed(1)}px rgba(204,255,0,${(0.25 + smoothed * 0.65).toFixed(2)}))`;
+    }
     const active = mic || tts || state.mode !== 'idle' || smoothed > 0.05;
     // At rest, breathe at a gentle ~20fps instead of burning every frame.
     if (active) raf = requestAnimationFrame(tick);
