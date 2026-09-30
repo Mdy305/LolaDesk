@@ -24,8 +24,13 @@ import { SKILLS } from '../lola-tools.js';
 import { resolveDate } from './operator-db.js';
 import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lola-skills.js';
-import { detectEliteIntent, deterministicEliteSkillReply } from './lola-elite-skills.js';
 import { OWNER_TOOLS, OWNER_TOOL_NAMES, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
+import { routeOwnerIntent, agentFor } from './owner-intents.js';
+import { lolaSelfCheck } from './lola-doctor.js';
+
+// Lola must answer a spoken turn fast: the whole brain has this long.
+const BRAIN_BUDGET_MS = 22000;
+const plan = (name) => ({ agents: [agentFor(name || '')], skill: name || null });
 
 // Real, fresh business facts pulled from the SERVER's own tenant record —
 // not whatever the client happened to have cached. Phone calls already get
@@ -257,9 +262,15 @@ export async function dashboardBrainReply({ tenant, body, req }){
     }
   }catch{ /* memory must never block the answer */ }
 
+  const started = Date.now();
+  const left = () => BRAIN_BUDGET_MS - (Date.now() - started);
   let ownerPrompt = '';
   try{ ownerPrompt = await ownerSystemPrompt(tenant); }catch{}
-  const systemPrompt = [ownerPrompt, body.system, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
+  // body.system is only ever page context from the Lola panel ("the owner is on
+  // the Calendar page…") — never a persona; the persona lives on the server.
+  const pageContext = typeof body.system === 'string' && body.system.length <= 800 ? `PAGE CONTEXT: ${body.system}` : '';
+  const voiceStyle = body.voice ? 'The owner is SPEAKING to you: answer in one or two short spoken sentences, no lists, no markdown, no links.' : '';
+  const systemPrompt = [ownerPrompt, pageContext, voiceStyle, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
   // Owner commands (text/call/cancel/move/no-show/fill/revenue/brief…) go
   // straight to the tool-calling brain, never the caller fast-paths.
   const ownerCmd = isOwnerCommand(lastUserTextMsg);
@@ -280,9 +291,31 @@ export async function dashboardBrainReply({ tenant, body, req }){
     if(pend){
       await remember(pend.say);
       return { status: 200, json: { content:[{ type:'text', text: pend.say }], intent:'owner_action', source:'owner-tool',
-        actions: pend.ui ? [pend.ui] : undefined, needs_confirmation: !!pend.needs_confirmation } };
+        actions: pend.ui ? [pend.ui] : undefined, needs_confirmation: !!pend.needs_confirmation, orchestration: plan('execution') } };
     }
   }catch(e){ /* fall through */ }
+
+  // ── Reflexes: the everyday commands run instantly, no model in the loop ──
+  try{
+    const hit = routeOwnerIntent(lastUserTextMsg);
+    if(hit?.self_check){
+      const chk = await lolaSelfCheck(tenant);
+      await remember(chk.say);
+      return { status: 200, json: { content:[{ type:'text', text: chk.say }], intent:'self_check', source:'reflex', checks: chk.checks, orchestration: plan('self_check') } };
+    }
+    if(hit?.navigate){
+      await remember(hit.say);
+      return { status: 200, json: { content:[{ type:'text', text: hit.say }], intent:'open_page', source:'reflex', actions:[{ navigate: hit.navigate }], orchestration: plan('open_page') } };
+    }
+    if(hit?.tool){
+      const out = await runOwnerTool({ tenant, name: hit.tool, args: hit.args, req });
+      const say = out.say || 'Done.';
+      await remember(say);
+      return { status: 200, json: { content:[{ type:'text', text: say }], intent: hit.tool, source:'reflex',
+        actions: out.ui ? [out.ui] : undefined, needs_confirmation: !!out.needs_confirmation,
+        suggestions: Array.isArray(out.suggestions) ? out.suggestions : undefined, orchestration: plan(hit.tool) } };
+    }
+  }catch(e){ /* fall through to the brain */ }
 
   try{
     const booking = ownerCmd ? null : extractBooking(lastUserTextMsg, tenant);
@@ -313,28 +346,18 @@ export async function dashboardBrainReply({ tenant, body, req }){
     }
   }catch(e){ /* fall through */ }
 
-  // ── Skill fast-path (orchestrator) ─────────────────────────────────────
-  try{
-    if(lastUserTextMsg){
-      const intent = ownerCmd ? null : detectEliteIntent(lastUserTextMsg);
-      if(intent){
-        const reply = deterministicEliteSkillReply({ tenant, intent, channel:'voice' });
-        if(reply){
-          await remember(reply);
-          return { status: 200, json: { content: [{ type:'text', text: reply }], intent, source:'skill' } };
-        }
-      }
-    }
-  }catch(e){ /* fall through to conversation */ }
+  // (The caller-side "elite skill" canned replies — photo contests, referral
+  // credits — used to fire here and answer the OWNER as if they were a client.
+  // The owner always gets the real brain.)
 
   // Step 1: Initial LLM call with tools
   let result = await chat({
     system: systemPrompt,
-    messages: messages,
-    maxTokens: Math.min(body.max_tokens || 500, 1000),
-    temperature: body.temperature ?? 0.7,
-    // NOTE: ignore body.model — the dashboard hardcodes an Anthropic model
-    // name that the Telnyx provider rejects. Let chat() pick a valid default.
+    messages: messages.slice(-16),
+    maxTokens: Math.min(body.max_tokens || 500, 700),
+    temperature: 0.5,
+    fast: true,
+    deadlineMs: Math.max(4000, left() - 7000),
     tools: [...TOOLS, ...OWNER_TOOLS]
   });
 
@@ -370,7 +393,7 @@ export async function dashboardBrainReply({ tenant, body, req }){
       const say = out.say || 'Done.';
       await remember(say);
       return { status: 200, json: { id: `msg_${Date.now()}`, type: 'message', role: 'assistant',
-        content: [{ type: 'text', text: say }], intent: funcName, source: 'owner-tool',
+        content: [{ type: 'text', text: say }], intent: funcName, source: 'owner-tool', orchestration: plan(funcName),
         actions: out.ui ? [out.ui] : undefined, needs_confirmation: !!out.needs_confirmation,
         suggestions: Array.isArray(out.suggestions) ? out.suggestions : undefined,
         model: result.model, provider: result.provider } };
@@ -384,9 +407,11 @@ export async function dashboardBrainReply({ tenant, body, req }){
     });
 
     let toolResultText = "";
+    let skillSpeak = '';
     try {
       if (SKILLS[funcName] && tenant) {
          const skillOutput = await executeSkill(tenant, funcArgs.client_phone, funcName, funcArgs, SKILLS);
+         skillSpeak = String(skillOutput?.speak || '');
          toolResultText = JSON.stringify(skillOutput);
       } else {
          toolResultText = JSON.stringify({ error: "Missing tenant or unknown skill" });
@@ -404,17 +429,22 @@ export async function dashboardBrainReply({ tenant, body, req }){
     });
 
     // Step 3: Second LLM call to get spoken response
-    const secondResult = await chat({
+    // The skill already has words for the owner; only ask the brain again if there's time.
+    const secondResult = left() > 5000 ? await chat({
       system: systemPrompt,
-      messages: messages,
-      maxTokens: Math.min(body.max_tokens || 500, 1000),
-      temperature: body.temperature ?? 0.7,
-      tools: TOOLS
-    });
+      messages: messages.slice(-18),
+      maxTokens: Math.min(body.max_tokens || 500, 700),
+      temperature: 0.5,
+      fast: true,
+      deadlineMs: left() - 1500,
+    }) : { ok: false };
 
-    if(secondResult.ok) {
+    if(secondResult.ok && secondResult.text) {
       result = secondResult;
+    } else {
+      result = { ...result, text: skillSpeak || 'Done.' };
     }
+    result.intent = funcName;
   }
 
   const finalText = String(result?.text || '').trim() ||
@@ -429,6 +459,9 @@ export async function dashboardBrainReply({ tenant, body, req }){
       type: 'message',
       role: 'assistant',
       content: [{ type: 'text', text: finalText }],
+      intent: result.intent || 'conversation',
+      source: 'brain',
+      orchestration: plan(result.intent || ''),
       model: result.model,
       provider: result.provider
     }

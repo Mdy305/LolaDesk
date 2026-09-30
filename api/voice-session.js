@@ -25,6 +25,12 @@ import { issueVoiceToken } from './lib/voice-session-token.js';
 import { buildTenantVariables } from './lib/tenant-variables.js';
 
 const ASSISTANT_ID = process.env.TELNYX_ASSISTANT_ID;
+// The relay is a long-lived WebSocket. Vercel functions can't accept a
+// WebSocket upgrade, so the in-browser Telnyx conversation only turns on when
+// the relay is hosted somewhere that can (LOLA_VOICE_RELAY_URL=wss://…).
+// Until then the orb uses Lola's direct path: the browser hears you, her
+// brain answers (/api/lola) and she speaks (/api/speak-lola) — which always works.
+const RELAY_URL = String(process.env.LOLA_VOICE_RELAY_URL || '').trim();
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -35,6 +41,9 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
+  if (!RELAY_URL) {
+    return res.status(503).json({ error: 'Live voice relay not hosted — Lola uses her direct voice path.', code: 'relay_not_available' });
+  }
   if (!ASSISTANT_ID) {
     return res.status(503).json({
       error: 'TELNYX_ASSISTANT_ID not configured. Create the Lola AI Assistant '
@@ -60,14 +69,12 @@ export default async function handler(req, res) {
       console.warn('[VOICE-SESSION] dynamic_variables failed:', e?.message);
     }
 
-    const protocol = req.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    const host = req.headers.host || 'loladesk.com';
     return res.status(200).json({
       ok: true,
       session_token,
       assistant_id: ASSISTANT_ID,
       expires_at: Date.now() + 5 * 60 * 1000,
-      relay_url: `${protocol}://${host}/api/voice-relay`,
+      relay_url: RELAY_URL,
       dynamic_variables,
     });
   } catch (err) {

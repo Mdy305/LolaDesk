@@ -289,8 +289,9 @@
         body.level = () => { an.getByteTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; s += v * v; } return Math.min(1, Math.sqrt(s / buf.length) * 4.2); };
       } catch (_) { body.level = () => 0.35 + 0.25 * Math.sin(performance.now() / 90); }
       body.mode = 'speaking';
-      a.onended = a.onerror = () => { body.level = null; if (body.mode === 'speaking') body.mode = 'idle'; };
+      const done = new Promise((r) => { a.onended = a.onerror = () => { body.level = null; if (body.mode === 'speaking') body.mode = 'idle'; r(); }; });
       await a.play();
+      await done;                                  // resolves when she has finished speaking
     } catch (_) { body.level = null; body.mode = 'idle'; }
   }
 
@@ -307,16 +308,23 @@
   let thread = store.get('lola.thread', []);
   function remember(role, text) { thread.push({ role, text, at: Date.now() }); thread = thread.slice(-40); store.set('lola.thread', thread); }
 
-  async function ask(text) {
+  async function ask(text, voice) {
     // send() has already remembered this turn — leave it out of history so it isn't sent twice.
     const past = thread.slice(0, -1);
     const history = past.filter(m => m.role === 'user' || m.role === 'assistant').slice(-10).map(m => ({ role: m.role, content: m.text }));
-    const r = await fetch('/api/lola', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },
-      body: JSON.stringify({ messages: [...history, { role: 'user', content: text }], channel: 'dashboard', system: pageContext() }),
-    });
+    const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 26000);
+    let r;
+    try {
+      r = await fetch('/api/lola', {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },
+        body: JSON.stringify({ messages: [...history, { role: 'user', content: text }], channel: 'dashboard', system: pageContext(), voice: !!voice }),
+      });
+    } catch (e) {
+      throw new Error(e && e.name === 'AbortError' ? 'That one took me too long. Ask me again.' : 'I lost the connection for a second. Try again.');
+    } finally { clearTimeout(timer); }
     const d = await r.json().catch(() => ({}));
+    try { window.dispatchEvent(new CustomEvent('lola:reply', { detail: d })); } catch (_) {}
     if (r.status === 401) throw new Error('Your session expired. Sign in again.');
     if (!r.ok) throw new Error(d?.error?.message || d?.error || `Lola couldn't answer (${r.status}).`);
     return { text: d?.content?.[0]?.text || '…', actions: d.actions || [], confirm: !!d.needs_confirmation, suggestions: Array.isArray(d.suggestions) ? d.suggestions.slice(0, 3) : [] };
@@ -487,9 +495,10 @@
       (list && list.length ? list : suggestions()).forEach(s => { const b = document.createElement('button'); b.type = 'button'; b.className = 'lp-chip'; b.textContent = s; b.title = s; b.onclick = () => send(s); chipsEl.appendChild(b); });
     }
 
-    let busy = false;
+    let busy = false, voiceTurn = false;
     async function send(text) {
       text = String(text || '').trim(); if (!text || busy) return;
+      const fromVoice = voiceTurn; voiceTurn = false;
       busy = true; input.value = ''; autosize();
       threadEl.querySelectorAll('.lp-confirm').forEach(n => n.remove());
       remember('user', text); bubble('user', text);
@@ -497,7 +506,7 @@
       threadEl.scrollTop = threadEl.scrollHeight;
       body.mode = 'thinking';
       try {
-        const out = await ask(text);
+        const out = await ask(text, fromVoice);
         typing.remove(); remember('assistant', out.text); bubble('assistant', out.text);
         if (out.confirm) {
           const row = document.createElement('div'); row.className = 'lp-confirm';
@@ -506,9 +515,12 @@
           threadEl.appendChild(row); threadEl.scrollTop = threadEl.scrollHeight;
         }
         if (out.suggestions.length) renderChips(out.suggestions);
-        body.mode = 'idle';
-        speak(out.text, body);
+        body.mode = 'idle'; busy = false;
+        const navigating = (out.actions || []).some(a => a && a.navigate);
         applyActions(out.actions);
+        await speak(out.text, body);
+        // Conversation mode: she asked you something → she listens for the answer.
+        if (fromVoice && !navigating && (out.confirm || /\?\s*$/.test(out.text || '')) && !mic.hidden && !mic.classList.contains('on')) setTimeout(() => mic.click(), 250);
       } catch (e) {
         typing.remove(); bubble('error', e.message || 'Something went wrong.'); body.mode = 'idle';
       } finally { busy = false; }
@@ -561,7 +573,7 @@
       let finalText = '';
       rec.onresult = (ev) => { let interim = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) finalText += t; else interim += t; } input.value = (finalText + interim).trim(); autosize(); };
       rec.onerror = () => stopListening();
-      rec.onend = () => { const t = (finalText || input.value).trim(); rec = null; mic.classList.remove('on'); if (t) send(t); else if (body.mode === 'listening') body.mode = 'idle'; };
+      rec.onend = () => { const t = (finalText || input.value).trim(); rec = null; mic.classList.remove('on'); if (t) { voiceTurn = true; send(t); } else if (body.mode === 'listening') body.mode = 'idle'; };
       mic.classList.add('on'); body.mode = 'listening'; if (currentAudio) currentAudio.pause();
       try { rec.start(); } catch (_) { stopListening(); }
     };

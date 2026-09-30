@@ -38,7 +38,19 @@
   transcript.className = 'lola-resonance-transcript';
   document.body.appendChild(transcript);
   let transcriptTimer = null;
+  // Her words sit just above the command bar, centred on Lola's column.
+  function placeTranscript() {
+    const dock = document.getElementById('cmdInput');
+    const box = dock && (dock.closest('form, .lola-command, .cmd-dock, .command-dock') || dock.parentElement);
+    const r = box && box.getBoundingClientRect();
+    if (r && r.width) {
+      transcript.style.left = Math.round(r.left + r.width / 2) + 'px';
+      transcript.style.bottom = Math.round(innerHeight - r.top + 14) + 'px';
+    } else { transcript.style.left = ''; transcript.style.bottom = ''; }
+  }
+  addEventListener('resize', () => { if (transcript.classList.contains('show')) placeTranscript(); });
   function showTranscript(text, holdMs) {
+    placeTranscript();
     transcript.textContent = text || '';
     transcript.classList.add('show');
     if (transcriptTimer) clearTimeout(transcriptTimer);

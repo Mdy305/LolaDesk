@@ -2,8 +2,6 @@
 (function(){
   if(window.LolaVoiceCompat) return;
 
-  let pendingAction=null;
-
   function ensure(id,parent,styles){
     let el=document.getElementById(id);
     if(el) return el;
@@ -15,51 +13,22 @@
     return el;
   }
 
-  function injectPending(init){
-    if(!pendingAction||!init?.body||typeof init.body!=='string') return init;
-    try{
-      const body=JSON.parse(init.body);
-      if(!body.pending) body.pending=pendingAction;
-      return {...init,body:JSON.stringify(body)};
-    }catch{return init;}
-  }
-
+  // ONE brain. This used to rewrite every /api/lola call from the dashboard to
+  // /api/lola-orchestra — a caller-side skill router with none of the owner's
+  // tools — so "open my calendar", "text Maria", "catch me up" never ran from
+  // the dashboard. Lola's replies now come straight from /api/lola everywhere;
+  // this only re-announces what she did for the page (team, confirmations).
   function installOrchestraBridge(){
     if(window.__lolaOrchestraFetchInstalled) return;
     window.__lolaOrchestraFetchInstalled=true;
-    const nativeFetch=window.fetch.bind(window);
-    window.fetch=async function(input,init){
-      let target=input;
-      let options=init;
-      const url=typeof input==='string'?input:(input&&input.url)||'';
-      const isLola=url==='/api/lola'||/\/api\/lola(?:\?|$)/.test(url);
-      if(isLola){
-        target=typeof input==='string'?'/api/lola-orchestra':new Request('/api/lola-orchestra',input);
-        options=injectPending(init);
+    window.addEventListener('lola:reply',e=>{
+      const data=e.detail||{};
+      if(data.orchestration){
+        window.dispatchEvent(new CustomEvent('lola:orchestration',{detail:data.orchestration}));
+        document.body.dataset.lolaAgents=(data.orchestration.agents||[]).map(a=>a.id).join(',');
       }
-      const response=await nativeFetch(target,options);
-      if(isLola&&response.headers.get('content-type')?.includes('application/json')){
-        try{
-          const data=await response.clone().json();
-          if(data?.orchestration){
-            window.dispatchEvent(new CustomEvent('lola:orchestration',{detail:data.orchestration}));
-            document.body.dataset.lolaAgents=(data.orchestration.agents||[]).map(a=>a.id).join(',');
-          }
-          if(data?.needs_confirmation&&data?.pending){
-            pendingAction=data.pending;
-            window.dispatchEvent(new CustomEvent('lola:confirmation-required',{detail:{pending:data.pending,plan:data.orchestration}}));
-          }else if(data?.executed||data?.pending===null){
-            pendingAction=null;
-          }
-          if(data?.executed){
-            const ok=data.execution_ok!==false;
-            window.dispatchEvent(new CustomEvent('lola:execution',{detail:{ok,result:data.result,plan:data.orchestration}}));
-          }
-          if(data?.degraded) window.dispatchEvent(new CustomEvent('lola:degraded',{detail:{error:data.error,plan:data.orchestration}}));
-        }catch{}
-      }
-      return response;
-    };
+      if(data.needs_confirmation) window.dispatchEvent(new CustomEvent('lola:confirmation-required',{detail:{plan:data.orchestration}}));
+    });
   }
 
   function mount(){
@@ -91,6 +60,6 @@
     return {transcript,wave};
   }
 
-  window.LolaVoiceCompat={mount,installOrchestraBridge,getPending:()=>pendingAction,clearPending:()=>{pendingAction=null;}};
+  window.LolaVoiceCompat={mount,installOrchestraBridge,getPending:()=>null,clearPending:()=>{}};
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',mount,{once:true}); else mount();
 })();
