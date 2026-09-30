@@ -61,7 +61,10 @@ class Q {
 }
 export function createClient() {
   return { from: (t) => new Q(t), rpc: async () => ({ data: null, error: { message: 'no rpc' } }),
-    auth: { getUser: async () => ({ data: { user: null }, error: { message: 'no auth' } }), admin: {} },
+    auth: { getUser: async (token) => {                 // tests may map token → user via globalThis.__authUsers
+      const u = (globalThis.__authUsers || {})[token];
+      return u ? { data: { user: u }, error: null } : { data: { user: null }, error: { message: 'no auth' } };
+    }, admin: {} },
     storage: { from: () => ({}) }, channel: () => ({ on() { return this; }, subscribe() { return this; } }) };
 }
 export default { createClient };
