@@ -1,6 +1,6 @@
 /**
  * POST /api/onboarding/learn   (Authorization: Bearer <owner token>)
- *   { website?, notes?, instagram?, city? }
+ *   { website?, maps_url?, instagram?, notes?, city? }
  * → { ok, say, suggestions, profile, report }
  * Lola reads the salon's website and/or pasted menu and writes what she
  * learned into the real tables (see lib/business-learn.js). Runs to
@@ -11,6 +11,7 @@ import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { db } from '../lib/db.js';
 import { learnBusiness } from '../lib/business-learn.js';
 import { buildFillPlan, planSummary } from '../lib/fill-plan.js';
+import { growthBrief } from '../lib/growth-brief.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -31,6 +32,7 @@ export default async function handler(req, res) {
       notes: String(body.notes || '').slice(0, 20000),
       instagram: String(body.instagram || '').trim().slice(0, 80),
       city: String(body.city || '').trim().slice(0, 120),
+      maps_url: String(body.maps_url || body.google_maps || '').trim().slice(0, 600),
     });
     // Right after learning the salon, Lola drafts her 30-day plan to fill the chairs.
     if (out.ok) {
@@ -46,6 +48,15 @@ export default async function handler(req, res) {
           out.suggestions = ['Show my 30-day plan', ...(out.suggestions || [])].slice(0, 3);
         }
       } catch (_) { /* the plan never blocks learning */ }
+      // Then her growth plan: Google Maps vs the neighbors, the money moves.
+      try {
+        const left = 55000 - (Date.now() - started);
+        if (left > 5000) {
+          const { data: fresh } = await c.from('tenants').select('*').eq('id', tenant.id).maybeSingle();
+          const brief = await Promise.race([growthBrief(c, fresh || tenant, { refresh: true, llm: null }), new Promise(z => setTimeout(() => z(null), left - 2000))]);
+          if (brief) out.growth = { headline: brief.headline, score: brief.score, upside_usd: brief.upside_usd, google: brief.google, instagram: brief.instagram, moves: (brief.moves || []).filter(m => !m.done).slice(0, 3) };
+        }
+      } catch (_) { /* the brief never blocks learning */ }
     }
     return res.status(out.ok ? 200 : 422).json(out);
   } catch (e) {
