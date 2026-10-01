@@ -493,6 +493,11 @@ export default async function handler(req, res){
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
+    // The salon line and the caller can ride on the tool URL (?to={{telnyx_agent_target}}&from=…),
+    // so every tool knows which salon it serves without the model having to say it.
+    const real = (v) => v && !/\{\{/.test(String(v));
+    if(!body.to && real(req.query?.to)) body.to = String(req.query.to);
+    if(!body.from && real(req.query?.from)) body.from = String(req.query.from);
     // Tool name may arrive as ?tool=… on the URL (Telnyx configures each
     // webhook tool with its own URL — pointing them all at this endpoint with
     // ?tool=<name> keeps one dispatched handler) OR in the body (function,
