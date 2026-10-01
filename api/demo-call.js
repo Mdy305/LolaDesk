@@ -1,78 +1,35 @@
 /**
- * /api/demo-call — enqueue a demo request and (optionally) trigger Telnyx outbound call
- * POST { phone }
- *
- * - rate-limits by phone (recentDemoRequestsByPhone)
- * - inserts into demo_requests
- * - if TELNYX_API_KEY present, attempts outbound call using Telnyx Calls API
+ * /api/demo-call — "Call my phone": Lola rings you and talks (see lib/demo-call.js).
+ * POST { phone } → { ok, say, … }  · rate-limited per phone and per IP · US/Canada only
  */
-
-import { db, e164, enqueueDemoRequest, recentDemoRequestsByPhone } from './lib/db.js';
+import { db, e164, recentDemoRequestsByPhone } from './lib/db.js';
+import { placeDemoCall } from './lib/demo-call.js';
 
 export default async function handler(req, res){
   if(req.method !== 'POST') return res.status(405).end();
-  const body = req.body || {};
+  const body = (typeof req.body === 'string' ? (()=>{ try{ return JSON.parse(req.body); }catch{ return {}; } })() : req.body) || {};
   const phone = body.phone || body.phone_number || body.to;
-  if(!phone) return res.status(400).json({ error: 'missing phone' });
+  if(!phone) return res.status(400).json({ error: 'missing phone', say: 'What number should I call?' });
   const phoneE = e164(phone);
-
   const c = db();
-  if(!c) return res.status(500).json({ error: 'Supabase not configured' });
-
+  if(!c) return res.status(500).json({ error: 'Supabase not configured', say: 'I can’t place calls from this address. Use loladesk.com.' });
   try{
-    // rate limit: max 3 requests per hour per phone
+    if(!/^\+1[2-9]\d{2}[2-9]\d{6}$/.test(String(phoneE||''))) return res.status(400).json({ error: 'us_canada_numbers_only', say: 'I can call US and Canada numbers.' });
     const recent = await recentDemoRequestsByPhone(phoneE, 60);
-    if(recent >= 3) return res.status(429).json({ error: 'rate_limited' });
-    // US/Canada numbers only (+1, valid area code) — blocks premium-rate
-    // international toll fraud through the demo line.
-    if(!/^\+1[2-9]\d{2}[2-9]\d{6}$/.test(String(phoneE||''))) return res.status(400).json({ error: 'us_canada_numbers_only' });
-
+    if(recent >= 3) return res.status(429).json({ error: 'rate_limited', say: 'I’ve called that number a few times already. Try again in an hour.' });
     const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim() || null;
-    // Per-IP limit too: 5 demo calls per hour from one address.
     if(ip){
       const { count } = await c.from('demo_requests').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', new Date(Date.now() - 3600e3).toISOString());
-      if((count || 0) >= 5) return res.status(429).json({ error: 'rate_limited' });
+      if((count || 0) >= 5) return res.status(429).json({ error: 'rate_limited', say: 'That’s a lot of calls from here. Try again in an hour.' });
     }
-    const { data } = await c.from('demo_requests').insert({ phone_number: phoneE, ip }).select().maybeSingle();
-    const id = data?.id;
-
-    // Try to trigger Telnyx outbound call if configured
-    const TELNYX_API_KEY = process.env.TELNYX_API_KEY;
-    // Used verbatim — TELNYX_VOICE_APP_ID is the working Call Control app;
-    // the old 'legacy upgrade' to 2991758319724529273 is rejected by Telnyx.
-    const TELNYX_VOICE_APP_ID = process.env.TELNYX_VOICE_APP_ID;
-    const FROM_NUMBER = process.env.DEMO_FROM_NUMBER || process.env.TELNYX_FROM_NUMBER;
-
-    if(TELNYX_API_KEY && TELNYX_VOICE_APP_ID && FROM_NUMBER){
-      // note: this code uses Telnyx Call Control to create an outbound call
-      try{
-        const telnyxResp = await fetch('https://api.telnyx.com/v2/calls', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${TELNYX_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            connection_id: TELNYX_VOICE_APP_ID,
-            from: FROM_NUMBER,
-            to: phoneE,
-            // optional event webhook URL: TELNYX_CALLBACK_URL
-            if_machine: 'continue'
-          })
-        });
-        const telnyxJson = await telnyxResp.json();
-        // log telnyx response into demo_requests metadata
-        await c.from('demo_requests').update({ processed: true, metadata: telnyxJson }).eq('id', id);
-        return res.status(200).json({ id, telnyx: telnyxJson });
-      }catch(e){
-        console.error('telnyx call failed', e);
-        return res.status(200).json({ id, telnyx_error: String(e?.message||e) });
-      }
-    }
-
-    return res.status(200).json({ id, queued: true });
+    let id = null;
+    try{ const { data } = await c.from('demo_requests').insert({ phone_number: phoneE, ip }).select().maybeSingle(); id = data?.id || null; }catch{}
+    const r = await placeDemoCall(c, phoneE);
+    try{ if(id) await c.from('demo_requests').update({ processed: r.ok, metadata: r }).eq('id', id); }catch{}
+    if(!r.ok) console.warn('[demo-call]', r.error, (r.tried || []).join(' | ').slice(0, 400));
+    return res.status(200).json({ id, ...r, ...(r.ok ? { telnyx: { data: { call_control_id: r.call_control_id } } } : {}) });
   }catch(e){
     console.error('demo-call error', e);
-    return res.status(500).json({ error: String(e?.message||e) });
+    return res.status(500).json({ error: String(e?.message||e), say: 'Something went wrong placing the call. Try again in a moment.' });
   }
 }

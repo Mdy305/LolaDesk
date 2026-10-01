@@ -7,6 +7,8 @@
  * short history, per-IP limits, and she never handles passwords.
  */
 import { chat } from '../lib/llm.js';
+import { db, recentDemoRequestsByPhone } from '../lib/db.js';
+import { placeDemoCall } from '../lib/demo-call.js';
 
 const ACTIONS = ['none', 'show_signin', 'start_signup', 'call_me', 'reset_password', 'open_pricing'];
 const hits = new Map();
@@ -26,6 +28,8 @@ You can DO things on this page. Choose one action:
 - open_pricing: they ask about price or plans.
 - none: anything else.
 Never ask for or repeat a password. You cannot sign anyone in by voice; you open the sign-in for them.
+If they say the call never came, didn't ring, or ask you to call again, choose call_me.
+Never say you did something (called, sent, booked) — the page does the action and tells them the result. Say what will happen, e.g. "Sure — what's your number?" or "Opening sign-in." 
 Answer ONLY with JSON: {"reply":"...","action":"none"}`;
 
 export default async function handler(req, res) {
@@ -39,7 +43,21 @@ export default async function handler(req, res) {
   const history = (Array.isArray(b.history) ? b.history : []).slice(-8)
     .map((m) => ({ role: m && m.role === 'lola' ? 'assistant' : 'user', content: String(m && m.text || '').slice(0, 400) }))
     .filter((m) => m.content);
-  const r = await chat({ system: SYSTEM, messages: [...history, { role: 'user', content: message }], maxTokens: 220, temperature: 0.5 });
+  // A phone number in what they said (or just before) + "call me" → actually call.
+  const phoneIn = (t) => { const m = String(t || '').match(/(?:\+?1[\s.-]?)?\(?([2-9]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/); return m ? `+1${m[1]}${m[2]}${m[3]}` : null; };
+  const userTurns = [message, ...(Array.isArray(b.history) ? b.history : []).filter((m) => m && m.role !== 'lola').map((m) => m.text).reverse()];
+  const knownPhone = userTurns.map(phoneIn).find(Boolean) || phoneIn(b.phone) || null;
+  const wantsCall = /\b(call (me|my (phone|cell|number))|ring me|call again|try again|didn'?t (ring|get|receive)|no call|never (rang|came|got))\b/i.test(message);
+  if (wantsCall || (phoneIn(message) && /call|phone|ring/i.test(message + ' ' + userTurns.slice(1, 3).join(' ')))) {
+    if (!knownPhone) return res.status(200).json({ ok: true, reply: 'Happy to call you. What’s your number? Type it below.', action: 'call_me' });
+    const c = db();
+    if (c && (await recentDemoRequestsByPhone(knownPhone, 60).catch(() => 0)) >= 3) return res.status(200).json({ ok: true, reply: 'I’ve called that number a few times already. Try again in an hour.', action: 'none' });
+    try { if (c) await c.from('demo_requests').insert({ phone_number: knownPhone, ip }); } catch (_) {}
+    const r = c ? await placeDemoCall(c, knownPhone).catch(() => null) : null;
+    if (r && r.ok) return res.status(200).json({ ok: true, reply: 'Calling you now — pick up and talk to me.', action: 'none', called: true, phone: knownPhone });
+    return res.status(200).json({ ok: true, reply: (r && r.say) || 'I couldn’t place the call right now. Leave your number below and the team will call you.', action: 'call_me', called: false });
+  }
+  const r = await chat({ system: SYSTEM, messages: [...history, { role: 'user', content: message }], maxTokens: 220, temperature: 0.5, fast: true, deadlineMs: 9000 });
   if (!r || !r.ok) return res.status(200).json({ ok: false, reply: "I can't think clearly right now. You can still sign in below.", action: 'show_signin' });
   let reply = '', action = 'none';
   const raw = String(r.text || '').trim();

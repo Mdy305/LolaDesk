@@ -45,6 +45,7 @@
 
   // Lola's mood runs on every page (every Lola on the page feels it).
   if (!document.querySelector('script[src$="lola-call.js"]')) { const lc = document.createElement('script'); lc.src = '/lola-call.js'; lc.async = true; document.head.appendChild(lc); }
+  if (!document.querySelector('script[src$="lola-ears.js"]')) { const e = document.createElement('script'); e.src = '/lola-ears.js'; e.async = true; document.head.appendChild(e); }
   if (!document.querySelector('script[src$="lola-mood.js"]')) { const m = document.createElement('script'); m.src = '/lola-mood.js'; m.async = true; document.head.appendChild(m); }
 
   // A preview copy (a *.vercel.app branch link) is not the live app: say so, and offer the real one.

@@ -69,7 +69,7 @@ llmReply = '```json\n{"reply":"Of course. Let’s get you signed in.","action":"
 r = await run('lola/concierge.js', { message: 'sign me in', history: [] }, { 'x-forwarded-for': '1.1.1.1' });
 ok(r.ok && r.action === 'show_signin' && /signed in/.test(r.reply), 'concierge answers and opens sign-in');
 llmReply = '{"reply":"I will call you now.","action":"hack_the_planet"}';
-r = await run('lola/concierge.js', { message: 'call me', history: [] }, { 'x-forwarded-for': '1.1.1.2' });
+r = await run('lola/concierge.js', { message: 'tell me a secret', history: [] }, { 'x-forwarded-for': '1.1.1.2' });
 ok(r.action === 'none', 'unknown actions are ignored');
 r = await run('lola/concierge.js', { message: '' }, { 'x-forwarded-for': '1.1.1.3' });
 ok(r.status === 400, 'empty messages rejected');

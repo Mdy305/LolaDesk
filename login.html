@@ -140,6 +140,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
 
 <script src="/lola-orb.js"></script>
 <script src="/lola-alive.js"></script>
+<script src="/lola-ears.js"></script>
 <script>
 (function(){
   'use strict';
@@ -195,9 +196,10 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
     history.push({ role: 'user', text });
     let reply = '', action = 'none';
     try {
-      const r = await fetch('/api/lola/concierge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history: history.slice(-8) }) });
+      const r = await fetch('/api/lola/concierge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history: history.slice(-8), phone: $('callPhone').value.trim() }) });
       const d = await r.json().catch(() => ({}));
       reply = d.reply || ''; action = d.action || 'none';
+      if (d.called) { orb.setState('oncall'); $('callMsg').textContent = 'Calling ' + (d.phone || 'you') + ' now. Pick up and talk to me.'; }
     } catch (_) {}
     if (!reply) { reply = (window.LolaAlive && LolaAlive.reply(text)) || 'I can’t reach my brain right now, but you can still sign in below.'; if (/sign|log/i.test(text)) action = 'show_signin'; }
     history.push({ role: 'lola', text: reply });
@@ -223,22 +225,30 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
   $('showSignin').addEventListener('click', () => open('signin'));
   $('forgotLink').addEventListener('click', () => { $('forgotEmail').value = $('email').value; open('forgot'); });
 
-  // ── Hearing: tap her (or the mic) and speak ──
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, listening = false, mic = null;
-  function stopListening(){ listening = false; $('mic').classList.remove('on'); try { rec && rec.stop(); } catch (_) {} try { mic && mic.stop(); } catch (_) {} mic = null; }
+  // ── Hearing: tap her (or the mic) and speak — her own ears (lola-ears.js, Telnyx) ──
+  let listening = false, mic = null;
+  function stopListening(){ listening = false; $('mic').classList.remove('on'); try { mic && mic.stop(); } catch (_) {} mic = null; }
   async function listen(){
-    if (!SR) { $('ask').focus(); say('Type to me here. Voice works in Chrome, Edge and Safari.'); return; }
-    if (listening) { stopListening(); setState('idle'); return; }
+    audioUnlock();
+    if (listening) { window.LolaEars && LolaEars.stop(); return; }
+    if (audio) { try { audio.pause(); } catch (_) {} }
+    if (!window.LolaEars) { $('ask').focus(); say('Type to me here.'); return; }
     voiceOn = true; listening = true; $('mic').classList.add('on'); setState('listening'); orb.flare && orb.flare();
+    $('you').textContent = 'Listening…';
     try { mic = await LolaOrb.attachMic(orb); } catch (_) {}
-    rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
-    let final = '';
-    rec.onresult = (e) => { let t = ''; for (let i = e.resultIndex; i < e.results.length; i++) { t += e.results[i][0].transcript; if (e.results[i].isFinal) final += e.results[i][0].transcript; } $('you').textContent = t; };
-    rec.onerror = () => { stopListening(); setState('idle'); };
-    rec.onend = () => { const was = listening; stopListening(); if (was && final.trim()) talk(final, true); else if (was) setState('idle'); };
-    try { rec.start(); } catch (_) { stopListening(); setState('idle'); }
+    const r = await LolaEars.listen({
+      onInterim: (t) => { $('you').textContent = t ? '“' + t + '”' : 'Listening…'; },
+      onThinking: () => { setState('thinking'); $('you').textContent = 'Got it…'; },
+    });
+    stopListening();
+    if (r.text) { talk(r.text, true); return; }
+    $('you').textContent = '';
+    setState('idle');
+    if (r.say) { say(r.say); speak(r.say); }
   }
+  // Browsers only play sound after a tap: unlock her voice on the first one.
+  let unlocked = false;
+  function audioUnlock(){ if (unlocked) return; unlocked = true; try { const a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='); a.play().catch(() => {}); } catch (_) {} }
   $('mic').addEventListener('click', listen);
   $('lola').addEventListener('click', listen);
   $('lola').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); listen(); } });
@@ -310,12 +320,9 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
     try {
       const r = await fetch('/api/demo-call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
       const d = await r.json().catch(() => ({}));
-      if (r.status === 429) throw new Error('I’ve called that number a few times already. Try again in an hour.');
-      if (d.error === 'us_canada_numbers_only') throw new Error('I can call US and Canada numbers.');
-      if (!r.ok) throw new Error('I couldn’t place the call. Check the number and try again.');
-      if (d.telnyx && d.telnyx.data) { msg.textContent = 'Calling you now. Pick up and talk to me.'; say('Calling you now. Pick up and talk to me.'); orb.setState('oncall'); $('state').textContent = 'Calling'; return; }
-      msg.textContent = 'Got your number. The call line isn’t switched on here yet, so the LolaDesk team will call you.'; setState('idle');
-    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; setState('idle'); }
+      if (!r.ok || !d.ok) throw new Error(d.say || 'I couldn’t place the call. Check the number and try again.');
+      msg.textContent = d.say || 'Calling you now. Pick up and talk to me.'; say(msg.textContent); voiceOn && speak(msg.textContent); orb.setState('oncall'); $('state').textContent = 'Calling';
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; say(err.message); speak(err.message); setState('idle'); }
   });
 
   // Arriving from onboarding with an email: go straight to the form.
