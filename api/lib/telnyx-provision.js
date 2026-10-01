@@ -109,7 +109,7 @@ export async function purchaseNumber(phoneNumber, texmlAppId){
 }
 
 export async function linkMessagingProfile(phoneNumberId){
-  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE;
+  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
   if(!profileId) return false;
   await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) })
     .catch(e => console.warn('[PROVISION] SMS profile:', e.message));

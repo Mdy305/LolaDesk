@@ -109,5 +109,10 @@ async function _resolveSalonLine(tenant, tenantId) {
       if (c) { const { data } = await c.from('tenants').select('*').eq('id', id).maybeSingle(); if (data) t = data; }
     } catch (_) { /* fall through */ }
   }
-  return (t && (t.phone_number || t.phone_e164 || t.phone)) || process.env.TELNYX_FROM_NUMBER || process.env.TELNYX_NUMBER || null;
+  const own = t && (t.phone_number || t.phone_e164 || t.phone);
+  if (own) return own;
+  // Multi-tenant rule: a salon's text NEVER goes out from another salon's (or the
+  // platform's) line. The shared env number is only for platform messages.
+  if (id) return null;
+  return process.env.TELNYX_FROM_NUMBER || process.env.TELNYX_NUMBER || null;
 }

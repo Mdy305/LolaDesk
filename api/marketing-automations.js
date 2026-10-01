@@ -109,7 +109,7 @@ export default async function handler(req,res){
       const batch=targets.slice(i,i+10);
       const results=await Promise.allSettled(batch.map(client=>sendSMS({
         from:tenant.phone_number,to:client.phone_number,tenantId:tenant.id,
-        profileId:process.env.TELNYX_MESSAGING_PROFILE,
+        profileId:(process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID),
         text:cleanMessage(draft.message).replace(/{{\s*first_name\s*}}/gi,firstName(client.name))
       })));
       for(const result of results){

@@ -35,10 +35,23 @@ export function knownGoodConnectionIds() {
 // One live Telnyx snapshot: numbers with their REAL connection id, plus the
 // connection/assistant id → name map so callers can say "LolaBrain" /
 // "LolaDesk" instead of raw ids. Fails soft with a single `error` string.
+// Every number on the account, page by page (a platform with many salons has more than 100).
+async function allPhoneNumbers() {
+  const all = [];
+  for (let page = 1; page <= 20; page++) {
+    const r = await telnyxRequest('/phone_numbers', { query: { 'page[size]': 250, 'page[number]': page }, timeoutMs: 8000 });
+    const rows = Array.isArray(telnyxData(r)) ? telnyxData(r) : [];
+    all.push(...rows);
+    const total = Number(r?.meta?.total_pages) || 1;
+    if (page >= total || rows.length < 250) break;
+  }
+  return { data: all };
+}
+
 export async function liveTelnyxSnapshot() {
   try {
     const [numbersList, connsList, texmlList, asstsList] = await Promise.all([
-      telnyxRequest('/phone_numbers', { query: { 'page[size]': 100 }, timeoutMs: 8000 }),
+      allPhoneNumbers(),
       telnyxRequest('/connections', { query: { 'page[size]': 100 }, timeoutMs: 8000 }).catch(() => ({ data: [] })),
       telnyxRequest('/texml_applications', { query: { 'page[size]': 100 }, timeoutMs: 8000 }).catch(() => ({ data: [] })),
       telnyxRequest('/ai/assistants', { query: { 'page[size]': 50 }, timeoutMs: 8000 }).catch(() => ({ data: [] }))
@@ -59,6 +72,8 @@ export async function liveTelnyxSnapshot() {
     const byPhone = new Map();
     for (const n of numbers) {
       byPhone.set(n.phone_number, {
+        id: n.id || null,
+        messaging_profile_id: n.messaging_profile_id || null,
         connection_id: n.connection_id || null,
         connection_name: nameById.get(n.connection_id) || null,
         status: n.status || null

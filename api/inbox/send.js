@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     if (!fromNumber) return res.status(400).json({ ok: false, error: 'no_tenant_number' });
 
     // Send via Telnyx.
-    const sent = await sendSMS({ from: fromNumber, to: thread.client_phone, text: body });
+    const sent = await sendSMS({ from: fromNumber, to: thread.client_phone, text: body, tenantId: tenant.id });
 
     // Persist the outbound message.
     await c.from('inbox_messages').insert({

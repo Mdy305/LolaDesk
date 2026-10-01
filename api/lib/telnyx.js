@@ -1,6 +1,7 @@
 // Telnyx helpers. Sends calls + SMS via HTTPS; verifies webhook signatures.
 import crypto from 'crypto';
 import { telnyxPublicKey } from './telnyx-webhook-verify.js';
+import { sendSms } from './sms.js';
 
 const BASE = 'https://api.telnyx.com/v2';
 
@@ -10,19 +11,13 @@ function auth() {
   return { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
 }
 
-// Send an outbound SMS. Uses the tenant's messaging profile for 10DLC.
-export async function sendSMS({ from, to, text }) {
-  const r = await fetch(BASE + '/messages', {
-    method: 'POST',
-    headers: auth(),
-    body: JSON.stringify({
-      from, to, text,
-      messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE_ID
-    })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.errors?.[0]?.detail || 'Telnyx SMS failed');
-  return j.data;
+// Send an outbound SMS — through THE one funnel (lib/sms.js): the salon's own
+// line, its opt-outs and one place for errors. Throws on failure, as before.
+export async function sendSMS({ from, to, text, tenantId, type } = {}) {
+  const r = await sendSms({ from, to, text, tenantId, type });
+  if (r?.skipped) throw new Error(r.reason === 'opted_out' ? 'opted_out' : `not sent: ${r.reason}`);
+  if (r?.errors?.length) throw new Error(r.errors[0]?.detail || 'Telnyx SMS failed');
+  return r?.data || r;
 }
 
 // Answer an inbound call, hand off to the AI Assistant for the salon.

@@ -27,6 +27,7 @@ import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfi
 import { OWNER_TOOLS, OWNER_TOOL_NAMES, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
 import { routeOwnerIntent, agentFor } from './owner-intents.js';
 import { lolaSelfCheck } from './lola-doctor.js';
+import { getUserFromToken, bearer, isAdminEmail } from './auth.js';
 
 // Lola must answer a spoken turn fast: the whole brain has this long.
 const BRAIN_BUDGET_MS = 22000;
@@ -299,7 +300,9 @@ export async function dashboardBrainReply({ tenant, body, req }){
   try{
     const hit = routeOwnerIntent(lastUserTextMsg);
     if(hit?.self_check){
-      const chk = await lolaSelfCheck(tenant);
+      let platform = false;
+      try { const u = req ? await getUserFromToken(bearer(req)) : null; platform = !!(u && isAdminEmail(u.email)); } catch {}
+      const chk = await lolaSelfCheck(tenant, { platform });
       await remember(chk.say);
       return { status: 200, json: { content:[{ type:'text', text: chk.say }], intent:'self_check', source:'reflex', checks: chk.checks, orchestration: plan('self_check') } };
     }

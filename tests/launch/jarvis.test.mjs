@@ -17,7 +17,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (u.includes('/v2/messages')) { sms.push(JSON.parse(init.body)); return J({ data: { id: 'm1' } }); }
   if (u.includes('text-to-speech')) return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
-  if (u.includes('/v2/phone_numbers')) return J({ data: [{ phone_number: '+13055550100', messaging_profile_id: 'mp1' }] });
+  if (u.includes('/v2/phone_numbers')) return J({ data: [{ id: 'pn1', phone_number: '+13055550100', messaging_profile_id: 'mp1', connection_id: 'c1' }], meta: { total_pages: 1 } });
   return J({});
 };
 const { T } = await import('./fake-supabase.mjs');
