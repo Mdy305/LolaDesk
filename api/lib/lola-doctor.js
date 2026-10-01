@@ -13,6 +13,7 @@ import { synthesize, voiceProvider } from './elevenlabs.js';
 import { routeOwnerIntent } from './owner-intents.js';
 import { db } from './db.js';
 import { wireTenantNumbers } from './tenant-wiring.js';
+import { wireAssistant } from './assistant-wiring.js';
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch (e) { return { e, ms: Date.now() - t }; } };
 
@@ -58,7 +59,18 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
   // Texts
   const n = await numberCheck(tenant);
   checks.push({ key: 'texts', ...n });
-  // The platform owner's check also re-wires every salon on the account.
+  // The platform owner's check also re-wires Lola's Telnyx assistant (tool URLs, salon details)…
+  if (platform) {
+    try {
+      const aw = await wireAssistant({ heal: true });
+      const n = (aw.miswired || []).length;
+      checks.push({ key: 'assistant', ok: aw.error ? false : aw.ok, fixed: aw.miswired, unknown: aw.unknown_tools,
+        say: aw.error && !aw.assistant ? `I couldn’t check my phone assistant: ${aw.error}.`
+          : `${n ? `I re-pointed ${n} of my phone tools to LolaDesk (${aw.miswired.map(x => x.name).join(', ')}). ` : 'My phone tools all point to LolaDesk. '}${aw.dynamic_variables.ok ? '' : 'I reconnected the salon details I load on every call. '}${(aw.unknown_tools || []).length ? `${aw.unknown_tools.length} tool${aw.unknown_tools.length === 1 ? '' : 's'} I don’t run (${aw.unknown_tools.map(x => x.name).join(', ')}) — you can delete ${aw.unknown_tools.length === 1 ? 'it' : 'them'} in Telnyx.` : ''}`.trim(),
+        fix: aw.error || null });
+    } catch (_) {}
+  }
+  // …and every salon on the account.
   if (platform) {
     try {
       const w = await wireTenantNumbers(db(), { heal: true });
