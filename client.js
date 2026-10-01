@@ -444,17 +444,20 @@
     const text = prompt('Text to send:', state.client.first_name ? `Hi ${state.client.first_name}, ` : '');
     if (!text) return;
     try {
-      const r = await fetch('/api/inbox/send', {
-        method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-        body: JSON.stringify({ to: state.client.phone, body: text, client_id: clientId })
+      let tok = ''; try { tok = localStorage.getItem('loladesk_token') || ''; } catch (_) {}
+      const r = await fetch('/api/inbox-reply', {
+        method: 'POST', headers: {'Content-Type':'application/json', Authorization: 'Bearer ' + tok},
+        body: JSON.stringify({ to: state.client.phone, text })
       });
-      if (r.ok) alert('Sent.');
-      else alert('Failed: ' + r.status);
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok !== false) alert('Sent from your salon line.');
+      else alert('Not sent: ' + (d.error || r.status));
     } catch (err) { alert('Error: ' + err.message); }
   }
 
   async function callBack() {
     if (!state.client?.phone) { alert('No phone on file.'); return; }
+    if (window.LolaCall) return window.LolaCall(state.client.phone, state.client.name || '');
     try {
       const r = await fetch('/api/call-center/callback', {
         method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
