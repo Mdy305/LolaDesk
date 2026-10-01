@@ -18,7 +18,7 @@ globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   if (u.includes('/ai/assistants/assistant-57f2')) {
-    if (init.method === 'PATCH') { const b = JSON.parse(init.body); patches.push(b); assistant = { ...assistant, ...b }; return J({ data: assistant }); }
+    if (init.method === 'PATCH' || init.method === 'POST') { const b = JSON.parse(init.body); patches.push(b); assistant = { ...assistant, ...b }; return J({ data: assistant }); }
     return J({ data: assistant });
   }
   return J({ data: [] });

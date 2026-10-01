@@ -5,7 +5,8 @@
  * Returns { session, tenant }.
  */
 import { createUser } from '../lib/auth.js';
-import { provisionTenantForUser } from '../lib/db.js';
+import { provisionTenantForUser, db } from '../lib/db.js';
+import { TERMS_VERSION, acceptanceFrom, recordAcceptance } from '../lib/legal.js';
 
 // Auto-assignment must never slow down or break signup. Cap it at 6s (the
 // parallel Telnyx links usually finish in ~2s, but cold starts need margin);
@@ -40,8 +41,13 @@ export default async function handler(req, res){
     const { email, password, name, salonName, location, hours, plan, websiteUrl, businessMode } = b;
     if(!email || !password) return res.status(400).json({ error:'email and password required' });
     if(password.length < 8) return res.status(400).json({ error:'password must be at least 8 characters' });
+    // Clickwrap: no account without an affirmative "I agree" to the Terms,
+    // Privacy Policy, AUP, Messaging Terms and DPA — recorded with version,
+    // time, IP and browser so it can be proven later.
+    if(b.accept_terms !== true) return res.status(400).json({ error:'Please agree to the Terms of Service and Privacy Policy to continue.', code:'terms_required' });
+    const acceptance = acceptanceFrom(req, { email, version: b.terms_version });
 
-    const user = await withBudget(createUser({ email, password, name }), 'create-user');
+    const user = await withBudget(createUser({ email, password, name, meta: { terms_version: acceptance.terms_version, terms_accepted_at: acceptance.accepted_at, terms_accepted_ip: acceptance.ip } }), 'create-user');
     // Supabase answers a sign-up for an email that is ALREADY registered with
     // a fake user (no identities) and no error. Creating a workspace for it
     // made duplicate salons and told the owner to "check email" that never came.
@@ -58,6 +64,7 @@ export default async function handler(req, res){
       activationStatus: 'pending_email'
     }), 'workspace');
     if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
+    await recordAcceptance(db(), { ...acceptance, user_id: user.id, tenant_id: tenant.id });
 
     return res.status(200).json({
       ok: true,

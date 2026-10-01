@@ -146,6 +146,37 @@ alter table public.booking_reminders
 alter table public.booking_reminders
   add constraint booking_reminders_no_double_text unique (booking_id, reminder_for, band);`;
 
+// legal_acceptances — proof each owner agreed to the Terms at signup.
+const LEGAL_ACCEPTANCES_DDL = `create table if not exists public.legal_acceptances (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid,
+  tenant_id     uuid,
+  email         text,
+  terms_version text not null,
+  documents     jsonb,
+  accepted_at   timestamptz not null default now(),
+  ip            text,
+  user_agent    text
+);
+create index if not exists idx_legal_acceptances_tenant on public.legal_acceptances (tenant_id);
+alter table public.legal_acceptances enable row level security;`;
+
+// support_tickets — what callers and texters ask LolaDesk's own support line.
+const SUPPORT_TICKETS_DDL = `create table if not exists public.support_tickets (
+  id         uuid primary key default gen_random_uuid(),
+  name       text,
+  business   text,
+  phone      text,
+  email      text,
+  issue      text,
+  urgency    text not null default 'normal',
+  channel    text,
+  status     text not null default 'open',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_support_tickets_created on public.support_tickets (created_at desc);
+alter table public.support_tickets enable row level security;`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -236,6 +267,8 @@ async function runMigrations() {
   // platform_settings — customer-care line KV; self-heals when the
   // customer-care endpoint cold-starts.
   await ensureTable(c, 'platform_settings', PLATFORM_SETTINGS_DDL, applied);
+  await ensureTable(c, 'legal_acceptances', LEGAL_ACCEPTANCES_DDL, applied);
+  await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
   // the deposits cron or the booking seam cold-starts.
   await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);

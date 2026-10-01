@@ -12,6 +12,7 @@ import { isHotLead, escalateLead, relayOwnerReply } from './lib/lead-relay.js';
 export { sendSMS };
 import { answerOwner } from './lib/owner-brain.js';
 import { handleConfirmReply } from './lib/appointment-confirm.js';
+import { handleCareText } from './lib/customer-care.js';
 import { salonTz } from './lib/salon-time.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -88,6 +89,11 @@ export default async function handler(req,res){
      tool, not marketing), but the exchange is persisted to the same
      operator audit trail. */
   if(!row){
+    // LolaDesk's own support line: Lola answers questions about the app.
+    try{
+      const care = await handleCareText(db(), { to: toN, from: fromN, text }, { send: (m) => sendSMS({ ...m, type }) });
+      if(care) return res.status(200).json({ ok:true, handled: care.handled });
+    }catch(e){ console.warn('[care-sms]', String(e?.message||e).slice(0,120)); }
     const ownerTenant = await getTenantByOperatorPhone(fromN).catch(()=>null);
     if(ownerTenant?.id){
       let conv=null, hist=[];

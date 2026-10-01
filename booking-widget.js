@@ -40,6 +40,8 @@
   }
 
   var API = cfg.base.replace(/\/$/, '');
+  // Legal pages live on LolaDesk even when the widget sits on a salon's own site.
+  var LEGAL = API.replace(/\/api\/public-booking$/, '') || '';
   var state = { catalog: null, service: null, staff: null, time: null, date: null };
   var TZ = ''; // salon time zone, from the catalog
   function tzOpt(o) { if (TZ) o.timeZone = TZ; return o; }
@@ -80,6 +82,8 @@
     '.lw-btn:disabled{opacity:.4;cursor:not-allowed}',
     '.lw-btn:not(:disabled):hover{background:var(--accent2)}',
     '.lw-err{color:#ff8a8a;font-size:12.5px;margin-top:10px;min-height:16px}',
+    '.lw-legal{font-size:11px;line-height:1.5;color:var(--muted);margin-top:10px}',
+    '.lw-legal a{color:inherit;text-decoration:underline}',
     '.lw-empty{color:var(--dim);font-size:13px;padding:18px 0;text-align:center}',
     '.lw-wl{margin-top:6px;padding:14px;border:.5px solid rgba(204,255,0,.25);border-radius:14px;background:rgba(204,255,0,.04)}',
     '.lw-wl-t{font-size:13.5px;font-weight:650;color:var(--text);margin-bottom:3px}',
@@ -380,7 +384,7 @@
       '<div class="lw-wl-s">Leave your name and phone \u2014 ' + esc(catalog.tenant_name || 'we') + ' will text you the moment ' + esc(w.service.name) + ' has an opening.</div>' +
       '<div class="lw-wl-fld"><input id="lwWlName" placeholder="Your name"/></div>' +
       '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
-      '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes \u2014 text me at this number the moment a slot opens.</span></label>' +
+      '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes \u2014 text me at this number the moment a slot opens. Msg &amp; data rates may apply. Reply STOP to opt out. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener" style="color:inherit">Terms</a></span></label>' +
       '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk"></div></div>';
     wirePhone(host.querySelector('#lwWlPhone'));
     host.querySelector('#lwWlGo').addEventListener('click', function () {
@@ -420,7 +424,8 @@
       '<div class="lw-fld"><label for="lwPhone">Phone</label><input class="lw-inp" id="lwPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel"/></div>' +
       '<div class="lw-fld"><label for="lwName">Name</label><input class="lw-inp" id="lwName" placeholder="Your name" autocomplete="name"/></div>' +
       '<div class="lw-fld"><label for="lwEmail">Email (optional)</label><input class="lw-inp" id="lwEmail" type="email" autocomplete="email"/></div>' +
-      '<button class="lw-btn" id="lwBook">' + esc(bookLabel) + '</button><div class="lw-err" role="alert" aria-live="polite"></div></div>'
+      '<button class="lw-btn" id="lwBook">' + esc(bookLabel) + '</button><div class="lw-err" role="alert" aria-live="polite"></div>' +
+      '<div class="lw-legal">By booking, you agree to get texts about this appointment (confirmation, reminders, changes) from ' + esc((w.catalog || state.catalog || {}).tenant_name || 'the salon') + ' at this number. Msg frequency varies; msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of purchase. Calls with the salon may be recorded and answered by an AI assistant. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener">Messaging Terms</a> \u00b7 <a href="' + LEGAL + '/privacy" target="_blank" rel="noopener">Privacy</a></div></div>'
     );
     // Wire auto-format on phone + returning-visitor lookup on 10-digit valid.
     var phoneInput = w.host.querySelector('#lwPhone');
@@ -454,7 +459,8 @@
     apiPost({
       action: 'book', channel: 'public_web',
       service_id: w.service.id, staff_id: w.staff ? w.staff.id : null,
-      starts_at: w.time, client_name: name, client_phone: phone, client_email: email || null
+      starts_at: w.time, client_name: name, client_phone: phone, client_email: email || null,
+      sms_consent: 'transactional', consent_text_version: '2026-10-01'
     }).then(function (result) {
       if (!result.ok) {
         err.textContent = result.conflict ? 'That time was just taken \u2014 go back and pick another.' : (result.error || 'Could not complete booking.');

@@ -47,9 +47,9 @@ export function client(){
 // dispatched — and sign-in stays blocked until the owner clicks the link. That
 // closes the open-signup surface (a random address can't get a working
 // session/tenant); activation happens on the first confirmed login.
-export async function createUser({ email, password, name }){
+export async function createUser({ email, password, name, meta = {} }){
   const c = client(); if(!c) throw new Error('Auth not configured');
-  const { data, error } = await c.auth.signUp({ email, password, options: { data: { name } } });
+  const { data, error } = await c.auth.signUp({ email, password, options: { data: { name, ...meta } } });
   if(error) throw new Error(error.message);
   if(!data?.user) throw new Error('Could not create account');
   return data.user;

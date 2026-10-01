@@ -104,6 +104,18 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   <div class="grid" id="lolaKpis"></div>
   <div id="lolaWrap"><div class="state">Load to watch Lola's routing in real time.</div></div>
 
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:15px;letter-spacing:-.01em">LolaDesk support line</h2>
+    <span id="careLive" class="pill trial">—</span>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Lola answers LolaDesk’s own phone and texts — questions about the app, plans, texting rules and fixes. Anything she can’t solve is emailed to you as a support request. Shown on loladesk.com/support. Uses a free number in your Telnyx account, or buys one.</p>
+  <div style="background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:18px;max-width:560px">
+    <div id="careState" class="muted" style="font-size:13px;margin-bottom:12px">Loading…</div>
+    <div class="fld"><label>Area code for a new number (optional)</label><input id="careArea" placeholder="305" maxlength="3" inputmode="numeric"/></div>
+    <button class="btn" style="width:100%" id="careBtn" onclick="setupCare(this)">Set up the line</button>
+    <div id="careResult" style="margin-top:12px;font-size:12.5px"></div>
+  </div>
+
   <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
     <h2 style="font-size:15px;letter-spacing:-.01em">Live Test Call</h2>
   </div>
@@ -434,7 +446,8 @@ async function testCall(phone, btn){
   const from = (document.getElementById('tcFrom')?.value || '').trim();
   const result = document.getElementById('tcResult');
   if(!to){ result.innerHTML = '<div class="err">Enter a number to call (E.164).</div>'; return; }
-  if(btn){ btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Calling…'; }
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = 'Calling…'; }
   try{
     const r = await fetch('/api/admin/test-call', { method:'POST',
       headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token },
@@ -779,6 +792,38 @@ loadAgents();
 loadCompliance();
 loadLolaHealth();
 loadAutopilot();
+loadCare();
+
+// ── LolaDesk support line ─────────────────────────────────────────
+async function loadCare(){
+  const st = document.getElementById('careState'), pill = document.getElementById('careLive'), btn = document.getElementById('careBtn');
+  try{
+    const r = await fetch('/api/customer-care', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 403){ st.textContent = 'Only the LolaDesk owner (ADMIN_EMAILS) can set this up.'; return; }
+    const j = await r.json();
+    if(j.configured){
+      pill.className = 'pill active'; pill.textContent = 'Live';
+      st.innerHTML = `Lola answers <strong>${esc(j.number)}</strong> for LolaDesk · email ${esc(j.email)}`;
+      btn.textContent = 'Refresh Lola’s support knowledge';
+    } else {
+      pill.className = 'pill trial'; pill.textContent = 'Not set up';
+      st.textContent = j.telnyx ? 'No support line yet.' : 'Add TELNYX_API_KEY in Vercel first.';
+    }
+  }catch(e){ st.textContent = 'Couldn’t load the support line.'; }
+}
+async function setupCare(btn){
+  const out = document.getElementById('careResult');
+  const area = (document.getElementById('careArea').value || '').trim();
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Setting up…';
+  try{
+    const r = await fetch('/api/customer-care', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify(area ? { area_code: area } : {}) });
+    const j = await r.json();
+    if(!j.ok){ out.innerHTML = `<div class="err">${esc(j.error||'Setup failed')}</div>`; return; }
+    out.innerHTML = `<div class="ok">Lola now answers <strong>${esc(j.number)}</strong>${j.bought ? ' (new number bought)' : ''}. Calls ${j.wired && j.wired.voice ? 'wired' : 'need a look in Telnyx'} · texts ${j.wired && j.wired.texts ? 'wired' : 'need the LolaDesk messaging profile'}.</div>`;
+    loadCare();
+  }catch(e){ out.innerHTML = '<div class="err">Couldn’t reach LolaDesk.</div>'; }
+  finally{ btn.disabled = false; btn.textContent = orig; }
+}
 startLolaPoll();
 
 // ── Lola Autopilot panel ───────────────────────────────────────────────

@@ -148,7 +148,7 @@ const signup = await req('POST', '/api/auth/signup', {
     email: EMAIL, password: PASSWORD,
     name: 'Smoke Owner', salonName: SALON, location: 'Miami, FL',
     hours: '9am-6pm', plan: 'starter', websiteUrl: 'https://smoke.loladesk.com',
-    businessMode: 'salon',
+    businessMode: 'salon', accept_terms: true,
   },
 });
 const token = signup.body?.session?.access_token || signup.body?.token || signup.body?.access_token;

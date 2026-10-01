@@ -127,6 +127,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .done-wrap{text-align:center;padding:20px 0}
 .done-num{font-size:24px;font-weight:300;color:var(--accent2);letter-spacing:.05em;margin:10px 0 18px}
 @media(max-width:900px){.shell{display:block}.presence{min-height:280px;border-right:0;border-bottom:1px solid var(--line);padding:28px;position:relative;overflow:hidden}.orb-wrap{width:160px;height:160px;position:absolute;right:0;top:30px;opacity:.4}.workspace{padding:24px 16px}.card{padding:24px;border-radius:20px}}
+.agree{display:flex;gap:10px;align-items:flex-start;margin:6px 0 14px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.6);cursor:pointer;text-align:left}
+.agree input{margin-top:3px;width:16px;height:16px;flex:0 0 16px;accent-color:#fff}
+.agree a{color:#fff}
 </style>
 </head>
 <body>
@@ -213,6 +216,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <p class="sub">A private, tenant-isolated workspace. Only you can see your clients, bookings, and calls.</p>
       <div class="field"><label>Owner email</label><input class="input" id="email" type="email" placeholder="you@yoursalon.com" autocomplete="email"/></div>
       <div class="field"><label>Password</label><input class="input" id="password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/></div>
+      <label class="agree" for="agreeTerms"><input type="checkbox" id="agreeTerms"/><span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a>, <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, <a href="/acceptable-use" target="_blank" rel="noopener">Acceptable Use Policy</a>, <a href="/sms-terms" target="_blank" rel="noopener">Messaging Terms</a> and <a href="/dpa" target="_blank" rel="noopener">Data Processing Addendum</a>, including the arbitration agreement and class-action waiver. I’ll get my clients’ consent before Lola texts them, and I understand Lola is an AI and calls may be recorded.</span></label>
       <div class="actions"><button class="btn-p" id="createBtn" onclick="createAccount()">Create workspace</button></div>
       <div class="error" id="err2"></div>
       <div class="fine">14-day free trial. No credit card required. Cancel anytime.</div>
@@ -523,9 +527,10 @@ async function createAccount(){
   const email=v('email').trim(),password=v('password');
   if(!/\S+@\S+\.\S+/.test(email)){err.textContent='Enter a valid email.';return;}
   if(password.length<8){err.textContent='Password must be at least 8 characters.';return;}
+  if(!document.getElementById('agreeTerms').checked){err.textContent='Please agree to the Terms and Privacy Policy to create your workspace.';return;}
   err.textContent='';btn.disabled=true;btn.textContent='Creating…';
   try{
-    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan})});
+    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan,accept_terms:true,terms_version:'2026-10-01'})});
     const d=r.b;
     // Email verification: the account is created but NOT live until the owner
     // confirms their email. Show the check-your-email checkpoint instead of a
