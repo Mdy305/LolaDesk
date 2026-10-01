@@ -563,12 +563,11 @@
       if (e.key === 'Escape' && !panel.hidden) close();
     });
 
-    // voice in (browser speech recognition)
+    // voice in — her own ears (lola-ears.js: mic → Telnyx), browser recognizer as a fast path
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let rec = null;
-    function stopListening() { try { rec && rec.stop(); } catch (_) {} rec = null; mic.classList.remove('on'); if (body.mode === 'listening') body.mode = 'idle'; }
-    if (!SR) mic.hidden = true;
-    else mic.onclick = () => {
+    let rec = null, hearing = false;
+    function stopListening() { if (hearing && window.LolaEars) { window.LolaEars.stop(); return; } try { rec && rec.stop(); } catch (_) {} rec = null; mic.classList.remove('on'); if (body.mode === 'listening') body.mode = 'idle'; }
+    function srListen() {
       if (rec) return stopListening();
       rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
       let finalText = '';
@@ -577,7 +576,26 @@
       rec.onend = () => { const t = (finalText || input.value).trim(); rec = null; mic.classList.remove('on'); if (t) { voiceTurn = true; send(t); } else if (body.mode === 'listening') body.mode = 'idle'; };
       mic.classList.add('on'); body.mode = 'listening'; if (currentAudio) currentAudio.pause();
       try { rec.start(); } catch (_) { stopListening(); }
-    };
+    }
+    async function earsListen() {
+      if (hearing) { window.LolaEars.stop(); return; }
+      hearing = true; mic.classList.add('on'); body.mode = 'listening'; if (currentAudio) currentAudio.pause();
+      const before = input.value;
+      input.placeholder = 'Listening…';
+      const r = await window.LolaEars.listen({
+        onInterim: (t) => { input.value = t; autosize(); },
+        onThinking: () => { body.mode = 'thinking'; },
+      });
+      hearing = false; mic.classList.remove('on'); input.placeholder = 'Ask Lola to do anything…';
+      if (r.text) { input.value = r.text; autosize(); voiceTurn = true; send(r.text); return; }
+      input.value = before; autosize();
+      body.mode = 'idle';
+      if (r.say && r.error !== 'cancelled') { remember('assistant', r.say); bubble('assistant', r.say); speak(r.say, body); }
+    }
+    const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+    if (!canRecord && !SR) mic.hidden = true;
+    mic.onclick = () => (window.LolaEars && window.LolaEars.supported ? earsListen() : SR ? srListen() : null);
+    if (!window.LolaEars && canRecord) { const sc = document.createElement('script'); sc.src = '/lola-ears.js'; document.head.appendChild(sc); }
 
     // "While you were away": a badge on Lola and a quiet note beside her.
     const badge = document.createElement('span'); badge.className = 'lp-badge'; badge.hidden = true; orb.appendChild(badge);

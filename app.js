@@ -718,8 +718,34 @@ function setupRecognition(){
   recognition.onend = ()=>{ if(listening) stopListening(); };
 }
 
+// Lola's own ears (lola-ears.js): mic → Telnyx speech-to-text, with the
+// browser recognizer as a fast path. Every failure is said, never silent.
+let earsActive = false;
+async function earsListen(){
+  earsActive = true; listening = true;
+  stopSpeaking();
+  if(voiceTarget==='orb') setOrbState('listening');
+  if(voiceTarget==='chat') document.getElementById('chatMic')?.classList.add('on');
+  const transcript=document.getElementById('orbTranscript');
+  if(window.LolaOrb && voiceTarget==='orb' && typeof orb!=='undefined'){
+    LolaOrb.attachMic(orb).then(m => { micMeter = m; if(!earsActive){ m.stop(); micMeter = null; } }).catch(()=>{});
+  }
+  const r = await window.LolaEars.listen({
+    onInterim: (t)=>{ if(transcript && voiceTarget==='orb') transcript.textContent=t; },
+    onThinking: ()=>{ if(voiceTarget==='orb') setOrbState('thinking'); },
+  });
+  earsActive = false;
+  stopListening();
+  if(r.text){ nextTurnVoice = true; askLola(r.text); return; }
+  if(r.say && r.error!=='cancelled'){
+    const sub=document.getElementById('orbSub'); if(sub) sub.textContent=r.say;
+    try{ speak(r.say); }catch(e){}
+  }
+}
+
 function startListening(){
   if(ambientRecognizing) stopAmbientListening(); // active tap always wins over passive ambient
+  if(window.LolaEars && window.LolaEars.supported) return earsListen();
   if(!recognition) setupRecognition();
   if(!recognition){ alert('Voice input needs Chrome, Edge, or Safari.'); return; }
   listening = true;
@@ -745,6 +771,7 @@ function startListening(){
 }
 
 function stopListening(){
+  if(earsActive && window.LolaEars){ window.LolaEars.stop(); return; } // she finishes hearing, then cleans up
   listening = false;
   if(micMeter){ micMeter.stop(); micMeter = null; }
   if(recognition) try{ recognition.stop(); }catch(e){}

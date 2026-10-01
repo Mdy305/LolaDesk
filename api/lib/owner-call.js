@@ -12,6 +12,7 @@
 import { e164, db } from './db.js';
 import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { resolveTenantLine, connectionCandidates } from './call-callback.js';
+import { demoStep } from './demo-call.js';
 
 export const encodeState = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
 export function decodeState(s) { try { return JSON.parse(Buffer.from(String(s || ''), 'base64').toString('utf8')); } catch (_) { return null; } }
@@ -48,6 +49,7 @@ export async function callThroughOwner(client, tenant, clientPhone, { clientName
 export function bridgeStep(event) {
   const type = event?.data?.event_type, p = event?.data?.payload || {};
   const st = decodeState(p.client_state);
+  if (st && st.k === 'lola_demo' && p.call_control_id) return demoStep(type, p, st);
   if (!st || st.k !== 'owner_bridge' || !p.call_control_id) return null;
   if (type === 'call.answered' && !st.spoke) {
     return { id: p.call_control_id, action: 'speak', body: { payload: `Connecting you to ${st.n || 'your client'}.`, voice: 'female', language: 'en-US', client_state: encodeState({ ...st, spoke: 1 }) } };
@@ -61,7 +63,14 @@ export function bridgeStep(event) {
 export async function runBridgeStep(event) {
   const step = bridgeStep(event);
   if (!step) return { ok: true, ignored: true };
-  await telnyxRequest(`/calls/${encodeURIComponent(step.id)}/actions/${step.action}`, { method: 'POST', body: step.body, timeoutMs: 8000 });
+  const run = (a, b) => telnyxRequest(`/calls/${encodeURIComponent(step.id)}/actions/${a}`, { method: 'POST', body: b, timeoutMs: 8000 });
+  try { await run(step.action, step.body); }
+  catch (e) {
+    if (!step.fallback) throw e;
+    console.warn('[bridge]', step.action, 'refused, falling back:', String(e?.message || e).slice(0, 140));
+    await run(step.fallback.action, step.fallback.body);
+    return { ok: true, did: step.fallback.action, fallback: true };
+  }
   return { ok: true, did: step.action };
 }
 export { db };
