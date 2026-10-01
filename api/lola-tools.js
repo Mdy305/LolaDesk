@@ -484,6 +484,19 @@ export const SKILLS = {
   detect_upsell_opportunity // Yield Engine: pair add-ons to the booked service by spend tier
 };
 
+const linked = new Set();
+async function linkConversation(tenant, q, body){
+  const callControlId = String(q.call);
+  if(linked.has(callControlId)) return;
+  try{
+    const c = db(); if(!c) return;
+    const web = /web/i.test(String(q.ch || ''));
+    const from = body.from && String(body.from).replace(/\D/g,'').length >= 8 ? String(body.from) : (web ? 'Website visitor' : null);
+    const { error } = await c.from('call_sessions').upsert({ call_control_id: callControlId, tenant_id: tenant.id, from_number: from, to_number: tenant.phone_number || null }, { onConflict: 'call_control_id' });
+    if(!error) linked.add(callControlId);
+  }catch(_){ /* linking never blocks the answer */ }
+}
+
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');
@@ -521,6 +534,9 @@ export default async function handler(req, res){
     
     const tenant = await resolveTenant(body);
     const clientPhone = body.client_phone || body.from;
+    // Link this conversation to its salon (website calls have no dialed number): the
+    // post-call insights webhook then lands the summary + transcript on that salon's Calls page.
+    if(tenant?.id && real(req.query?.call)) await linkConversation(tenant, req.query, body);
     
     // Execute the skill safely via Orchestrator
     const result = await executeSkill(tenant, clientPhone, tool, body, SKILLS);
