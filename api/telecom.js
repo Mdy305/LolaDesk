@@ -125,7 +125,7 @@ async function provisionNumber(body, tenant) {
   // Prefer the LolaBrain assistant's own TeXML app (the AI voice path),
   // falling back to TELNYX_VOICE_APP_ID.
   const voiceConnectionId = body.voice_connection_id || await getCanonicalVoiceConnectionId();
-  const messagingProfileId = body.messaging_profile_id || process.env.TELNYX_MESSAGING_PROFILE;
+  const messagingProfileId = body.messaging_profile_id || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
   if (phoneNumberId && voiceConnectionId) {
     await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });
   }

@@ -59,11 +59,11 @@ async function findAndBuyTemporaryNumber(tenant, requestedNumber){
       body: JSON.stringify({ connection_id: process.env.TELNYX_VOICE_APP_ID })
     });
   }
-  if(phoneNumberId && process.env.TELNYX_MESSAGING_PROFILE){
+  if(phoneNumberId && (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID)){
     await fetch(`${TELNYX}/phone_numbers/${phoneNumberId}/messaging`, {
       method: 'PATCH',
       headers: authHeaders(),
-      body: JSON.stringify({ messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE })
+      body: JSON.stringify({ messaging_profile_id: (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID) })
     });
   }
 

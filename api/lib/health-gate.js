@@ -195,7 +195,7 @@ export async function telecomHealth() {
     api_key: Boolean(process.env.TELNYX_API_KEY),
     public_key: Boolean(process.env.TELNYX_PUBLIC_KEY),
     voice_app: Boolean(process.env.TELNYX_VOICE_APP_ID),
-    messaging_profile: Boolean(process.env.TELNYX_MESSAGING_PROFILE),
+    messaging_profile: Boolean((process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID)),
     app_url: Boolean(process.env.APP_URL),
   };
   if (!configuration.api_key) {
@@ -231,7 +231,7 @@ export async function telecomHealth() {
  * down, never leaks the API key (it only lives in the Authorization header
  * inside telnyx-client.js).
  */
-export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileIds = [process.env.TELNYX_MESSAGING_PROFILE_ID, process.env.TELNYX_MESSAGING_PROFILE].filter(Boolean), timeoutMs = 4000 } = {}){
+export async function smsMessagingCheck({ key = process.env.TELNYX_API_KEY, profileIds = [process.env.TELNYX_MESSAGING_PROFILE_ID, (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID)].filter(Boolean), timeoutMs = 4000 } = {}){
   if(!key) return { ready:false, detail:'Missing TELNYX_API_KEY — SMS cannot send' };
   if(!profileIds || !profileIds.length) return { ready:false, detail:'Missing TELNYX_MESSAGING_PROFILE — SMS cannot send' };
   // The app reads messaging profiles from both env names across its code

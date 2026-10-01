@@ -15,7 +15,8 @@
  */
 
 import { db } from '../lib/db.js';
-import { syncTenantConnections } from '../lib/connection-sync.js';
+import { syncTenantConnections, liveTelnyxSnapshot } from '../lib/connection-sync.js';
+import { wireTenantNumbers } from '../lib/tenant-wiring.js';
 
 function authorized(req) {
   const auth = req.headers.authorization || '';
@@ -40,7 +41,11 @@ export default async function handler(req, res) {
   if (!client) return res.status(503).json({ ok: false, error: 'Database not configured' });
 
   const started = Date.now();
-  const result = await syncTenantConnections(client);
+  // Heal first (every salon's number on the messaging profile + Lola's voice line), then record truth.
+  const snapshot = await liveTelnyxSnapshot();
+  let wiring = null;
+  try { wiring = snapshot.error ? null : await wireTenantNumbers(client, { heal: true, snapshot }); } catch (e) { wiring = { ok: false, error: String(e?.message || e) }; }
+  const result = await syncTenantConnections(client, snapshot.error ? {} : { snapshot: await liveTelnyxSnapshot() });
   return res.status(result.ok ? 200 : 502).json({
     ok: result.ok,
     error: result.ok ? null : result.error,
@@ -48,6 +53,7 @@ export default async function handler(req, res) {
     unchanged_count: (result.unchanged || []).length,
     not_found_on_telnyx: result.not_found_on_telnyx || [],
     connection_names: result.connection_names || {},
+    wiring: wiring ? { ok: wiring.ok, broken: wiring.broken, healed: wiring.healed, messaging_profile: wiring.messaging_profile } : null,
     duration_ms: Date.now() - started,
     generated_at: new Date().toISOString()
   });

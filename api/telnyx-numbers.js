@@ -97,10 +97,10 @@ async function provisionNumber({ phone_number_id }){
     results.voice = await r.json();
   }
   // attach messaging profile
-  if(process.env.TELNYX_MESSAGING_PROFILE){
+  if((process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID)){
     const r = await fetch(`${TELNYX}/phone_numbers/${phone_number_id}/messaging`, {
       method:'PATCH', headers: authHeaders(),
-      body: JSON.stringify({ messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE })
+      body: JSON.stringify({ messaging_profile_id: (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID) })
     });
     results.messaging = await r.json();
   }

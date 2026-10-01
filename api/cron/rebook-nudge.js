@@ -67,6 +67,7 @@ export default async function handler(req, res) {
         try {
           await sendSMS({
             from: fromNumber,
+            tenantId: s.tenant_id,
             to: cl.phone,
             text: nudgeText({ firstName: cl.first_name, tenantName: tenant.name })
           });

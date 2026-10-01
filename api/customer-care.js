@@ -103,7 +103,7 @@ async function attachVoice(pnId, texmlAppId){
   });
 }
 async function attachMessaging(pnId){
-  const profile = process.env.TELNYX_MESSAGING_PROFILE;
+  const profile = (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
   if(!profile) return { skipped:true, reason:'TELNYX_MESSAGING_PROFILE not set' };
   return telnyxJson(`/phone_numbers/${pnId}/messaging`, {
     method:'PATCH', body: { messaging_profile_id: profile }

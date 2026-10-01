@@ -3,7 +3,7 @@
  * → { ok, say, checks[] } — Lola tests her brain, voice, texting line and
  *   reflexes live and says what to fix. Same as saying "Lola, run a check".
  */
-import { bearer, getUserFromToken } from '../lib/auth.js';
+import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { lolaSelfCheck } from '../lib/lola-doctor.js';
 
@@ -15,6 +15,6 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ ok: false, error: 'not authenticated' });
     const tenant = await resolveTenantForUser(user);
     if (!tenant?.id) return res.status(404).json({ ok: false, error: 'no salon for this account' });
-    return res.status(200).json(await lolaSelfCheck(tenant));
+    return res.status(200).json(await lolaSelfCheck(tenant, { platform: isAdminEmail(user.email) }));
   } catch (e) { return res.status(500).json({ ok: false, error: String(e?.message || e) }); }
 }

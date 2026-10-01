@@ -11,25 +11,33 @@
 import { chat, FAST_MODEL } from './llm.js';
 import { synthesize, voiceProvider } from './elevenlabs.js';
 import { routeOwnerIntent } from './owner-intents.js';
+import { db } from './db.js';
+import { wireTenantNumbers } from './tenant-wiring.js';
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch (e) { return { e, ms: Date.now() - t }; } };
 
 async function numberCheck(tenant) {
   const line = tenant?.phone_number;
-  if (!line) return { ok: false, say: 'Your salon doesn’t have a Lola phone number yet.', fix: 'Telecom & texting → get a number.' };
   if (!process.env.TELNYX_API_KEY) return { ok: false, say: 'Telnyx isn’t connected.', fix: 'Add TELNYX_API_KEY in Vercel.' };
+  const c = db();
+  if (!c) return { ok: null, say: 'I couldn’t reach your database to check your line.' };
   try {
-    const r = await fetch(`https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(line)}&page[size]=1`,
-      { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` }, signal: AbortSignal.timeout(6000) });
-    const j = await r.json().catch(() => ({}));
-    const n = j?.data?.[0];
-    if (!r.ok || !n) return { ok: false, say: `I can’t find ${line} in your Telnyx account.`, fix: 'Telnyx → Numbers: make sure the salon number lives in this account.' };
-    if (!n.messaging_profile_id) return { ok: false, say: `${line} can take calls but isn’t set up to text.`, fix: 'Telnyx → Numbers → your number → Messaging profile: pick the LolaDesk profile.' };
-    return { ok: true, say: `Texts go out from ${line}.`, note: 'US carriers only deliver business texts once the number’s 10DLC campaign is approved in Telnyx.' };
-  } catch (_) { return { ok: null, say: 'I couldn’t reach Telnyx to check your number.' }; }
+    const w = await wireTenantNumbers(c, { tenantId: tenant.id, heal: true });
+    if (w.error) return { ok: null, say: 'I couldn’t reach Telnyx to check your line.' };
+    if (!w.numbers.length) return { ok: false, say: 'Your salon doesn’t have a Lola phone number yet.', fix: 'Salon → Phone & texting → get a number.' };
+    const lost = w.numbers.filter(n => !n.on_telnyx);
+    if (lost.length) return { ok: false, say: `I can’t find ${lost.map(n => n.phone_number).join(', ')} in your Telnyx account.`, fix: 'Telnyx → Numbers: make sure the salon number lives in this account.' };
+    const healed = w.numbers.filter(n => n.healed.length);
+    const noText = w.numbers.filter(n => !n.texts);
+    if (noText.length) return { ok: false, say: `${noText[0].phone_number} can’t text yet.`, fix: w.messaging_profile ? 'Telnyx → Numbers → your number → Messaging: pick the LolaDesk profile.' : 'Add TELNYX_MESSAGING_PROFILE_ID in Vercel.' };
+    const noCall = w.numbers.filter(n => !n.calls);
+    if (noCall.length) return { ok: false, say: `Calls to ${noCall[0].phone_number} don’t reach me yet.`, fix: 'Set TELNYX_LOLA_BRAIN_ID or TELNYX_VOICE_APP_ID in Vercel.' };
+    const first = w.numbers[0].phone_number || line;
+    return { ok: true, say: `${healed.length ? `I re-wired ${healed.map(n => n.phone_number).join(', ')} to Telnyx. ` : ''}Calls and texts on ${first} come to me.`, note: 'US carriers only deliver business texts once the number’s 10DLC campaign is approved in Telnyx.' };
+  } catch (_) { return { ok: null, say: 'I couldn’t reach Telnyx to check your line.' }; }
 }
 
-export async function lolaSelfCheck(tenant, { speakTest = true } = {}) {
+export async function lolaSelfCheck(tenant, { speakTest = true, platform = false } = {}) {
   const checks = [];
   // Brain
   const b = await timed(() => chat({ system: 'Reply with the single word: ready', messages: [{ role: 'user', content: 'Status?' }], maxTokens: 20, fast: true, deadlineMs: 12000 }));
@@ -50,6 +58,13 @@ export async function lolaSelfCheck(tenant, { speakTest = true } = {}) {
   // Texts
   const n = await numberCheck(tenant);
   checks.push({ key: 'texts', ...n });
+  // The platform owner's check also re-wires every salon on the account.
+  if (platform) {
+    try {
+      const w = await wireTenantNumbers(db(), { heal: true });
+      checks.push({ key: 'all_salons', ok: w.error ? null : w.ok, say: w.error ? 'I couldn’t reach Telnyx to check every salon.' : `Every salon line checked: ${w.numbers.length} number${w.numbers.length === 1 ? '' : 's'}${w.healed ? `, ${w.healed} re-wired` : ''}${w.broken ? `, ${w.broken} still need a look in Telnyx` : ', all answering and texting'}.`, numbers: w.numbers });
+    } catch (_) {}
+  }
   // Hands
   const reflex = routeOwnerIntent('open my calendar');
   checks.push({ key: 'reflexes', ok: reflex?.navigate === '/calendar', say: 'I can open pages, catch you up, text, call, move and cancel on command.' });
