@@ -21,6 +21,7 @@ import { awayBrief } from './owner-brief.js';
 import { learnBusiness, parseKnowledge } from './business-learn.js';
 import { SEGMENTS, audience, createCampaign, startCampaign, campaignsWithStats, inSendingHours } from './marketing.js';
 import { buildFillPlan, latestPlan, setPlanStatus } from './fill-plan.js';
+import { askToConfirm, confirmationStatus } from './appointment-confirm.js';
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
@@ -66,10 +67,12 @@ export const OWNER_TOOLS = [
   fn('away_brief', "What happened while the owner was away: calls, who needs a call back, bookings made and cancelled. Use for 'what did I miss', 'anything I should know'.", { hours: { type: 'integer', description: 'How far back, in hours (default 12).' } }),
   fn('set_alerts', 'Turn owner text alerts on or off (Lola texts the owner when a caller asks for them, is unhappy or was missed, or a booking in the next 48h is cancelled), and/or set the phone they go to.', { enabled: { type: 'boolean' }, phone: { type: 'string', description: "Owner's mobile number for alerts." } }),
   fn('learn_business', "Read the salon's website and/or a menu the owner pastes, and learn services, prices, team, hours, FAQ, brand voice and marketing ideas. Use for 'learn my website', 'read my site', or when the owner pastes a price list.", { website: { type: 'string' }, notes: { type: 'string', description: 'Menu, prices or anything the owner pasted.' } }),
+  fn('confirm_appointments', "Text every client booked on a day asking them to confirm (reply YES) or reschedule. Use for 'confirm tomorrow's appointments', 'send confirmations'.", { date: dateArg, confirmed: confirmedArg }),
+  fn('confirmation_status', "Who has confirmed their appointment for a day and who hasn't. Use for 'who confirmed tomorrow', 'confirmations'.", { date: dateArg }),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
-const NEEDS_CONFIRM = new Set(['launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
+const NEEDS_CONFIRM = new Set(['confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
   calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
@@ -259,6 +262,27 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
   const confirmed = args.confirmed === true;
   try {
     switch (name) {
+      case 'confirm_appointments': {
+        const key = resolveDayKey(args.date || 'tomorrow', tz);
+        const when = key === localDateKey(new Date(), tz) ? 'today' : dayLabel(key);
+        if (!confirmed) {
+          const p = await askToConfirm(c, tenant, { dayKey: key, tz, preview: true });
+          if (!p.count) return { ok: true, say: `Everyone booked ${when} has already confirmed, or there's nobody to ask.` };
+          return park(tenant.id, name, { ...args, date: key }, `I'll text ${p.count} client${p.count === 1 ? '' : 's'} booked ${when} (${p.names.slice(0, 4).join(', ')}${p.count > 4 ? '…' : ''}) to confirm or reschedule. Send?`);
+        }
+        const r = await askToConfirm(c, tenant, { dayKey: key, tz });
+        return { ok: true, say: `Sent ${r.sent} confirmation text${r.sent === 1 ? '' : 's'}${r.failed ? ` (${r.failed} couldn't go out)` : ''}. I'll mark each one as they reply YES.` };
+      }
+
+      case 'confirmation_status': {
+        const key = resolveDayKey(args.date || 'tomorrow', tz);
+        const when = key === localDateKey(new Date(), tz) ? 'today' : dayLabel(key);
+        const s = await confirmationStatus(c, tenant, { dayKey: key, tz });
+        if (!s.total) return { ok: true, say: `Nothing is booked ${when}.` };
+        const w = s.waiting.map(x => x.name.split(' ')[0]);
+        return { ok: true, say: `${s.confirmed.length} of ${s.total} confirmed for ${when}.${w.length ? ` Still waiting on ${w.slice(0, 5).join(', ')}${w.length > 5 ? '…' : ''}.${s.waiting.some(x => !x.asked) ? ' Want me to text them?' : ''}` : ' Everyone is confirmed.'}`, ...s };
+      }
+
       case 'open_page': {
         const path = PAGES[String(args.page || '').toLowerCase()];
         if (!path) return { ok: false, say: "I don't know that page." };

@@ -74,6 +74,10 @@ export function routeOwnerIntent(input) {
   // ── her own health ──
   if (/\b(run (?:a |your )?(?:check|diagnostic|self.?check|test)|diagnose yourself|test yourself|are you (?:ok|okay|working|alright)|is everything working|system check|status check)\b/.test(t)) return { self_check: true };
 
+  // ── confirmations ──
+  if (/\b(who(?:'?s| has| have)? (?:not |n'?t )?confirmed|who hasn'?t confirmed|confirmation status|any confirmations|how many confirmed)\b/.test(t)) return { tool: 'confirmation_status', args: { date: dayOf(t) || 'tomorrow' } };
+  if (/\b(confirm (?:all )?(?:my |the |our )?(?:today'?s |tomorrow'?s )?(?:appointments|bookings|clients|schedule)|send (?:the |out )?confirmations?|ask (?:everyone|clients) to confirm)\b/.test(t)) return { tool: 'confirm_appointments', args: { date: dayOf(t) || 'tomorrow' } };
+
   // ── the day ──
   if (/\b(what did i miss|did i miss anything|anything i should know|while i was (?:out|away|gone)|what happened while)\b/.test(t)) return { tool: 'away_brief', args: {} };
   if (/\b(catch me up|brief me|morning brief|daily brief|give me (?:the|my) (?:rundown|brief|update)|how'?s (?:my|the) day|how is (?:my|the) day|what'?s (?:on )?(?:for )?today|what do (?:i|we) have today|what does (?:my|the) day look like|how are we doing today)\b/.test(t)) return { tool: 'today_brief', args: { date: 'today' } };

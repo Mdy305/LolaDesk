@@ -86,7 +86,7 @@ export function calendarLinkFor({ code, phone }){
 
 // Booking lifecycle · 24h reminder.
 export function reminderText({ salon, what, when }){
-  return `Reminder from ${salon || 'the salon'}: ${what} on ${when}. Reply STOP to opt out.`;
+  return `Reminder from ${salon || 'the salon'}: ${what} on ${when}. Reply YES to confirm or R to reschedule. Reply STOP to opt out.`;
 }
 
 // Booking lifecycle · 2h-before heads-up (the "radar" nudge): the

@@ -11,6 +11,8 @@ import { db } from './lib/db.js';
 import { isHotLead, escalateLead, relayOwnerReply } from './lib/lead-relay.js';
 export { sendSMS };
 import { answerOwner } from './lib/owner-brain.js';
+import { handleConfirmReply } from './lib/appointment-confirm.js';
+import { salonTz } from './lib/salon-time.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
@@ -143,6 +145,17 @@ export default async function handler(req,res){
     return res.status(200).json({ok:true,handled:'help'});
   }
   try{ if(await isOptedOut(row.id,fromN)) return res.status(200).json({ok:true,handled:'opted_out'}); }catch{}
+
+  // A client answering "YES" to Lola's confirmation request: mark it confirmed, thank them.
+  try{
+    const tz = await salonTz(row.id).catch(()=> 'America/New_York');
+    const conf = await handleConfirmReply(db(), row, fromN, text, { tz });
+    if(conf){
+      try{ await sendSMS({ from: toN, to: fromN, text: conf.reply, tenantId: row.id, type }); }catch{}
+      try{ const cl = fromN ? await upsertClient(row.id,{ phone: fromN }) : null; const cv = await getOrStartConversation(row.id,{ clientId: cl?.id, channel, agent:'lola' }); if(cv?.id){ await logMessage({conversationId:cv.id,tenantId:row.id,role:'user',agent:'lola',content:text}); await logMessage({conversationId:cv.id,tenantId:row.id,role:'assistant',agent:'lola',content:conf.reply}); } await logUsage(row.id,'appointment_confirmed',1); }catch{}
+      return res.status(200).json({ ok:true, handled:'confirmed', booking_id: conf.booking_id });
+    }
+  }catch{}
 
   let client=null,conv=null,hist=[{role:'user',content:text}],clientProfile=null;
   try{

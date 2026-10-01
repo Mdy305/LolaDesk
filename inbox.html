@@ -445,12 +445,14 @@ async function sendReply(){
     const r = await fetch('/api/inbox-reply', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', ...(tok?{Authorization:'Bearer '+tok}:{}) },
-      body: JSON.stringify({ conversation_id: t.id, text })
+      body: JSON.stringify({ conversation_id: t.id, to: t.phone, text })
     });
     const d = await r.json().catch(()=>({}));
     if(!r.ok || (d && d.ok === false)) throw new Error(d?.error || 'Could not send');
     msg.status = 'Sent';
     msg.sending = false;
+    // A brand-new thread now has a real conversation behind it.
+    if(d && d.conversation_id && String(t.id).startsWith('new-')){ if(ACTIVE_ID === t.id) ACTIVE_ID = d.conversation_id; t.id = d.conversation_id; renderThreads(); }
     renderConv(t);
   }catch(e){
     msg.status = 'Failed — ' + (e.message || 'try again');
@@ -462,8 +464,9 @@ async function sendReply(){
 }
 
 function callClient(phone){
-  // Route through the tel: scheme so it opens the OS dialer on mobile,
-  // which lets the owner call from their own phone if desired.
+  // Call from LolaDesk: ring the owner's phone and connect, have Lola call, or use this device.
+  const t = THREADS.find(x => x.phone === phone);
+  if(window.LolaCall) return window.LolaCall(phone, t && t.who && !/^\(?\d/.test(t.who) ? t.who : '');
   location.href = 'tel:' + phone;
 }
 
