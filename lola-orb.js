@@ -253,9 +253,28 @@
       state:'idle', t:0, level:0, feed:0, lvl:0, bands:[0,0,0], bandsSm:[0,0,0], flare:0,
       w:{ listen:0, think:0, speak:0, call:0, ambient:0 }, rot:0, swirl:0,
       pal:{ a:PALETTES.idle.a.map(x=>x/255), b:PALETTES.idle.b.map(x=>x/255), core:PALETTES.idle.core.map(x=>x/255), glow:PALETTES.idle.glow },
-      raf:0, dead:false, visible:true, W:0, H:0, dpr:1
+      raf:0, dead:false, visible:true, W:0, H:0, dpr:1,
+      // Her mood (lola-mood.js): energy (calm → lively), joy (sparkle), concern (soft, slower, inward).
+      mood:{ energy:0.55, joy:0, concern:0 }, moodT:{ energy:0.55, joy:0, concern:0 },
+      attn:0, attnT:0, gaze:[0,0], nextBeat:2 + Math.random()*3
     };
     let count = TIERS[tier];
+    // She feels the room: mood events from anywhere on the page, and she notices you.
+    const onMood = (e) => {
+      const d = (e && e.detail) || {};
+      ['energy','joy','concern'].forEach(k => { if (typeof d[k] === 'number') st.moodT[k] = Math.max(0, Math.min(1, d[k])); });
+      if (typeof d.pulse === 'number') st.flare = Math.max(st.flare, Math.min(1, d.pulse));
+    };
+    global.addEventListener('lola:mood', onMood);
+    try { if (global.LolaMood && global.LolaMood.state) onMood({ detail: global.LolaMood.state }); } catch(e){}
+    const onPointer = (e) => {
+      const r = canvas.getBoundingClientRect(); if (!r.width) return;
+      const cx = r.left + r.width/2, cy = r.top + r.height/2, dx = e.clientX - cx, dy = e.clientY - cy;
+      const d = Math.hypot(dx, dy), reach = Math.max(260, r.width*0.9);
+      st.attnT = Math.max(0, 1 - d/reach);
+      st.gaze = [Math.max(-1, Math.min(1, dx/reach)), Math.max(-1, Math.min(1, dy/reach))];
+    };
+    if (!REDUCED) global.addEventListener('pointermove', onPointer, { passive:true });
 
     function resize(){
       const dpr = Math.min(global.devicePixelRatio || 1, 2);
@@ -318,11 +337,25 @@
       const T = PALETTES[s];
       for (let i=0;i<3;i++){ st.pal.a[i] += (T.a[i]/255 - st.pal.a[i])*ef; st.pal.b[i] += (T.b[i]/255 - st.pal.b[i])*ef; st.pal.core[i] += (T.core[i]/255 - st.pal.core[i])*ef; }
       st.pal.glow += (T.glow - st.pal.glow)*ef;
-      st.rot += dt*(0.12 + 0.10*W.speak + 0.08*W.call);
-      st.swirl += dt*(0.02 + 1.35*W.think + 0.25*W.call);
+      // mood drifts slowly, like a person's; attention is quick
+      const em = 1 - Math.pow(0.35, dt), M = st.mood;
+      ['energy','joy','concern'].forEach(k => { M[k] += (st.moodT[k] - M[k])*em; });
+      st.attn += (st.attnT - st.attn)*(1 - Math.pow(0.02, dt));
+      // A heartbeat while she waits: small, uneven, alive — quicker when she's lively or happy.
+      const resting = s === 'idle' || s === 'ambient';
+      if (resting && !REDUCED && st.t >= st.nextBeat) {
+        st.flare = Math.max(st.flare, 0.10 + 0.14*M.energy + 0.22*M.joy + 0.08*st.attn);
+        st.nextBeat = st.t + (5.5 - 2.6*M.energy - 1.4*M.joy + 2.2*M.concern) * (0.75 + Math.random()*0.5);
+      }
+      st.rot += dt*(0.09 + 0.08*M.energy + 0.10*W.speak + 0.08*W.call - 0.03*M.concern);
+      st.swirl += dt*(0.02 + 1.35*W.think + 0.25*W.call + 0.22*M.concern + 0.10*M.joy);
       tune(dt);
 
-      const breath = 1 + (0.022 + 0.03*W.ambient)*Math.sin(st.t*(0.9 + 0.6*W.ambient)) + 0.04*W.speak*st.lvl;
+      const bAmp = 0.02 + 0.03*W.ambient + 0.018*M.energy + 0.014*M.joy + 0.012*st.attn;
+      const bSpd = (0.75 + 0.55*M.energy + 0.4*M.joy - 0.25*M.concern) * (1 + 0.6*W.ambient);
+      // Mood is posture too: happy and lively she opens up; worried she draws in.
+      const posture = 1 + 0.05*M.joy + 0.04*(M.energy - 0.5) - 0.07*M.concern + 0.025*st.attn;
+      const breath = (1 + bAmp*Math.sin(st.t*bSpd) + 0.04*W.speak*st.lvl) * posture;
       const Rpx = (st.stage || stageSize)*0.30*st.dpr;
       gl.viewport(0, 0, st.W, st.H);
       gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -333,7 +366,7 @@
       gl.bindBuffer(gl.ARRAY_BUFFER, gBuf);
       if (A.dir >= 0) gl.disableVertexAttribArray(A.dir);
       gl.enableVertexAttribArray(A.gp); gl.vertexAttribPointer(A.gp, 2, gl.FLOAT, false, 8, 0);
-      gl.uniform1f(GU.u_k, (Rpx*1.25)/(st.W*0.5)); gl.uniform1f(GU.u_glow, st.pal.glow*(ambient?0.5:1)); gl.uniform1f(GU.u_amp, st.lvl); gl.uniform1f(GU.u_flare, st.flare);
+      gl.uniform1f(GU.u_k, (Rpx*1.25)/(st.W*0.5)); gl.uniform1f(GU.u_glow, (st.pal.glow + 0.10*st.mood.joy + 0.08*st.attn + 0.06*st.mood.energy)*(ambient?0.5:1)); gl.uniform1f(GU.u_amp, st.lvl); gl.uniform1f(GU.u_flare, st.flare);
       gl.uniform3fv(GU.u_a, st.pal.a); gl.uniform3fv(GU.u_core, st.pal.core);
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -348,7 +381,7 @@
       gl.enableVertexAttribArray(A.s);   gl.vertexAttribPointer(A.s,   1, gl.FLOAT, false, 24, 20);
       gl.uniform2f(U.u_res, st.W, st.H);
       gl.uniform1f(U.u_t, st.t); gl.uniform1f(U.u_R, Rpx); gl.uniform1f(U.u_rot, st.rot); gl.uniform1f(U.u_swirl, st.swirl);
-      gl.uniform1f(U.u_tilt, 0.38 + 0.05*Math.sin(st.t*0.21)); gl.uniform1f(U.u_breath, breath); gl.uniform1f(U.u_dpr, st.dpr);
+      gl.uniform1f(U.u_tilt, 0.38 + 0.05*Math.sin(st.t*0.21) + 0.10*st.attn*st.gaze[1]); gl.uniform1f(U.u_breath, breath); gl.uniform1f(U.u_dpr, st.dpr);
       // constant brightness at any detail: more particles → each one finer
       // same glow at any size: a bigger Lola spreads the particles thinner
       // Same glow at any size and screen: set by how densely her particles
@@ -359,7 +392,10 @@
       gl.uniform1f(U.u_amp, st.lvl); gl.uniform1f(U.u_low, st.bandsSm[0]); gl.uniform1f(U.u_mid, st.bandsSm[1]); gl.uniform1f(U.u_high, st.bandsSm[2]);
       gl.uniform1f(U.u_listen, Math.min(1, W.listen + (W.vListen || 0))); gl.uniform1f(U.u_think, W.think); gl.uniform1f(U.u_speak, Math.min(1, W.speak + (W.vSpeak || 0))); gl.uniform1f(U.u_call, W.call); gl.uniform1f(U.u_flare, st.flare);
       gl.uniform1f(U.u_edge, Math.min(st.W, st.H)*0.5);
-      gl.uniform3fv(U.u_a, st.pal.a); gl.uniform3fv(U.u_b, st.pal.b); gl.uniform3fv(U.u_core, st.pal.core);
+      // Mood is light: lively and happy → she glows brighter; worried → she softens.
+      const lift = 0.78 + 0.34*st.mood.energy + 0.22*st.mood.joy + 0.16*st.attn - 0.16*st.mood.concern;
+      const L = (v) => [v[0]*lift, v[1]*lift, v[2]*lift];
+      gl.uniform3fv(U.u_a, L(st.pal.a)); gl.uniform3fv(U.u_b, L(st.pal.b)); gl.uniform3fv(U.u_core, L(st.pal.core));
       gl.drawArrays(gl.POINTS, 0, count);
 
       schedule();
@@ -379,7 +415,7 @@
       get state(){ return st.state; },
       get particles(){ return count; },
       setDetail(i){ tier = Math.max(0, Math.min(TIERS.length-1, i|0)); if (tier > ceil) ceil = tier; count = Math.min(TIERS[tier], CAP); },
-      destroy(){ st.dead = true; if (st.raf) cancelAnimationFrame(st.raf); document.removeEventListener('visibilitychange', onVis); try { ro && ro.disconnect(); io && io.disconnect(); } catch(e){} }
+      destroy(){ st.dead = true; if (st.raf) cancelAnimationFrame(st.raf); document.removeEventListener('visibilitychange', onVis); global.removeEventListener('lola:mood', onMood); global.removeEventListener('pointermove', onPointer); try { ro && ro.disconnect(); io && io.disconnect(); } catch(e){} }
     };
   }
 
