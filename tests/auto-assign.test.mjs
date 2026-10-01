@@ -217,7 +217,7 @@ test('signup creates a PENDING tenant and asks for email confirmation — no ses
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => { telnyxHit = true; return { ok: true, status: 200, json: async () => ({}) }; };
   try{
-    const req = { method: 'POST', body: JSON.stringify({ email: 'new@salon.com', password: 'password123', name: 'Owner', salonName: 'Brand New Salon' }) };
+    const req = { method: 'POST', body: JSON.stringify({ email: 'new@salon.com', password: 'password123', name: 'Owner', salonName: 'Brand New Salon', accept_terms: true }) };
     const res = resMock();
     await signup(req, res);
     assert.equal(res.statusCode, 200);
@@ -242,7 +242,7 @@ test('signup succeeds (200) even if Telnyx is down — no provisioning happens a
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('telnyx down'); };
   try{
-    const req = { method: 'POST', body: JSON.stringify({ email: 'down@salon.com', password: 'password123', name: 'Owner', salonName: 'Down Salon' }) };
+    const req = { method: 'POST', body: JSON.stringify({ email: 'down@salon.com', password: 'password123', name: 'Owner', salonName: 'Down Salon', accept_terms: true }) };
     const res = resMock();
     await signup(req, res);
     assert.equal(res.statusCode, 200);

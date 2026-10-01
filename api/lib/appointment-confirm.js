@@ -21,7 +21,7 @@ const first = (cl) => String(cl?.first_name || cl?.name || '').trim().split(/\s+
 const fullName = (cl) => [cl?.first_name, cl?.last_name].filter(Boolean).join(' ') || cl?.name || 'A client';
 
 export function confirmText({ firstName, salon, what, when }) {
-  return `Hi ${firstName}! It's Lola from ${salon}. Confirming your ${what} on ${when}. Reply YES to confirm or R to reschedule.`;
+  return `Hi ${firstName}! It's Lola from ${salon}. Confirming your ${what} on ${when}. Reply YES to confirm or R to reschedule. Reply STOP to opt out.`;
 }
 
 async function dayBookings(c, tenant, dayKey, tz) {

@@ -17,6 +17,11 @@
  * know are reported, never touched.
  */
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
+import { greetingDiscloses, discloseGreeting } from './legal.js';
+
+// Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
+export const COMPLIANCE_MARK = '[LolaDesk compliance]';
+export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
   'capture_lead', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory']);
@@ -24,6 +29,16 @@ const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
 const DYNVAR_PATHS = new Set(['/api/agent-variables', '/api/lola/dynamic-variables']);
+
+/** Telnyx documents assistant updates as POST /ai/assistants/{id}; older accounts took PATCH. Try both. */
+export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
+  const path = '/ai/assistants/' + encodeURIComponent(id);
+  try { return await telnyxRequest(path, { method: 'POST', body, timeoutMs }); }
+  catch (e) {
+    if (![404, 405].includes(Number(e?.status))) throw e;
+    return telnyxRequest(path, { method: 'PATCH', body, timeoutMs });
+  }
+}
 
 export const assistantId = () => process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID || null;
 
@@ -81,16 +96,20 @@ export async function wireAssistant({ heal = false } = {}) {
   const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname);
   const patch = {};
   if (fixed.length) patch.tools = next;
+  const disclosure = { greeting: greetingDiscloses(a.greeting), rules: String(a.instructions || '').includes(COMPLIANCE_MARK) };
+  if (!disclosure.greeting) patch.greeting = discloseGreeting(a.greeting);
+  if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
   if (!dynOk) patch.dynamic_variables_webhook_url = appUrl() + '/api/agent-variables';
   let healed = false, error = null;
   if (heal && Object.keys(patch).length) {
-    try { await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { method: 'PATCH', body: patch, timeoutMs: 12000 }); healed = true; }
+    try { await updateAssistant(id, patch); healed = true; }
     catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
   }
   return {
-    ok: (!fixed.length && dynOk) || (healed && !error),
+    ok: (!fixed.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions)) || (healed && !error),
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, unknown_tools: unknown,
+    disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting || null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url },
     healed, error,
   };

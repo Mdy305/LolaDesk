@@ -15,6 +15,7 @@ import { db } from './db.js';
 import { wireTenantNumbers } from './tenant-wiring.js';
 import { wireAssistant } from './assistant-wiring.js';
 import { wireAccount } from './telnyx-account.js';
+import { careState } from './customer-care.js';
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch (e) { return { e, ms: Date.now() - t }; } };
 
@@ -83,7 +84,7 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
       const n = (aw.miswired || []).length;
       checks.push({ key: 'assistant', ok: aw.error ? false : aw.ok, fixed: aw.miswired, unknown: aw.unknown_tools,
         say: aw.error && !aw.assistant ? `I couldn’t check my phone assistant: ${aw.error}.`
-          : `${n ? `I re-pointed ${n} of my phone tools to LolaDesk (${aw.miswired.map(x => x.name).join(', ')}). ` : 'My phone tools all point to LolaDesk. '}${aw.dynamic_variables.ok ? '' : 'I reconnected the salon details I load on every call. '}${(aw.unknown_tools || []).length ? `${aw.unknown_tools.length} tool${aw.unknown_tools.length === 1 ? '' : 's'} I don’t run (${aw.unknown_tools.map(x => x.name).join(', ')}) — you can delete ${aw.unknown_tools.length === 1 ? 'it' : 'them'} in Telnyx.` : ''}`.trim(),
+          : `${aw.disclosure && (aw.disclosure.greeting_set_to || aw.disclosure.rules_added) && aw.healed ? 'I added the recording and AI notice to how I answer the phone. ' : ''}${n ? `I re-pointed ${n} of my phone tools to LolaDesk (${aw.miswired.map(x => x.name).join(', ')}). ` : 'My phone tools all point to LolaDesk. '}${aw.dynamic_variables.ok ? '' : 'I reconnected the salon details I load on every call. '}${(aw.unknown_tools || []).length ? `${aw.unknown_tools.length} tool${aw.unknown_tools.length === 1 ? '' : 's'} I don’t run (${aw.unknown_tools.map(x => x.name).join(', ')}) — you can delete ${aw.unknown_tools.length === 1 ? 'it' : 'them'} in Telnyx.` : ''}`.trim(),
         fix: aw.error || null });
     } catch (_) {}
   }
@@ -92,6 +93,15 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
     try {
       const w = await wireTenantNumbers(db(), { heal: true });
       checks.push({ key: 'all_salons', ok: w.error ? null : w.ok, say: w.error ? 'I couldn’t reach Telnyx to check every salon.' : `Every salon line checked: ${w.numbers.length} number${w.numbers.length === 1 ? '' : 's'}${w.healed ? `, ${w.healed} re-wired` : ''}${w.broken ? `, ${w.broken} still need a look in Telnyx` : ', all answering and texting'}.`, numbers: w.numbers });
+    } catch (_) {}
+  }
+  // …and LolaDesk's own support line.
+  if (platform) {
+    try {
+      const care = await careState(db());
+      checks.push(care?.number
+        ? { key: 'support_line', ok: true, say: `LolaDesk’s support line is ${care.number} — I answer it for the app.` }
+        : { key: 'support_line', ok: false, say: 'LolaDesk doesn’t have its own support line yet.', fix: 'Admin → LolaDesk support line → Set up the line.' });
     } catch (_) {}
   }
   // Hands

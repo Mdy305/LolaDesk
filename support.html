@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Support — LolaDesk</title>
+<meta name="description" content="Talk to Lola about LolaDesk — call, text or email LolaDesk support.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--bg:#0a0a0c;--text:#ececf0;--muted:#a3a3ab;--dim:#6c6c74;--line:rgba(255,255,255,.08);--card:#111114}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:720px;margin:0 auto;padding:56px 20px 90px}
+.brand{display:inline-block;font-weight:650;letter-spacing:.2em;color:#fff;text-decoration:none;margin-bottom:40px}
+h1{font-size:38px;letter-spacing:-.025em;line-height:1.1;color:#fff;margin-bottom:12px}
+.lead{color:var(--muted);font-size:16.5px;margin-bottom:34px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px;text-decoration:none;color:inherit;display:block;transition:border-color .2s}
+a.card:hover{border-color:rgba(255,255,255,.22)}
+.card small{display:block;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.card b{display:block;font-size:17px;color:#fff;font-weight:600;word-break:break-word}
+.card span{display:block;font-size:13px;color:var(--muted);margin-top:6px}
+h2{font-size:18px;color:#fff;margin:30px 0 12px}
+details{border-bottom:1px solid var(--line);padding:14px 0}
+summary{cursor:pointer;color:#fff;font-size:15px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary:after{content:'+';float:right;color:var(--dim)}
+details[open] summary:after{content:'–'}
+details p{color:var(--muted);font-size:14.5px;margin-top:8px}
+.fine{color:var(--dim);font-size:12.5px;margin-top:34px;border-top:1px solid var(--line);padding-top:18px}
+.fine a{color:var(--muted)}
+#talk{margin:0 0 30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="brand" href="/">LOLADESK</a>
+  <h1>Talk to Lola about LolaDesk.</h1>
+  <p class="lead">The same Lola who runs your front desk answers LolaDesk support — any time. Ask about getting started, plans, texting, or something that isn’t working. If she can’t solve it, the team follows up within one business day.</p>
+
+  <div class="grid">
+    <a class="card" id="callCard" href="mailto:support@loladesk.com"><small>Call or text</small><b id="supportNumber">Setting up…</b><span>Lola answers 24/7</span></a>
+    <a class="card" href="mailto:support@loladesk.com"><small>Email</small><b>support@loladesk.com</b><span>Replies within one business day</span></a>
+    <a class="card" href="/login"><small>Already a customer</small><b>Ask Lola in the app</b><span>Say “Lola, run a check” — she tests herself and fixes what she can</span></a>
+  </div>
+
+  <div id="talk"></div>
+
+  <h2>Quick answers</h2>
+  <details><summary>How do I get started?</summary><p>Go to <a href="/onboarding" style="color:#fff">Get started</a>, create your workspace, and Lola gets her own local number. Add your website, Google Maps and Instagram links and she learns your services, prices, team and hours. Forward your salon line to Lola or publish her number.</p></details>
+  <details><summary>How much does it cost?</summary><p>Starter $99/month, Pro $399/month, Med-Spa $599/month, each with a 14-day free trial and no card to start. Details at <a href="/pricing" style="color:#fff">loladesk.com/pricing</a>. Cancel anytime in Settings → Subscription.</p></details>
+  <details><summary>My clients aren’t getting texts.</summary><p>US carriers only deliver business texts after your number’s 10DLC registration is approved. Until then, texts can be blocked. In the app, say “Lola, run a check” to see exactly where things stand.</p></details>
+  <details><summary>Does Lola tell callers she’s an AI and that calls are recorded?</summary><p>Yes. Every call starts with a short notice that the call may be recorded and that Lola is an AI assistant. See the <a href="/ai" style="color:#fff">AI &amp; Call Recording Notice</a>.</p></details>
+  <details><summary>I’m a salon’s client and want to book.</summary><p>Please call or text your salon’s own number — LolaDesk support can’t see salon schedules. Lola on your salon’s line will book you right away.</p></details>
+  <details><summary>How do I delete my data or ask a privacy question?</summary><p>Email <a href="mailto:legal@loladesk.com" style="color:#fff">legal@loladesk.com</a>. Salon clients: contact the salon, who controls your information. See our <a href="/privacy" style="color:#fff">Privacy Policy</a>.</p></details>
+
+  <p class="fine">Texting this number means you agree to get replies from LolaDesk support. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Calls may be recorded and are answered by an AI assistant. <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/sms-terms">Messaging Terms</a> · <a href="/legal">Legal</a></p>
+</div>
+<script>
+(async function(){
+  var num = document.getElementById('supportNumber'), card = document.getElementById('callCard');
+  try{
+    var r = await fetch('/api/customer-care?public=1'); var j = await r.json();
+    if(j && j.number){
+      var d = String(j.number).replace(/\D/g,'').slice(-10);
+      num.textContent = d.length === 10 ? '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6) : j.number;
+      card.href = 'tel:' + j.number;
+    } else { num.textContent = 'support@loladesk.com'; }
+    if(j && j.agent_id){
+      var el = document.createElement('telnyx-ai-agent');
+      el.setAttribute('agent-id', j.agent_id);
+      el.setAttribute('environment', 'production');
+      document.getElementById('talk').appendChild(el);
+      var s = document.createElement('script'); s.src = 'https://unpkg.com/@telnyx/ai-agent-widget@next'; s.async = true; document.body.appendChild(s);
+    }
+  }catch(e){ num.textContent = 'support@loladesk.com'; }
+})();
+</script>
+</body>
+</html>
