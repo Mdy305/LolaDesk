@@ -235,6 +235,13 @@
     <div class="desc">Share this link on your website, Instagram bio, and Google profile.</div>
     <div class="copy-box"><span id="bookLink">Loading...</span><button onclick="copyLink()">Copy</button></div>
   </div>
+
+  <div class="card" id="lolaWidgetCard">
+    <h3>Lola on your website</h3>
+    <div class="desc">Visitors tap Lola on your site and talk or chat with her — the same Lola who answers your phone, with your menu and your calendar. Paste this once before <code>&lt;/body&gt;</code> on your website (Wix, Squarespace, Shopify, WordPress: “custom code”).</div>
+    <div class="copy-box" style="align-items:flex-start"><pre id="lolaWidgetCode" style="margin:0;flex:1;white-space:pre-wrap;font:inherit">Loading…</pre><button id="lolaWidgetCopy" onclick="copyWidget()">Copy</button></div>
+    <div class="msg" id="lolaWidgetMsg"></div>
+  </div>
 </div>
 
 <!-- LOLA AI -->
@@ -341,6 +348,22 @@ function renderBookingLink(){
   const inp=document.getElementById('sBookingUrl'); if(inp) inp.placeholder=page||'Your LolaDesk booking page';
   const box=document.getElementById('bookLink'); if(box) box.textContent=custom||page||'—';
 }
+// Each salon's own Lola widget: the shared Telnyx assistant, told which salon it is
+// through the X-LolaDesk-Salon header (Telnyx turns it into {{loladesk_salon}} for her tools).
+function renderLolaWidget(agentId){
+  const box=document.getElementById('lolaWidgetCode'), btn=document.getElementById('lolaWidgetCopy'); if(!box) return;
+  const line=String((TENANT&&TENANT.phone_number)||'').trim();
+  if(!agentId){ box.textContent='Lola’s web voice isn’t switched on for LolaDesk yet.'; if(btn) btn.disabled=true; return; }
+  if(!line){ box.textContent='Get your Lola phone number first (Phone below) — your website widget uses it to know it’s your salon.'; if(btn) btn.disabled=true; return; }
+  const name=String((TENANT&&TENANT.name)||'').replace(/["<>&']/g,'');
+  const headers=JSON.stringify([{name:'X-LolaDesk-Salon',value:line}]);
+  box.textContent='<telnyx-ai-agent agent-id="'+agentId+'" environment="production" call-caller-name="'+name+'" call-custom-headers=\''+headers+'\'></telnyx-ai-agent>\n<script async src="https://unpkg.com/@telnyx/ai-agent-widget@next"></'+'script>';
+  if(btn) btn.disabled=false;
+}
+function copyWidget(){
+  const t=(document.getElementById('lolaWidgetCode')||{}).textContent||'';
+  try{navigator.clipboard.writeText(t);msg('lolaWidgetMsg','Copied. Paste it on your website and Lola appears there.',true);}catch(e){msg('lolaWidgetMsg','Select the code and copy it.',false);}
+}
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -360,6 +383,7 @@ async function load(){
       document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
     }
     renderBookingLink();
+    renderLolaWidget(d.lola_agent_id);
 
     // Phone status
     const ps=document.getElementById('phoneStatus');

@@ -497,6 +497,9 @@ export default async function handler(req, res){
     // so every tool knows which salon it serves without the model having to say it.
     const real = (v) => v && !/\{\{/.test(String(v));
     if(!body.to && real(req.query?.to)) body.to = String(req.query.to);
+    // A website call has no dialed number; the salon's widget names its line (X-LolaDesk-Salon → {{loladesk_salon}}).
+    const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
+    if(!isPhone(body.to) && real(req.query?.salon) && isPhone(req.query.salon)) body.to = String(req.query.salon);
     if(!body.from && real(req.query?.from)) body.from = String(req.query.from);
     // Tool name may arrive as ?tool=… on the URL (Telnyx configures each
     // webhook tool with its own URL — pointing them all at this endpoint with
