@@ -13,10 +13,11 @@
  */
 import { liveTelnyxSnapshot } from './connection-sync.js';
 import { linkMessagingProfile, linkVoiceConnection } from './telnyx-provision.js';
+import { messagingProfileId } from './telnyx-account.js';
 
-const profileId = () => process.env.TELNYX_MESSAGING_PROFILE_ID || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID) || null;
 
 export async function wireTenantNumbers(client, { tenantId = null, heal = false, snapshot = null } = {}) {
+  const mp = await messagingProfileId(client);
   const live = snapshot || await liveTelnyxSnapshot();
   if (live.error) return { ok: false, error: live.error, numbers: [] };
   let q = client.from('tenant_numbers').select('*');
@@ -33,11 +34,11 @@ export async function wireTenantNumbers(client, { tenantId = null, heal = false,
     const n = live.byPhone.get(r.phone_number);
     const row = { tenant_id: r.tenant_id, phone_number: r.phone_number, on_telnyx: !!n, texts: !!n?.messaging_profile_id, calls: !!n?.connection_id, healed: [] };
     if (n && heal && n.id) {
-      if (!row.texts && profileId()) { try { if (await linkMessagingProfile(n.id)) { row.texts = true; row.healed.push('texts'); } } catch (_) {} }
+      if (!row.texts && mp) { try { if (await linkMessagingProfile(n.id, mp)) { row.texts = true; row.healed.push('texts'); } } catch (_) {} }
       if (!row.calls) { try { if (await linkVoiceConnection(n.id)) { row.calls = true; row.healed.push('calls'); } } catch (_) {} }
     }
     out.push(row);
   }
   const broken = out.filter(x => !x.on_telnyx || !x.texts || !x.calls);
-  return { ok: !broken.length, numbers: out, broken: broken.length, healed: out.filter(x => x.healed.length).length, messaging_profile: !!profileId() };
+  return { ok: !broken.length, numbers: out, broken: broken.length, healed: out.filter(x => x.healed.length).length, messaging_profile: !!mp };
 }

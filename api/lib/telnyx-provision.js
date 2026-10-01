@@ -10,6 +10,10 @@
 
 import { db, upsertTenantNumber } from './db.js';
 import { invalidateRouting } from './tenant-resolver.js';
+// The messaging profile LolaDesk adopted itself (lib/telnyx-account.js), when no env var is set.
+async function adoptedProfileId(){
+  try { const c = db(); if(!c) return null; const { data } = await c.from('platform_settings').select('value').eq('key', 'telnyx_messaging_profile_id').maybeSingle(); return data?.value?.id || null; } catch { return null; }
+}
 
 const TELNYX = 'https://api.telnyx.com/v2';
 function telnyxH(){ return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.TELNYX_API_KEY }; }
@@ -108,8 +112,8 @@ export async function purchaseNumber(phoneNumber, texmlAppId){
   return j?.data || {};
 }
 
-export async function linkMessagingProfile(phoneNumberId){
-  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
+export async function linkMessagingProfile(phoneNumberId, override = null){
+  const profileId = override || process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE || await adoptedProfileId();
   if(!profileId) return false;
   await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) })
     .catch(e => console.warn('[PROVISION] SMS profile:', e.message));

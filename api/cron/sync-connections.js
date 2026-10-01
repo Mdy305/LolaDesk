@@ -17,6 +17,7 @@
 import { db } from '../lib/db.js';
 import { syncTenantConnections, liveTelnyxSnapshot } from '../lib/connection-sync.js';
 import { wireTenantNumbers } from '../lib/tenant-wiring.js';
+import { wireAccount } from '../lib/telnyx-account.js';
 
 function authorized(req) {
   const auth = req.headers.authorization || '';
@@ -42,6 +43,7 @@ export default async function handler(req, res) {
 
   const started = Date.now();
   // Heal first (every salon's number on the messaging profile + Lola's voice line), then record truth.
+  try { await wireAccount(client, { heal: true }); } catch (_) { /* the account check never blocks the salon sweep */ }
   const snapshot = await liveTelnyxSnapshot();
   let wiring = null;
   try { wiring = snapshot.error ? null : await wireTenantNumbers(client, { heal: true, snapshot }); } catch (e) { wiring = { ok: false, error: String(e?.message || e) }; }

@@ -14,6 +14,7 @@ import { routeOwnerIntent } from './owner-intents.js';
 import { db } from './db.js';
 import { wireTenantNumbers } from './tenant-wiring.js';
 import { wireAssistant } from './assistant-wiring.js';
+import { wireAccount } from './telnyx-account.js';
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch (e) { return { e, ms: Date.now() - t }; } };
 
@@ -59,7 +60,23 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
   // Texts
   const n = await numberCheck(tenant);
   checks.push({ key: 'texts', ...n });
-  // The platform owner's check also re-wires Lola's Telnyx assistant (tool URLs, salon details)…
+  // The platform owner's check first sets up the Telnyx account itself (texting profile, outbound calling)…
+  if (platform) {
+    try {
+      const acc = await wireAccount(db(), { heal: true });
+      const m = acc.messaging || {}, v = acc.voice || {};
+      const bits = [];
+      if (m.did?.includes('created')) bits.push('created your LolaDesk texting profile');
+      else if (m.did?.includes('adopted')) bits.push(`adopted your texting profile “${m.name || m.id}”`);
+      if (m.did?.includes('webhook')) bits.push('pointed incoming texts to LolaDesk');
+      if (v.did?.includes('created_profile')) bits.push('created an outbound calling profile');
+      if (v.did?.includes('outbound_profile')) bits.push('switched on outbound calling');
+      checks.push({ key: 'telnyx_account', ok: acc.error ? false : acc.ok, messaging: m, voice: v,
+        say: acc.error ? `Telnyx isn’t connected: ${acc.error}.` : `${bits.length ? 'In Telnyx I ' + bits.join(', ') + '. ' : 'Telnyx texting and calling are set up. '}${!m.ok ? (m.say || 'Texting isn’t set up yet.') + ' ' : ''}${!v.ok ? (v.say || 'Outbound calling isn’t set up yet.') : ''}`.trim(),
+        fix: m.ok && !m.env_set && m.id ? `Optional: add TELNYX_MESSAGING_PROFILE_ID = ${m.id} in Vercel.` : null });
+    } catch (_) {}
+  }
+  // …then re-wires Lola's Telnyx assistant (tool URLs, salon details)…
   if (platform) {
     try {
       const aw = await wireAssistant({ heal: true });
