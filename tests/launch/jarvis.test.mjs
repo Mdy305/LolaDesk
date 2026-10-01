@@ -100,4 +100,19 @@ llm = () => ({ status: 200, json: { choices: [{ message: { content: 'ready' } }]
 r = await say('Lola, run a check');
 ok(r.intent === 'self_check' && Array.isArray(r.checks) && r.checks.find(x => x.key === 'brain') && r.checks.find(x => x.key === 'texts')?.ok && /fast model/.test(words(r)), 'self-check: ' + words(r).slice(0, 140));
 
+// 9) Alive: every page in sight, her mood, her hello
+const side = readFileSync(new URL('../../sidebar.js', import.meta.url), 'utf8');
+ok(/const subs = t\.subs\.filter\(allowed\);/.test(side) && /id: 'salon'/.test(side) && /Phone & texting/.test(side), 'every page stays in the sidebar (Salon: settings, team, phone, billing…)');
+ok(/lola-mood\.js/.test(side) && /old preview copy/.test(side), 'mood loads on every page; preview copies say they are not the live app');
+globalThis.window = globalThis; globalThis.addEventListener ||= () => {}; globalThis.CustomEvent ||= class extends Event { constructor(t, o) { super(t); this.detail = o && o.detail; } };
+const events = []; globalThis.dispatchEvent = (e) => { events.push(e); return true; };
+await import('../../lola-mood.js');
+const M = globalThis.LolaMood;
+ok(M.read('Thank you Lola, that is perfect!').joy > 0.5 && M.read('A client is upset about a refund').concern > 0.5 && M.read('do it now!!').energy > 0, 'she reads the mood of what you say');
+const orb = readFileSync(new URL('../../lola-orb.js', import.meta.url), 'utf8');
+ok(/lola:mood/.test(orb) && /nextBeat/.test(orb) && /posture/.test(orb) && /pointermove/.test(orb), 'her body answers: mood, heartbeat, posture, she notices you');
+ok(/greetOnArrival/.test(app) && /silent:true/.test(app), 'she says hello with your day on your first touch');
+const res = readFileSync(new URL('../../lola-resonance.js', import.meta.url), 'utf8');
+ok(/Authorization: 'Bearer ' \+ tok/.test(res) && /My voice is off right now/.test(res), 'her voice is signed in, and a failure is shown, never silent');
+
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

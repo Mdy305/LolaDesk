@@ -278,7 +278,7 @@ export async function dashboardBrainReply({ tenant, body, req }){
   // Persist the turn regardless of which branch produced the reply.
   async function remember(replyText){
     try{
-      if(!memConversation?.id) return;
+      if(body.silent || !memConversation?.id) return;   // her own hello isn't part of your conversation
       if(lastUserTextMsg) await logMessage({ conversationId: memConversation.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: lastUserTextMsg });
       if(replyText)   await logMessage({ conversationId: memConversation.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: String(replyText) });
     }catch{}

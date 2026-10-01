@@ -499,6 +499,7 @@
     async function send(text) {
       text = String(text || '').trim(); if (!text || busy) return;
       const fromVoice = voiceTurn; voiceTurn = false;
+      try { window.dispatchEvent(new CustomEvent('lola:heard', { detail: { text, voice: fromVoice } })); } catch (_) {}
       busy = true; input.value = ''; autosize();
       threadEl.querySelectorAll('.lp-confirm').forEach(n => n.remove());
       remember('user', text); bubble('user', text);

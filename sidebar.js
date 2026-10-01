@@ -43,6 +43,23 @@
     if (!has('script[src$="ux-runtime.js"]')) { const s = document.createElement('script'); s.src = '/ux-runtime.js'; s.defer = true; document.head.appendChild(s); }
   }
 
+  // Lola's mood runs on every page (every Lola on the page feels it).
+  if (!document.querySelector('script[src$="lola-mood.js"]')) { const m = document.createElement('script'); m.src = '/lola-mood.js'; m.async = true; document.head.appendChild(m); }
+
+  // A preview copy (a *.vercel.app branch link) is not the live app: say so, and offer the real one.
+  (function previewNotice() {
+    const h = location.hostname;
+    if (!/\.vercel\.app$/i.test(h) || /^loladesk(?:-[a-z0-9]+)?\.vercel\.app$/i.test(h) && !/-git-/.test(h)) return;
+    const branch = (h.match(/-git-(.+?)-[a-z0-9]+\.vercel\.app$/i) || [])[1];
+    const live = 'https://www.loladesk.com' + location.pathname.replace(/\.html$/, '') + location.search;
+    const n = document.createElement('div');
+    n.setAttribute('role', 'status');
+    n.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:300;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 32px);padding:9px 10px 9px 16px;border-radius:999px;background:#2a1d05;border:1px solid rgba(255,179,64,.45);color:#ffd9a0;font:500 12.5px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)';
+    n.innerHTML = '<span>This is an old preview copy' + (branch ? ' (' + branch.replace(/[^\w-]/g, '') + ')' : '') + ', not your live LolaDesk. Pages and Lola may be out of date.</span><a style="flex:0 0 auto;padding:6px 12px;border-radius:999px;background:#ffb340;color:#1a1204;text-decoration:none;font-weight:650">Open live app</a>';
+    n.querySelector('a').href = live;
+    (document.body ? Promise.resolve() : new Promise(r => addEventListener('DOMContentLoaded', r, { once: true }))).then(() => document.body.appendChild(n));
+  })();
+
   // ── The map ─────────────────────────────────────────────────
   const I = {
     find: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
@@ -51,6 +68,7 @@
     growth: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
     clients: '<circle cx="9" cy="7.5" r="3.2"/><path d="M3 20.5v-.5a5.5 5.5 0 015.5-5.5h1a5.5 5.5 0 015.5 5.5v.5M16 4a3.2 3.2 0 010 6.4M21 20.5V20a5 5 0 00-3-4.6"/>',
     chevron: '<path d="M7 10l5 5 5-5"/>',
+    salon: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/>',
   };
 
   const TABS = [
@@ -79,6 +97,17 @@
              { label: 'Banking', href: '/banking', pages: ['banking', 'banking-payments', 'banking-policies'], owner: true }],
       pages: [] },
     { id: 'clients', label: 'Clients', href: '/clients', subs: [], pages: ['clients', 'client'] },
+    // Everything about the salon and Lola's setup — visible, not hidden behind the owner's name.
+    { id: 'salon', label: 'Salon', href: '/settings', pages: [],
+      subs: [{ label: 'Settings', href: '/settings', pages: ['settings'], owner: true },
+             { label: 'Team', href: '/team', pages: ['team'], manager: true },
+             { label: 'Phone & texting', href: '/telecom', pages: ['telecom', 'numbers'], owner: true },
+             { label: 'Teach Lola', href: '/onboarding?learn=1', pages: [], owner: true },
+             { label: 'Activate Lola', href: '/activation-studio', pages: ['activation-studio'], owner: true },
+             { label: 'Launch checklist', href: '/launch', pages: ['launch'], owner: true },
+             { label: 'Billing', href: '/subscription', pages: ['subscription'], owner: true },
+             { label: 'Lola full screen', href: '/lola-live', pages: ['lola-live'] },
+             { label: 'LolaDesk Command', href: '/admin', pages: ['admin'], platform: true }] },
   ];
 
   // Everything about the account and Lola's setup lives behind the owner's name.
@@ -141,19 +170,22 @@ body.ln-shell{padding-left:236px}
 .ln-brand{display:block;padding:0 12px 26px;text-decoration:none;color:var(--ln-ink)}
 .ln-mark{display:block;font-size:19px;font-weight:650;letter-spacing:.2em;line-height:1}
 .ln-salon{display:block;margin-top:7px;font-size:11.5px;color:var(--ln-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px}
-.ln-tabs{display:flex;flex-direction:column;gap:2px}
+.ln-tabs{display:flex;flex-direction:column;gap:1px;flex:1 1 auto;min-height:0;overflow-y:auto;margin:0 -6px;padding:0 6px 10px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent}
+.ln-tabs>*{flex-shrink:0}
+.ln-tabs::-webkit-scrollbar{width:6px}.ln-tabs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
 .ln-tab{position:relative;display:flex;align-items:center;gap:13px;height:42px;padding:0 12px;border-radius:11px;
   color:var(--ln-ink2);font-size:14px;font-weight:500;text-decoration:none;transition:background .18s,color .18s}
 .ln-tab:hover{background:rgba(255,255,255,.035);color:var(--ln-ink)}
 .ln-tab.is-active{color:var(--ln-ink);background:rgba(242,242,244,.055)}
-.ln-tab.is-active::before{content:'';position:absolute;left:-14px;top:11px;bottom:11px;width:2px;border-radius:2px;background:var(--ln-acc);box-shadow:0 0 12px rgba(242,242,244,.55)}
+.ln-tab.is-active::before{content:'';position:absolute;left:-6px;top:11px;bottom:11px;width:2px;border-radius:2px;background:var(--ln-acc);box-shadow:0 0 12px rgba(242,242,244,.55)}
 .ln-ico{width:19px;height:19px;flex:0 0 auto}
 .ln-tab.is-active .ln-ico{color:var(--ln-acc)}
-.ln-subs{display:flex;flex-direction:column;margin:2px 0 8px;padding-left:44px}
-.ln-sub{display:block;padding:6px 0;font-size:13px;color:var(--ln-ink3);text-decoration:none;transition:color .15s}
+.ln-subs{display:flex;flex-direction:column;margin:0 0 6px;padding-left:44px}
+.ln-sub{display:block;padding:4.5px 0;font-size:12.5px;color:var(--ln-ink3);text-decoration:none;transition:color .15s}
+.ln-subs.is-open .ln-sub{color:var(--ln-ink2)}
 .ln-sub:hover{color:var(--ln-ink2)}
 .ln-sub.is-active{color:var(--ln-ink)}
-.ln-spacer{flex:1}
+.ln-spacer{flex:0 0 8px}
 .ln-find{display:flex;align-items:center;gap:10px;width:100%;height:38px;margin:0 0 14px;padding:0 12px;border-radius:11px;border:1px solid var(--ln-line);
   background:rgba(255,255,255,.025);color:var(--ln-ink3);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s}
 .ln-find:hover,.ln-find:focus-visible{color:var(--ln-ink2);border-color:rgba(242,242,244,.35);outline:none}
@@ -265,10 +297,11 @@ body.ln-shell{padding-left:236px}
   function tabsHTML() {
     return TABS.filter(allowed).map((t) => {
       const on = activeTab && activeTab.id === t.id;
-      const subs = on ? t.subs.filter(allowed) : [];
+      // Every page stays in sight: each place shows its pages, not only the one you're in.
+      const subs = t.subs.filter(allowed);
       const tabIsPage = on && !subs.length && t.pages.concat(...t.subs.map((s) => s.pages)).includes(page);
       const subHTML = subs.length > 1
-        ? `<div class="ln-subs">${subs.map((s) => `<a class="ln-sub${isSub(s) ? ' is-active' : ''}" href="${s.href}"${isSub(s) ? ' aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')}</div>`
+        ? `<div class="ln-subs${on ? ' is-open' : ''}">${subs.map((s) => `<a class="ln-sub${isSub(s) ? ' is-active' : ''}" href="${s.href}"${isSub(s) ? ' aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')}</div>`
         : '';
       return `<a class="ln-tab${on ? ' is-active' : ''}" href="${t.href}" data-tab="${t.id}"${tabIsPage ? ' aria-current="page"' : ''}>${svg(I[t.id])}<span>${esc(t.label)}</span></a>${subHTML}`;
     }).join('');
@@ -311,6 +344,8 @@ body.ln-shell{padding-left:236px}
   const app = document.querySelector('.app');
   if (app) { app.classList.add('ln-app'); app.insertBefore(side, app.firstChild); }
   else { document.body.classList.add('ln-shell'); document.body.insertBefore(side, document.body.firstChild); }
+  // Keep where you are in view in the full list of pages.
+  requestAnimationFrame(() => { try { const on = side.querySelector('.ln-sub.is-active') || side.querySelector('.ln-tab.is-active'); if (on) on.scrollIntoView({ block: 'nearest' }); } catch (_) {} });
 
   // Phone: top strip (this place's pages + the owner) and the bottom bar.
   const subsNow = activeTab ? activeTab.subs.filter(allowed) : [];
@@ -353,7 +388,7 @@ body.ln-shell{padding-left:236px}
     const on = activeTab && activeTab.id === t.id;
     return `<a class="ln-bi${on ? ' is-active' : ''}" href="${t.href}" data-tab="${t.id}"${on ? ' aria-current="page"' : ''}>${svg(I[t.id])}<span>${esc(t.label)}</span></a>`;
   };
-  const visible = TABS.filter(allowed);
+  const visible = TABS.filter(allowed).filter((t) => t.id !== 'salon'); // the phone keeps the salon behind the avatar
   const left = visible.slice(0, 2), right = visible.slice(2);
   bar.innerHTML = left.map(barTab).join('')
     + '<button type="button" class="ln-bi ln-bi-lola" data-ln-lola aria-label="Talk to Lola"><span class="ln-orb"></span><span>Lola</span></button>'
@@ -565,7 +600,7 @@ body.ln-shell{padding-left:236px}
     const tabs = side.querySelector('.ln-tabs');
     if (tabs) tabs.innerHTML = tabsHTML();
     document.querySelectorAll('.ln-menu').forEach((m) => { m.innerHTML = menuHTML(); });
-    const vis = TABS.filter(allowed);
+    const vis = TABS.filter(allowed).filter((t) => t.id !== 'salon');
     bar.innerHTML = vis.slice(0, 2).map(barTab).join('')
       + '<button type="button" class="ln-bi ln-bi-lola" data-ln-lola aria-label="Talk to Lola"><span class="ln-orb"></span><span>Lola</span></button>'
       + vis.slice(2).map(barTab).join('');

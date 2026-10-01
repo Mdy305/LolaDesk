@@ -159,7 +159,9 @@
     // Her words stay readable at the atom — voice or no voice.
     showTranscript(clean.length > 280 ? clean.slice(0, 277) + '…' : clean, 0);
     try {
-      const r = await fetch('/api/speak-lola', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: clean }) });
+      let tok = ''; try { tok = localStorage.getItem('loladesk_token') || ''; } catch (_) {}
+      // Signed-in owners speak freely (anonymous voice is capped per hour).
+      const r = await fetch('/api/speak-lola', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, tok ? { Authorization: 'Bearer ' + tok } : {}), body: JSON.stringify({ text: clean }) });
       if (!r.ok) throw new Error('voice ' + r.status);
       const bytes = await r.arrayBuffer();
       if (my !== speakSeq) return;                       // interrupted while loading
@@ -174,6 +176,9 @@
       await new Promise((done) => { src.onended = done; src.start(0); });
     } catch (err) {
       console.warn('[lola-resonance] voice unavailable:', err && err.message);
+      // Never silently mute her: say it where you're looking, and pulse her body so she still "speaks".
+      try { const B = window.__LOLA_ORB__; if (B && B.voice) B.voice('lola', Math.min(6, 1 + clean.length / 18)); } catch (_) {}
+      if (!document.querySelector('.lola-voice-off')) { const n = document.createElement('div'); n.className = 'lola-voice-off'; n.textContent = 'My voice is off right now — say “Lola, run a check”.'; n.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:61;font:500 11.5px -apple-system,sans-serif;color:#ffb340;opacity:.85;pointer-events:none'; document.body.appendChild(n); setTimeout(() => n.remove(), 6000); }
     } finally {
       if (my === speakSeq) { finishSpeaking(); showTranscript(transcript.textContent, 7000); }
     }

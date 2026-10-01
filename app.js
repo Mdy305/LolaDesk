@@ -189,6 +189,12 @@ function setOrbState(s, detail){
    ───────────────────────────────────────────────────────────── */
 let _pulseTimer = null, _pulsePrevState = null;
 window.lolaPulse = function(text, tone){
+  // The salon happened: her mood answers (a booking lights her up, a miss makes her attentive).
+  try{
+    const t = String(text||'').toLowerCase();
+    const kind = tone || (/book|paid|review/.test(t) ? 'booking' : /miss|cancel|complain/.test(t) ? 'missed' : /call/.test(t) ? 'call' : 'message');
+    window.dispatchEvent(new CustomEvent('lola:event', { detail:{ kind, text } }));
+  }catch(e){}
   try{
     // Never hijack the orb mid real-conversation (the owner talking to
     // Lola) or mid live-call presence (a real phone call streaming on
@@ -543,6 +549,7 @@ async function processMessage(text){
     return;
   }
   chatBusy = true;
+  try{ window.dispatchEvent(new CustomEvent('lola:heard', { detail:{ text, voice: voiceTurn } })); }catch(e){}
   let out = { text: '' };
   try{
     addChatMsg('user', text);
@@ -570,6 +577,46 @@ async function processMessage(text){
     setTimeout(()=>{ try{ voiceTarget = 'orb'; nextTurnVoice = true; startListening(); }catch(e){} }, 250);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   HELLO — the first time you touch the page, she greets you out loud
+   with your day (browsers only allow sound after a first touch).
+   Once per visit; never when you tapped her to talk; never when muted.
+   ───────────────────────────────────────────────────────────── */
+(function greetOnArrival(){
+  const KEY = 'lola.greeted';
+  try{
+    if(sessionStorage.getItem(KEY)) return;
+    if(JSON.parse(localStorage.getItem('lola.muted') || 'false')) return;
+  }catch(e){}
+  const ownerFirst = () => {
+    try{ const t = JSON.parse(sessionStorage.getItem('loladesk_tenant') || '{}'); if(t.owner) return String(t.owner).split(' ')[0]; }catch(e){}
+    const g = document.getElementById('greetingName'); return g && g.textContent.trim() && g.textContent.trim() !== 'there' ? g.textContent.trim() : '';
+  };
+  async function hello(ev){
+    removeEventListener('pointerdown', hello, true); removeEventListener('keydown', hello, true);
+    try{ sessionStorage.setItem(KEY, '1'); }catch(e){}
+    const t = ev && ev.target;
+    if(t && t.closest && t.closest('#orbStage,#orbMic,#cmdInput,#chatOverlay,.lp-root,[data-ln-lola],.ln-find,input,textarea,a')) return; // you came to do something
+    const h = new Date().getHours();
+    const hi = h < 5 ? 'Good evening' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+    const name = ownerFirst();
+    try{ window.dispatchEvent(new CustomEvent('lola:mood', { detail:{ joy: 0.6, pulse: 0.7 } })); }catch(e){}
+    let brief = '';
+    try{
+      const headers = { 'Content-Type':'application/json' };
+      try{ const tok = localStorage.getItem('loladesk_token'); if(tok) headers.Authorization = 'Bearer ' + tok; }catch(e){}
+      const ctrl = new AbortController(); const timer = setTimeout(()=>ctrl.abort(), 9000);
+      const r = await fetch(LOLA_API, { method:'POST', headers, signal: ctrl.signal, body: JSON.stringify({ messages:[{ role:'user', content:'catch me up' }], channel:'dashboard', voice:true, silent:true }) });
+      clearTimeout(timer);
+      const d = await r.json().catch(()=>({}));
+      if(r.ok && d && d.intent === 'today_brief') brief = String((d.content && d.content[0] && d.content[0].text) || '');
+    }catch(e){}
+    if(chatBusy || listening) return;           // you started talking first
+    speak(`${hi}${name ? ', ' + name : ''}. ${brief || 'I\'m right here. Tap me and tell me what you need.'}`);
+  }
+  addEventListener('pointerdown', hello, true); addEventListener('keydown', hello, true);
+})();
 
 window.sendChat = function(){
   const inp = document.getElementById('chatInput');
