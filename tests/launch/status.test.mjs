@@ -1,10 +1,14 @@
 // /api/status: one public call that says what's live and exactly what to fix — never a secret.
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
-delete process.env.CRON_SECRET; process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1';
+delete process.env.CRON_SECRET; process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1'; process.env.ELEVENLABS_API_KEY = 'el-secret'; process.env.ELEVENLABS_VOICE_ID = 'lolaVoice';
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 let registered = [];
 globalThis.fetch = async (url) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+  if (u.includes('api.elevenlabs.io/v1/user/subscription')) return J({ character_count: 10, character_limit: 100000 });
+  if (u.includes('api.elevenlabs.io/v1/text-to-speech')) return new Response(new Uint8Array(4000), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
+  if (u.includes('/ai/assistants/assistant-1')) return J({ data: { id: 'assistant-1', greeting: '{{lola_greeting}}', voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.lolaVoice', api_key_ref: 'loladesk_elevenlabs_x' }, telephony_settings: { default_texml_app_id: 'app-1' } } });
+  if (u.includes('/ai/assistants')) return J({ data: [{ id: 'assistant-1', voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.lolaVoice', api_key_ref: 'loladesk_elevenlabs_x' } }] });
   if (u.endsWith('/balance')) return J({ data: { balance: '12.50', available_credit: '12.50' } });
   if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }, { id: 'moonshotai/Kimi-K2.6' }] });
   if (u.includes('/phone_numbers')) return J({ data: [{ phone_number: '+13055550100' }, { phone_number: '+13055550101' }] });
@@ -18,7 +22,7 @@ let s = await buildStatus();
 ok(s.live.database && s.live.telnyx_key && s.live.telnyx_ai && s.live.fast_model, 'live probes: database, Telnyx key, Telnyx AI, fast model');
 ok(s.live.numbers === 2 && s.live.numbers_registered_10dlc === 0 && s.fixes.some((f) => /10DLC/.test(f)), 'unregistered numbers → “texts get blocked, register 10DLC”');
 ok(s.fixes.some((f) => /CRON_SECRET/.test(f)), 'missing CRON_SECRET is named with the exact fix');
-ok(!JSON.stringify(s).includes('secret-key-123') && !JSON.stringify(s).includes('+1305'), 'never reveals a key or a phone number');
+ok(!JSON.stringify(s).includes('el-secret') && !JSON.stringify(s).includes('secret-key-123') && !JSON.stringify(s).includes('+1305'), 'never reveals a key or a phone number');
 registered = ['+13055550100', '+13055550101']; process.env.CRON_SECRET = 'x'; process.env.ADMIN_EMAILS = 'a@b.c'; process.env.INTEGRATION_ENCRYPTION_KEY = 'k';
 s = await buildStatus();
 ok(s.ok && s.fixes.length === 0, 'all set → ok, nothing to fix');

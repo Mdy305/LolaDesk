@@ -3,6 +3,7 @@
 // button in onboarding.html step 0 and the "hear her again" button on step 5.
 import { synthesize } from './lib/elevenlabs.js';
 import { allowAnonymousSpeech, hasBearer } from './lib/voice-guard.js';
+import { checkTextSig } from './lib/one-voice.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,7 +14,8 @@ export default async function handler(req, res) {
     // Only signed-in owners may pick a different voice; everyone else hears Lola.
     const voice_id = hasBearer(req) ? (req.query?.voice_id || req.body?.voice_id) : undefined;
     if (!text) return res.status(400).json({ ok: false, error: 'missing_text' });
-    if (!allowAnonymousSpeech(req)) return res.status(429).json({ ok: false, error: 'rate_limited' });
+    // Our own calls (Telnyx fetching her line) carry a signature: never rate-limited.
+    if (!checkTextSig(text, req.query?.sig) && !allowAnonymousSpeech(req)) return res.status(429).json({ ok: false, error: 'rate_limited' });
 
     const audio = await synthesize({ text, voice_id });
     res.setHeader('Content-Type', 'audio/mpeg');

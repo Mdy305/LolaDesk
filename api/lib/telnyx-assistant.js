@@ -114,9 +114,8 @@ export async function createAssistant({ tenant, business_profile, voice_id, gree
     name: `Lola — ${tenant.name || 'salon'}`,
     model: 'meta-llama/Meta-Llama-3.1-70B-Instruct',
     instructions,
-    voice_settings: {
-      voice: voice_id || DEFAULT_VOICE
-    },
+    // ONE voice: the valet-girl Lola from ElevenLabs whenever it's configured (lib/one-voice.js).
+    voice_settings: (await import('./one-voice.js').then((m) => m.lolaVoiceSettings()).catch(() => null)) || { voice: voice_id || DEFAULT_VOICE },
     greeting: greeting || `Hi, thank you for calling ${tenant.name || 'us'}. This is Lola — how can I help?`,
     transcription: { model: 'distil-whisper/distil-large-v2' }
   };
@@ -130,7 +129,8 @@ export async function createAssistant({ tenant, business_profile, voice_id, gree
 export async function updateAssistant({ assistant_id, tenant, business_profile, voice_id, greeting }) {
   const instructions = buildInstructions({ tenant, business_profile });
   const body = { instructions };
-  if (voice_id) body.voice_settings = { voice: voice_id };
+  const lola = await import('./one-voice.js').then((m) => m.lolaVoiceSettings()).catch(() => null);
+  if (lola) body.voice_settings = lola; else if (voice_id) body.voice_settings = { voice: voice_id };
   if (greeting) body.greeting = greeting;
   return tx(`/ai/assistants/${assistant_id}`, {
     method: 'PATCH',

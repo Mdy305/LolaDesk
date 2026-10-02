@@ -262,18 +262,28 @@
   }
 
   // ── voice out: Lola's own voice, driving her particles ──
+  // Lola's voice output (shared with the dashboard): load it once if this page doesn't already have it.
+  if (!window.LolaSound && !document.querySelector('script[src$="lola-sound.js"]')) { try { const s = document.createElement('script'); s.src = '/lola-sound.js'; document.head.appendChild(s); } catch (_) {} }
   let audioCtx = null, currentAudio = null, speakSeq = 0;
   async function speak(text, body) {
     if (store.get('lola.muted', false) || !text) return;
     const my = ++speakSeq;
     try {
       if (currentAudio) { const old = currentAudio; currentAudio = null; old.pause(); try { old.dispatchEvent(new Event('error')); } catch (_) {} }
+      try { if (window.LolaSound) LolaSound.cancel(); } catch (_) {}
       // Fetch with the owner's session (so it's never rate-limited as anonymous)
       // and keep the words out of URLs and logs.
       const vr = await fetch('/api/speak-lola', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() }, body: JSON.stringify({ text: text.slice(0, 600) }) });
       if (!vr.ok) throw new Error('voice ' + vr.status);
       const blob = await vr.blob();
       if (my !== speakSeq) return;                 // a newer reply is already speaking
+      // Native playback (LolaSound): works on iPhone and without a fresh tap; the body follows her loudness.
+      if (window.LolaSound) {
+        body.mode = 'speaking';
+        const out = await LolaSound.play(blob, { onLevel: (fn) => { body.level = fn; } });
+        body.level = null; if (my === speakSeq && body.mode === 'speaking') body.mode = 'idle';
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = new Audio(url); currentAudio = a;
       a.addEventListener('ended', () => { try { URL.revokeObjectURL(url); } catch (_) {} }, { once: true });

@@ -19,6 +19,7 @@
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
 
+
 // Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
 export const GREETING_VAR = '{{lola_greeting}}';
 export const COMPLIANCE_MARK = '[LolaDesk compliance]';
@@ -114,13 +115,22 @@ export async function wireAssistant({ heal = false } = {}) {
   }
   if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
   if (!dynOk) patch.dynamic_variables_webhook_url = appUrl() + '/api/agent-variables';
+  // Her ONE voice (the valet-girl Lola from ElevenLabs) on the phone too — see lib/one-voice.js.
+  let voice = null;
+  try {
+    const ov = await import('./one-voice.js');
+    const isLola = ov.voiceIsLola(a.voice_settings);
+    voice = { current: a.voice_settings?.voice || null, ok: isLola, possible: !!ov.lolaPhoneVoice(), error: null };
+    if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
+  } catch (_) { voice = null; }
   let healed = false, error = null;
   if (heal && Object.keys(patch).length) {
     try { await updateAssistant(id, patch); healed = true; }
     catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
   }
   return {
-    ok: (!fixed.length && !added.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions)) || (healed && !error),
+    ok: (!fixed.length && !added.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
+    voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, added_tools: added, unknown_tools: unknown,
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },

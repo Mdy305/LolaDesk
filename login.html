@@ -138,6 +138,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
   <p class="alt" id="alt"><button type="button" id="showSignin">Sign in with email</button></p>
 </main>
 
+<script src="/lola-sound.js"></script>
 <script src="/lola-orb.js"></script>
 <script src="/lola-alive.js"></script>
 <script src="/lola-ears.js"></script>
@@ -173,7 +174,14 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
     try {
       const r = await fetch('/api/speak-lola?text=' + encodeURIComponent(text.slice(0, 500)));
       if (!r.ok) return;
-      const url = URL.createObjectURL(await r.blob());
+      const blob = await r.blob();
+      if (window.LolaSound) {                       // native playback: works on iPhone without a fresh tap
+        setState('speaking'); let live = true;
+        await LolaSound.play(blob, { onLevel: (fn) => { live = !!fn; try { if (fn && orb.setLevel) { const t = () => { if (!live) return; orb.setLevel(fn()); requestAnimationFrame(t); }; t(); } } catch (_) {} } });
+        live = false; try { orb.setLevel && orb.setLevel(0); } catch (_) {}
+        setState('idle'); return;
+      }
+      const url = URL.createObjectURL(blob);
       audio = new Audio(url);
       let meter = null;
       audio.onplay = () => { setState('speaking'); try { meter = LolaOrb.attachAudioElement(orb, audio); } catch (_) {} if (!meter || !meter.stop) orb.voice && orb.voice('lola', Math.min(8, text.split(/\s+/).length * 0.33)); };

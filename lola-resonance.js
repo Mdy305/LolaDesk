@@ -116,15 +116,15 @@
   }
 
   // -------- the atom's heartbeat: runs only while there's something to show --------
-  let raf = 0, tts = null;
+  let raf = 0, tts = null, ttsFn = null;   // ttsFn: loudness from LolaSound (native playback)
   function tick(now) {
     raf = 0;
     if (document.hidden) return;
     micLevel = mic ? rms(mic.an, mic.buf, 5) : 0;
-    ttsLevel = tts ? rms(tts.an, tts.buf, 4.5) : 0;
+    ttsLevel = tts ? rms(tts.an, tts.buf, 4.5) : (ttsFn ? ttsFn() : 0);
     let raw = Math.max(micLevel, ttsLevel);
     if (state.mode === 'thinking') raw = Math.max(raw, 0.12 + 0.08 * Math.sin(now / 120));
-    if (state.mode === 'speaking' && !tts) raw = Math.max(raw, 0.3 + 0.2 * Math.sin(now / 90)); // Lola speaking in the panel
+    if (state.mode === 'speaking' && !tts && !ttsFn) raw = Math.max(raw, 0.3 + 0.2 * Math.sin(now / 90)); // Lola speaking in the panel
     const breath = reduce ? 0 : 0.04 * (0.5 + 0.5 * Math.sin(now / 1400));
     smoothed += (Math.max(raw, breath) - smoothed) * 0.25;
     const body = window.__LOLA_ORB__;
@@ -132,6 +132,7 @@
       // A million-particle Lola: her voice shapes the particles themselves.
       const src = tts || mic;
       let bands = null;
+      if (!src && ttsFn) bands = [Math.min(1, ttsLevel * 1.1), Math.min(1, ttsLevel * 0.85), Math.min(1, ttsLevel * 0.6)];
       if (src && window.LolaOrb && LolaOrb.bandsOf) { src.fbuf = src.fbuf || new Uint8Array(src.an.frequencyBinCount); src.an.getByteFrequencyData(src.fbuf); bands = LolaOrb.bandsOf(src.fbuf); }
       body.feed(raw, bands);
       stage.style.transform = `scale(${(1 + smoothed * 0.035).toFixed(3)})`;
@@ -140,7 +141,7 @@
       stage.style.transform = `scale(${(1 + smoothed * 0.18).toFixed(3)})`;
       stage.style.filter = `drop-shadow(0 0 ${(20 + smoothed * 90).toFixed(1)}px rgba(204,255,0,${(0.25 + smoothed * 0.65).toFixed(2)}))`;
     }
-    const active = mic || tts || state.mode !== 'idle' || smoothed > 0.05;
+    const active = mic || tts || ttsFn || state.mode !== 'idle' || smoothed > 0.05;
     // At rest, breathe at a gentle ~20fps instead of burning every frame.
     if (active) raf = requestAnimationFrame(tick);
     else if (!reduce) setTimeout(() => { if (!raf) raf = requestAnimationFrame(tick); }, 50);
@@ -165,6 +166,15 @@
       if (!r.ok) throw new Error('voice ' + r.status);
       const bytes = await r.arrayBuffer();
       if (my !== speakSeq) return;                       // interrupted while loading
+      // Her voice plays natively (works on iPhone, through the silent switch, without a fresh tap);
+      // the atom follows the voice's own loudness. Web Audio below is only the fallback.
+      if (window.LolaSound) {
+        state.speaking = true; setMode('speaking');
+        const out = await LolaSound.play(bytes, { onLevel: (fn) => { ttsFn = fn; wake(); } });
+        ttsFn = null;
+        if (!out.played && out.reason !== 'cancelled' && out.reason !== 'blocked') throw new Error('playback ' + out.reason);
+        return;
+      }
       const c = audio(); if (!c) throw new Error('no audio');
       const buf = await c.decodeAudioData(bytes.slice(0));
       if (my !== speakSeq) return;
@@ -185,13 +195,14 @@
   }
   function finishSpeaking() {
     if (tts) { try { tts.src.disconnect(); tts.an.disconnect(); } catch (_) {} }
-    tts = null; state.speaking = false; ttsLevel = 0;
+    tts = null; ttsFn = null; state.speaking = false; ttsLevel = 0;
     if (state.mode === 'speaking' || state.mode === 'thinking') setMode('idle');
   }
   function cancel() {
     speakSeq++;
     if (tts || state.speaking) {
       if (tts) { try { tts.src.stop(); } catch (_) {} }
+      try { if (window.LolaSound) LolaSound.cancel(); } catch (_) {}
       finishSpeaking();
     }
   }

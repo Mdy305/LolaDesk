@@ -22,8 +22,10 @@ import { synthesize as elevenSynthesize, isConfigured as elevenConfigured } from
 const TELNYX_TTS_URL = 'https://api.telnyx.com/v2/text-to-speech/speech';
 const TELNYX_VOICES_URL = 'https://api.telnyx.com/v2/text-to-speech/voices';
 
+// ONE voice (the valet-girl Lola from ElevenLabs): the Telnyx tier sounds like someone else, so it
+// only speaks when the owner chose it on purpose (VOICE_PROVIDER=telnyx). Otherwise a failure surfaces.
 export function telnyxTtsConfigured() {
-  return !!process.env.TELNYX_API_KEY;
+  return !!process.env.TELNYX_API_KEY && process.env.VOICE_PROVIDER === 'telnyx';
 }
 
 export function whichVoice() {
@@ -172,7 +174,8 @@ export async function synthVoice(text, { signal, eleven = elevenSynthesize, teln
       if (audio && audio.length) return { audio, contentType: 'audio/mpeg', engine: 'elevenlabs' };
     } catch (error) {
       if (error?.name === 'AbortError') throw error; // client gone / turn cancelled — no tier 2
-      console.error('[lola-voice-chain] elevenlabs tier failed, falling back to telnyx:', String(error?.message || error).slice(0, 220));
+      console.error('[lola-voice-chain] elevenlabs tier failed:', String(error?.message || error).slice(0, 220));
+      if (!telnyxTtsConfigured()) throw error;   // never a different-sounding stand-in
     }
   }
   if (telnyxTtsConfigured()) {

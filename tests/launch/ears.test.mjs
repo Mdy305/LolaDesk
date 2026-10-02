@@ -46,15 +46,18 @@ ok(r.ok && c0.to === '+13055550123' && c0.from === '+13055550000' && /\/api\/cal
 ok(/Calling you now/.test(r.say), 'the page says what really happened: ' + r.say);
 const { runBridgeStep } = await import(P + 'lib/owner-call.js');
 const ev = (type, cs) => ({ data: { event_type: type, payload: { call_control_id: 'v3:demo-1', client_state: cs } } });
+const said = (b) => new URL(b.audio_url).searchParams.get('text') || '';
 let out = await runBridgeStep(ev('call.answered', c0.client_state));
 let a1 = actions.at(-1);
-ok(out.did === 'speak' && /Lola from LolaDesk/.test(a1.body.payload) && /recorded/.test(a1.body.payload) && a1.body.voice === 'Telnyx.KokoroTTS.af_heart', 'you pick up → you HEAR her right away, in her voice: ' + a1.body.payload);
-out = await runBridgeStep(ev('call.speak.ended', a1.body.client_state));
+ok(out.did === 'playback_start' && /Lola from LolaDesk/.test(said(a1.body)) && /recorded/.test(said(a1.body)) && /\/api\/speak-lola\?/.test(a1.body.audio_url) && /&sig=/.test(a1.body.audio_url), 'you pick up → you HEAR her right away, in HER one voice (her signed voice link): ' + said(a1.body));
+const { checkTextSig } = await import(P + 'lib/one-voice.js');
+ok(checkTextSig(said(a1.body), new URL(a1.body.audio_url).searchParams.get('sig')) && !checkTextSig('Say something else', new URL(a1.body.audio_url).searchParams.get('sig')), 'the voice link is signed for exactly that sentence');
+out = await runBridgeStep(ev('call.playback.ended', a1.body.client_state));
 ok(out.did === 'ai_assistant_start' && actions.at(-1).body.assistant.id === 'assistant-lola' && /Pretend you’re a client/.test(actions.at(-1).body.greeting), 'then Lola herself takes the conversation');
 refuseAssistant = true;
-out = await runBridgeStep(ev('call.speak.ended', a1.body.client_state));
-ok(out.did === 'speak' && out.fallback && /LolaDesk/.test(actions.at(-1).body.payload), 'if Telnyx refuses the assistant, she still speaks — never silence');
-out = await runBridgeStep(ev('call.speak.ended', actions.at(-1).body.client_state));
+out = await runBridgeStep(ev('call.playback.ended', a1.body.client_state));
+ok(out.did === 'playback_start' && out.fallback && /LolaDesk/.test(said(actions.at(-1).body)), 'if Telnyx refuses the assistant, she still speaks (same voice) — never silence');
+out = await runBridgeStep(ev('call.playback.ended', actions.at(-1).body.client_state));
 ok(out.did === 'hangup', 'and hangs up politely after');
 
 // The bridge webhook itself: Telnyx-signed raw bytes verify; our signed call state still works if the key is wrong; forgeries don't.
@@ -66,9 +69,9 @@ const rawEv = '{ "data": {"event_type":"call.answered", "payload": {"call_contro
 const ts = String(Math.floor(Date.now() / 1000));
 const sig = crypto.sign(null, Buffer.from(ts + '|' + rawEv), ed.privateKey).toString('base64');
 let hk = await hook(rawEv, { 'telnyx-signature-ed25519': sig, 'telnyx-timestamp': ts });
-ok(hk.status === 200 && hk.did === 'speak', 'a real Telnyx-signed event verifies on the exact bytes (this is what silenced her before)');
+ok(hk.status === 200 && hk.did === 'playback_start', 'a real Telnyx-signed event verifies on the exact bytes (this is what silenced her before)');
 hk = await hook(rawEv, { 'telnyx-signature-ed25519': 'AAAA', 'telnyx-timestamp': ts });
-ok(hk.status === 200 && hk.did === 'speak', 'wrong key in Vercel? our own signed call state still lets her speak');
+ok(hk.status === 200 && hk.did === 'playback_start', 'wrong key in Vercel? our own signed call state still lets her speak');
 const forged = Buffer.from(JSON.stringify({ k: 'lola_demo', a: 'evil', _s: 'nope' })).toString('base64');
 hk = await hook(rawEv.replace(c0.client_state, forged), { 'telnyx-signature-ed25519': 'AAAA', 'telnyx-timestamp': ts });
 ok(hk.status === 401, 'a forged event is refused');

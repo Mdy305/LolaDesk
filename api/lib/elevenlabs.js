@@ -65,22 +65,25 @@ export async function telnyxSpeech(text, { signal } = {}) {
 /** Which engine speaks right now, for health checks and the UI. */
 export function voiceProvider(){
   if (process.env.VOICE_PROVIDER === 'telnyx') return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
-  if (process.env.ELEVENLABS_API_KEY) return 'elevenlabs';
-  return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
+  return isConfigured() ? 'elevenlabs' : 'none';
 }
 
+// ONE VOICE: the valet-girl Lola the owner created in ElevenLabs (ELEVENLABS_VOICE_ID) — in the app,
+// on the phone, in the demo call. She is never replaced by a different-sounding stand-in: if her voice
+// can't be produced, this throws with the plain reason and /api/status says exactly what to fix.
+// (VOICE_PROVIDER=telnyx is the only override, and only when the owner sets it on purpose.)
+let elevenLastError = '', elevenLastOkAt = 0;
+export function elevenStatus(){ return { error: elevenLastError || null, last_ok_at: elevenLastOkAt || null }; }
+export function lolaVoiceId(){ return lolaVoice(); }
+
 export async function synthesize(textOrOpts, opts = {}) {
-  // Lola never goes silent: ElevenLabs (her configured voice) first, then
-  // Telnyx; or Telnyx only when VOICE_PROVIDER=telnyx.
   const text = textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.text : textOrOpts;
   const signal = (textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.signal : null) || (opts && opts.signal);
-  if (process.env.VOICE_PROVIDER === 'telnyx' || !process.env.ELEVENLABS_API_KEY) return telnyxSpeech(text, { signal });
-  try { return await synthesizeEleven(textOrOpts, opts); }
-  catch (e) {
-    if (!process.env.TELNYX_API_KEY || (signal && signal.aborted)) throw e;
-    console.warn('[voice] ElevenLabs unavailable, Lola speaks through Telnyx:', String(e && e.message).slice(0, 120));
-    return telnyxSpeech(text, { signal });
-  }
+  if (process.env.VOICE_PROVIDER === 'telnyx') return telnyxSpeech(text, { signal });
+  if (!process.env.ELEVENLABS_API_KEY) throw new Error('Lola’s voice isn’t connected: ELEVENLABS_API_KEY is missing');
+  if (!lolaVoice()) throw new Error('Lola’s voice isn’t connected: ELEVENLABS_VOICE_ID is missing');
+  try { const b = await synthesizeEleven(textOrOpts, opts); elevenLastError = ''; elevenLastOkAt = Date.now(); return b; }
+  catch (e) { elevenLastError = String(e && e.message || e).slice(0, 200); throw e; }
 }
 
 async function synthesizeEleven(textOrOpts, opts = {}) {
@@ -96,8 +99,9 @@ async function synthesizeEleven(textOrOpts, opts = {}) {
   // Lola's canonical voice — always. There is no per-tenant voice.
   // Falls back to the preview voice only when no Lola voice is configured
   // (isConfigured() stays false then, so phone calls use Telnyx TTS).
-  const voice = lolaVoice() || 'EXAVITQu4vr4xnSDxMaL';
+  const voice = lolaVoice();
   if(!apiKey) throw new Error('Missing ELEVENLABS_API_KEY');
+  if(!voice) throw new Error('Missing ELEVENLABS_VOICE_ID');
 
   const url = outputFormat ? `${ELEVEN_TTS}/${voice}?output_format=${outputFormat}` : `${ELEVEN_TTS}/${voice}`;
 
