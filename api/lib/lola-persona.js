@@ -101,8 +101,14 @@ export function waitlistOfferText({ salon, what, when }){
 }
 
 // Deposits · the Payment Link text sent the moment a protected booking is made.
-export function depositRequestText({ firstName, salon, serviceName, when, amount, link }){
+export function depositRequestText({ firstName, salon, serviceName, when, amount, link, holdMinutes = 0 }){
+  if(holdMinutes) return `${smsGreeting(firstName, salon)} I'm holding ${serviceName || 'your appointment'} on ${when} for you — tap within ${holdMinutes} minutes to place your ${amount} deposit and lock it in: ${link} Reply STOP to opt out.`;
   return `${smsGreeting(firstName, salon)} You're booked for ${serviceName || 'your appointment'} on ${when} — just a ${amount} deposit to lock it in: ${link} See you soon! Reply STOP to opt out.`;
+}
+
+// Deposits · the pay-within window passed: the slot went back on the calendar.
+export function depositReleasedText({ firstName, salon, when }){
+  return `${smsGreeting(firstName, salon)} I couldn't hold ${when} any longer since the deposit didn't come through, so I released the time. Reply here and I'll find you another spot! Reply STOP to opt out.`;
 }
 
 // Deposits · a paid deposit kept on a no-show or late cancellation.

@@ -71,6 +71,28 @@ function bookingBusySegments(booking,serviceById,allowProcessingOverlap){
   return activeSegments(start,phases,true);
 }
 
+// ── The salon's own booking platform (Square, Vagaro, Boulevard, Fresha, Mindbody,
+// Google, any calendar link): its appointments are synced every minute into
+// cached_availability. They are BUSY time here — Lola never double-books them.
+// An appointment mapped to a LolaDesk stylist blocks that stylist; an unmapped
+// one takes one chair (one free stylist) for its duration. LolaDesk's own
+// bookings that were written upstream are not counted twice.
+async function listExternalBusy(tenantId,from,to,localBookings){
+  try{
+    const { db } = await import('./db.js');
+    const c=db(); if(!c) return [];
+    const { data, error }=await c.from('cached_availability').select('provider,external_booking_id,starts_at,ends_at,staff_id,status')
+      .eq('tenant_id',tenantId).lt('starts_at',to).gt('ends_at',from);
+    if(error || !data?.length) return [];
+    const ours=new Set((localBookings||[]).map(b=>b.external_id).filter(Boolean).map(String));
+    const rows=data.filter(r=>r.status!=='cancelled' && !ours.has(String(r.external_booking_id)));
+    if(!rows.length) return [];
+    const { data: maps }=await c.from('provider_mappings').select('provider,external_id,local_id').eq('tenant_id',tenantId).eq('entity_type','staff');
+    const toLocal=new Map((maps||[]).map(m=>[m.provider+':'+m.external_id,m.local_id]));
+    return rows.map(r=>({start:r.starts_at,end:r.ends_at,staff_id:(r.staff_id && String(r.staff_id).startsWith('local:')) ? String(r.staff_id).slice(6) : ((r.staff_id && toLocal.get(r.provider+':'+r.staff_id)) || null)}));
+  }catch(_){ return []; }
+}
+
 export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
@@ -98,8 +120,12 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId);
   const existing=await listBookings(tenantId,from,to);
   const holds=await listActiveHolds(tenantId,from,to);
+  const external=await listExternalBusy(tenantId,from,to,existing);
   const serviceById=new Map(services.map(x=>[x.id,x]));
   const slots=[];
+  // Chairs the platform's unmapped appointments occupy, checked per time window below.
+  const allStaff=await listStaff(tenantId).catch(()=>staff);
+  const chairs=Math.max(1,(allStaff||staff).length);
 
   for(const member of staff){
     const schedule=scheduleForStaff(schedules,member.id,dayOfWeek);
@@ -138,6 +164,16 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
       // while a caller is deciding, we prefer a conservative hold over a race.
       const holdConflict=holds.some(h=>h.staff_id===member.id && overlap(windowStart,windowEnd,h.starts_at,h.ends_at));
       if(holdConflict) continue;
+
+      // The salon's own booking platform: mapped appointments block their stylist…
+      if(external.some(x=>x.staff_id===member.id && overlap(windowStart,windowEnd,x.start,x.end))) continue;
+      // …unmapped ones each take a chair: if every chair is taken in this window, nobody is free.
+      const unmapped=external.filter(x=>!x.staff_id && overlap(windowStart,windowEnd,x.start,x.end)).length;
+      if(unmapped){
+        const busyStaff=new Set(existing.filter(b=>b.id!==excludeBookingId && overlap(windowStart,windowEnd,b.start_time,b.end_time||addMinutes(b.start_time,60))).map(b=>b.staff_id));
+        external.filter(x=>x.staff_id && overlap(windowStart,windowEnd,x.start,x.end)).forEach(x=>busyStaff.add(x.staff_id));
+        if(unmapped + busyStaff.size >= chairs) continue;
+      }
 
       slots.push({
         staff_id:member.id,staff_name:member.name,

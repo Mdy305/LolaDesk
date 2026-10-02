@@ -109,9 +109,15 @@
     <div class="msg" id="numMsg"></div>
   </div>
 
+  <div class="card" id="forwardCard">
+    <h3>Keep your salon number — forward to Lola</h3>
+    <div class="desc">The fastest way to go live (about 90 seconds). Your salon phone rings as usual; when nobody picks up after ~2 rings, the line is busy, or you're closed, the call goes to Lola. Dial the code on the salon phone, then tap Test it.</div>
+    <div data-lola-forward></div>
+  </div>
+
   <div class="card">
     <h3>Port your existing number</h3>
-    <div class="desc">Already have a salon number? Move it to LolaDesk and keep it.</div>
+    <div class="desc">Or move your number to LolaDesk for good (carriers take 1–3 weeks). Forwarding above works in the meantime.</div>
     <div class="grid2">
       <div class="fld"><label>Current number</label><input id="portNumber" placeholder="+1 305 555 0100"/></div>
       <div class="fld"><label>Current carrier</label><input id="portCarrier" placeholder="Verizon, AT&amp;T..."/></div>
@@ -305,6 +311,18 @@
     <div class="toggle-row"><div><div class="tl">Cal.com (White-Label)</div><div class="ts">Booking mesh · Platform or API-key mode</div></div><button class="btn-g" id="c-cal_platform" onclick="requestCal()">Configure</button></div>
   </div>
 
+  <div class="card" id="icalCard">
+    <h3>Any booking system — by calendar link</h3>
+    <div class="desc">Keep the system you use. In Vagaro, Boulevard, Fresha, Mindbody, GlossGenius, Google or Apple, copy the private “subscribe” / iCal link (one for the salon, or one per stylist) and paste it here. Lola sees those appointments within minutes and never books over them.</div>
+    <div id="icalList"></div>
+    <div class="grid2">
+      <div class="fld"><label>Calendar link</label><input id="icalUrl" placeholder="https://… or webcal://…" autocomplete="off"/></div>
+      <div class="fld"><label>Whose calendar</label><select id="icalStaff" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)"><option value="">The whole salon</option></select></div>
+    </div>
+    <div class="btn-row"><button class="btn-p" id="icalBtn" onclick="icalAdd()">Connect calendar</button></div>
+    <div class="msg" id="icalMsg"></div>
+  </div>
+
   <div class="card">
     <h3>Calendar</h3>
     <div class="toggle-row"><div><div class="tl">Google Calendar</div><div class="ts">Block time from your personal calendar</div></div><button class="btn-g" id="c-google" onclick="connect('google')">Connect</button></div>
@@ -395,6 +413,30 @@ async function igToggle(){
   }catch(e){ msg('igMsg','Couldn’t reach LolaDesk. Try again.',false); }
   finally{ b.disabled=false; }
 }
+// Any booking system by its calendar link (read-only busy time)
+async function icalLoad(){
+  try{
+    const r=await fetch('/api/calendar-link',{headers:H()}); const d=await r.json(); if(!d.ok) return;
+    const sel=document.getElementById('icalStaff');
+    if(sel && sel.options.length===1) (d.staff||[]).forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name;sel.appendChild(o);});
+    const names=Object.fromEntries((d.staff||[]).map(x=>[x.id,x.name]));
+    document.getElementById('icalList').innerHTML=(d.feeds||[]).map((f,i)=>'<div class="toggle-row"><div><div class="tl">'+esc(f.label)+'</div><div class="ts">'+esc(f.staff_id?(names[f.staff_id]||'Stylist'):'Whole salon')+' · '+esc(f.host)+' · synced every few minutes</div></div><button class="btn-g" onclick="icalRemove('+i+')">Remove</button></div>').join('');
+  }catch(e){}
+}
+async function icalAdd(){
+  const url=document.getElementById('icalUrl').value.trim(), staff_id=document.getElementById('icalStaff').value||null, b=document.getElementById('icalBtn');
+  if(!url){ msg('icalMsg','Paste your calendar link first.',false); return; }
+  b.disabled=true; b.textContent='Checking the link…';
+  try{
+    const r=await fetch('/api/calendar-link',{method:'POST',headers:H(),body:JSON.stringify({url,staff_id})}); const d=await r.json();
+    if(!d.ok){ msg('icalMsg',d.error||'That link didn’t work.',false); return; }
+    document.getElementById('icalUrl').value=''; msg('icalMsg',d.say,true); icalLoad();
+  }catch(e){ msg('icalMsg','Couldn’t reach LolaDesk. Try again.',false); }
+  finally{ b.disabled=false; b.textContent='Connect calendar'; }
+}
+async function icalRemove(i){
+  try{ await fetch('/api/calendar-link',{method:'DELETE',headers:H(),body:JSON.stringify({index:i})}); msg('icalMsg','Removed.',true); icalLoad(); }catch(e){}
+}
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -416,6 +458,7 @@ async function load(){
     renderBookingLink();
     renderLolaWidget(d.lola_agent_id);
     igLoad();
+    icalLoad();
 
     // Phone status
     const ps=document.getElementById('phoneStatus');
@@ -814,5 +857,6 @@ async function exportData(){
 
 (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script>
+<script src="/lola-forward.js"></script>
 </body>
 </html>

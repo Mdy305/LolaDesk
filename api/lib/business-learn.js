@@ -184,6 +184,27 @@ function toneToPersona(tone, positioning) {
 // ── writing ──────────────────────────────────────────────────
 async function q(p) { try { const r = await p; return r || {}; } catch (e) { return { error: e }; } }
 
+// Color work books in phases: application → processing (the stylist is free to take
+// someone else) → rinse/gloss/finish. A 2h15 balayage becomes 45 / 45 / 45.
+const PHASED = /balayage|highlight|lowlight|foil|ombr|colou?r|tint|root|bleach|lighten|toner|gloss|perm|keratin|relax|straighten|brazilian|smoothing/i;
+export function phasesFor(name, minutes) {
+  const d = Number(minutes) || 0;
+  if (!PHASED.test(String(name || '')) || d < 90) return null;
+  const r5 = (x) => Math.max(15, Math.round(x / 5) * 5);
+  const a1 = r5(d / 3), p = r5(d / 3), a2 = Math.max(15, d - a1 - p);
+  return { active_duration_1_min: a1, processing_duration_min: p, active_duration_2_min: a2 };
+}
+
+/** "$50 deposit", "25% deposit required" → a suggested deposit policy (never switched on by itself). */
+export function depositFromText(text) {
+  const t = String(text || '');
+  if (!/deposit/i.test(t)) return null;
+  const pct = t.match(/(\d{1,3})\s*%/), usd = t.match(/\$\s*(\d{1,4})/);
+  if (pct) return { type: 'percent', percent: Math.min(100, Number(pct[1])), source: t.slice(0, 160) };
+  if (usd) return { type: 'fixed', fixed_cents: Number(usd[1]) * 100, source: t.slice(0, 160) };
+  return { type: 'unknown', source: t.slice(0, 160) };
+}
+
 export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
   const report = { services_added: 0, team_added: 0, timezone: null, hours: false, notes: [] };
   const { data: fresh } = await q(c.from('tenants').select('*').eq('id', tenant.id).maybeSingle());
@@ -198,9 +219,13 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
       tenant_id: t.id, name: s.name, description: s.description || '', category: s.category || null,
       duration_minutes: s.duration_min || 60, price: s.price || 0, is_active: true,
     }));
-    const ins = await q(c.from('services').insert(rows));
+    const ins = await q(c.from('services').insert(rows).select('id,name,duration_minutes'));
     if (!ins.error) {
       report.services_added = rows.length;
+      // Processing time for color services (separate update: a database without the phase columns still gets the menu).
+      let phased = 0;
+      for (const r of ins.data || []) { const ph = phasesFor(r.name, r.duration_minutes); if (ph) { const u = await q(c.from('services').update(ph).eq('id', r.id)); if (!u.error) phased++; } }
+      if (phased) report.processing_phased = phased;
       const placeholders = (svcRows || []).filter(isPlaceholder).map(s => s.id);
       if (placeholders.length) await q(c.from('services').update({ is_active: false }).in('id', placeholders));
     } else report.notes.push('services_insert_failed');
@@ -236,6 +261,14 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
     if (!t.google_review_url && place.review_link) { patch.google_review_url = place.review_link; report.reviews_on = true; }
   }
   if (!t.gmb_url && (place?.maps_url || source.maps_url)) patch.gmb_url = place?.maps_url || source.maps_url;
+  const dep = depositFromText(profile.policies?.deposit);
+  if (dep) {
+    report.deposit_found = dep;
+    try {
+      const { data: bs } = await q(c.from('booking_settings').select('tenant_id,metadata').eq('tenant_id', t.id).maybeSingle());
+      if (bs) await q(c.from('booking_settings').update({ metadata: { ...(bs.metadata || {}), deposits_detected: dep } }).eq('tenant_id', t.id));
+    } catch (_) {}
+  }
   const persona = toneToPersona(profile.tone, profile.positioning);
   if (persona && (!t.persona || t.persona === 'warm')) patch.persona = persona;
   const prior = parseKnowledge(t.knowledge);

@@ -8,8 +8,9 @@ import * as fresha     from './connectors/fresha.js';
 import * as booksy     from './connectors/booksy.js';
 import * as gmb        from './connectors/google-gmb.js';
 import * as cal        from './connectors/cal-platform.js';
+import * as ical       from './connectors/ical.js';
 
-const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb, cal_platform: cal };
+const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb, cal_platform: cal, ical };
 
 export function getConnector(provider){
   const c = CONNECTORS[provider];
@@ -17,7 +18,8 @@ export function getConnector(provider){
   return c;
 }
 export function listProviders(){
-  return Object.keys(CONNECTORS).map(p => ({ id:p, name:CONNECTORS[p].META?.name||p, description:CONNECTORS[p].META?.description||'', status:CONNECTORS[p].META?.status||'available', docs:CONNECTORS[p].META?.docs||null }));
+  // Calendar links are added by pasting a URL (Settings → Booking platforms), not by an OAuth button.
+  return Object.keys(CONNECTORS).filter(p => p !== 'ical').map(p => ({ id:p, name:CONNECTORS[p].META?.name||p, description:CONNECTORS[p].META?.description||'', status:CONNECTORS[p].META?.status||'available', docs:CONNECTORS[p].META?.docs||null }));
 }
 export async function listAllAppointments(tenantIntegrations, range){
   const all = [];

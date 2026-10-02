@@ -13,6 +13,7 @@ import { e164, db } from './db.js';
 import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { resolveTenantLine, connectionCandidates } from './call-callback.js';
 import { demoStep } from './demo-call.js';
+import { forwardTestStep } from './forwarding.js';
 
 // client_state rides on every Telnyx event for calls we place. It's signed (HMAC), so the bridge
 // can trust events for OUR calls even if the webhook signature can't be checked — Lola never goes silent.
@@ -63,6 +64,7 @@ export function bridgeStep(event) {
   const type = event?.data?.event_type, p = event?.data?.payload || {};
   const st = decodeState(p.client_state);
   if (st && st.k === 'lola_demo' && p.call_control_id) return demoStep(type, p, st);
+  if (st && st.k === 'fwd_test' && p.call_control_id) return forwardTestStep(type, p, st);
   if (!st || st.k !== 'owner_bridge' || !p.call_control_id) return null;
   if (type === 'call.answered' && !st.spoke) {
     return { id: p.call_control_id, action: 'speak', body: { payload: `Connecting you to ${st.n || 'your client'}.`, voice: 'female', language: 'en-US', client_state: encodeState({ ...st, spoke: 1 }) } };

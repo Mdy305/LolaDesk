@@ -31,7 +31,6 @@ import {
   logUsage, getOrStartConversation, getTenantIntegrations, db
 } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
-import { listAllAppointments, writeAppointment } from './lib/aggregator.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
 import { salonTz, fmtSalon } from './lib/salon-time.js';
@@ -216,24 +215,8 @@ async function check_availability(tenant, { service, date }){
     };
   }
 
-  // Pull connected integrations for this tenant (tokens decrypted in-memory here only)
-  let appointments = [];
-  try{
-    const integrations = await getTenantIntegrations(tenant.id);
-    if(integrations.length){
-      const from = date ? new Date(date).toISOString() : new Date().toISOString();
-      const to = new Date(new Date(from).getTime()+7*24*3600*1000).toISOString();
-      appointments = await listAllAppointments(integrations, { from, to });
-    }
-  }catch(e){ /* fall through to generic */ }
-
-  // Without a connected calendar we offer to confirm and call back.
-  if(!appointments.length){
-    return {
-      speak: `Let me find the best ${service||'appointment'} time for you${date?` around ${date}`:''}. I can text you our next openings — what number should I use?`,
-      slots: [], needs_callback: true
-    };
-  }
+  // No live calls to the salon's booking platform mid-call: its appointments are already in
+  // LolaDesk's local cache (synced every minute), which listAvailability just read.
   // No invented times: offer to text real openings instead.
   return {
     speak: `Let me find the best ${service||'appointment'} time for you${date?` around ${date}`:''}. I can text you our next openings — what number should I use?`,
@@ -261,24 +244,9 @@ async function book_appointment(tenant, body){
       };
     }
 
-    // Try writing to a connected booking platform first
-    let external = null;
-    try{
-      const integrations = await getTenantIntegrations(tenant.id);
-      if(integrations.length){
-        // Honor the owner's booking_provider choice (e.g. cal_platform) so the
-        // write targets the selected mesh node; writeAppointment falls back to
-        // any connected provider when that one isn't connected.
-        const prefRaw = String(tenant?.booking_provider || tenant?.booking_platform || '').toLowerCase();
-        const pref = prefRaw === 'cal' ? 'cal_platform' : prefRaw;
-        const writeOpts = ['square','vagaro','mindbody','fresha','booksy','cal_platform'].includes(pref) ? { provider: pref } : {};
-        external = await writeAppointment(integrations, {
-          starts_at: startsAt, duration_min: durationMin,
-          service: s?.name || service, client: { name: client_name, phone: client_phone }
-        }, writeOpts);
-      }
-    }catch(e){ /* fall back to internal booking */ }
-
+    // Lola never waits on the salon's booking platform mid-call: she books in LolaDesk's
+    // engine (conflict-safe) and the platform write follows in the background (booking-outbox).
+    let upstream = null;
     // Always record internally too (conflict-safe)
     if(tenant.id && startsAt){
       const safe = await createBookingSafe({
@@ -308,6 +276,18 @@ async function book_appointment(tenant, body){
         };
       } else {
         await logUsage(tenant.id, 'booking', 1, { service: s?.name || service });
+        if(safe.booking?.id){
+          try{
+            const { writeThrough } = await import('./lib/booking-outbox.js');
+            upstream = await writeThrough(db(), { tenantId: tenant.id, booking: safe.booking, ctx: {
+              client: { id: client?.id || safe.booking.client_id || null, name: client_name || null, phone: client_phone || null },
+              service: { id: safe.booking.service_id || null, name: s?.name || service || null },
+              staff: { id: safe.booking.staff_id || null },
+              startsAt: safe.booking.start_time || startsAt, endsAt: safe.booking.end_time || null, durationMin,
+              price: s?.price ?? 0, timezone: await salonTz(tenant.id), notes: 'Booked by Lola (LolaDesk AI front desk)'
+            } });
+          }catch(e){ console.warn('[lola-tools] outbox:', String(e?.message||e).slice(0,120)); }
+        }
       }
     }
 
@@ -321,7 +301,7 @@ async function book_appointment(tenant, body){
 
     return {
       speak: speakStr,
-      booked: true, external: !!external, deposit_required: !!tenant.knowledge?.require_deposit
+      booked: true, external: upstream?.ok ? 'queued' : false, deposit_required: !!tenant.knowledge?.require_deposit
     };
   }catch(e){
     return {
@@ -543,7 +523,9 @@ export default async function handler(req, res){
       return res.status(200).json({ speak: "I can help with booking, pricing, or recommendations — what would you like?", available_tools: Object.keys(SKILLS) });
     }
     
+    const t0 = Date.now();
     const tenant = await resolveTenant(body);
+    const tTenant = Date.now();
     const clientPhone = body.client_phone || body.from;
     // Link this conversation to its salon (website calls have no dialed number): the
     // post-call insights webhook then lands the summary + transcript on that salon's Calls page.
@@ -551,7 +533,9 @@ export default async function handler(req, res){
     
     // Execute the skill safely via Orchestrator
     const result = await executeSkill(tenant, clientPhone, tool, body, SKILLS);
-    
+    // Latency profile for every voice tool call (visible in Vercel logs / browser devtools).
+    try { res.setHeader('Server-Timing', `tenant;dur=${tTenant - t0}, skill;desc="${tool}";dur=${Date.now() - tTenant}, total;dur=${Date.now() - t0}`); res.setHeader('X-Lola-Latency-Ms', String(Date.now() - t0)); } catch (_) {}
+    if (Date.now() - t0 > 1500) console.warn('[lola-tools] slow tool', tool, Date.now() - t0, 'ms');
     return res.status(200).json(result);
   }catch(e){
     console.error('[lola-tools] Error:', e);
