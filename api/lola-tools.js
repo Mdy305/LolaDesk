@@ -198,6 +198,14 @@ function recommend_service(tenant, { goal }){
   };
 }
 
+// Tell the salon's own booking system (Boulevard via Zapier…) without making the caller wait.
+async function zapNotice(tenant, bookingId, event){
+  try{
+    const [{ emitBooking }, { afterResponse }] = await Promise.all([import('./lib/zapier-bridge.js'), import('./lib/booking-outbox.js')]);
+    afterResponse(emitBooking(db(), tenant, bookingId, event));
+  }catch(_){}
+}
+
 // ── SKILL: check availability ──
 async function check_availability(tenant, { service, date }){
   const svc = findService(tenant, service);
@@ -368,6 +376,7 @@ async function reschedule_appointment(tenant, { booking_id, client_phone, new_da
     return { speak:'I could not reschedule that just now. Please give me one moment and we can retry.', rescheduled:false };
   }
   const when = fmtSalon(targetIso, await salonTz(tenant.id));
+  await zapNotice(tenant, bookingId, 'booking.rescheduled');
   return { speak:`Done - your appointment is moved to ${when}.`, rescheduled:true, booking:out.booking };
 }
 
@@ -392,6 +401,7 @@ async function cancel_appointment(tenant, { booking_id, client_phone }){
   if(!bookingId) return { speak:'I could not find the booking to cancel yet. Share the booking phone number.' };
   const out = await cancelBookingSafe({ tenantId: tenant.id, bookingId });
   if(!out.ok) return { speak:'I could not cancel that right now. Please give me one moment and retry.' };
+  await zapNotice(tenant, bookingId, 'booking.cancelled');
   return { speak:'Done. The appointment is canceled. Do you want me to suggest a new time now?', cancelled:true };
 }
 
