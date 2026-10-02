@@ -474,7 +474,18 @@ async function salonInstant(tenant, date, time){
   return zonedLocalToUtc(key, t, await salonTz(tenant.id));
 }
 
+// ── SKILL: recognise a returning client from the number they give (website chat, blocked caller ID) ──
+async function recall_client(tenant, { client_phone }){
+  if(!client_phone) return { speak: 'What’s the mobile number on your appointments? I’ll pull up your details.' };
+  const client = await getClientByPhone(tenant.id, client_phone).catch(() => null);
+  if(!client) return { speak: 'I don’t see that number yet — you’re new with us! What can I do for you?', known: false };
+  const { clientStory, welcomeBack } = await import('./lib/client-brain.js');
+  const story = await clientStory(db(), tenant, client);
+  return { speak: welcomeBack(story, { salon: tenant.name }) || `Got you, ${story.first || 'welcome back'}! What can I do for you today?`, known: true, brief: story.brief };
+}
+
 export const SKILLS = {
+  recall_client,
   list_services, get_pricing, recommend_service,
   check_availability, book_appointment, capture_lead,
   handle_recovery, escalate, takeMessage,

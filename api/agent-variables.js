@@ -7,6 +7,15 @@
 import { getClientByPhone, getClientMemory, db } from './lib/db.js';
 import { buildTenantVariables } from './lib/tenant-variables.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
+import { clientStory, welcomeBack } from './lib/client-brain.js';
+import { discloseGreeting } from './lib/legal.js';
+
+// Her first words on this call: a returning client is welcomed by name with their last visit;
+// everyone hears that the call may be recorded and that she's an AI.
+export function greetingFor(salon, story){
+  const hi = story && story.known ? welcomeBack(story, { salon, voice: true }) : '';
+  return discloseGreeting(hi || `Thanks for calling ${salon || 'the salon'}! This is Lola. How can I help you today?`);
+}
 
 function pickToNumber(b){
   // Telnyx AI Assistant dynamic-variables payloads name the numbers
@@ -21,6 +30,7 @@ function pickFromNumber(b){
 }
 
 function callerMemory(client){
+  if(client && !client.name) client.name = [client.first_name, client.last_name].filter(Boolean).join(' ').trim();
   if(!client || !client.name) return { caller_known:'false', caller_name:'', caller_brief:'' };
   const bits = [];
   if(client.last_service) bits.push('last came in for ' + client.last_service);
@@ -133,16 +143,19 @@ export default async function handler(req, res){
           business_type: 'salon',
           location: '', hours: '', services: '', staff: '', marketing_context: '',
           booking_url: '', knowledge: '',
-          caller_known: 'false', caller_name: '', caller_brief: ''
+          caller_known: 'false', caller_name: '', caller_brief: '',
+          lola_greeting: greetingFor('', null)
         },
         routing: { status: routing.status, reason: routing.reason || null }
       });
     }
 
     let memory = { caller_known:'false', caller_name:'', caller_brief:'' };
+    let story = null;
     try{
       if(tenant?.id && fromNumber){
         const client = await getClientByPhone(tenant.id, fromNumber);
+        try{ story = client ? await clientStory(db(), tenant, client) : null; }catch(_){}
         // Resolve the stylist's NAME from preferred_staff_id (the canonical
         // schema has no preferred_stylist text column).
         if(client?.preferred_staff_id){
@@ -151,6 +164,7 @@ export default async function handler(req, res){
           if(st?.name) client.preferred_stylist = st.name;
         }
         memory = callerMemory(client);
+        if(story?.brief){ memory.caller_known = 'true'; memory.caller_brief = story.brief + '.'; }
         // ── LOLA REMEMBERS: fold the caller's LAST call memory (written by
         // the post-call insights pipeline, keyed 'last_call') into the brief
         // so the next call repeats what happened — "last call you booked a
@@ -182,13 +196,15 @@ export default async function handler(req, res){
       memory
     });
 
+    dynamic_variables.lola_greeting = greetingFor(tenant.name, story);
     return res.status(200).json({ dynamic_variables });
   }catch(e){
     return res.status(200).json({
       dynamic_variables: {
         company_name: 'our salon',
         business_type: 'salon',
-        services: '', staff: '', hours: '', booking_url: '', marketing_context: ''
+        services: '', staff: '', hours: '', booking_url: '', marketing_context: '',
+        lola_greeting: greetingFor('', null)
       },
       _error: String(e)
     });

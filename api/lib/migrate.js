@@ -177,6 +177,23 @@ const SUPPORT_TICKETS_DDL = `create table if not exists public.support_tickets (
 create index if not exists idx_support_tickets_created on public.support_tickets (created_at desc);
 alter table public.support_tickets enable row level security;`;
 
+// tenant_channels — a salon's own Instagram (and future social) inbox connection.
+const TENANT_CHANNELS_DDL = `create table if not exists public.tenant_channels (
+  id          uuid primary key default gen_random_uuid(),
+  tenant_id   uuid not null references public.tenants(id) on delete cascade,
+  channel     text not null,
+  account_id  text not null,
+  username    text,
+  access_token text,
+  expires_at  timestamptz,
+  status      text not null default 'active',
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (channel, account_id)
+);
+create index if not exists idx_tenant_channels_tenant on public.tenant_channels (tenant_id);
+alter table public.tenant_channels enable row level security;`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -269,6 +286,7 @@ async function runMigrations() {
   await ensureTable(c, 'platform_settings', PLATFORM_SETTINGS_DDL, applied);
   await ensureTable(c, 'legal_acceptances', LEGAL_ACCEPTANCES_DDL, applied);
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
+  await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
   // the deposits cron or the booking seam cold-starts.
   await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);

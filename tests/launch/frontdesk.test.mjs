@@ -24,7 +24,8 @@ T.clients = [{ id: 'c1', tenant_id: TID, first_name: 'Maria', last_name: 'Lopez'
 T.services = [{ id: 's1', tenant_id: TID, name: 'Balayage', price: 250, duration_minutes: 180 }];
 T.conversations = [{ id: 'conv-sms', tenant_id: TID, client_id: 'c2', channel: 'sms', status: 'open' }];   // a real SMS thread: no from_number column set
 T.messages = []; T.client_memories = []; T.booking_reminders = []; T.usage_events = []; T.opt_outs = []; T.calls = []; T.staff = [];
-const tomorrow = new Date(Date.now() + DAY); tomorrow.setUTCHours(19, 0, 0, 0);
+// "Tomorrow" in the SALON's time zone (the old UTC version failed every evening after 8pm in Miami).
+const tomorrow = new Date(new Date(Date.now() + DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) + 'T19:00:00Z');
 T.bookings = [{ id: 'b1', tenant_id: TID, client_id: 'c1', service_id: 's1', status: 'confirmed', start_time: tomorrow.toISOString(), end_time: new Date(tomorrow.getTime() + 3 * 3600e3).toISOString() },
   { id: 'b2', tenant_id: TID, client_id: 'c2', service_id: 's1', status: 'confirmed', start_time: new Date(tomorrow.getTime() + 3600e3).toISOString(), end_time: new Date(tomorrow.getTime() + 4 * 3600e3).toISOString() }];
 const run = async (mod, body, method = 'POST') => { const h = (await import(P + mod)).default; return new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({ status: this.statusCode }); } }; h({ method, url: '/api/' + mod, headers: { authorization: 'Bearer tok' }, query: {}, body }, res); }); };

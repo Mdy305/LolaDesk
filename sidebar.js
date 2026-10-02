@@ -159,7 +159,7 @@
 
   // ── Styles (scoped, self-contained) ─────────────────────────
   const CSS = `
-.ln-side{--ln-bg:#0b0b0d;--ln-line:rgba(255,255,255,.06);--ln-ink:#f2f2f5;--ln-ink2:#9a9aa3;--ln-ink3:#5c5c64;--ln-acc:#f2f2f4;
+.ln-side{--ln-bg:#0b0b0d;--ln-line:rgba(255,255,255,.06);--ln-ink:#f2f2f5;--ln-ink2:#b4b4bc;--ln-ink3:#85858e;--ln-acc:#f2f2f4;
   position:fixed;left:0;top:0;bottom:0;width:236px;height:auto;overflow-y:auto;box-sizing:border-box;display:flex;flex-direction:column;
   background:var(--ln-bg);border-right:1px solid var(--ln-line);padding:26px 14px 16px;z-index:40;
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
