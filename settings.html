@@ -81,6 +81,14 @@
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveSalon()">Save salon details</button></div>
     <div class="msg" id="salonMsg"></div>
+    <div class="fld" style="margin-top:16px"><label>When Lola books by phone, text or DM</label>
+      <select id="sLolaBooking" onchange="saveBookingMode()" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)">
+        <option value="loladesk">She books it in LolaDesk’s calendar (instant)</option>
+        <option value="link">She checks the time, then texts my booking link to finish it (Boulevard, Vagaro, Fresha…)</option>
+      </select>
+      <small style="display:block;margin-top:6px;font-size:11.5px;color:var(--text3);line-height:1.4">Keeping your own booking system? Lola still finds a real open time with the client, then texts your booking link with the exact service and time to pick — two taps for them.</small>
+    </div>
+    <div class="msg" id="modeMsg"></div>
   </div>
 </div>
 
@@ -472,6 +480,15 @@ async function zapSave(){
   finally{ b.disabled=false; b.textContent='Connect'; }
 }
 async function zapOff(){ try{ await fetch('/api/zapier',{method:'DELETE',headers:H()}); msg('zapMsg','Disconnected.',true); zapLoad(); }catch(e){} }
+// How Lola closes a booking: in LolaDesk, or by texting the salon's own booking link
+async function bookingModeLoad(){ try{ const d=await (await fetch('/api/lola/booking-mode',{headers:H()})).json(); if(d.ok) document.getElementById('sLolaBooking').value=d.mode; }catch(e){} }
+async function saveBookingMode(){
+  const sel=document.getElementById('sLolaBooking');
+  try{ const d=await (await fetch('/api/lola/booking-mode',{method:'POST',headers:H(),body:JSON.stringify({mode:sel.value})})).json();
+    if(!d.ok){ msg('modeMsg',d.error||'Couldn’t save.',false); sel.value='loladesk'; return; }
+    msg('modeMsg',d.mode==='link'?'Saved. Lola will text your booking link to finish each booking.':'Saved. Lola books straight into LolaDesk.',true);
+  }catch(e){ msg('modeMsg','Couldn’t reach LolaDesk.',false); }
+}
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -495,6 +512,7 @@ async function load(){
     igLoad();
     icalLoad();
     zapLoad();
+    bookingModeLoad();
 
     // Phone status
     const ps=document.getElementById('phoneStatus');
