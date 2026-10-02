@@ -93,7 +93,7 @@ async function listExternalBusy(tenantId,from,to,localBookings){
   }catch(_){ return []; }
 }
 
-export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null}){
+export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null,context=false}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
   const services=await listServices(tenantId);
@@ -126,6 +126,9 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   // Chairs the platform's unmapped appointments occupy, checked per time window below.
   const allStaff=await listStaff(tenantId).catch(()=>staff);
   const chairs=Math.max(1,(allStaff||staff).length);
+  // context:true → each stylist's shift and busy time for the day, so smart-slots.js can see
+  // the gaps a slot would leave (packing) without reading everything twice.
+  const day=context?{}:null;
 
   for(const member of staff){
     const schedule=scheduleForStaff(schedules,member.id,dayOfWeek);
@@ -137,6 +140,16 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
     const before=Number(settings.default_buffer_before_min||0);
     const after=Number(settings.default_buffer_after_min||0);
     const interval=Math.max(5,Number(settings.slot_interval_minutes||15));
+    if(day){
+      const busy=[];
+      existing.filter(x=>x.staff_id===member.id && x.id!==excludeBookingId && !['cancelled','canceled','no_show'].includes(String(x.status||'').toLowerCase()))
+        .forEach(b=>busy.push({start:b.start_time,end:b.end_time||addMinutes(b.start_time,60),booking:true,phases:bookingBusySegments(b,serviceById,settings.allow_processing_overlap!==false)}));
+      holds.filter(h=>h.staff_id===member.id).forEach(h=>busy.push({start:h.starts_at,end:h.ends_at,booking:true}));
+      external.filter(x=>x.staff_id===member.id).forEach(x=>busy.push({start:x.start,end:x.end,booking:true}));
+      timeOff.filter(x=>x.staff_id===member.id).forEach(x=>busy.push({start:x.start_time,end:x.end_time,booking:false}));
+      blockedWindows.filter(x=>!x.staff_id||x.staff_id===member.id).forEach(x=>busy.push({start:x.start,end:x.end,booking:false}));
+      day[member.id]={name:member.name,shift:[zonedLocalToUtc(dateKey,minuteToTimeText(startMinute),timeZone),zonedLocalToUtc(dateKey,minuteToTimeText(endMinute),timeZone)],busy,buffers:{before:Number(settings.default_buffer_before_min||0),after:Number(settings.default_buffer_after_min||0)}};
+    }
 
     for(let minute=startMinute; minute+before+phases.total+after<=endMinute; minute+=interval){
       const windowStart=zonedLocalToUtc(dateKey,minuteToTimeText(minute),timeZone);
@@ -188,7 +201,7 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   // Earliest times first across ALL stylists (it used to stop after the first
   // stylist's first 12 slots, so afternoons and other stylists never showed).
   slots.sort((a,b)=>ms(a.starts_at)-ms(b.starts_at));
-  return {ok:true,slots:slots.slice(0,Math.max(1,Number(limit)||12)),service,settings};
+  return {ok:true,slots:slots.slice(0,Math.max(1,Number(limit)||12)),service,settings,...(day?{day,services}:{})};
 }
 
 export async function holdAvailability({tenantId,clientId=null,serviceId,staffId,startsAt,channel='voice',conversationId=null,ttlSeconds=300,excludeBookingId=null}){

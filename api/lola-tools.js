@@ -206,25 +206,63 @@ async function zapNotice(tenant, bookingId, event){
   }catch(_){}
 }
 
-// ── SKILL: check availability ──
-async function check_availability(tenant, { service, date }){
+// ── SKILL: check availability — the smart booking brain (lib/smart-slots.js) ──
+// The time they asked for when it's free; otherwise the times that keep the salon's day packed
+// (no unsellable holes), with their usual stylist first; a full day rolls to the next days.
+const sameDay = (a, b, tz) => fmtSalon(a, tz, 'long').split(',').slice(0, 2).join() === fmtSalon(b, tz, 'long').split(',').slice(0, 2).join();
+function dayWord(iso, tz){
+  const now = new Date();
+  if(sameDay(iso, now, tz)) return 'today';
+  if(sameDay(iso, new Date(now.getTime() + 86400000), tz)) return 'tomorrow';
+  return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz });
+}
+const orList = (xs) => xs.length <= 1 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' or ' + xs[xs.length - 1];
+async function smartOffers(tenant, { service, date, time, stylist, client_phone, exclude_booking_id }){
+  const { resolveServiceId, resolveStaffId } = await import('./lib/calendar-engine.js');
+  const serviceId = service ? await resolveServiceId(tenant.id, service) : null;
+  let sid = serviceId;
+  if(!sid){ try{ const { data } = await db().from('services').select('id').eq('tenant_id', tenant.id).eq('is_active', true).limit(1); sid = data?.[0]?.id || null; }catch(_){} }
+  if(!sid) return null;
+  const staffId = stylist ? await resolveStaffId(tenant.id, stylist) : null;
+  let clientId = null;
+  if(client_phone){ try{ clientId = (await getClientByPhone(tenant.id, client_phone))?.id || null; }catch(_){} }
+  const wantAt = (date && time) ? await salonInstant(tenant, date, time) : null;
+  const { findSmartSlots } = await import('./lib/smart-slots.js');
+  return findSmartSlots({ tenantId: tenant.id, serviceId: sid, date: date || null, wantAt, staffId, clientId, excludeBookingId: exclude_booking_id || null, tz: await salonTz(tenant.id) });
+}
+function speakOffers(r, { service, askedTime, askedDay, stylist, tz }){
+  const offers = r.offers || [];
+  const times = offers.map(s => fmtSalon(s.starts_at, tz, 'time').replace(/:00(?=\s?[AP]M)/, ''));
+  const day = offers[0] ? dayWord(offers[0].starts_at, tz) : '';
+  const who = (s) => s.staff_name && !stylist ? ` with ${String(s.staff_name).split(' ')[0]}` : '';
+  if(r.exact) return `Yes — ${times[0]} ${day} works${who(offers[0])}. Want me to book it?`;
+  if(askedTime && r.rolled_days === 0) return `${askedTime} is taken — the closest I have ${day} is ${orList(times)}. Which works?`;
+  if(r.rolled_days > 0) return `${askedDay ? askedDay[0].toUpperCase() + askedDay.slice(1) + ' is' : 'Today is'} fully booked${stylist ? ' for ' + stylist : ''} — the next openings are ${day} at ${orList(times)}. Want one of those?`;
+  return `${day[0].toUpperCase() + day.slice(1)} I can do ${orList(times)}${service ? ` for ${service}` : ''}. Which one do you want?`;
+}
+async function check_availability(tenant, body){
+  const { service, date, time, stylist } = body || {};
+  const tz = await salonTz(tenant.id);
+  try{
+    const r = await smartOffers(tenant, body || {});
+    if(r && r.ok && r.offers.length){
+      const askedDay = date ? dayWord(/^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? date + 'T16:00:00Z' : date, tz) : null;
+      return {
+        speak: speakOffers(r, { service, askedTime: time ? String(time).trim() : null, askedDay, stylist, tz }),
+        slots: r.offers.map(s => s.starts_at),
+        offers: r.offers.map(s => ({ starts_at: s.starts_at, staff: s.staff_name, why: s.reasons })),
+        exact: r.exact, rolled_days: r.rolled_days
+      };
+    }
+  }catch(e){ console.warn('[lola-tools] smart slots:', String(e?.message || e).slice(0, 140)); }
+  // Fallback: the plain list (legacy tenants without a services table).
   const svc = findService(tenant, service);
   const durationMin = parseDurationMin(svc?.durationMin ?? svc?.duration, 60);
   const smart = await listAvailability({ tenant, date, durationMin, service });
-  const tzNow = await salonTz(tenant.id);
   if(smart?.slots?.length){
-    const spokenSlots = smart.slots
-      .slice(0, 3)
-      .map(s => fmtSalon(s, tzNow, 'time'))
-      .join(', ');
-    return {
-      speak: `I can offer ${spokenSlots}${service ? ` for ${service}` : ''}. Which one do you want?`,
-      slots: smart.slots
-    };
+    const spokenSlots = smart.slots.slice(0, 3).map(s => fmtSalon(s, tz, 'time'));
+    return { speak: `I can offer ${orList(spokenSlots)}${service ? ` for ${service}` : ''}. Which one do you want?`, slots: smart.slots };
   }
-
-  // No live calls to the salon's booking platform mid-call: its appointments are already in
-  // LolaDesk's local cache (synced every minute), which listAvailability just read.
   // No invented times: offer to text real openings instead.
   return {
     speak: `Let me find the best ${service||'appointment'} time for you${date?` around ${date}`:''}. I can text you our next openings — what number should I use?`,
@@ -260,7 +298,7 @@ async function book_appointment(tenant, body){
 
     // Lola never waits on the salon's booking platform mid-call: she books in LolaDesk's
     // engine (conflict-safe) and the platform write follows in the background (booking-outbox).
-    let upstream = null;
+    let upstream = null, bookedRow = null;
     // Always record internally too (conflict-safe)
     if(tenant.id && startsAt){
       const safe = await createBookingSafe({
@@ -273,9 +311,16 @@ async function book_appointment(tenant, body){
         price: s?.price
       });
       if(!safe.ok && safe.conflict){
-        const av = await listAvailability({ tenant, date: startsAt, durationMin, stylist });
         const tzB = await salonTz(tenant.id);
-        const options = (av.slots || []).slice(0, 3).map(x => fmtSalon(x, tzB, 'time')).join(', ');
+        let r = null;
+        try{ r = await smartOffers(tenant, { service: s?.name || service, date, time, stylist, client_phone }); }catch(_){}
+        if(r && r.ok && r.offers.length){
+          const day = dayWord(r.offers[0].starts_at, tzB);
+          const opts = orList(r.offers.map(x => fmtSalon(x.starts_at, tzB, 'time')));
+          return { speak: `That time just got taken — the closest I have${r.rolled_days ? ' is ' + day + ' at' : ' ' + day + ' is'} ${opts}. Which works?`, booked: false, conflict: true, slots: r.offers.map(x => x.starts_at) };
+        }
+        const av = await listAvailability({ tenant, date: startsAt, durationMin, stylist });
+        const options = orList((av.slots || []).slice(0, 3).map(x => fmtSalon(x, tzB, 'time')));
         return {
           speak: `That time just got taken. I can do ${options || 'the next available slot'} instead.`,
           booked: false,
@@ -289,6 +334,7 @@ async function book_appointment(tenant, body){
           error: safe.error || 'booking_failed'
         };
       } else {
+        bookedRow = safe.booking || null;
         await logUsage(tenant.id, 'booking', 1, { service: s?.name || service });
         if(safe.booking?.id){
           try{
@@ -305,17 +351,35 @@ async function book_appointment(tenant, body){
       }
     }
 
-    let speakStr = `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service}${date?` on ${date}`:''}${time?` at ${time}`:''}${stylist?` with ${stylist}`:''}. `;
-    if(tenant.knowledge?.require_deposit) {
-      const dep = tenant.knowledge.deposit_amount || '50';
-      speakStr += `I'll text you a link to secure your spot with a $${dep} deposit. Anything else?`;
-    } else {
-      speakStr += `I'll text you a confirmation. Anything else?`;
+    const tzS = await salonTz(tenant.id);
+    const bk = bookedRow;
+    const whenStr = bk?.start_time ? fmtSalon(bk.start_time, tzS, 'long').replace(/:00(?= [AP]M)/, '') : `${date ? date : ''}${time ? ` at ${time}` : ''}`;
+    let staffName = stylist || null;
+    if(!staffName && bk?.staff_id){ try{ const { data } = await db().from('staff').select('name').eq('id', bk.staff_id).maybeSingle(); staffName = data?.name ? String(data.name).split(' ')[0] : null; }catch(_){} }
+    let speakStr = `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service} ${whenStr}${staffName?` with ${staffName}`:''}. `;
+    // The deposit line tells the truth: the salon's real policy, this client's real history, the real amount.
+    let plan = { required: false };
+    if(bk?.id){ try{ const { depositPlan } = await import('./lib/deposits.js'); plan = await depositPlan({ tenantId: tenant.id, booking: bk, clientId: client?.id }); }catch(_){} }
+    else if(tenant.knowledge?.require_deposit) plan = { required: true, amount_cents: Math.round(Number(tenant.knowledge.deposit_amount || 50) * 100) };
+    if(plan.required) speakStr += `I'm texting you a secure link for the $${(plan.amount_cents / 100).toFixed(plan.amount_cents % 100 ? 2 : 0)} deposit${plan.hold_minutes ? ` — the spot is held for ${plan.hold_minutes} minutes` : ''}. `;
+    else speakStr += `I'll text you a confirmation. `;
+    // A real add-on from the menu that fits right after, with the same stylist — offered once.
+    let upsell = null;
+    if(bk?.id && body.channel !== 'no_upsell'){
+      try{
+        const { fitsAfter } = await import('./lib/smart-slots.js');
+        const { listServices } = await import('./lib/booking-repository.js');
+        upsell = await fitsAfter({ tenantId: tenant.id, booking: bk, services: await listServices(tenant.id) });
+      }catch(_){ upsell = null; }
     }
+    if(upsell) speakStr += `${staffName || 'Your stylist'} has time right after — want me to add a ${upsell.name} for $${upsell.price}? It's ${upsell.duration_minutes} minutes.`;
+    else speakStr += `Anything else?`;
+    if(upsell){ try{ await logUsage(tenant.id, 'upsell_offered', 1, { service: upsell.name, price: upsell.price }); }catch(_){} }
 
     return {
       speak: speakStr,
-      booked: true, external: upstream?.ok ? 'queued' : false, deposit_required: !!tenant.knowledge?.require_deposit
+      booked: true, external: upstream?.ok ? 'queued' : false, deposit_required: !!plan.required,
+      ...(upsell ? { upsell: { service: upsell.name, price: upsell.price, starts_at: upsell.starts_at, stylist: upsell.staff_name, how: `If they say yes, call book_appointment with service "${upsell.name}", the same client name and phone, stylist "${upsell.staff_name}", date ${new Date(upsell.starts_at).toLocaleDateString('en-CA', { timeZone: tzS })} and time ${fmtSalon(upsell.starts_at, tzS, 'time')}.` } } : {})
     };
   }catch(e){
     return {
