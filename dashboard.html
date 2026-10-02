@@ -17,8 +17,8 @@
   --border:#1e1e22;
   --border2:#28282e;
   --text:#f2f2f5;
-  --text2:#8a8a92;
-  --text3:#52525a;
+  --text2:#a3a3ab;
+  --text3:#74747c;
   --accent:#f2f2f4;
   --accent2:#f5f5f7;
   --accent-dim:rgba(242,242,244,.12);
@@ -135,6 +135,18 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 }
 .dash-greeting h1{font-size:28px;font-weight:550;letter-spacing:-.02em;margin-bottom:4px}
 .dash-greeting p{font-size:14px;color:var(--text2)}
+/* Is Lola taking care of my business right now? — one line, high contrast */
+.dash-greeting .lola-pulse{display:inline-flex;align-items:center;gap:10px;margin-top:6px;padding:7px 14px 7px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#f4f4f6;font-size:14px;font-weight:500;letter-spacing:-.005em;max-width:100%;cursor:default}
+.dash-greeting .lola-pulse .lp-dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:#5c5c64}
+.dash-greeting .lola-pulse.is-live .lp-dot{background:#c8ff3d;box-shadow:0 0 0 0 rgba(200,255,61,.55);animation:lpBreath 2.4s ease-in-out infinite}
+.dash-greeting .lola-pulse.needs{border-color:rgba(255,192,67,.45);cursor:pointer}
+.dash-greeting .lola-pulse.needs .lp-dot{background:#ffc043;animation:none}
+.dash-greeting .lola-pulse.off{border-color:rgba(255,138,138,.4);cursor:pointer}
+.dash-greeting .lola-pulse.off .lp-dot{background:#ff8a8a;animation:none}
+.dash-greeting .lola-pulse #lolaPulseText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes lpBreath{0%,100%{box-shadow:0 0 0 0 rgba(200,255,61,.5)}50%{box-shadow:0 0 0 6px rgba(200,255,61,0)}}
+@media (prefers-reduced-motion: reduce){.dash-greeting .lola-pulse .lp-dot{animation:none!important}}
+@media (max-width:640px){.dash-greeting .lola-pulse{font-size:13px;border-radius:16px;align-items:flex-start}.dash-greeting .lola-pulse .lp-dot{margin-top:5px}.dash-greeting .lola-pulse #lolaPulseText{white-space:normal}}
 .kpi-row{
   display:grid;
   grid-template-columns:repeat(4,minmax(130px,1fr));
@@ -761,7 +773,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     <div class="dash-header">
       <div class="dash-greeting">
         <h1><span id="greetingTime">Good morning</span>, <span id="greetingName">&nbsp;</span>.</h1>
-        <p>Lola is part of the team and ready for today.</p>
+        <p class="lola-pulse" id="lolaPulse" role="status" aria-live="polite"><span class="lp-dot" aria-hidden="true"></span><span id="lolaPulseText">Checking on Lola…</span></p>
       </div>
 
       <!-- KPI row cut from 4 tiles to 1 signature metric (fix #3, core-app
@@ -1137,8 +1149,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     if(kpiRow) kpiRow.classList.toggle("is-hidden", isNew);
     if(!isNew) return;
 
-    const sub = document.querySelector(".dash-greeting p");
-    if(sub) sub.textContent = "Lola is live on your line.";
+    // (the live pulse line answers "is Lola taking care of my business?" — left untouched)
 
     // Exactly three moves, most important first.
     const moves = [];
@@ -1580,6 +1591,33 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     document.body.appendChild(pollScript);
   };
   document.body.appendChild(appScript);
+})();
+</script>
+<script>
+/* The live answer to one question: is Lola taking care of my business right now? */
+(function(){
+  const el = document.getElementById('lolaPulse'), tx = document.getElementById('lolaPulseText'); if(!el) return;
+  let data = null;
+  async function beat(){
+    try{
+      const t = localStorage.getItem('loladesk_token') || '';
+      const r = await fetch('/api/lola/pulse', { headers: { Authorization: 'Bearer ' + t } });
+      if(!r.ok) return;
+      data = await r.json(); if(!data || !data.ok) return;
+      tx.textContent = data.headline;
+      el.classList.toggle('is-live', !!data.live);
+      el.classList.toggle('off', !data.live);
+      el.classList.toggle('needs', !!(data.live && data.needs && data.needs.length));
+      el.title = data.live && data.needs && data.needs.length ? data.needs.map(n => n.action).join(' · ') : '';
+    }catch(e){}
+  }
+  el.addEventListener('click', () => {
+    if(!data) return;
+    if(!data.live && data.action) { location.href = data.action.href; return; }
+    if(data.needs && data.needs.length){ const ask = 'What did I miss?'; if(window.LolaEverywhere && LolaEverywhere.ask) LolaEverywhere.ask(ask); else if(window.__lolaApp) __lolaApp.ask(ask); }
+  });
+  beat(); setInterval(() => { if(!document.hidden) beat(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) beat(); });
 })();
 </script>
 </body>

@@ -44,6 +44,8 @@ export default async function handler(req, res) {
   const started = Date.now();
   // Heal first (every salon's number on the messaging profile + Lola's voice line), then record truth.
   try { await wireAccount(client, { heal: true }); } catch (_) { /* the account check never blocks the salon sweep */ }
+  let instagram = null;
+  try { const { refreshInstagramTokens } = await import('../lib/instagram-dm.js'); instagram = await refreshInstagramTokens(client); } catch (_) {}
   const snapshot = await liveTelnyxSnapshot();
   let wiring = null;
   try { wiring = snapshot.error ? null : await wireTenantNumbers(client, { heal: true, snapshot }); } catch (e) { wiring = { ok: false, error: String(e?.message || e) }; }
@@ -56,6 +58,7 @@ export default async function handler(req, res) {
     not_found_on_telnyx: result.not_found_on_telnyx || [],
     connection_names: result.connection_names || {},
     wiring: wiring ? { ok: wiring.ok, broken: wiring.broken, healed: wiring.healed, messaging_profile: wiring.messaging_profile } : null,
+    instagram,
     duration_ms: Date.now() - started,
     generated_at: new Date().toISOString()
   });

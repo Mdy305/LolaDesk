@@ -67,7 +67,7 @@ globalThis.fetch = async (url, init = {}) => {
 };
 const { wireAssistant } = await import(P + 'lib/assistant-wiring.js');
 let w = await wireAssistant({ heal: true });
-ok(w.healed && updates[0]?.greeting && greetingDiscloses(updates[0].greeting) && /\[LolaDesk compliance\]/.test(updates[0].instructions), 'Lola’s phone greeting and rules healed with the notice');
+ok(w.healed && updates[0]?.greeting === '{{lola_greeting}}' && greetingDiscloses(updates[0].dynamic_variables.lola_greeting) && /\{\{salon_name\}\}/.test(updates[0].dynamic_variables.lola_greeting) && /\[LolaDesk compliance\]/.test(updates[0].instructions), 'Lola’s phone greeting (personal per call, notice by default) and rules healed: ' + updates[0]?.dynamic_variables?.lola_greeting);
 updates.length = 0; w = await wireAssistant({ heal: true });
 ok(w.ok && !updates.length, 'second check: nothing to change');
 

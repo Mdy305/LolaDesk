@@ -242,6 +242,14 @@
     <div class="copy-box" style="align-items:flex-start"><pre id="lolaWidgetCode" style="margin:0;flex:1;white-space:pre-wrap;font:inherit">Loading…</pre><button id="lolaWidgetCopy" onclick="copyWidget()">Copy</button></div>
     <div class="msg" id="lolaWidgetMsg"></div>
   </div>
+
+  <div class="card" id="igCard">
+    <h3>Lola on Instagram</h3>
+    <div class="desc">Lola answers your Instagram DMs — same Lola, same memory as on your phone. She books, moves and cancels right in your calendar, and welcomes regulars back by name.</div>
+    <div class="status" id="igStatus"><span class="dot off"></span><div class="status-txt"><b>Checking…</b></div></div>
+    <div class="btn-row"><button class="btn-p" id="igBtn" onclick="igToggle()" disabled>Connect Instagram</button></div>
+    <div class="msg" id="igMsg"></div>
+  </div>
 </div>
 
 <!-- LOLA AI -->
@@ -364,6 +372,29 @@ function copyWidget(){
   const t=(document.getElementById('lolaWidgetCode')||{}).textContent||'';
   try{navigator.clipboard.writeText(t);msg('lolaWidgetMsg','Copied. Paste it on your website and Lola appears there.',true);}catch(e){msg('lolaWidgetMsg','Select the code and copy it.',false);}
 }
+// Instagram DMs → Lola (Instagram Login; the account must be Business or Creator)
+let IG={};
+async function igLoad(){
+  try{
+    const r=await fetch('/api/instagram?action=status',{headers:H()}); IG=await r.json();
+    const st=document.getElementById('igStatus'), b=document.getElementById('igBtn'); if(!st||!b) return;
+    if(IG.connected){ st.innerHTML='<span class="dot live"></span><div class="status-txt"><b>@'+esc(IG.username||'connected')+'</b><small>Live — Lola is answering your DMs</small></div>'; b.textContent='Disconnect'; b.disabled=false; }
+    else if(IG.available===false){ st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Coming soon</b><small>Instagram is waiting on Meta’s approval for LolaDesk</small></div>'; b.disabled=true; }
+    else { st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Not connected</b><small>Use your Business or Creator account</small></div>'; b.textContent='Connect Instagram'; b.disabled=false; }
+  }catch(e){}
+  const p=new URLSearchParams(location.search).get('instagram');
+  if(p) msg('igMsg', p==='connected'?'Connected — Lola now answers your Instagram DMs.':p==='cancelled'?'Instagram connection cancelled.':'Instagram didn’t connect. Make sure it’s a Business or Creator account, then try again.', p==='connected');
+}
+async function igToggle(){
+  const b=document.getElementById('igBtn'); b.disabled=true;
+  try{
+    if(IG.connected){ await fetch('/api/instagram?action=disconnect',{method:'POST',headers:H()}); msg('igMsg','Disconnected. Lola no longer answers your DMs.',true); await igLoad(); return; }
+    const r=await fetch('/api/instagram?action=connect',{headers:H()}); const d=await r.json();
+    if(d.url){ location.href=d.url; return; }
+    msg('igMsg',d.say||'Couldn’t start the Instagram connection.',false);
+  }catch(e){ msg('igMsg','Couldn’t reach LolaDesk. Try again.',false); }
+  finally{ b.disabled=false; }
+}
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -384,6 +415,7 @@ async function load(){
     }
     renderBookingLink();
     renderLolaWidget(d.lola_agent_id);
+    igLoad();
 
     // Phone status
     const ps=document.getElementById('phoneStatus');

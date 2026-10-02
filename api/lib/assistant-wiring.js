@@ -20,11 +20,12 @@ import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
 
 // Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
+export const GREETING_VAR = '{{lola_greeting}}';
 export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
-  'capture_lead', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory']);
+  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory']);
 // Dedicated endpoints that are also fine for a tool to call directly.
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
@@ -94,10 +95,23 @@ export async function wireAssistant({ heal = false } = {}) {
   });
   const dv = parse(a.dynamic_variables_webhook_url);
   const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname);
+  // Tools every Lola must have (added once, never duplicated).
+  const REQUIRED = [{ name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } }];
+  const have = new Set(next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')));
+  const added = [];
+  for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
   const patch = {};
-  if (fixed.length) patch.tools = next;
-  const disclosure = { greeting: greetingDiscloses(a.greeting), rules: String(a.instructions || '').includes(COMPLIANCE_MARK) };
-  if (!disclosure.greeting) patch.greeting = discloseGreeting(a.greeting);
+  if (fixed.length || added.length) patch.tools = next;
+  // Her first words come from the call itself ({{lola_greeting}}: "Hey Sarah, welcome back…" for a
+  // returning client), with the recording + AI notice; the default (no webhook answer) discloses too.
+  const dv0 = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+  const personal = String(a.greeting || '').trim() === GREETING_VAR;
+  const fallbackGreeting = personal ? dv0.lola_greeting : a.greeting;
+  const disclosure = { greeting: personal && greetingDiscloses(dv0.lola_greeting), rules: String(a.instructions || '').includes(COMPLIANCE_MARK) };
+  if (!disclosure.greeting) {
+    patch.greeting = GREETING_VAR;
+    patch.dynamic_variables = { ...dv0, lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
+  }
   if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
   if (!dynOk) patch.dynamic_variables_webhook_url = appUrl() + '/api/agent-variables';
   let healed = false, error = null;
@@ -106,10 +120,10 @@ export async function wireAssistant({ heal = false } = {}) {
     catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
   }
   return {
-    ok: (!fixed.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions)) || (healed && !error),
+    ok: (!fixed.length && !added.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions)) || (healed && !error),
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, unknown_tools: unknown,
-    disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting || null, rules_added: !!patch.instructions },
+    miswired: fixed, added_tools: added, unknown_tools: unknown,
+    disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url },
     healed, error,
   };

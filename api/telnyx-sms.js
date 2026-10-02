@@ -13,6 +13,7 @@ export { sendSMS };
 import { answerOwner } from './lib/owner-brain.js';
 import { handleConfirmReply } from './lib/appointment-confirm.js';
 import { handleCareText } from './lib/customer-care.js';
+import { answerClient } from './lib/client-brain.js';
 import { salonTz } from './lib/salon-time.js';
 import { chat } from './lib/llm.js';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
@@ -209,30 +210,17 @@ export default async function handler(req,res){
       }
     }catch(e){ console.warn('[sms] Photo analysis failed, continuing text-only:', e.message); }
   }
-  let reply = deterministicSkillReply({
-    tenant: row,
-    intent,
-    channel: 'sms',
-    clientName: client?.name ? String(client.name).split(' ')[0] : ''
-  }) || 'Thanks for texting! How can I help you book?';
+  // One Lola: same memory and the same hands (check times, book, move, cancel) as on the phone.
+  let reply = '';
   try{
-    if(!reply || intent === 'general' || intent === 'recommendation' || photoContext){
-      const r=await chat({
-        system:buildLolaSystemPrompt({
-          tenant: row,
-          channel,
-          intent,
-          mood,
-          memoryBlock: buildClientMemoryBlock(clientProfile) + photoContext
-        }),
-        messages:hist,
-        maxTokens:240,
-        temperature:0.6,
-        source:channel
-      });
-      if(r.ok&&r.text) reply=r.text;
-    }
-  }catch{}
+    const tz = await salonTz(row.id).catch(()=> 'America/New_York');
+    const prior = hist.slice(0, -1).filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+    const ans = await answerClient({ tenant: row, client, channel, text, history: prior, phone: fromN, tz, extra: photoContext });
+    reply = ans.reply;
+  }catch(e){ console.warn('[sms] client brain:', String(e?.message||e).slice(0,120)); }
+  if(!reply){
+    reply = deterministicSkillReply({ tenant: row, intent, channel: 'sms', clientName: client?.first_name || '' }) || 'Thanks for texting! What would you like to book?';
+  }
 
   try{
     const quality = evaluateInteractionQuality({
