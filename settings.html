@@ -323,6 +323,21 @@
     <div class="msg" id="icalMsg"></div>
   </div>
 
+  <div class="card" id="zapCard">
+    <h3>Boulevard (or any system) — two-way through Zapier</h3>
+    <div class="desc">No partner approval needed. Your booking system tells Lola about every appointment within seconds, and Lola’s bookings block that time in your system.</div>
+    <div class="fld"><label>1 · Your system → Lola</label>
+      <div class="desc" style="margin:4px 0 8px">In Zapier: trigger <b>Boulevard → New Appointment</b>, action <b>Webhooks by Zapier → POST</b> to this link. Data: <code>event</code> = new, <code>id</code>, <code>start</code>, <code>end</code>, <code>staff</code>, <code>service</code>, <code>client</code>. Copy the Zap twice for <b>Appointment Rescheduled</b> (event = rescheduled) and <b>Appointment Cancelled</b> (event = cancelled).</div>
+      <div class="copy-box"><span id="zapIn" style="word-break:break-all">Loading…</span><button onclick="zapCopy()">Copy</button></div>
+    </div>
+    <div class="fld" style="margin-top:14px"><label>2 · Lola → your system</label>
+      <div class="desc" style="margin:4px 0 8px">In Zapier: trigger <b>Webhooks by Zapier → Catch Hook</b>, paste its URL below and tap Connect (we send a test booking). Then add a filter <code>event</code> = booking.created and the action <b>Boulevard → Create Timeblock</b> (staff = stylist_name, start = starts_at, duration = duration_min, title = title).</div>
+      <input id="zapOut" placeholder="https://hooks.zapier.com/hooks/catch/…" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)"/>
+    </div>
+    <div class="btn-row"><button class="btn-p" id="zapBtn" onclick="zapSave()">Connect</button><button class="btn-g" id="zapOff" onclick="zapOff()" style="display:none">Disconnect</button></div>
+    <div class="msg" id="zapMsg"></div>
+  </div>
+
   <div class="card">
     <h3>Calendar</h3>
     <div class="toggle-row"><div><div class="tl">Google Calendar</div><div class="ts">Block time from your personal calendar</div></div><button class="btn-g" id="c-google" onclick="connect('google')">Connect</button></div>
@@ -437,6 +452,26 @@ async function icalAdd(){
 async function icalRemove(i){
   try{ await fetch('/api/calendar-link',{method:'DELETE',headers:H(),body:JSON.stringify({index:i})}); msg('icalMsg','Removed.',true); icalLoad(); }catch(e){}
 }
+// Two-way with Boulevard (or any system) through Zapier
+async function zapLoad(){
+  try{
+    const d=await (await fetch('/api/zapier',{headers:H()})).json(); if(!d.ok) return;
+    document.getElementById('zapIn').textContent=d.inbound_url;
+    document.getElementById('zapOff').style.display=d.outbound_connected?'':'none';
+    if(d.outbound_connected) document.getElementById('zapOut').placeholder='Connected — paste a new Catch Hook URL to replace it';
+    if(d.appointments_received) msg('zapMsg','Lola has received '+d.appointments_received+' appointment'+(d.appointments_received===1?'':'s')+' from your system.',true);
+  }catch(e){}
+}
+function zapCopy(){ try{ navigator.clipboard.writeText(document.getElementById('zapIn').textContent); msg('zapMsg','Copied. Paste it as the Webhooks URL in your Zap.',true); }catch(e){} }
+async function zapSave(){
+  const url=document.getElementById('zapOut').value.trim(), b=document.getElementById('zapBtn');
+  if(!url){ msg('zapMsg','Paste your Zapier Catch Hook URL first.',false); return; }
+  b.disabled=true; b.textContent='Sending a test…';
+  try{ const d=await (await fetch('/api/zapier',{method:'POST',headers:H(),body:JSON.stringify({url})})).json(); msg('zapMsg',d.ok?d.say:(d.error||'That didn’t work.'),!!d.ok); if(d.ok){ document.getElementById('zapOut').value=''; zapLoad(); } }
+  catch(e){ msg('zapMsg','Couldn’t reach LolaDesk.',false); }
+  finally{ b.disabled=false; b.textContent='Connect'; }
+}
+async function zapOff(){ try{ await fetch('/api/zapier',{method:'DELETE',headers:H()}); msg('zapMsg','Disconnected.',true); zapLoad(); }catch(e){} }
 function setVal(id,v){const e=document.getElementById(id);if(e)e.value=v??'';}
 function msg(id,text,ok){const e=document.getElementById(id);if(e){e.textContent=text;e.className='msg '+(ok?'ok':'err');}}
 function showNumberSearch(){document.getElementById('numberSearchCard').style.display='block';}
@@ -459,6 +494,7 @@ async function load(){
     renderLolaWidget(d.lola_agent_id);
     igLoad();
     icalLoad();
+    zapLoad();
 
     // Phone status
     const ps=document.getElementById('phoneStatus');
