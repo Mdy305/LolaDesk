@@ -244,6 +244,12 @@ async function book_appointment(tenant, body){
     }
     const startsAt = await salonInstant(tenant, date, time);
     const durationMin = parseDurationMin(s?.durationMin ?? s?.duration, 60);
+    // Salons that keep their own system and chose "Lola texts my booking link": she closes it there.
+    try{
+      const { bookingMode, bookViaLink } = await import('./lib/link-booking.js');
+      const mode = await bookingMode(tenant);
+      if(mode.link) return await bookViaLink(tenant, body, { url: mode.url, startsAt, service: s ? { name: s.name, duration: s.duration } : { name: service }, durationMin });
+    }catch(e){ console.warn('[lola-tools] link mode:', String(e?.message||e).slice(0,120)); }
     if(!startsAt){
       return {
         speak: `Perfect — I can book that now. Tell me the exact date and time you want for ${s?.name || service || 'your appointment'}.`,
