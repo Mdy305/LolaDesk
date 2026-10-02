@@ -41,6 +41,7 @@
     }).then(async r => {
       if (!r.ok) throw new Error('voice unavailable');
       const bytes = await r.arrayBuffer();
+      if (global.LolaSound) { const p = global.LolaSound.play(bytes); return { engine: 'lola', done: p, cancel() { global.LolaSound.cancel(); } }; }
       const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
       const audio = new Audio(url);
       audio.onended = () => { try { URL.revokeObjectURL(url); } catch (e) {} };

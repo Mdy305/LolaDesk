@@ -44,6 +44,8 @@ export default async function handler(req, res) {
   const started = Date.now();
   // Heal first (every salon's number on the messaging profile + Lola's voice line), then record truth.
   try { await wireAccount(client, { heal: true }); } catch (_) { /* the account check never blocks the salon sweep */ }
+  // One voice everywhere: any assistant that drifted to another voice goes back to Lola's own.
+  try { const { unifyAssistantVoices } = await import('../lib/one-voice.js'); await unifyAssistantVoices({ heal: true }); } catch (_) {}
   let instagram = null;
   try { const { refreshInstagramTokens } = await import('../lib/instagram-dm.js'); instagram = await refreshInstagramTokens(client); } catch (_) {}
   const snapshot = await liveTelnyxSnapshot();

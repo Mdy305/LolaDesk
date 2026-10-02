@@ -1,5 +1,5 @@
-// Lola never goes silent: ElevenLabs first when configured, Telnyx when it
-// fails (no key, out of credit), Telnyx only when VOICE_PROVIDER=telnyx.
+// ONE voice: the valet-girl Lola from ElevenLabs (ELEVENLABS_VOICE_ID), everywhere. Never a stand-in
+// voice; the reason surfaces instead. Telnyx only when the owner sets VOICE_PROVIDER=telnyx on purpose.
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k';
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const calls = []; let elevenStatus = 200;
@@ -16,12 +16,15 @@ process.env.ELEVENLABS_API_KEY = 'e'; process.env.ELEVENLABS_VOICE_ID = 'v'; pro
 let buf = await synthesize({ text: 'Hi' });
 ok(buf.length === 3 && calls.every(c => !c.includes('telnyx')), 'ElevenLabs speaks when it works');
 reset(); elevenStatus = 401;
-buf = await synthesize({ text: 'Hi' });
-ok(buf.length === 2 && calls.some(c => c.includes('text-to-speech/speech')), 'out of credit → Lola speaks through Telnyx');
-ok(calls.includes('voice=Telnyx.KokoroTTS.af_heart'), 'with the same voice her phone assistant uses');
-reset(); delete process.env.ELEVENLABS_API_KEY;
-buf = await synthesize('Hi');
-ok(buf.length === 2 && !calls.some(c => c.includes('elevenlabs')), 'no ElevenLabs key → Telnyx directly');
+let err = null; try { await synthesize({ text: 'Hi' }); } catch (e) { err = e; }
+ok(err && /ElevenLabs 401/.test(err.message) && !calls.some(c => c.includes('text-to-speech/speech')), 'out of credit → no different-sounding stand-in voice; the reason surfaces');
+reset(); delete process.env.ELEVENLABS_API_KEY; err = null;
+try { await synthesize('Hi'); } catch (e) { err = e; }
+ok(err && /ELEVENLABS_API_KEY/.test(err.message) && calls.length === 0, 'no ElevenLabs key → says so plainly');
+reset(); process.env.ELEVENLABS_API_KEY = 'e'; elevenStatus = 200; delete process.env.ELEVENLABS_VOICE_ID; err = null;
+try { await synthesize('Hi'); } catch (e) { err = e; }
+ok(err && /ELEVENLABS_VOICE_ID/.test(err.message) && calls.length === 0, 'no voice id → never a random preset voice');
+process.env.ELEVENLABS_VOICE_ID = 'v';
 reset(); process.env.ELEVENLABS_API_KEY = 'e'; elevenStatus = 200; process.env.VOICE_PROVIDER = 'telnyx'; process.env.LOLA_TELNYX_VOICE = 'Telnyx.Ultra.Clara';
 buf = await synthesize('Hi');
 ok(!calls.some(c => c.includes('elevenlabs')) && calls.includes('voice=Telnyx.Ultra.Clara'), 'VOICE_PROVIDER=telnyx and LOLA_TELNYX_VOICE are honored');

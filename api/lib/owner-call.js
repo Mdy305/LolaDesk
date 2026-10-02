@@ -14,6 +14,7 @@ import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { resolveTenantLine, connectionCandidates } from './call-callback.js';
 import { demoStep } from './demo-call.js';
 import { forwardTestStep } from './forwarding.js';
+import { voiceUrl, saidEnded } from './one-voice.js';
 
 // client_state rides on every Telnyx event for calls we place. It's signed (HMAC), so the bridge
 // can trust events for OUR calls even if the webhook signature can't be checked — Lola never goes silent.
@@ -67,9 +68,11 @@ export function bridgeStep(event) {
   if (st && st.k === 'fwd_test' && p.call_control_id) return forwardTestStep(type, p, st);
   if (!st || st.k !== 'owner_bridge' || !p.call_control_id) return null;
   if (type === 'call.answered' && !st.spoke) {
-    return { id: p.call_control_id, action: 'speak', body: { payload: `Connecting you to ${st.n || 'your client'}.`, voice: 'female', language: 'en-US', client_state: encodeState({ ...st, spoke: 1 }) } };
+    // Lola's own voice; if Telnyx refuses the audio, connect straight away rather than leave you waiting.
+    const transfer = { to: st.to, from: st.from, timeout_secs: 40, client_state: encodeState({ ...st, spoke: 1, joined: 1 }) };
+    return { id: p.call_control_id, action: 'playback_start', body: { audio_url: voiceUrl(`Connecting you to ${st.n || 'your client'}.`), client_state: encodeState({ ...st, spoke: 1 }) }, fallback: { action: 'transfer', body: transfer } };
   }
-  if (type === 'call.speak.ended' && !st.joined) {
+  if (saidEnded(type) && !st.joined) {
     return { id: p.call_control_id, action: 'transfer', body: { to: st.to, from: st.from, timeout_secs: 40, client_state: encodeState({ ...st, joined: 1 }) } };
   }
   return null;

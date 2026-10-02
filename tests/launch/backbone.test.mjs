@@ -138,7 +138,7 @@ ok(r.ok && calls.at(-1).to === '+13055557777' && calls.at(-1).from === '+1305555
 const { bridgeStep, decodeState } = await import(P + 'lib/owner-call.js');
 const ev = (type, cs) => ({ data: { event_type: type, payload: { call_control_id: 'v3:fwd', client_state: cs } } });
 const s1 = bridgeStep(ev('call.answered', calls.at(-1).client_state));
-ok(s1.action === 'speak' && bridgeStep(ev('call.speak.ended', s1.body.client_state)).action === 'hangup', 'the test leg says goodbye and hangs up');
+ok(s1.action === 'playback_start' && bridgeStep(ev('call.playback.ended', s1.body.client_state)).action === 'hangup', 'the test leg says goodbye and hangs up');
 ok(await fwd.noteForwardedArrival(db(), T.tenants[0], '+13055550100', '+13055550100') && T.tenant_channels.find((x) => x.channel === 'forwarding').status === 'verified', 'the call arrives back on Lola’s line → forwarding verified');
 
 // ── 6. Instant text-back ──

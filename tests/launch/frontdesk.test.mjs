@@ -42,8 +42,8 @@ ok(r.ok && calls.at(-1)?.to === '+17865550199' && calls.at(-1)?.from === '+13055
 const { bridgeStep, decodeState } = await import(P + 'lib/owner-call.js');
 const ev = (type, cs) => ({ data: { event_type: type, payload: { call_control_id: 'v3:owner-leg', client_state: cs } } });
 const s1 = bridgeStep(ev('call.answered', calls.at(-1).client_state));
-ok(s1?.action === 'speak' && /Connecting you to Maria/.test(s1.body.payload), 'you pick up → “Connecting you to Maria”');
-const s2 = bridgeStep(ev('call.speak.ended', s1.body.client_state));
+ok(s1?.action === 'playback_start' && /Connecting you to Maria/.test(new URL(s1.body.audio_url).searchParams.get('text')) && s1.fallback?.action === 'transfer', 'you pick up → “Connecting you to Maria” in Lola’s own voice (connects anyway if the audio is refused)');
+const s2 = bridgeStep(ev('call.playback.ended', s1.body.client_state));
 ok(s2?.action === 'transfer' && s2.body.to === '+13055551111' && s2.body.from === '+13055550100', 'then Maria is dialed and joined; she sees the salon’s number');
 ok(bridgeStep(ev('call.speak.ended', s2.body.client_state)) === null && bridgeStep(ev('call.answered', 'junk')) === null, 'it never double-dials, and ignores other calls');
 T.tenants[0].operator_phone = null;

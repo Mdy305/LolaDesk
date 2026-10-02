@@ -16,6 +16,7 @@ import { e164 } from './db.js';
 import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { connectionCandidates } from './call-callback.js';
 import { encodeState } from './owner-call.js';
+import { voiceUrl, saidEnded } from './one-voice.js';
 
 const digits = (n) => String(n || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
 
@@ -85,7 +86,8 @@ export async function forwardingStatus(c, tenantId) {
 
 /** Bridge step for the test leg: once anyone (Lola, voicemail, or a person) answers, hang up. */
 export function forwardTestStep(type, p, st) {
-  if (type === 'call.answered' && !st.said) return { id: p.call_control_id, action: 'speak', body: { payload: 'This is a LolaDesk forwarding test. Goodbye!', voice: 'female', language: 'en-US', client_state: encodeState({ ...st, said: 1 }) } };
-  if (type === 'call.speak.ended' && st.said) return { id: p.call_control_id, action: 'hangup', body: {} };
+  // Said in Lola's own voice (the one voice, everywhere); if Telnyx refuses the audio, it just hangs up — the test already passed.
+  if (type === 'call.answered' && !st.said) return { id: p.call_control_id, action: 'playback_start', body: { audio_url: voiceUrl('This is a LolaDesk forwarding test. Goodbye!'), client_state: encodeState({ ...st, said: 1 }) }, fallback: { action: 'hangup', body: {} } };
+  if (saidEnded(type) && st.said) return { id: p.call_control_id, action: 'hangup', body: {} };
   return null;
 }
