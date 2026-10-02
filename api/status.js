@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-smart';
+export const RELEASE = 'lola-signup';
 let lastHeal = 0;
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;

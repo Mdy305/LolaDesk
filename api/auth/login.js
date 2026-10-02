@@ -1,4 +1,5 @@
 import { signIn } from '../lib/auth.js';
+import { confirmationRequired, signInLettingStuckOwnersIn } from '../lib/auth-direct.js';
 import { db, activateTenant } from '../lib/db.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { autoAssignOwnedNumber } from '../lib/telnyx-provision.js';
@@ -16,7 +17,8 @@ export default async function handler(req, res){
     const { email, password } = b;
     if(!email || !password) return res.status(400).json({ error:'email and password required' });
 
-    const sess = await signIn({ email, password });
+    // Owners whose confirmation email never arrived get in with the right password (lib/auth-direct.js).
+    const sess = confirmationRequired() ? await signIn({ email, password }) : await signInLettingStuckOwnersIn({ email: String(email).trim().toLowerCase(), password });
 
     let tenant = null;
     const c = db();
