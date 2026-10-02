@@ -212,6 +212,7 @@ function authMock(){
 
 test('signup creates a PENDING tenant and asks for email confirmation — no session, no number', async () => {
   fresh();
+  process.env.REQUIRE_EMAIL_CONFIRMATION = '1'; // the email-link gate (opt-in since instant sign-up)
   authMock();
   let telnyxHit = false;
   const realFetch = globalThis.fetch;
@@ -238,6 +239,7 @@ test('signup creates a PENDING tenant and asks for email confirmation — no ses
 
 test('signup succeeds (200) even if Telnyx is down — no provisioning happens at signup', async () => {
   fresh();
+  process.env.REQUIRE_EMAIL_CONFIRMATION = '1'; // the email-link gate (opt-in since instant sign-up)
   authMock();
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('telnyx down'); };
