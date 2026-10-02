@@ -6,6 +6,14 @@
  */
 import crypto from 'node:crypto';
 
+/** The exact bytes Telnyx sent (needs `config = { api: { bodyParser: false } }` on the route). */
+export async function readRawBody(req) {
+  const chunks = [];
+  try { if (req && typeof req[Symbol.asyncIterator] === 'function') for await (const ch of req) chunks.push(typeof ch === 'string' ? Buffer.from(ch) : ch); } catch (_) {}
+  if (chunks.length) return Buffer.concat(chunks).toString('utf8');
+  return rawBody(req);
+}
+
 export function rawBody(req) {
   if (Buffer.isBuffer(req.body)) return req.body.toString('utf8');
   if (typeof req.body === 'string') return req.body;

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { randomInt } from 'node:crypto';
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
@@ -172,7 +173,9 @@ export async function createHold({ tenantId, clientId=null, staffId, serviceId=n
   const { data, error } = await c.from('availability_holds').insert({
     tenant_id: tenantId, client_id: clientId, staff_id: staffId, service_id: serviceId,
     starts_at: startsAt, ends_at: endsAt, channel, conversation_id: conversationId,
-    expires_at: expiresAt, status:'active'
+    expires_at: expiresAt, status:'active',
+    // Same shape as the column default (encode(gen_random_bytes(18),'hex')), known before the round trip.
+    hold_token: randomBytes(18).toString('hex')
   }).select().single();
   if(error) throw error;
   return data;

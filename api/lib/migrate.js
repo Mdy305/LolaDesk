@@ -194,6 +194,27 @@ const TENANT_CHANNELS_DDL = `create table if not exists public.tenant_channels (
 create index if not exists idx_tenant_channels_tenant on public.tenant_channels (tenant_id);
 alter table public.tenant_channels enable row level security;`;
 
+// booking_outbox — durable write-through of LolaDesk bookings to the salon's own platform.
+const BOOKING_OUTBOX_DDL = `create table if not exists public.booking_outbox (
+  id              uuid primary key default gen_random_uuid(),
+  tenant_id       uuid not null references public.tenants(id) on delete cascade,
+  booking_id      uuid not null,
+  op              text not null default 'create',
+  payload         jsonb,
+  status          text not null default 'pending',
+  attempts        int not null default 0,
+  next_attempt_at timestamptz not null default now(),
+  provider        text,
+  external_id     text,
+  last_error      text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  unique (booking_id, op)
+);
+create index if not exists idx_booking_outbox_due on public.booking_outbox (status, next_attempt_at);
+create index if not exists idx_booking_outbox_tenant on public.booking_outbox (tenant_id);
+alter table public.booking_outbox enable row level security;`;
+
 // Memoized per cold start: run the probe (and any DDL) at most once per
 // function instance, then every later call is a no-op promise resolution.
 let _ensured = null;
@@ -287,6 +308,7 @@ async function runMigrations() {
   await ensureTable(c, 'legal_acceptances', LEGAL_ACCEPTANCES_DDL, applied);
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
+  await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
   // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
   // the deposits cron or the booking seam cold-starts.
   await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);

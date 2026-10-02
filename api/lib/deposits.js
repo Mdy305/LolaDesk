@@ -30,7 +30,7 @@ import { db } from './db.js';
 import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
 import { createPaymentLink } from './stripe.js';
-import { depositRequestText, depositKeptText, depositRefundText, depositUnpaidText } from './lola-persona.js';
+import { depositRequestText, depositKeptText, depositRefundText, depositUnpaidText, depositReleasedText } from './lola-persona.js';
 import { salonTz, fmtSalon } from './salon-time.js';
 
 export const DEPOSIT_DEFAULTS = Object.freeze({ percent: 25, min_cents: 0, grace_minutes: 0 });
@@ -42,11 +42,19 @@ export function resolvePolicy(settings){
   const raw = settings && settings.metadata && settings.metadata.deposits;
   if(!raw || raw.enabled !== true) return null;
   const pct = Math.round(Number(raw.percent));
+  const cents = (v) => Math.max(0, Math.round(Number(v) || 0));
   return {
     enabled: true,
     percent: Number.isFinite(pct) && pct >= 1 ? Math.min(DEPOSIT_MAX_PERCENT, pct) : DEPOSIT_DEFAULTS.percent,
     min_cents: Math.max(0, Math.round(Number(raw.min_cents) || 0)),
-    grace_minutes: Math.max(0, Math.round(Number(raw.grace_minutes) || 0))
+    grace_minutes: Math.max(0, Math.round(Number(raw.grace_minutes) || 0)),
+    // Optional (set from Banking → Policies): a fixed amount instead of a percent, a premium
+    // tier for $250+ services, and a pay-within window after which the slot is released.
+    type: raw.type === 'fixed' ? 'fixed' : 'percent',
+    fixed_cents: cents(raw.fixed_cents),
+    premium_threshold: Number(raw.premium_threshold) > 0 ? Number(raw.premium_threshold) : 250,
+    premium_value: Number(raw.premium_value) > 0 ? Number(raw.premium_value) : 0,
+    hold_minutes: Math.min(1440, Math.max(0, Math.round(Number(raw.hold_minutes) || 0)))
   };
 }
 
@@ -55,8 +63,15 @@ export function resolvePolicy(settings){
 export function depositAmountCents(totalAmount, policy){
   // total_amount is stored in dollars (repo convention); Stripe wants cents.
   const totalCents = Math.max(0, Math.round((Number(totalAmount) || 0) * 100));
-  const pct = Math.min(DEPOSIT_MAX_PERCENT, Math.max(1, Math.round(Number(policy && policy.percent) || DEPOSIT_DEFAULTS.percent)));
   const min = Math.max(0, Math.round(Number(policy && policy.min_cents) || 0));
+  if(!totalCents) return null;
+  const premium = policy && policy.premium_value > 0 && totalCents >= Math.round((policy.premium_threshold || 250) * 100);
+  if(policy && policy.type === 'fixed'){
+    const fixed = premium ? Math.round(policy.premium_value * 100) : Math.round(Number(policy.fixed_cents) || 0);
+    return Math.min(totalCents, Math.max(fixed, min)) || null;
+  }
+  const pctRaw = premium ? policy.premium_value : (policy && policy.percent);
+  const pct = Math.min(DEPOSIT_MAX_PERCENT, Math.max(1, Math.round(Number(pctRaw) || DEPOSIT_DEFAULTS.percent)));
   return Math.max(Math.round(totalCents * pct / 100), min) || null;
 }
 
@@ -107,7 +122,7 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
       from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
       text: depositRequestText({
         firstName: client.name, salon: tenant.name, serviceName: svc?.name,
-        when, amount: `$${(cents / 100).toFixed(2)}`, link: link?.url || ''
+        when, amount: `$${(cents / 100).toFixed(2)}`, link: link?.url || '', holdMinutes: policy.hold_minutes || 0
       })
     }).catch(() => {}); // a failed text never fails the deposit; the salon can resend from the dashboard
     return { ok: true, deposit, link_url: link?.url || null, amount_cents: cents };
@@ -129,7 +144,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
   const result = { migrations, checked: 0, refunded: 0, kept: 0, flagged: 0, voided: 0, failed: 0, skipped: 0 };
 
   const [{ data: pending }, { data: paid }] = await Promise.all([
-    c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id').eq('status', 'pending').order('created_at').limit(200),
+    c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id,created_at').eq('status', 'pending').order('created_at').limit(200),
     c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id').eq('status', 'paid').order('created_at').limit(200)
   ]);
   const rows = [...(pending || []), ...(paid || [])];
@@ -164,6 +179,21 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
 
     // ── UNPAID deposits ────────────────────────────────────────────────
     if(unpaid){
+      // Pay-within window (opt-in): unpaid after N minutes → the slot goes back on the calendar.
+      const hold = resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0;
+      const live = !['cancelled', 'canceled', 'declined', 'no_show', 'no-show', 'completed', 'arrived', 'in_progress'].includes(status);
+      if(hold && live && st > now.getTime() && d.created_at && now.getTime() - new Date(d.created_at).getTime() > hold * 60000){
+        const claimed = await setDepositStatus(c, d.id, 'expired', 'pending');
+        if(!claimed){ result.skipped++; continue; }
+        await c.from('bookings').update({ status: 'cancelled', updated_at: now.toISOString() }).eq('id', b.id).eq('tenant_id', d.tenant_id);
+        const cl = clMap[b.client_id]; const t = tMap[d.tenant_id];
+        if(cl?.phone && t?.phone_number){
+          await send({ from: t.phone_number, to: cl.phone, tenantId: d.tenant_id, type: 'SMS',
+            text: depositReleasedText({ firstName: cl.name, salon: t.name, when: fmtWhen(b.start_time, await salonTz(d.tenant_id)) }) }).catch(() => {});
+        }
+        result.released = (result.released || 0) + 1;
+        continue;
+      }
       if(now.getTime() < cutoff){ result.skipped++; continue; } // window still open
       const claimed = await setDepositStatus(c, d.id, 'flagged', 'pending');
       if(!claimed){ result.skipped++; continue; }

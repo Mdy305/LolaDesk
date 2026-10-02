@@ -104,6 +104,10 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
         : { key: 'support_line', ok: false, say: 'LolaDesk doesn’t have its own support line yet.', fix: 'Admin → LolaDesk support line → Set up the line.' });
     } catch (_) {}
   }
+  // Her background work (calendar sync, writes to the salon's booking system, reminders, deposits) runs on Vercel Cron.
+  if (platform) checks.push(process.env.CRON_SECRET
+    ? { key: 'background', ok: true, say: 'My background work is on: calendars sync every minute and bookings reach each salon’s own system.' }
+    : { key: 'background', ok: false, say: 'My background work is switched off — calendars don’t sync, reminders and deposit checks don’t run.', fix: 'Vercel → Settings → Environment Variables: add CRON_SECRET (any long random word), then Redeploy.' });
   // Hands
   const reflex = routeOwnerIntent('open my calendar');
   checks.push({ key: 'reflexes', ok: reflex?.navigate === '/calendar', say: 'I can open pages, catch you up, text, call, move and cancel on command.' });

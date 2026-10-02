@@ -64,6 +64,19 @@
             <div class="fine">Never less than this, even on small services.</div>
           </div>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>If they don’t pay</label>
+            <select data-field="deposits.hold_minutes">
+              <option value="0">Keep the booking — remind them</option>
+              <option value="10">Hold the slot 10 minutes, then release it</option>
+              <option value="15">Hold the slot 15 minutes, then release it</option>
+              <option value="30">Hold the slot 30 minutes, then release it</option>
+              <option value="60">Hold the slot 1 hour, then release it</option>
+            </select>
+            <div class="fine">When Lola books, she texts a secure Stripe link. With a hold, the time locks once they pay — or goes back on your calendar.</div>
+          </div>
+        </div>
         <div class="policy-preview">
           <div class="k">If this had been on last month</div>
           <div class="v" id="depositsPreview">You would have collected <b>$—</b> in deposits and prevented an estimated <b>$—</b> in no-show revenue loss.</div>

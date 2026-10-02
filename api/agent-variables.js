@@ -150,6 +150,9 @@ export default async function handler(req, res){
       });
     }
 
+    // A forwarding test arriving (Lola's line called "from" itself or from the salon's number): mark it working.
+    try{ const { noteForwardedArrival } = await import('./lib/forwarding.js'); await noteForwardedArrival(db(), tenant, fromNumber, toNumber); }catch(_){}
+
     let memory = { caller_known:'false', caller_name:'', caller_brief:'' };
     let story = null;
     try{

@@ -1,6 +1,6 @@
 // GET/POST /api/tenant/billing-policies
 const DEFAULTS = {
-  deposits:    { enabled: false, mode: 'percent', percent: 25, fixed_cents: 2500, services: 'all' },
+  deposits:    { enabled: false, mode: 'percent', percent: 25, fixed_cents: 2500, services: 'all', hold_minutes: 0 },
   no_show:     { enabled: true, fee_cents: 5000, charge_after_minutes: 15 },
   late_cancel: { enabled: true, hours_before: 24, fee_cents: 2500 },
   tips:        { enabled: true, suggested_percents: [15, 18, 20, 25] },
@@ -10,6 +10,24 @@ function merge(d, i) {
   if (!i || typeof i !== 'object') return d;
   const out = {}; for (const k of Object.keys(d)) out[k] = { ...d[k], ...(i[k] || {}) }; return out;
 }
+export async function mirrorDeposits(c, tenantId, d) {
+  const type = (d.type || d.mode) === 'fixed' ? 'fixed' : 'percent';
+  const amount = Number(d.amount ?? (type === 'fixed' ? (Number(d.fixed_cents) || 0) / 100 : d.percent)) || 0;
+  const deposits = {
+    enabled: !!d.enabled, type,
+    percent: type === 'percent' ? Math.max(1, Math.min(100, Math.round(amount || 25))) : 25,
+    fixed_cents: type === 'fixed' ? Math.round(amount * 100) : 0,
+    premium_value: Number(d.premium_amount) > 0 ? Number(d.premium_amount) : 0,
+    min_cents: Math.round((Number(d.min_amount) || 0) * 100),
+    hold_minutes: Math.max(0, Math.min(1440, Math.round(Number(d.hold_minutes) || 0))),
+  };
+  const { data: row } = await c.from('booking_settings').select('tenant_id,metadata').eq('tenant_id', tenantId).maybeSingle();
+  const metadata = { ...((row && row.metadata) || {}), deposits: { ...(((row && row.metadata) || {}).deposits || {}), ...deposits } };
+  if (row) await c.from('booking_settings').update({ metadata }).eq('tenant_id', tenantId);
+  else await c.from('booking_settings').insert({ tenant_id: tenantId, metadata });
+  return deposits;
+}
+
 export default async function handler(req, res) {
   let cors, jsonBody, bearer, getUserFromToken, resolveTenantForUser, dbFn;
   try {
@@ -40,6 +58,9 @@ export default async function handler(req, res) {
       const row = { tenant_id: tenant.id, policies, updated_at: new Date().toISOString(), updated_by: user.id || null };
       const { data, error } = await c.from('billing_policies').upsert(row, { onConflict: 'tenant_id' }).select().single();
       if (error) throw error;
+      // The deposit Lola actually requests (phone, texts, web) reads booking_settings.metadata.deposits:
+      // keep it in step with what the owner just saved here.
+      try { await mirrorDeposits(c, tenant.id, policies.deposits || {}); } catch (_) {}
       return res.json({ ok: true, data: data.policies });
     }
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });

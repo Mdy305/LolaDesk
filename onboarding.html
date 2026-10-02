@@ -245,6 +245,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       </div>
       <div class="error" id="err3"></div>
       <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
+      <details class="keep-number" style="margin-top:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 14px">
+        <summary style="cursor:pointer;font-weight:600">Keep your salon’s number — forward missed calls to Lola (90 seconds)</summary>
+        <p class="sub" style="margin:10px 0 12px;font-size:13px">No porting, no waiting. Your phone rings as usual; when nobody answers after ~2 rings, it’s busy, or you’re closed, the call goes to Lola. Dial the code on the salon phone, then tap Test it.</p>
+        <div data-lola-forward></div>
+      </details>
       <button class="btn-g" onclick="renderEmbed();go(6)" style="width:100%;margin-top:10px;background:transparent;border-color:transparent;color:var(--muted)">Set up her number later</button>
     </div>
 
@@ -913,5 +918,6 @@ function skipLearn(){
   go(1);renderProgress();
 })();
 </script>
+<script src="/lola-forward.js"></script>
 </body>
 </html>

@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import { readRawBody } from './lib/telnyx-webhook-verify.js';
+
+// Signatures cover the exact bytes: read them raw.
+export const config = { api: { bodyParser: false } };
 
 function rawBody(req) {
   if (Buffer.isBuffer(req.body)) return req.body.toString('utf8');
@@ -48,7 +52,7 @@ function summarize(event) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  const payload = rawBody(req);
+  const payload = await readRawBody(req);
   if (!verifyTelnyxSignature(req, payload)) {
     return res.status(401).json({ error: 'Invalid Telnyx webhook signature' });
   }

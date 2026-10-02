@@ -109,4 +109,10 @@ ok(!pz.live && /isn’t answering yet/.test(pz.headline) && pz.action.href === '
 const dash = (await import('node:fs')).readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
 ok(/id="lolaPulse"/.test(dash) && /\/api\/lola\/pulse/.test(dash) && !/part of the team and ready/.test(dash), 'the dashboard shows it live (refreshing every 30s)');
 
+// ── 6. Nothing we built is ever taken away ──
+const KEEP = ['404', 'activation-studio', 'admin', 'banking-payments', 'banking-policies', 'banking', 'book', 'booking-integrity', 'booking-settings', 'bookings', 'brain-os', 'calendar', 'calls', 'campaigns', 'client', 'clients', 'dashboard', 'growth-os', 'inbox', 'index', 'inventory', 'launch', 'login', 'lola-live', 'marketer', 'numbers', 'oauth-callback', 'onboarding', 'operations-os', 'operator', 'paid', 'pos', 'pricing', 'privacy', 'reset', 'revenue', 'reviews', 'services', 'settings', 'subscription', 'team', 'telecom', 'terms'];
+const fsx = await import('node:fs');
+const missing = KEEP.filter((p) => !fsx.existsSync(new URL('../../' + p + '.html', import.meta.url)));
+ok(!missing.length, `every page we built is still here (${KEEP.length} pages)` + (missing.length ? ' — missing: ' + missing.join(', ') : ''));
+
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);
