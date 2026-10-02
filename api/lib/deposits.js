@@ -54,8 +54,60 @@ export function resolvePolicy(settings){
     fixed_cents: cents(raw.fixed_cents),
     premium_threshold: Number(raw.premium_threshold) > 0 ? Number(raw.premium_threshold) : 250,
     premium_value: Number(raw.premium_value) > 0 ? Number(raw.premium_value) : 0,
-    hold_minutes: Math.min(1440, Math.max(0, Math.round(Number(raw.hold_minutes) || 0)))
+    hold_minutes: Math.min(1440, Math.max(0, Math.round(Number(raw.hold_minutes) || 0))),
+    // Who pays: everyone | risky (new clients + no-show / late-cancel history) | flaky (history only).
+    who: ['risky', 'flaky'].includes(raw.who) ? raw.who : 'everyone'
   };
+}
+
+/**
+ * A client's booking reliability, from their real history at this salon (last 12 months).
+ *   new      no kept visit yet
+ *   flaky    at least one no-show, or two+ cancellations
+ *   trusted  everyone else
+ */
+export async function clientRisk(tenantId, clientId, c = db()){
+  if(!clientId || !c) return { level: 'new', kept: 0, no_shows: 0, cancels: 0 };
+  try{
+    const since = new Date(Date.now() - 365 * 86400000).toISOString();
+    const { data } = await c.from('bookings').select('status,start_time').eq('tenant_id', tenantId).eq('client_id', clientId).gte('start_time', since).limit(200);
+    const now = Date.now(); let kept = 0, noShows = 0, cancels = 0;
+    for(const b of data || []){
+      const s = String(b.status || '').toLowerCase();
+      if(s === 'no_show' || s === 'noshow' || s === 'no-show') noShows++;
+      else if(s === 'cancelled' || s === 'canceled') cancels++;
+      else if(new Date(b.start_time).getTime() < now) kept++;
+    }
+    const level = (noShows >= 1 || cancels >= 2) ? 'flaky' : kept === 0 ? 'new' : 'trusted';
+    return { level, kept, no_shows: noShows, cancels };
+  }catch(_){ return { level: 'new', kept: 0, no_shows: 0, cancels: 0 }; }
+}
+
+/** Does this client owe a deposit under the policy? */
+export function depositApplies(policy, risk){
+  if(!policy || policy.enabled !== true) return false;
+  if(policy.who === 'flaky') return risk?.level === 'flaky';
+  if(policy.who === 'risky') return risk?.level !== 'trusted';
+  return true;
+}
+
+/**
+ * What Lola should say about a deposit for this booking — computed, never sent.
+ * → { required, amount_cents, reason }
+ */
+export async function depositPlan({ tenantId, booking, clientId = null }){
+  const c = db(); if(!c) return { required: false, reason: 'no_db' };
+  try{
+    const { data: s } = await c.from('booking_settings').select('metadata').eq('tenant_id', tenantId).maybeSingle();
+    const policy = resolvePolicy(s);
+    if(!policy) return { required: false, reason: 'policy_off' };
+    if(!process.env.STRIPE_SECRET_KEY) return { required: false, reason: 'stripe_not_configured' };
+    const risk = await clientRisk(tenantId, clientId || booking?.client_id, c);
+    if(!depositApplies(policy, risk)) return { required: false, reason: 'trusted_client', risk: risk.level };
+    const cents = depositAmountCents(booking?.total_amount, policy);
+    if(!cents) return { required: false, reason: 'zero_amount' };
+    return { required: true, amount_cents: cents, hold_minutes: policy.hold_minutes || 0, risk: risk.level };
+  }catch(e){ return { required: false, reason: String(e?.message || e) }; }
 }
 
 // Charge for one booking: percent of the total, floored at min_cents.
@@ -90,6 +142,10 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
     policy = resolvePolicy(s);
   }
   if(!policy || policy.enabled !== true) return { ok: true, skipped: true, reason: 'policy_off' };
+  if(policy.who && policy.who !== 'everyone'){
+    const risk = await clientRisk(tenantId, booking?.client_id, c);
+    if(!depositApplies(policy, risk)) return { ok: true, skipped: true, reason: 'trusted_client' };
+  }
   const start = booking && booking.start_time ? new Date(booking.start_time) : null;
   if(!booking?.id || !start || Number.isNaN(start.getTime()) || start <= new Date()) return { ok: true, skipped: true, reason: 'start_passed' };
   if(!process.env.STRIPE_SECRET_KEY) return { ok: true, skipped: true, reason: 'stripe_not_configured' };

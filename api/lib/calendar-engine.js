@@ -31,14 +31,14 @@ export function parseDurationMin(value, fallback = 60){
   return digits > 0 ? digits : (Number(fallback) || 60);
 }
 
-async function resolveServiceId(tenantId, service){
+export async function resolveServiceId(tenantId, service){
   if(!service) return null;
   const c = db(); if(!c) return null;
   const { data } = await c.from('services').select('id').eq('tenant_id', tenantId).ilike('name', `%${String(service)}%`).limit(1);
   return data?.[0]?.id || null;
 }
 
-async function resolveStaffId(tenantId, stylist){
+export async function resolveStaffId(tenantId, stylist){
   if(!stylist) return null;
   const c = db(); if(!c) return null;
   const { data } = await c.from('staff').select('id').eq('tenant_id', tenantId).ilike('name', `%${String(stylist)}%`).limit(1);
@@ -58,8 +58,10 @@ export async function listAvailability({ tenant, date, durationMin = 60, stylist
         const { data: services } = wanted ? { data: [{ id: wanted }] } : await c.from('services').select('id').eq('tenant_id', tenantId).eq('is_active', true).limit(1);
         if(services?.length){
           const staffId = stylist ? await resolveStaffId(tenantId, stylist) : null;
-          const av = await getAvailability({ tenantId, serviceId: services[0].id, date: date || new Date().toISOString(), staffId, limit: 12 });
-          if(av.ok && av.slots.length) return { slots: av.slots.map(s => s.starts_at) };
+          const av = await getAvailability({ tenantId, serviceId: services[0].id, date: date || new Date().toISOString(), staffId, limit: 2000 });
+          // One entry per time: two stylists free at 11:00 is one option, not "11, 11, 11:30".
+          const times = [...new Set((av.slots || []).map(s => new Date(s.starts_at).toISOString()))].slice(0, 12);
+          if(av.ok && times.length) return { slots: times };
         }
       }
     }catch(e){ /* no invented times */ }
@@ -79,8 +81,12 @@ export async function createBookingSafe({ tenant, clientId = null, service, styl
     // No stylist named: take whoever is free at that exact time — never
     // write a booking without a conflict check.
     if(serviceId && !staffId){
-      const av = await getAvailability({ tenantId, serviceId, date: startIso, limit: 500 });
-      staffId = (av.slots || []).find(x => x.starts_at === startIso)?.staff_id || null;
+      // The client's usual stylist if free, else whoever's day this time packs best (no dead holes).
+      try{ const { bestStaffAt } = await import('./smart-slots.js'); staffId = (await bestStaffAt({ tenantId, serviceId, startsAt: startIso, clientId }))?.staff_id || null; }catch(_){ staffId = null; }
+      if(!staffId){
+        const av = await getAvailability({ tenantId, serviceId, date: startIso, limit: 500 });
+        staffId = (av.slots || []).find(x => x.starts_at === startIso)?.staff_id || null;
+      }
       if(!staffId) return { ok: false, conflict: true, error: 'slot_unavailable' };
     }
 

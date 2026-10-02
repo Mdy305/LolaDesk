@@ -20,6 +20,7 @@ export async function mirrorDeposits(c, tenantId, d) {
     premium_value: Number(d.premium_amount) > 0 ? Number(d.premium_amount) : 0,
     min_cents: Math.round((Number(d.min_amount) || 0) * 100),
     hold_minutes: Math.max(0, Math.min(1440, Math.round(Number(d.hold_minutes) || 0))),
+    who: ['risky', 'flaky'].includes(d.who) ? d.who : 'everyone',
   };
   const { data: row } = await c.from('booking_settings').select('tenant_id,metadata').eq('tenant_id', tenantId).maybeSingle();
   const metadata = { ...((row && row.metadata) || {}), deposits: { ...(((row && row.metadata) || {}).deposits || {}), ...deposits } };
