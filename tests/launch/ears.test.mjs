@@ -4,6 +4,8 @@
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'k';
 process.env.TELNYX_VOICE_APP_ID = 'cc-app'; process.env.TELNYX_FROM_NUMBER = '+13055550000'; process.env.TELNYX_ASSISTANT_ID = 'assistant-lola';
 import { readFileSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
 const R = (f) => readFileSync(new URL('../../' + f, import.meta.url), 'utf8');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 
@@ -45,12 +47,37 @@ ok(/Calling you now/.test(r.say), 'the page says what really happened: ' + r.say
 const { runBridgeStep } = await import(P + 'lib/owner-call.js');
 const ev = (type, cs) => ({ data: { event_type: type, payload: { call_control_id: 'v3:demo-1', client_state: cs } } });
 let out = await runBridgeStep(ev('call.answered', c0.client_state));
-ok(out.did === 'ai_assistant_start' && actions.at(-1).body.assistant.id === 'assistant-lola' && /recorded/.test(actions.at(-1).body.greeting), 'you pick up → Lola herself is on the line (with the recording notice)');
+let a1 = actions.at(-1);
+ok(out.did === 'speak' && /Lola from LolaDesk/.test(a1.body.payload) && /recorded/.test(a1.body.payload) && a1.body.voice === 'Telnyx.KokoroTTS.af_heart', 'you pick up → you HEAR her right away, in her voice: ' + a1.body.payload);
+out = await runBridgeStep(ev('call.speak.ended', a1.body.client_state));
+ok(out.did === 'ai_assistant_start' && actions.at(-1).body.assistant.id === 'assistant-lola' && /Pretend you’re a client/.test(actions.at(-1).body.greeting), 'then Lola herself takes the conversation');
 refuseAssistant = true;
-out = await runBridgeStep(ev('call.answered', c0.client_state));
-ok(out.did === 'speak' && out.fallback && /LolaDesk/.test(actions.at(-1).body.payload), 'if Telnyx refuses, she still speaks — never silence');
+out = await runBridgeStep(ev('call.speak.ended', a1.body.client_state));
+ok(out.did === 'speak' && out.fallback && /LolaDesk/.test(actions.at(-1).body.payload), 'if Telnyx refuses the assistant, she still speaks — never silence');
 out = await runBridgeStep(ev('call.speak.ended', actions.at(-1).body.client_state));
 ok(out.did === 'hangup', 'and hangs up politely after');
+
+// The bridge webhook itself: Telnyx-signed raw bytes verify; our signed call state still works if the key is wrong; forgeries don't.
+const ed = crypto.generateKeyPairSync('ed25519');
+process.env.TELNYX_PUBLIC_KEY = ed.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+const bridge = (await import(P + 'call-center/bridge.js')).default;
+const hook = (raw, headers) => new Promise((resolve) => { const req = Readable.from([Buffer.from(raw)]); Object.assign(req, { method: 'POST', headers, query: {} }); const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); } }; bridge(req, res); });
+const rawEv = '{ "data": {"event_type":"call.answered", "payload": {"call_control_id":"v3:demo-1","client_state":"' + c0.client_state + '"}} }';
+const ts = String(Math.floor(Date.now() / 1000));
+const sig = crypto.sign(null, Buffer.from(ts + '|' + rawEv), ed.privateKey).toString('base64');
+let hk = await hook(rawEv, { 'telnyx-signature-ed25519': sig, 'telnyx-timestamp': ts });
+ok(hk.status === 200 && hk.did === 'speak', 'a real Telnyx-signed event verifies on the exact bytes (this is what silenced her before)');
+hk = await hook(rawEv, { 'telnyx-signature-ed25519': 'AAAA', 'telnyx-timestamp': ts });
+ok(hk.status === 200 && hk.did === 'speak', 'wrong key in Vercel? our own signed call state still lets her speak');
+const forged = Buffer.from(JSON.stringify({ k: 'lola_demo', a: 'evil', _s: 'nope' })).toString('base64');
+hk = await hook(rawEv.replace(c0.client_state, forged), { 'telnyx-signature-ed25519': 'AAAA', 'telnyx-timestamp': ts });
+ok(hk.status === 401, 'a forged event is refused');
+const insights = (await import(P + 'webhooks/telnyx-insights.js')).default;
+const rawIns = '{"data":{"event_type":"call.conversation.ended","payload":{"call_control_id":"v3:x"}}}';
+const sig2 = crypto.sign(null, Buffer.from(ts + '|' + rawIns), ed.privateKey).toString('base64');
+const ins = await new Promise((resolve) => { const req = Readable.from([Buffer.from(rawIns)]); Object.assign(req, { method: 'POST', headers: { 'telnyx-signature-ed25519': sig2, 'telnyx-timestamp': ts }, query: {} }); const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({ status: this.statusCode }); } }; insights(req, res); });
+ok(ins.status !== 401, 'call summaries + transcripts verify too (they were being refused the same way): ' + ins.status);
+delete process.env.TELNYX_PUBLIC_KEY;
 r = await call('demo-call.js', { method: 'POST', body: { phone: '+44 20 7946 0000' } });
 ok(r.status === 400 && /US and Canada/.test(r.say), 'international numbers refused, in plain words');
 

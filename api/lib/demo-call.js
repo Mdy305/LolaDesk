@@ -50,13 +50,25 @@ export async function placeDemoCall(client, phone) {
   return { ok: true, call_control_id: data.call_control_id || null, from, to, say: 'Calling you now — pick up and talk to me.' };
 }
 
-/** Bridge step for demo calls (pure). */
+// What she says the instant you pick up — through Telnyx's own text-to-speech, so you ALWAYS hear her.
+export const DEMO_INTRO = 'Hi, it’s Lola from LolaDesk! Just so you know, this call may be recorded, and I’m an AI assistant.';
+export const DEMO_HANDOFF = 'This is exactly how I answer your salon’s phone. Pretend you’re a client — ask me for an appointment, a price, anything.';
+const lolaVoice = () => process.env.LOLA_TELNYX_VOICE || 'Telnyx.KokoroTTS.af_heart';
+const speakBody = (payload, st, voice = lolaVoice()) => ({ payload, voice, language: 'en-US', client_state: encodeState(st) });
+
+/** Bridge step for demo calls (pure). answered → she speaks → Lola (the assistant) takes over → or a spoken demo. */
 export function demoStep(type, p, st) {
-  if (type === 'call.answered' && !st.started) {
-    if (st.a) return { id: p.call_control_id, action: 'ai_assistant_start', body: { assistant: { id: st.a }, greeting: DEMO_GREETING, client_state: encodeState({ ...st, started: 1 }) },
-      fallback: { action: 'speak', body: { payload: DEMO_FALLBACK, voice: 'female', language: 'en-US', client_state: encodeState({ ...st, started: 1, spoke: 1 }) } } };
-    return { id: p.call_control_id, action: 'speak', body: { payload: DEMO_FALLBACK, voice: 'female', language: 'en-US', client_state: encodeState({ ...st, started: 1, spoke: 1 }) } };
+  const id = p.call_control_id;
+  if (type === 'call.answered' && !st.stage) {
+    const next = { ...st, stage: 'intro' };
+    return { id, action: 'speak', body: speakBody(DEMO_INTRO, next), fallback: { action: 'speak', body: speakBody(DEMO_INTRO, next, 'female') } };
   }
-  if (type === 'call.speak.ended' && st.spoke) return { id: p.call_control_id, action: 'hangup', body: {} };
+  if (type === 'call.speak.ended' && st.stage === 'intro') {
+    const pitch = { ...st, stage: 'pitch' };
+    if (st.a) return { id, action: 'ai_assistant_start', body: { assistant: { id: st.a }, greeting: DEMO_HANDOFF, client_state: encodeState({ ...st, stage: 'ai' }) },
+      fallback: { action: 'speak', body: speakBody(DEMO_FALLBACK, pitch, 'female') } };
+    return { id, action: 'speak', body: speakBody(DEMO_FALLBACK, pitch), fallback: { action: 'speak', body: speakBody(DEMO_FALLBACK, pitch, 'female') } };
+  }
+  if (type === 'call.speak.ended' && st.stage === 'pitch') return { id, action: 'hangup', body: {} };
   return null;
 }

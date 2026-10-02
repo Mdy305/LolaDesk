@@ -18,7 +18,10 @@
  */
 import { db } from '../lib/db.js';
 import { parseInsightsEvent, classifyResults, persistCallInsights, markConversationEnded } from '../lib/call-insights.js';
-import { rawBody, verifyTelnyxSignature } from '../lib/telnyx-webhook-verify.js';
+import { readRawBody, verifyTelnyxSignature } from '../lib/telnyx-webhook-verify.js';
+
+// Signatures cover the exact bytes: read them raw.
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,7 +30,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const payload = rawBody(req);
+  const payload = await readRawBody(req);
   if (!verifyTelnyxSignature(req, payload)) {
     return res.status(401).json({ error: 'Invalid Telnyx webhook signature' });
   }

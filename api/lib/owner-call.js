@@ -14,8 +14,21 @@ import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { resolveTenantLine, connectionCandidates } from './call-callback.js';
 import { demoStep } from './demo-call.js';
 
-export const encodeState = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
-export function decodeState(s) { try { return JSON.parse(Buffer.from(String(s || ''), 'base64').toString('utf8')); } catch (_) { return null; } }
+// client_state rides on every Telnyx event for calls we place. It's signed (HMAC), so the bridge
+// can trust events for OUR calls even if the webhook signature can't be checked — Lola never goes silent.
+import crypto from 'node:crypto';
+const stateKey = () => String(process.env.TELNYX_API_KEY || process.env.SUPABASE_SERVICE_KEY || 'loladesk') + ':call-state';
+const mac = (json) => crypto.createHmac('sha256', stateKey()).update(json).digest('base64url').slice(0, 22);
+export const encodeState = (o) => { const { _s, ...rest } = o || {}; const json = JSON.stringify(rest); return Buffer.from(JSON.stringify({ ...rest, _s: mac(json) })).toString('base64'); };
+export function decodeState(s) {
+  try {
+    const o = JSON.parse(Buffer.from(String(s || ''), 'base64').toString('utf8'));
+    if (!o || typeof o !== 'object') return null;
+    const { _s, ...rest } = o;
+    Object.defineProperty(rest, 'trusted', { value: !!_s && _s === mac(JSON.stringify(rest)), enumerable: false });
+    return rest;
+  } catch (_) { return null; }
+}
 
 export async function callThroughOwner(client, tenant, clientPhone, { clientName = '' } = {}) {
   const to = e164(clientPhone);
@@ -66,6 +79,7 @@ export async function runBridgeStep(event) {
   const run = (a, b) => telnyxRequest(`/calls/${encodeURIComponent(step.id)}/actions/${a}`, { method: 'POST', body: b, timeoutMs: 8000 });
   try { await run(step.action, step.body); }
   catch (e) {
+    console.warn('[bridge]', step.action, 'failed:', String(e?.message || e).slice(0, 160));
     if (!step.fallback) throw e;
     console.warn('[bridge]', step.action, 'refused, falling back:', String(e?.message || e).slice(0, 140));
     await run(step.fallback.action, step.fallback.body);
