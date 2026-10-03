@@ -139,9 +139,15 @@ const BRAIN_APP_TTL_MS = 60_000;
 export const LOLA_BRAIN_TEXML_APP_ID = '2958004434761680608';
 
 export async function getLolaBrainConnectionId(){
-  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
-  if(!assistantId) return null;
   if(_brainAppId && Date.now() - _brainAppAt < BRAIN_APP_TTL_MS) return _brainAppId;
+  // The assistant that really is Lola (a stale/mistyped id in Vercel is found and corrected).
+  try{
+    const { resolveAssistant } = await import('./assistant-wiring.js');
+    const r = await resolveAssistant();
+    if(r?.texml_app_id){ _brainAppId = r.texml_app_id; _brainAppAt = Date.now(); return _brainAppId; }
+  }catch(_){}
+  const assistantId = String(process.env.TELNYX_LOLA_BRAIN_ID || '').trim();
+  if(!assistantId) return null;
   try{
     const a = await tFetch('/ai/assistants/' + assistantId);
     const appId = a?.telephony_settings?.default_texml_app_id || null;

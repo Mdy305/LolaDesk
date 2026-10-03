@@ -37,7 +37,7 @@ export default async function handler(req, res){
         const { data: rows } = await c.from('integrations').select('provider,status,updated_at').eq('tenant_id', tenant.id);
         integrations = (rows || []).map(r => ({ provider:r.provider, status:r.status, updated_at:r.updated_at }));
       }catch{}
-      return res.status(200).json({ ok:true, tenant: safe, settings: {}, integrations, lola_agent_id: process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID || null });
+      return res.status(200).json({ ok:true, tenant: safe, settings: {}, integrations, lola_agent_id: await (async () => { try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); return (await resolveAssistant()).id || null; } catch (_) { return process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID || null; } })() });
     }
 
     if(req.method !== 'POST') return res.status(405).json({ error:'POST only' });
