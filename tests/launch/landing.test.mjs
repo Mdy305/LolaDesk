@@ -15,6 +15,7 @@ for (const p of ['/privacy', '/terms', '/sms-terms', '/ai', '/legal', '/support'
 ok(!/<section class="reveal">/.test(html) && /classList\.remove\('js'\)/.test(html), 'content is visible even if animations never run (no more black voids)');
 ok(fs.existsSync(new URL('../../index-classic.html', import.meta.url)), 'the previous landing is kept at /index-classic');
 ok(/id="awakeText"/.test(html) && html.includes('Lola isn'), 'she is alive: she knows the visitor’s time of day (“It’s 11:40 PM. Your salon is closed. Lola isn’t.”)');
+ok(/class="stage" id="orbWrap"/.test(html) && /bleed:0\.32/.test(html) && /LolaWakeBurst\.trigger\(stage\)/.test(html) && /lola-wake-burst\.js/.test(html), 'the signature: her full particle body is the hero, she forms on arrival and speaks when tapped');
 ok(/id="phPlay"/.test(html) && /Text sent/.test(html) && /lolaSays\(/.test(html), 'a full call, start to finish, in her real voice — ending in a booking and the confirmation text');
 ok(/<title>AI Receptionist for Salons &amp; Spas/.test(html) && /"@type":"Organization"/.test(html) && /"@type":"FAQPage"/.test(html), 'SEO: the words salon owners search, structured data for Google');
 const SLUGS = ['hair-salons', 'barbershops', 'nail-salons', 'med-spas', 'day-spas', 'lash-and-brow-studios'];
