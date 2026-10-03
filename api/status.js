@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-findlola';
+export const RELEASE = 'lola-launch';
 let lastHeal = 0;
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;
@@ -156,6 +156,17 @@ export async function buildStatus() {
   if (live.phone_assistants > live.phone_assistants_in_lola_voice && !optedOut && live.voice_key && live.voice_id) vfix.push(`${live.phone_assistants - live.phone_assistants_in_lola_voice} of ${live.phone_assistants} phone assistants still use a different voice${live.phone_voice_error ? ' (Telnyx said: ' + live.phone_voice_error + ')' : ''}. Telnyx → AI → Assistants → each one → Voice: ElevenLabs, Lola’s voice → Save.`);
   if (live.phone_greeting === false) vfix.push('Lola’s assistant has no greeting, so callers hear silence first — Telnyx → AI → Assistants → Lola → Greeting: {{lola_greeting}} → Save.');
   if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(`${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`);
+  // Can a new salon sign up right now? (the Auth admin API that creates accounts answers)
+  try {
+    const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, ''), key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (base && key) {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 6000);
+      const r = await fetch(base + '/auth/v1/admin/users?page=1&per_page=1', { headers: { apikey: key, Authorization: 'Bearer ' + key }, signal: ac.signal }).catch(() => null);
+      clearTimeout(tm);
+      live.signup = !!(r && r.ok);
+    } else live.signup = false;
+  } catch (_) { live.signup = false; }
+  if (live.signup === false) fixes.push('New salons can’t sign up: Supabase refuses the service key for accounts — Vercel: check SUPABASE_URL and SUPABASE_SERVICE_KEY (Supabase → Project Settings → API → service_role), then Redeploy.');
   if (!live.database) fixes.push('LolaDesk can’t reach its database — Vercel → Settings → Environment Variables: check SUPABASE_URL and SUPABASE_SERVICE_KEY, then Redeploy.');
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');
   else if (live.telnyx_key === false) fixes.push('Telnyx refuses the TELNYX_API_KEY in Vercel — create a new key in Telnyx → API Keys, paste it in Vercel, Redeploy.');

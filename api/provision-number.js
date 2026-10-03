@@ -19,6 +19,22 @@ async function ownedByAnotherSalon(tenantId, number){
 // actually means she can take the first booking. Best-effort: the number is
 // already wired, so a seed failure must surface in the response, not fail
 // the whole provision.
+// Platform numbers no salon uses yet — the only ones a salon may pick for free (multi-tenant:
+// a salon never sees another salon's number, nor the platform's Telnyx balance).
+async function freePlatformNumbers(){
+  const owned = await listOwnedNumbers().catch(() => []);
+  if(!owned.length) return [];
+  const c = db(); if(!c) return [];
+  const [a, b] = await Promise.all([
+    c.from('tenant_numbers').select('phone_number,status').limit(5000),
+    c.from('tenants').select('phone_number').limit(5000),
+  ]);
+  const taken = new Set([...(a.data || []).filter(r => r.status !== 'released').map(r => r.phone_number), ...(b.data || []).map(r => r.phone_number)].filter(Boolean));
+  try{ const { data } = await c.from('platform_settings').select('value').eq('key', 'customer_care').maybeSingle(); if(data?.value?.number) taken.add(data.value.number); }catch(_){}
+  return owned.filter(n => !taken.has(n.phone_number)).map(n => ({ phone_number: n.phone_number, status: n.status, sms_enabled: n.sms_enabled }));
+}
+const isAdmin = (email) => String(process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(String(email || '').toLowerCase());
+
 async function seedBookability(tenant){
   try{
     return await ensureBookingBaseline(tenant.id);
@@ -46,10 +62,10 @@ export default async function handler(req,res){
       // BEFORE a purchase fails, instead of learning mid-checkout.
       // Account balance and the platform's owned numbers are only for signed-in owners.
       const who=await getUserFromToken(bearer(req)).catch(()=>null);
-      const balance=who?await getAccountBalance().catch(()=>null):null;
-      // Numbers the owner ALREADY has on Telnyx — attaching one costs nothing,
-      // so onboarding never has to stall on credit.
-      const owned=who?await listOwnedNumbers().catch(()=>[]):[];
+      const balance=who&&isAdmin(who.email)?await getAccountBalance().catch(()=>null):null;
+      // Free platform numbers (no salon uses them) — attaching one costs nothing, so onboarding
+      // never stalls on credit. Never another salon's number.
+      const owned=who?await freePlatformNumbers().catch(()=>[]):[];
       return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:n.cost?.amount?'$'+Number(n.cost.amount).toFixed(2)+'/mo':''})),owned});
     }catch(e){return res.status(200).json({ok:false,error:e.message});}
   }
@@ -66,6 +82,13 @@ export default async function handler(req,res){
 
     // Zero-cost path: attach a number the owner already has on Telnyx instead
     // of buying one. No purchase, no credit consumed — same activation result.
+    // One Lola number per salon from the wizard (more from Settings → Phone with the owner's plan).
+    try{
+      const c=db();
+      const { data: mine }=c?await c.from('tenant_numbers').select('phone_number,status').eq('tenant_id',tenant.id).limit(5):{data:[]};
+      const has=(mine||[]).find(r=>r.status!=='released')?.phone_number||tenant.phone_number||null;
+      if(has && !isAdmin(user.email) && !body.additional) return res.json({ok:true,phoneNumber:has,already:true,messagingProfileLinked:true,lolaBrainLinked:true,message:'Your Lola number is already live: '+has});
+    }catch(_){}
     if(useExisting && requestedNumber){
       if(await ownedByAnotherSalon(tenant.id, requestedNumber)) return res.status(409).json({ok:false,error:'That number already belongs to another salon on LolaDesk.'});
       const result=await attachOwnedNumberForTenant(tenant,requestedNumber);
