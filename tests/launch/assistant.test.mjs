@@ -43,8 +43,9 @@ ok(/salon=\{\{loladesk_salon\}\}&call=\{\{call_control_id\}\}/.test(t('book_appo
 ok(/^https:\/\/www\.loladesk\.com\/api\/agent-variables\?k=[\w-]{24}$/.test(assistant.dynamic_variables_webhook_url), 'salon details webhook reconnected (signed)');
 ok(assistant.telephony_settings?.supports_unauthenticated_web_calls === true && assistant.dynamic_variables_webhook_timeout_ms >= 2500, 'website calls allowed (Telnyx requires it for the widget) + room for the salon details');
 ok(assistant.tools.filter(x => x.webhook && /lola-tools/.test(x.webhook.url)).every(x => /&k=[\w-]{24}$/.test(x.webhook.url) && x.webhook.method === 'POST'), 'every LolaDesk tool is signed and POSTs');
+const afterFirst = patches.length;
 r = await wireAssistant({ heal: true });
-ok(r.ok && !r.miswired.length && patches.length === 1, 'second run: all good, nothing to change');
+ok(r.ok && !r.miswired.length && afterFirst >= 1 && patches.length === afterFirst, 'second run: all good, nothing to change');
 
 // The tool endpoint learns the salon from the URL.
 const { T } = await import('./fake-supabase.mjs');

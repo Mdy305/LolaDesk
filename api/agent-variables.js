@@ -78,6 +78,11 @@ export default async function handler(req, res){
     const signed = toolKeyOk(q.get('k') || req.query?.k, 'variables');
     const web = /web/i.test(String(body?.data?.payload?.telnyx_conversation_channel || body?.telnyx_conversation_channel || ''));
     const mayRemember = signed && !web && isPhone(fromNumber);
+    // Unsigned = the assistant's wiring drifted (or predates signing): re-sign it in the background.
+    if(!signed && process.env.TELNYX_API_KEY && Date.now() - (globalThis.__lolaVarsHealAt || 0) > 10 * 60e3){
+      globalThis.__lolaVarsHealAt = Date.now();
+      import('./lib/assistant-wiring.js').then((m) => m.wireAssistant({ heal: true })).catch(() => {});
+    }
 
     // ── MULTI-TENANT ROUTING (the literal "before she speaks" gate) ──
     // Telnyx calls this webhook to fetch the AI assistant's system facts

@@ -116,20 +116,25 @@ async function provisionNumber(body, tenant) {
     throw Object.assign(new Error('Tenant already has a phone number. Pass replace_existing=true to replace it.'), { status: 409 });
   }
 
-  const ordered = telnyxData(await telnyxRequest('/number_orders', {
-    method: 'POST',
-    body: { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` }
-  }));
-  const item = ordered?.phone_numbers?.[0] || {};
-  const phoneNumberId = item.id || item.phone_number_id || null;
-  // Prefer the LolaBrain assistant's own TeXML app (the AI voice path),
-  // falling back to TELNYX_VOICE_APP_ID.
+  // Prefer the LolaBrain assistant's own TeXML app (the AI voice path), falling back to TELNYX_VOICE_APP_ID.
   const voiceConnectionId = body.voice_connection_id || await getCanonicalVoiceConnectionId();
   const messagingProfileId = body.messaging_profile_id || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
-  if (phoneNumberId && voiceConnectionId) {
-    await telnyxRequest(`/phone_numbers/${phoneNumberId}`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });
+  // Documented: POST /number_orders takes connection_id + messaging_profile_id, so the number is wired the moment it lands.
+  const orderBody = { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` };
+  if (voiceConnectionId) orderBody.connection_id = voiceConnectionId;
+  if (messagingProfileId) orderBody.messaging_profile_id = messagingProfileId;
+  const ordered = telnyxData(await telnyxRequest('/number_orders', { method: 'POST', body: orderBody }));
+  // The order's phone_numbers[].id is the ORDER LINE, not the number: look the number itself up.
+  let phoneNumberId = null;
+  for (let i = 0; i < 4 && !phoneNumberId; i++) {
+    try { phoneNumberId = await numberIdFor(phoneNumber); } catch (_) {}
+    if (!phoneNumberId && i < 3) await new Promise((r) => setTimeout(r, Number(process.env.TELNYX_ORDER_SETTLE_MS ?? 1500)));
   }
-  if (messagingProfileId) {
+  if (phoneNumberId && voiceConnectionId) {
+    try { await telnyxRequest(`/phone_numbers/${phoneNumberId}`, { method: 'PATCH', body: { connection_id: voiceConnectionId } }); }
+    catch (e) { console.warn('[telecom] voice link:', e?.message); }
+  }
+  if (phoneNumberId && messagingProfileId) {
     try {
       await telnyxRequest(`/phone_numbers/${phoneNumberId}/messaging`, { method: 'PATCH', body: { messaging_profile_id: messagingProfileId } });
     } catch (e) { console.warn('[telecom] messaging link:', e?.message); }

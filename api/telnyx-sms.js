@@ -24,14 +24,19 @@ import { moderateImage, analyzeHairPhoto } from './lib/lola-photo-analysis.js';
 // Raw body for the Ed25519 signature check (Telnyx signs the exact bytes).
 export const config = { api: { bodyParser: false } };
 
-/** First time we see this Telnyx event? (retries of a slow answer are dropped) */
+/** First time we see this Telnyx event? A retry of an answered (or still-answering) text is dropped;
+ *  a retry of a run that crashed or timed out (>60s, never finished) is answered. */
 async function firstTime(id){
   if(!id) return true;
   try{
     const c = db(); if(!c) return true;
-    const seen = await c.from('telnyx_events').select('id').eq('id', String(id)).maybeSingle().then((r) => r, () => ({ data: null }));
-    if(seen?.data?.id) return false;
-    const { error } = await c.from('telnyx_events').insert({ id: String(id), kind: 'sms' });
+    const seen = await c.from('telnyx_events').select('id,kind,created_at').eq('id', String(id)).maybeSingle().then((r) => r, () => ({ data: null }));
+    if(seen?.data?.id){
+      const stuck = seen.data.kind === 'sms:processing' && Date.now() - new Date(seen.data.created_at || 0).getTime() > 60e3;
+      if(!stuck) return false;
+      await c.from('telnyx_events').delete().eq('id', String(id)).then((r) => r, () => null);
+    }
+    const { error } = await c.from('telnyx_events').insert({ id: String(id), kind: 'sms:processing', created_at: new Date().toISOString() });
     if(!error) return true;
     if(String(error.code) === '23505' || /duplicate|unique/i.test(String(error.message))) return false;
     import('./lib/migrate.js').then((m) => m.ensureMigrations()).catch(() => {});   // table missing: create it for next time
@@ -49,9 +54,10 @@ async function readBody(req){
     return { parsed: req.body, raw: '', parsedByRuntime: true };
   }
   return new Promise(resolve=>{
-    let raw='';
-    req.on('data',c=>raw+=c.toString());
+    const chunks=[]; let raw='';
+    req.on('data',c=>chunks.push(Buffer.isBuffer(c)?c:Buffer.from(c)));
     req.on('end',()=>{
+      raw=Buffer.concat(chunks).toString('utf8');   // whole bytes: a split multi-byte character must not break the signature
       const ct=(req.headers['content-type']||'').toLowerCase();
       if(ct.includes('json')){ try{ resolve({ parsed: JSON.parse(raw), raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
       else{ try{ const p=new URLSearchParams(raw),o={}; for(const[k,v]of p)o[k]=v; resolve({ parsed: o, raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
@@ -69,13 +75,28 @@ function extract(raw){
   return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS', mediaUrls: [] };
 }
 
+async function markDone(id){
+  if(!id) return;
+  try{ const c = db(); if(c) await c.from('telnyx_events').update({ kind: 'sms' }).eq('id', String(id)); }catch(_){}
+}
+
 export default async function handler(req,res){
+  let eventId = null;
+  const out = await handleText(req, res, (id) => { eventId = id; });   // a crash leaves it 'processing' → Telnyx's retry is answered
+  if(eventId) await markDone(eventId);
+  return out;
+}
+
+async function handleText(req,res,noteEvent){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Headers','Content-Type, telnyx-signature-ed25519, telnyx-timestamp');
   if(req.method==='OPTIONS') return res.status(200).end();
 
   const incoming=await readBody(req);
-  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
+  // Ed25519 signs Telnyx's v2 JSON webhooks; a legacy v1 (form) profile can't carry it — LolaDesk's
+  // messaging heal moves the profile to v2, and only then is every text verified.
+  const isJson = /json/i.test(String(req.headers?.['content-type'] || '')) || /^\s*\{/.test(incoming.raw || '');
+  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime && isJson){
     const sig = getTelnyxSignatureHeaders(req);
     const verified = verifyTelnyxSignature({ rawBody: incoming.raw, signature: sig.signature, timestamp: sig.timestamp });
     if(!verified.ok){
@@ -88,7 +109,9 @@ export default async function handler(req,res){
   // Delivery receipts (message.sent / message.finalized …) are not texts to answer.
   if(raw?.data?.event_type && raw.data.event_type !== 'message.received') return res.status(200).json({ ok:true, ignored: raw.data.event_type });
   if(!body.from || !body.to) return res.status(200).json({ ok:true, ignored:'no sender' });
-  if(!(await firstTime(raw?.data?.payload?.id || raw?.data?.id))) return res.status(200).json({ ok:true, duplicate:true });
+  const evId = raw?.data?.payload?.id || raw?.data?.id || null;
+  if(!(await firstTime(evId))) return res.status(200).json({ ok:true, duplicate:true });
+  noteEvent(evId);
 
   const fromN=e164(body.from), toN=e164(body.to), text=body.text||'', type=body.type||'SMS';
   const isWhatsApp = String(type).toUpperCase() === 'WHATSAPP';

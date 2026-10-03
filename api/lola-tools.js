@@ -555,6 +555,15 @@ export const SKILLS = {
   detect_upsell_opportunity // Yield Engine: pair add-ons to the booked service by spend tier
 };
 
+// A tool call without a valid signature means the assistant's wiring drifted: re-sign it now (at most every
+// 10 minutes per instance), so nobody has to open the status page for private skills to come back.
+let healAt = 0;
+function wakeTheHeal(why){
+  if(Date.now() - healAt < 10 * 60e3 || !process.env.TELNYX_API_KEY) return;
+  healAt = Date.now();
+  import('./lib/assistant-wiring.js').then((m) => m.wireAssistant({ heal: true })).then((w) => console.info('[lola-tools] re-signed tools (' + why + '):', w?.healed ? 'ok' : (w?.error || 'nothing to do'))).catch((e) => console.warn('[lola-tools] re-sign failed:', e?.message));
+}
+
 const linked = new Set();
 async function linkConversation(tenant, q, body){
   const callControlId = String(q.call);
@@ -581,10 +590,10 @@ export default async function handler(req, res){
     // so every tool knows which salon it serves without the model having to say it.
     const real = (v) => v && !/\{\{/.test(String(v));
     const { toolKeyOk } = await import('./lib/tool-key.js');
-    // Signed by LolaDesk's own assistant wiring (k=…). A wrong key is refused outright; a missing key
-    // (an assistant not yet re-signed by the heal) still gets the public skills, never the private ones.
+    // Signed by LolaDesk's own assistant wiring (k=…). Unsigned or stale-signed (a rotated secret, before the
+    // heal re-signs) still gets the public skills — booking never stops — but never the private ones.
     const signed = toolKeyOk(req.query?.k);
-    if(req.query?.k && !signed) return res.status(401).json({ speak: "I'm having a quick technical moment — let me take your number and have someone call you right back." });
+    if(!signed) wakeTheHeal(req.query?.k ? 'stale key' : 'unsigned');
     // Telnyx fills the salon line into the URL: it always wins over anything the model typed.
     if(real(req.query?.to)) body.to = String(req.query.to);
     // A website call has no dialed number; the salon's widget names its line (X-LolaDesk-Salon → {{loladesk_salon}}).

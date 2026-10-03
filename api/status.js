@@ -164,8 +164,9 @@ export async function buildStatus() {
             if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
             if (w.healed && !w.error && wiringOff) {
               healed.push(`Lola’s phone wiring secured: ${[unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean).join(', ')}.`);
-              live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = true;
+              live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
+            if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
             if (w.error) live.wiring_error = clip(w.error);
           } catch (_) {}
         }
@@ -227,6 +228,7 @@ export async function buildStatus() {
   if (!settings.INTEGRATION_ENCRYPTION_KEY) fixes.push('Add INTEGRATION_ENCRYPTION_KEY in Vercel (run: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"), then Redeploy — needed to connect Boulevard/Square/calendar links securely.');
   if (!settings.ADMIN_EMAILS) fixes.push('Add ADMIN_EMAILS in Vercel = your login email, then Redeploy — unlocks Admin and the full “Lola, run a check”.');
   if (live.assistant_bad_values) fixes.push(`Lola’s Telnyx assistant has an empty value for ${live.assistant_bad_values.join(', ')} — Telnyx refuses every change to her until it’s text. Telnyx → AI → Assistants → Lola → Dynamic Variables: set ${live.assistant_bad_values[0]} to https://www.loladesk.com (or delete it), then Save.`);
+  if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');

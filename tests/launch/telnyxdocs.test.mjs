@@ -31,7 +31,7 @@ const K = toolKey(), KV = toolKey('variables');
 
 // ── 1. Lola's tools: signed, and private skills only for the caller's own verified line ──
 let r = await run('lola-tools.js', { query: { tool: 'cancel_appointment', to: '+13055550100', from: '+13055554444', k: 'forged-key-forged-key-xx' }, body: {} });
-ok(r.status === 401, 'a forged tool key is refused outright');
+ok(r.verified === false && T.bookings.find((b) => b.id === 'nxt').status === 'confirmed', 'a forged tool key gets no private skill (and wakes the re-sign)');
 r = await run('lola-tools.js', { query: { tool: 'cancel_appointment', salon: '+13055550100' }, body: { client_phone: '+13055554444' } });
 ok(r.verified === false && T.bookings.find((b) => b.id === 'nxt').status === 'confirmed', 'anyone naming a client’s number can’t cancel her booking (unsigned)');
 r = await run('lola-tools.js', { query: { tool: 'cancel_appointment', to: '+13055550100', from: '{{telnyx_end_user_target}}', ch: 'web_call', k: K }, body: { client_phone: '+13055554444' } });

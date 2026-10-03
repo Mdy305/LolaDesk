@@ -177,6 +177,7 @@ export async function wireAssistant({ heal = false } = {}) {
   // requires telephony_settings.supports_unauthenticated_web_calls = true. Safe because every tool is
   // signed and changing a booking needs the caller's own verified phone line (see /api/lola-tools).
   const webCalls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
+  let webCallsError = null;
   if (!webCalls) patch.telephony_settings = { ...(a.telephony_settings || {}), supports_unauthenticated_web_calls: true };
   // Her ONE voice (the valet-girl Lola from ElevenLabs) on the phone too — see lib/one-voice.js.
   let voice = null;
@@ -188,11 +189,26 @@ export async function wireAssistant({ heal = false } = {}) {
   } catch (_) { voice = null; }
   let healed = false, error = null;
   if (heal && Object.keys(patch).length) {
-    try { await updateAssistant(id, patch); healed = true; }
+    // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
+    // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
+    const OPTIONAL = ['dynamic_variables_webhook_timeout_ms', 'telephony_settings', 'voice_settings'];
+    const core = Object.fromEntries(Object.entries(patch).filter(([k]) => !OPTIONAL.includes(k)));
+    const extras = OPTIONAL.filter((k) => k in patch);
+    try { if (Object.keys(core).length) await updateAssistant(id, core); healed = true; }
     catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
+    for (const k of extras) {
+      try { await updateAssistant(id, { [k]: patch[k] }); healed = healed || !error; }
+      catch (e) {
+        // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
+        if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
+        if (k === 'voice_settings' && voice) voice.error = String(e?.message || e);
+        else if (k === 'telephony_settings') webCallsError = String(e?.message || e).slice(0, 160);
+      }
+    }
   }
   return {
-    web_calls: webCalls || (healed && !error),
+    web_calls: webCalls || (healed && !error && !webCallsError),
+    web_calls_error: webCallsError,
     ok: (!fixed.length && !added.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
