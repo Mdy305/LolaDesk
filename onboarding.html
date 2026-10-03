@@ -237,14 +237,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       </div>
       <div class="num-grid" id="numGrid" style="display:none"><div style="color:var(--muted);font-size:13px;padding:12px 0">Choose one, or just auto-pick below.</div></div>
       <div class="owned-divider"><span>or</span></div>
-      <button class="btn-g" id="ownedToggle" onclick="loadOwned()" style="width:100%">Use a number I already own</button>
+      <button class="btn-g" id="ownedToggle" onclick="loadOwned()" style="width:100%">Use a ready LolaDesk number — free</button>
       <div class="num-grid" id="ownedGrid" style="display:none"></div>
       <div class="actions">
         <button class="btn-p" onclick="provisionNum()" id="provisionBtn">Give Lola her number</button>
         <button class="btn-g" id="autoContinue" style="display:none" onclick="autoContinue()">She's live — continue</button>
       </div>
       <div class="error" id="err3"></div>
-      <div class="fine">Buy a new number, or attach one you already own on Telnyx — attaching costs nothing.</div>
+      <div class="fine">Pick a new local number, or take a ready one for free. Keeping your current salon number? After setup, Settings → Phone → “Keep your salon number” forwards it to Lola.</div>
       <details class="keep-number" style="margin-top:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 14px">
         <summary style="cursor:pointer;font-weight:600">Keep your salon’s number — forward missed calls to Lola (90 seconds)</summary>
         <p class="sub" style="margin:10px 0 12px;font-size:13px">No porting, no waiting. Your phone rings as usual; when nobody answers after ~2 rings, it’s busy, or you’re closed, the call goes to Lola. Dial the code on the salon phone, then tap Test it.</p>
@@ -574,7 +574,7 @@ async function loadOwned(){
   const grid=document.getElementById('ownedGrid');
   const btn=document.getElementById('ownedToggle');
   const showing=grid.style.display==='block';
-  if(showing){grid.style.display='none';btn.textContent='Use a number I already own';return;}
+  if(showing){grid.style.display='none';btn.textContent='Use a ready LolaDesk number — free';return;}
   grid.style.display='block';
   btn.textContent='Hide my numbers';
   grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">Loading your Telnyx numbers…</div>';
@@ -582,12 +582,12 @@ async function loadOwned(){
     const r=await fetchJson('/api/provision-number',{headers:{Authorization:'Bearer '+S.token}});
     const d=r.b;
     const owned=(d.owned||[]).filter(n=>n.phone_number);
-    if(!owned.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">No numbers on this Telnyx account yet — buy one below.</div>';return;}
+    if(!owned.length){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">No ready numbers right now — pick a new local number above.</div>';return;}
     const order=owned.sort((a,b)=>(a.status==='active'?0:1)-(b.status==='active'?0:1));
     grid.innerHTML=order.map(n=>{
       const on=n.phone_number===S.selectedNumber&&S.useExisting?' on':'';
       const sms=n.sms_enabled===false?' <span style="color:#ffb020;font-size:11px">SMS off</span>':'';
-      return '<div class="num-card'+on+'" onclick="selOwned(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+sms+'</div><div class="num-meta">'+(n.status||'active')+'</div></div><div class="num-badge">YOURS</div></div>';
+      return '<div class="num-card'+on+'" onclick="selOwned(\''+n.phone_number+'\',this)"><div><div class="num-number">'+fmtPhone(n.phone_number)+sms+'</div><div class="num-meta">'+(n.status||'active')+'</div></div><div class="num-badge">FREE</div></div>';
     }).join('');
   }catch(e){grid.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">'+e.message+'</div>';}
 }

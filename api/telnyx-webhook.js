@@ -38,8 +38,15 @@ export default async function handler(req, res) {
         // and answer the call with their Telnyx AI Assistant.
         const to = p.to;
         const tenant = await tenantForNumber(c, to);
-        if (!tenant || !tenant.telnyx_assistant_id) break;
-        await answerCallWithAssistant(p.call_control_id, tenant.telnyx_assistant_id);
+        if (!tenant) break;
+        // The salon's own assistant, else the platform Lola — a call is never left ringing into silence.
+        let aid = tenant.telnyx_assistant_id;
+        if (!aid) { try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); aid = (await resolveAssistant()).id; } catch (_) {} }
+        if (!aid) break;
+        try { await answerCallWithAssistant(p.call_control_id, aid); }
+        catch (e) {
+          if (aid === tenant.telnyx_assistant_id) { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); const alt = (await resolveAssistant()).id; if (alt && alt !== aid) await answerCallWithAssistant(p.call_control_id, alt); else throw e; } else throw e;
+        }
         await c.from('calls').insert({
           tenant_id: tenant.id,
           call_control_id: p.call_control_id,

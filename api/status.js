@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-signup';
+export const RELEASE = 'lola-signature';
 let lastHeal = 0;
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;
@@ -84,11 +84,15 @@ export async function buildStatus() {
     } else live.voice_app = false;
   }
   // On the phone: every assistant speaks with her voice; the greeting is set; the salon numbers ring her.
-  if (settings.TELNYX_API_KEY && settings.TELNYX_ASSISTANT) {
-    const id = process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID;
-    const as = await tget('/ai/assistants/' + encodeURIComponent(id));
-    const a = as.j?.data || as.j;
-    live.assistant = as.ok && !!a?.id;
+  if (settings.TELNYX_API_KEY) {
+    // Which assistant IS Lola: the Vercel id if Telnyx knows it, otherwise found on the account.
+    const { resolveAssistant } = await import('./lib/assistant-wiring.js');
+    const found = await resolveAssistant({ force: true }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+    const a = found.assistant || null;
+    live.assistant = !!(found.ok && a?.id);
+    live.assistant_source = found.source || null;
+    if (found.ok && found.source !== 'env') { live.assistant_id = found.id; live.assistant_name = found.name; live.assistant_env_id_ok = false; }
+    if (!found.ok && found.error === 'no_assistant_on_account') live.assistant_missing = true;
     if (live.assistant) {
       const ov = await import('./lib/one-voice.js');
       const voices = await ov.unifyAssistantVoices({ heal: false });
@@ -107,7 +111,8 @@ export async function buildStatus() {
       live.salon_numbers_ringing_lola = onAcct.filter((n) => good.has(n.connection_id)).length;
       // Self-repair, at most every 10 minutes per server.
       const voiceOff = voices.possible && voices.lola < voices.total;
-      const needs = voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
+      const rewire = found.source !== 'env';   // a different assistant than Vercel's id: make sure its tools point at LolaDesk
+      const needs = rewire || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
       if (needs && Date.now() - lastHeal > 10 * 60e3) {
         lastHeal = Date.now();
         if (voiceOff) {
@@ -116,16 +121,22 @@ export async function buildStatus() {
           if (u.errors.length) live.phone_voice_error = clip(u.errors[0]);
           live.phone_assistants_in_lola_voice = u.lola;
         }
-        if (!live.phone_greeting) {
+        if (!live.phone_greeting || rewire) {
           try { const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true }); if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; } } catch (_) {}
         }
         if (live.salon_numbers_ringing_lola < live.salon_numbers) {
-          try {
-            const { wireTenantNumbers } = await import('./lib/tenant-wiring.js');
-            const r = await wireTenantNumbers(db(), { heal: true });
-            const n = (r.numbers || []).filter((x) => x.healed.includes('calls')).length;
-            if (n) { healed.push(`${n} salon number${n > 1 ? 's now ring' : ' now rings'} Lola.`); live.salon_numbers_ringing_lola = Math.min(live.salon_numbers, live.salon_numbers_ringing_lola + n); }
-          } catch (_) {}
+          // Point every salon number that doesn't reach Lola (no connection, or a dead/other one) at her phone app.
+          let n = 0;
+          if (brainApp) {
+            const { telnyxRequest } = await import('./lib/telnyx-client.js');
+            for (const num of onAcct.filter((x) => !good.has(x.connection_id) && x.id)) {
+              try { await telnyxRequest(`/phone_numbers/${encodeURIComponent(num.id)}/voice`, { method: 'PATCH', body: { connection_id: brainApp }, timeoutMs: 8000 }); n++; }
+              catch (e) { live.numbers_heal_error = clip(e); }
+            }
+          } else {
+            try { const { wireTenantNumbers } = await import('./lib/tenant-wiring.js'); const r = await wireTenantNumbers(db(), { heal: true }); n = (r.numbers || []).filter((x) => x.healed.includes('calls')).length; } catch (_) {}
+          }
+          if (n) { healed.push(`${n} salon number${n > 1 ? 's now ring' : ' now rings'} Lola.`); live.salon_numbers_ringing_lola = Math.min(live.salon_numbers, live.salon_numbers_ringing_lola + n); }
         }
       }
     }
@@ -138,16 +149,30 @@ export async function buildStatus() {
     else if (live.voice_app === false && live.voice_key && live.voice_id) vfix.push(`Lola’s voice didn’t come out (${live.voice_app_error || 'no audio'}). If it says 404 or voice_not_found: ELEVENLABS_VOICE_ID isn’t on this ElevenLabs account — copy the ID from ElevenLabs → Voices → Lola into Vercel, Redeploy.`);
     else if (typeof live.elevenlabs_left_pct === 'number' && live.elevenlabs_left_pct < 10) vfix.push(`ElevenLabs is almost out of credit (${live.elevenlabs_left_pct}% left) — when it hits zero Lola goes quiet. ElevenLabs → Subscription.`);
   }
-  if (live.assistant === false) vfix.push('Telnyx can’t find the assistant in TELNYX_LOLA_BRAIN_ID — Telnyx → AI → Assistants: copy Lola’s id (assistant-…) into Vercel, Redeploy.');
+  if (live.assistant_missing) vfix.push('There is no AI assistant on your Telnyx account, so nobody answers calls — Telnyx → AI → Assistants → Create → name it “Lola” → Save, then run this file again (LolaDesk wires the rest).');
+  else if (live.assistant === false) vfix.push('LolaDesk couldn’t read your Telnyx assistants right now — run this file again in a minute.');
+  if (live.assistant && live.assistant_source === 'discovered') healed.unshift(`Lola’s phone assistant found on your Telnyx account: “${live.assistant_name || 'Lola'}” (${live.assistant_id}) — LolaDesk now uses it everywhere. To make it permanent: Vercel → TELNYX_LOLA_BRAIN_ID = ${live.assistant_id} → Redeploy.`);
+  else if (live.assistant && live.assistant_source === 'env_fixed') healed.unshift(`The assistant id in Vercel was missing “assistant-” — using ${live.assistant_id}.`);
   if (live.phone_assistants > live.phone_assistants_in_lola_voice && !optedOut && live.voice_key && live.voice_id) vfix.push(`${live.phone_assistants - live.phone_assistants_in_lola_voice} of ${live.phone_assistants} phone assistants still use a different voice${live.phone_voice_error ? ' (Telnyx said: ' + live.phone_voice_error + ')' : ''}. Telnyx → AI → Assistants → each one → Voice: ElevenLabs, Lola’s voice → Save.`);
   if (live.phone_greeting === false) vfix.push('Lola’s assistant has no greeting, so callers hear silence first — Telnyx → AI → Assistants → Lola → Greeting: {{lola_greeting}} → Save.');
   if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(`${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`);
+  // Can a new salon sign up right now? (the Auth admin API that creates accounts answers)
+  try {
+    const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, ''), key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (base && key) {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 6000);
+      const r = await fetch(base + '/auth/v1/admin/users?page=1&per_page=1', { headers: { apikey: key, Authorization: 'Bearer ' + key }, signal: ac.signal }).catch(() => null);
+      clearTimeout(tm);
+      live.signup = !!(r && r.ok);
+    } else live.signup = false;
+  } catch (_) { live.signup = false; }
+  if (live.signup === false) fixes.push('New salons can’t sign up: Supabase refuses the service key for accounts — Vercel: check SUPABASE_URL and SUPABASE_SERVICE_KEY (Supabase → Project Settings → API → service_role), then Redeploy.');
   if (!live.database) fixes.push('LolaDesk can’t reach its database — Vercel → Settings → Environment Variables: check SUPABASE_URL and SUPABASE_SERVICE_KEY, then Redeploy.');
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');
   else if (live.telnyx_key === false) fixes.push('Telnyx refuses the TELNYX_API_KEY in Vercel — create a new key in Telnyx → API Keys, paste it in Vercel, Redeploy.');
   if (live.telnyx_balance_ok === false) fixes.push('Your Telnyx balance is empty — calls, texts and Lola’s brain stop. Top up in Telnyx → Billing.');
   if (settings.TELNYX_API_KEY && live.telnyx_key && !live.telnyx_ai) fixes.push('Telnyx AI isn’t enabled on your account — Telnyx → AI → Inference: turn it on (Lola’s brain and hearing run there).');
-  if (!settings.TELNYX_ASSISTANT) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
+  if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
   if (live.numbers > 0 && live.numbers_registered_10dlc === 0) fixes.push('None of your Telnyx numbers is registered for business texting (10DLC) — US carriers block the texts. Telnyx → Messaging → 10DLC: register your brand + campaign and assign your salon number.');
   else if (live.numbers > 0 && live.numbers_registered_10dlc != null && live.numbers_registered_10dlc < live.numbers) fixes.push(`${live.numbers - live.numbers_registered_10dlc} of your ${live.numbers} Telnyx numbers aren’t on a 10DLC campaign — texts from them get blocked. Assign them in Telnyx → Messaging → 10DLC.`);

@@ -105,14 +105,19 @@ test('low credit: POST returns friendly 402, not a raw 500', async () => {
   assert.match(out.body.detail, /Not enough credit/);
 });
 
-test('GET surfaces Telnyx account credit next to available numbers', async () => {
+test('GET surfaces Telnyx account credit next to available numbers (platform admin only)', async () => {
   seed();
+  const prevAdmins = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = 'someone-else@loladesk.com';
+  { const [r0, o0] = makeRes(); await handler(req('GET'), r0); assert.equal(o0.body.balance, null, 'a salon never sees the platform balance'); }
+  process.env.ADMIN_EMAILS = 'owner@salon-a.com';
   const [res, out] = makeRes();
   await handler(req('GET'), res);
   assert.equal(out.code, 200);
   assert.equal(out.body.ok, true);
   assert.equal(out.body.balance.available_credit, 1.56);
   assert.equal(out.body.numbers[0].phone_number, '+13055550123');
+  process.env.ADMIN_EMAILS = prevAdmins || '';
 });
 
 test('unrelated Telnyx failures still 500 with the real message', async () => {

@@ -42,7 +42,38 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   }
 }
 
-export const assistantId = () => process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID || null;
+// ── Which Telnyx assistant IS Lola ──
+// The id in Vercel can be stale (assistant re-created), carry a stray space/newline from a paste, or
+// lack the "assistant-" prefix. Then every call is silent: nothing answers. resolveAssistant() checks
+// the env id with Telnyx and, if Telnyx doesn't know it, finds Lola on the account itself:
+// the assistant named Lola/LolaBrain (never the support line), with a phone app, newest first.
+const envAssistantId = () => String(process.env.TELNYX_LOLA_BRAIN_ID || process.env.TELNYX_ASSISTANT_ID || '').replace(/\s+/g, '').replace(/^["']|["']$/g, '') || null;
+let resolvedA = null, resolvedAt = 0;
+export const assistantId = () => (resolvedA && resolvedA.id) || envAssistantId();
+export function _resetAssistantCache() { resolvedA = null; resolvedAt = 0; }
+export async function resolveAssistant({ force = false } = {}) {
+  if (!force && resolvedA && Date.now() - resolvedAt < 10 * 60e3) return resolvedA;
+  if (!process.env.TELNYX_API_KEY) return { id: envAssistantId(), source: 'env', ok: false, error: 'no_key' };
+  const env = envAssistantId();
+  const tries = env ? [...new Set([env, /^assistant-/.test(env) ? null : 'assistant-' + env].filter(Boolean))] : [];
+  for (const id of tries) {
+    try {
+      const a = telnyxData(await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { timeoutMs: 8000 }));
+      if (a && a.id) { resolvedA = { id: a.id, name: a.name || null, source: id === env ? 'env' : 'env_fixed', ok: true, texml_app_id: a.telephony_settings?.default_texml_app_id || null, env_id: env, assistant: a }; resolvedAt = Date.now(); return resolvedA; }
+    } catch (e) { if (![400, 404, 422].includes(Number(e?.status))) return { id: env, source: 'env', ok: false, error: String(e?.message || e).slice(0, 140) }; }
+  }
+  let list = [];
+  try { list = telnyxData(await telnyxRequest('/ai/assistants', { query: { 'page[size]': 100 }, timeoutMs: 9000 })) || []; }
+  catch (e) { return { id: env, source: 'env', ok: false, error: String(e?.message || e).slice(0, 140) }; }
+  list = (Array.isArray(list) ? list : []).filter((a) => a && a.id && !/support|customer care|loladesk care/i.test(String(a.name || '')));
+  const score = (a) => (/lola/i.test(a.name || '') ? 4 : 0) + (/brain/i.test(a.name || '') ? 2 : 0) + (a.telephony_settings?.default_texml_app_id ? 2 : 0) + (Array.isArray(a.tools) && a.tools.length ? 1 : 0);
+  list.sort((x, y) => score(y) - score(x) || String(y.updated_at || y.created_at || '').localeCompare(String(x.updated_at || x.created_at || '')));
+  const a = list[0];
+  if (!a) return { id: null, source: 'none', ok: false, env_id: env, error: 'no_assistant_on_account' };
+  resolvedA = { id: a.id, name: a.name || null, source: 'discovered', ok: true, texml_app_id: a.telephony_settings?.default_texml_app_id || null, env_id: env, assistant: a };
+  resolvedAt = Date.now();
+  return resolvedA;
+}
 
 const norm = (n) => String(n || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 export function toolUrl(name) {
@@ -76,9 +107,10 @@ export function diagnoseTool(tool) {
 }
 
 export async function wireAssistant({ heal = false } = {}) {
-  const id = assistantId();
-  if (!id) return { ok: false, error: 'TELNYX_LOLA_BRAIN_ID is not set' };
   if (!process.env.TELNYX_API_KEY) return { ok: false, error: 'TELNYX_API_KEY is not set' };
+  const found = await resolveAssistant();
+  const id = found.id;
+  if (!id) return { ok: false, error: found.error === 'no_assistant_on_account' ? 'There is no AI assistant on the Telnyx account' : 'TELNYX_LOLA_BRAIN_ID is not set' };
   let a;
   try { a = telnyxData(await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { timeoutMs: 9000 })); }
   catch (e) { return { ok: false, error: 'Could not read the assistant from Telnyx: ' + String(e?.message || e) }; }

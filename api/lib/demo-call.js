@@ -14,7 +14,7 @@
 import { e164 } from './db.js';
 import { telnyxData, telnyxRequest, appUrl } from './telnyx-client.js';
 import { connectionCandidates } from './call-callback.js';
-import { assistantId } from './assistant-wiring.js';
+import { assistantId, resolveAssistant } from './assistant-wiring.js';
 import { encodeState } from './owner-call.js';
 import { voiceUrl, saidEnded } from './one-voice.js';
 
@@ -36,6 +36,7 @@ export async function placeDemoCall(client, phone) {
   const from = await pickFrom(client);
   if (!from) return { ok: false, error: 'no_from_number', say: 'LolaDesk has no phone number to call you from yet.' };
   const candidates = await connectionCandidates(client, process.env.TELNYX_VOICE_APP_ID || null, 'TELNYX_VOICE_APP_ID');
+  try { await resolveAssistant(); } catch (_) {}
   const state = encodeState({ k: 'lola_demo', a: assistantId() || '' });
   let data = null; const tried = [];
   for (const c of candidates) {

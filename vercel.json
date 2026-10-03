@@ -13,6 +13,12 @@
     {"source":"/landing","destination":"/","permanent":false},
     {"source":"/start","destination":"/onboarding","permanent":false},
     {"source":"/get-started","destination":"/onboarding","permanent":false},
+    {"source":"/signup","destination":"/onboarding","permanent":false},
+    {"source":"/sign-up","destination":"/onboarding","permanent":false},
+    {"source":"/register","destination":"/onboarding","permanent":false},
+    {"source":"/join","destination":"/onboarding","permanent":false},
+    {"source":"/trial","destination":"/onboarding","permanent":false},
+    {"source":"/create-account","destination":"/onboarding","permanent":false},
     {"source":"/sign-in","destination":"/login","permanent":false},
     {"source":"/demo","destination":"/dashboard","permanent":false}
   ],
