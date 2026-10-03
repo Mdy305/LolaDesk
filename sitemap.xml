@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.loladesk.com/</loc><priority>1.0</priority><lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.loladesk.com/pricing</loc><priority>0.9</priority><lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.loladesk.com/start</loc><priority>0.9</priority><lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.loladesk.com/login</loc><priority>0.5</priority><lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.loladesk.com/terms</loc><priority>0.3</priority><lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.loladesk.com/privacy</loc><priority>0.3</priority><lastmod>2026-08-01</lastmod></url>
+  <url><loc>https://www.loladesk.com/</loc><priority>1.0</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/pricing</loc><priority>0.9</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/start</loc><priority>0.9</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/hair-salons</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/barbershops</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/nail-salons</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/med-spas</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/day-spas</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai-receptionist/lash-and-brow-studios</loc><priority>0.8</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/support</loc><priority>0.5</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/login</loc><priority>0.4</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/terms</loc><priority>0.3</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/privacy</loc><priority>0.3</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/sms-terms</loc><priority>0.3</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/ai</loc><priority>0.3</priority><lastmod>2026-10-03</lastmod></url>
+  <url><loc>https://www.loladesk.com/legal</loc><priority>0.3</priority><lastmod>2026-10-03</lastmod></url>
 </urlset>

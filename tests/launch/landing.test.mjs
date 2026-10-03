@@ -14,6 +14,16 @@ ok(!/HIPAA-(compliant|aware)/i.test(html) && !/not realizing|won't believe she's
 for (const p of ['/privacy', '/terms', '/sms-terms', '/ai', '/legal', '/support']) ok(html.includes(`href="${p}"`), 'footer links ' + p);
 ok(!/<section class="reveal">/.test(html) && /classList\.remove\('js'\)/.test(html), 'content is visible even if animations never run (no more black voids)');
 ok(fs.existsSync(new URL('../../index-classic.html', import.meta.url)), 'the previous landing is kept at /index-classic');
+ok(/id="awakeText"/.test(html) && html.includes('Lola isn'), 'she is alive: she knows the visitor’s time of day (“It’s 11:40 PM. Your salon is closed. Lola isn’t.”)');
+ok(/id="phPlay"/.test(html) && /Text sent/.test(html) && /lolaSays\(/.test(html), 'a full call, start to finish, in her real voice — ending in a booking and the confirmation text');
+ok(/<title>AI Receptionist for Salons &amp; Spas/.test(html) && /"@type":"Organization"/.test(html) && /"@type":"FAQPage"/.test(html), 'SEO: the words salon owners search, structured data for Google');
+const SLUGS = ['hair-salons', 'barbershops', 'nail-salons', 'med-spas', 'day-spas', 'lash-and-brow-studios'];
+for (const s of SLUGS) {
+  const pg = R('ai-receptionist/' + s + '.html');
+  ok(html.includes('/ai-receptionist/' + s) && /<link rel="canonical" href="https:\/\/www\.loladesk\.com\/ai-receptionist\//.test(pg) && /"@type": "FAQPage"/.test(pg) && /href="\/start"/.test(pg) && /AI assistant/.test(pg), 'SEO page for ' + s + ': linked, canonical, FAQ data, Start free, honest');
+}
+const sm = R('sitemap.xml');
+ok(SLUGS.every((s) => sm.includes('/ai-receptionist/' + s)) && sm.includes('2026-10-03'), 'sitemap lists every page');
 const vj = JSON.parse(R('vercel.json'));
 for (const s of ['/signup', '/sign-up', '/register', '/join', '/trial', '/start', '/get-started']) ok(vj.redirects.some((r) => r.source === s && r.destination === '/onboarding'), s + ' → the sign-up wizard');
 
