@@ -18,6 +18,7 @@
  */
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
+import { telnyxSafeVariables } from './booking-link.js';
 
 
 // Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
@@ -33,12 +34,25 @@ const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/a
 const DYNVAR_PATHS = new Set(['/api/agent-variables', '/api/lola/dynamic-variables']);
 
 /** Telnyx documents assistant updates as POST /ai/assistants/{id}; older accounts took PATCH. Try both. */
+const badVariable = (e) => /dynamic.?variables|must be a boolean, string, or integer/i.test(String(e?.message || '') + ' ' + JSON.stringify(e?.details || e?.body || ''));
 export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   const path = '/ai/assistants/' + encodeURIComponent(id);
-  try { return await telnyxRequest(path, { method: 'POST', body, timeoutMs }); }
+  if (body && body.dynamic_variables && typeof body.dynamic_variables === 'object') body = { ...body, dynamic_variables: telnyxSafeVariables(body.dynamic_variables) };
+  const send = async (b) => {
+    try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
+    catch (e) {
+      if (![404, 405].includes(Number(e?.status))) throw e;
+      return telnyxRequest(path, { method: 'PATCH', body: b, timeoutMs });
+    }
+  };
+  try { return await send(body); }
   catch (e) {
-    if (![404, 405].includes(Number(e?.status))) throw e;
-    return telnyxRequest(path, { method: 'PATCH', body, timeoutMs });
+    // Telnyx re-validates the assistant's STORED defaults on every update: one null (booking_url)
+    // blocks every change, even a voice switch. Clean the stored values and send it again once.
+    if (!badVariable(e)) throw e;
+    const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
+    const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
+    return send({ ...body, dynamic_variables: dv });
   }
 }
 
@@ -137,13 +151,18 @@ export async function wireAssistant({ heal = false } = {}) {
   if (fixed.length || added.length) patch.tools = next;
   // Her first words come from the call itself ({{lola_greeting}}: "Hey Sarah, welcome back…" for a
   // returning client), with the recording + AI notice; the default (no webhook answer) discloses too.
-  const dv0 = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+  // Telnyx refuses the WHOLE assistant update if any stored default is null/object
+  // ("Value for key 'booking_url' must be a boolean, string, or integer") — so sanitize them, and heal them.
+  const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+  const dv0 = telnyxSafeVariables(dvRaw);
+  const dvBroken = Object.keys(dvRaw).filter((k) => JSON.stringify(dvRaw[k]) !== JSON.stringify(dv0[k]));
+  if (dvBroken.length) patch.dynamic_variables = { ...dv0 };
   const personal = String(a.greeting || '').trim() === GREETING_VAR;
   const fallbackGreeting = personal ? dv0.lola_greeting : a.greeting;
   const disclosure = { greeting: personal && greetingDiscloses(dv0.lola_greeting), rules: String(a.instructions || '').includes(COMPLIANCE_MARK) };
   if (!disclosure.greeting) {
     patch.greeting = GREETING_VAR;
-    patch.dynamic_variables = { ...dv0, lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
+    patch.dynamic_variables = { ...(patch.dynamic_variables || dv0), lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
   }
   if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
   if (!dynOk) patch.dynamic_variables_webhook_url = appUrl() + '/api/agent-variables';
@@ -166,7 +185,7 @@ export async function wireAssistant({ heal = false } = {}) {
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, added_tools: added, unknown_tools: unknown,
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
-    dynamic_variables: { ok: dynOk, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url },
+    dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
     healed, error,
   };
 }

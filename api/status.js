@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-booking';
+export const RELEASE = 'lola-dynvars';
 let lastHeal = 0;
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;
@@ -112,9 +112,16 @@ export async function buildStatus() {
       // Self-repair, at most every 10 minutes per server.
       const voiceOff = voices.possible && voices.lola < voices.total;
       const rewire = found.source !== 'env';   // a different assistant than Vercel's id: make sure its tools point at LolaDesk
-      const needs = rewire || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
+      // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
+      const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+      const dvBad = Object.keys(dvRaw).filter((k) => { const v = dvRaw[k]; return v == null || typeof v === 'object' || (typeof v === 'number' && !Number.isInteger(v)); });
+      if (dvBad.length) live.assistant_bad_values = dvBad;
+      const needs = rewire || dvBad.length > 0 || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
       if (needs && Date.now() - lastHeal > 10 * 60e3) {
         lastHeal = Date.now();
+        if (dvBad.length) {
+          try { const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true }); if (w.healed && !w.error) { healed.push(`Lola’s phone settings cleaned (${dvBad.join(', ')} had an empty value Telnyx refuses).`); delete live.assistant_bad_values; } } catch (_) {}
+        }
         if (voiceOff) {
           const u = await ov.unifyAssistantVoices({ heal: true });
           if (u.fixed.length) healed.push(`${u.fixed.length} phone assistant${u.fixed.length > 1 ? 's now speak' : ' now speaks'} in Lola’s own voice (was: ${[...new Set(u.fixed.map((f) => f.from))].join(', ')}).`);
@@ -179,6 +186,7 @@ export async function buildStatus() {
   if (!settings.CRON_SECRET) fixes.push('Add CRON_SECRET in Vercel (any long random word), then Redeploy — without it calendar sync, reminders, deposits and Boulevard writes never run.');
   if (!settings.INTEGRATION_ENCRYPTION_KEY) fixes.push('Add INTEGRATION_ENCRYPTION_KEY in Vercel (run: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"), then Redeploy — needed to connect Boulevard/Square/calendar links securely.');
   if (!settings.ADMIN_EMAILS) fixes.push('Add ADMIN_EMAILS in Vercel = your login email, then Redeploy — unlocks Admin and the full “Lola, run a check”.');
+  if (live.assistant_bad_values) fixes.push(`Lola’s Telnyx assistant has an empty value for ${live.assistant_bad_values.join(', ')} — Telnyx refuses every change to her until it’s text. Telnyx → AI → Assistants → Lola → Dynamic Variables: set ${live.assistant_bad_values[0]} to https://www.loladesk.com (or delete it), then Save.`);
   fixes.push(...vfix);
   return { ok: fixes.length === 0, release: RELEASE, settings, live, healed, fixes, checked_at: new Date().toISOString() };
 }
