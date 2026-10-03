@@ -21,6 +21,27 @@ import { syncTenantAvailability } from '../lib/booking-sync.js';
 
 const MAX_TENANTS_PER_RUN = 50;      // hard cap even with budget left
 const BUDGET_MS = Number(process.env.SYNC_CRON_BUDGET_MS || 45000);
+const CURSOR_KEY = 'sync_availability_cursor';
+
+// Rotation: each run starts where the last one stopped (a cursor in
+// platform_settings), so with more than 50 tenants — or a run cut short by the
+// time budget — every salon still gets its turn. Without the table, the start
+// rotates by the minute instead.
+export async function readCursor(client, total, now = Date.now()){
+  try{
+    const { data, error } = await client.from('platform_settings').select('value').eq('key', CURSOR_KEY).maybeSingle();
+    if(!error && data && Number.isFinite(Number(data.value?.next))) return { start: Number(data.value.next) % Math.max(1, total), stored: true };
+  }catch(_){}
+  return { start: (Math.floor(now / 60000) * MAX_TENANTS_PER_RUN) % Math.max(1, total), stored: false };
+}
+async function writeCursor(client, next){
+  try{ await client.from('platform_settings').upsert({ key: CURSOR_KEY, value: { next, at: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: 'key' }); }catch(_){}
+}
+export function rotate(list, start){
+  if(!list.length) return list;
+  const s = ((start % list.length) + list.length) % list.length;
+  return list.slice(s).concat(list.slice(0, s));
+}
 
 function authorized(req){
   const auth = req.headers.authorization || '';
@@ -45,19 +66,22 @@ export default async function handler(req, res){
   if(!client) return res.status(503).json({ ok: false, error: 'Database not configured' });
 
   const started = Date.now();
-  const { data: tenants, error } = await client.from('tenants').select('id');
+  const { data: rawTenants, error } = await client.from('tenants').select('id').order('id', { ascending: true });
   if(error) return res.status(500).json({ ok: false, error: error.message });
-  if(!tenants?.length) return res.status(200).json({ ok: true, synced: 0, note: 'No tenants' });
+  if(!rawTenants?.length) return res.status(200).json({ ok: true, synced: 0, note: 'No tenants' });
+
+  // Stable order (by id) + a rotating start, so tenant #51+ isn't starved.
+  const all = rawTenants.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const cursor = await readCursor(client, all.length);
+  const tenants = rotate(all, cursor.start);
 
   const results = [];
-  let synced = 0, deferred = 0, failed = 0;
+  let synced = 0, deferred = 0, failed = 0, attempted = 0;
   const errors = [];
 
   for(const tenant of tenants.slice(0, MAX_TENANTS_PER_RUN)){
-    if(Date.now() - started > BUDGET_MS){
-      deferred = tenants.length - synced - failed;
-      break;
-    }
+    if(Date.now() - started > BUDGET_MS) break;
+    attempted++;
     try{
       const r = await syncTenantAvailability(client, tenant.id);
       results.push({ tenant_id: tenant.id, ...r });
@@ -67,12 +91,15 @@ export default async function handler(req, res){
       errors.push({ tenant_id: tenant.id, error: String(e?.message || e).slice(0, 200) });
     }
   }
+  deferred = all.length - attempted;
+  await writeCursor(client, (cursor.start + attempted) % all.length);
 
   return res.status(200).json({
     ok: true,
     synced,
     failed,
     deferred,
+    started_at_index: cursor.start,
     duration_ms: Date.now() - started,
     results: results.slice(0, 20),
     errors: errors.slice(0, 10)

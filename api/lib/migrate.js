@@ -383,3 +383,95 @@ async function runMigrations() {
 
   return applied.length ? 'applied' : 'up-to-date';
 }
+
+// ── Booking setup columns (services / staff / staff_services / booking_settings)
+// The owner's setup pages (services.html, team.html, booking-settings.html)
+// write processing time, add-on flag, per-service buffer, stylist color /
+// contact, per-stylist price & duration, and salon hours + closures. Older
+// databases lack some of these columns, so the setup endpoints ensure them
+// lazily (same exec_sql self-heal as tenants.activation_status). Every
+// statement is idempotent; business_hours is added WITHOUT a default so a
+// salon that never set hours is never silently clamped.
+const SERVICES_SETUP_DDL = `alter table public.services
+  add column if not exists category text,
+  add column if not exists is_addon boolean not null default false,
+  add column if not exists buffer_after_min integer,
+  add column if not exists active_duration_1_min integer not null default 0,
+  add column if not exists processing_duration_min integer not null default 0,
+  add column if not exists active_duration_2_min integer not null default 0,
+  add column if not exists photo_url text,
+  add column if not exists deposit_override_type text,
+  add column if not exists deposit_override_amount numeric,
+  add column if not exists tags text[],
+  add column if not exists sort_order integer default 100;`;
+
+const STAFF_SETUP_DDL = `alter table public.staff
+  add column if not exists first_name text,
+  add column if not exists last_name text,
+  add column if not exists phone text,
+  add column if not exists email text,
+  add column if not exists color text,
+  add column if not exists photo_url text;`;
+
+const STAFF_SERVICES_SETUP_DDL = `create table if not exists public.staff_services (
+  staff_id   uuid not null references public.staff(id) on delete cascade,
+  service_id uuid not null references public.services(id) on delete cascade,
+  primary key (staff_id, service_id)
+);
+alter table public.staff_services
+  add column if not exists tenant_id uuid references public.tenants(id) on delete cascade,
+  add column if not exists custom_price numeric,
+  add column if not exists custom_duration_minutes integer;
+update public.staff_services ss set tenant_id = s.tenant_id
+  from public.staff s where ss.staff_id = s.id and ss.tenant_id is null;
+create index if not exists idx_staff_services_tenant on public.staff_services(tenant_id);`;
+
+const STAFF_TIME_OFF_DDL = `create table if not exists public.staff_time_off (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references public.tenants(id) on delete cascade,
+  staff_id   uuid references public.staff(id) on delete cascade,
+  starts_at  timestamptz not null,
+  ends_at    timestamptz not null,
+  reason     text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_staff_time_off_tenant on public.staff_time_off(tenant_id, staff_id);`;
+
+const BOOKING_SETTINGS_SETUP_DDL = `alter table public.booking_settings
+  add column if not exists business_hours jsonb,
+  add column if not exists closures text[] default '{}',
+  add column if not exists reminder_lead_hours integer default 24,
+  add column if not exists rebook_followup_days integer default 28;`;
+
+let _setupEnsured = null;
+export function resetBookingSetupSchema(){ _setupEnsured = null; }
+
+async function ensureColumns(c, table, columns, ddl, applied){
+  try{
+    const probe = await c.from(table).select(columns).limit(1);
+    if(!probe.error) return;
+    const res = await c.rpc('exec_sql', { p_sql: ddl });
+    if(res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+    console.log('[migrate] applied ' + table + ' setup columns');
+    applied.push(table);
+  }catch(e){
+    console.warn('[migrate] ' + table + ' setup columns ensure failed:', String(e?.message || e).slice(0, 160));
+  }
+}
+
+/** Memoized per cold start; never throws. */
+export function ensureBookingSetupSchema(){
+  if(_setupEnsured) return _setupEnsured;
+  _setupEnsured = (async () => {
+    const c = db();
+    if(!c) return 'no-db';
+    const applied = [];
+    await ensureColumns(c, 'services', 'id,category,is_addon,buffer_after_min,active_duration_1_min,processing_duration_min,active_duration_2_min,photo_url,deposit_override_type,deposit_override_amount,tags,sort_order', SERVICES_SETUP_DDL, applied);
+    await ensureColumns(c, 'staff', 'id,first_name,last_name,phone,email,color,photo_url', STAFF_SETUP_DDL, applied);
+    await ensureColumns(c, 'staff_services', 'staff_id,tenant_id,custom_price,custom_duration_minutes', STAFF_SERVICES_SETUP_DDL, applied);
+    await ensureColumns(c, 'staff_time_off', 'id,tenant_id,staff_id,starts_at,ends_at,reason', STAFF_TIME_OFF_DDL, applied);
+    await ensureColumns(c, 'booking_settings', 'tenant_id,business_hours,closures,reminder_lead_hours,rebook_followup_days', BOOKING_SETTINGS_SETUP_DDL, applied);
+    return applied.length ? 'applied' : 'up-to-date';
+  })().catch((e) => { _setupEnsured = null; console.warn('[migrate] setup schema:', String(e?.message || e).slice(0, 160)); return 'error'; });
+  return _setupEnsured;
+}

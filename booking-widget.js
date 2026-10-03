@@ -34,14 +34,16 @@
   }
 
   // Fall back to the classic ?t= / ?slug= query params when data-tenant is absent.
-  if (!cfg.tenant) {
-    var q = new URLSearchParams(location.search);
-    cfg.tenant = q.get('t') || q.get('slug') || '';
-  }
+  var Q = new URLSearchParams(location.search);
+  if (!cfg.tenant) cfg.tenant = Q.get('t') || Q.get('slug') || '';
+  // Manage deep link (/book?t=slug&code=AB3X7Q): open "manage" with the code filled in.
+  cfg.code = (Q.get('code') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12).toUpperCase();
+  cfg.phone = (Q.get('phone') || '').slice(0, 24);
 
   var API = cfg.base.replace(/\/$/, '');
   // Legal pages live on LolaDesk even when the widget sits on a salon's own site.
   var LEGAL = API.replace(/\/api\/public-booking$/, '') || '';
+  var ORIGIN = LEGAL; // the LolaDesk server (add-to-calendar file, legal pages)
   var state = { catalog: null, service: null, staff: null, time: null, date: null };
   var TZ = ''; // salon time zone, from the catalog
   function tzOpt(o) { if (TZ) o.timeZone = TZ; return o; }
@@ -131,15 +133,46 @@
     '.lw-inp,.lw-date{transition:border-color .18s cubic-bezier(.22,1,.36,1),box-shadow .18s cubic-bezier(.22,1,.36,1)}',
     '.lw-inp:focus,.lw-date:focus{box-shadow:0 0 0 3px rgba(204,255,0,.14)}',
     '.lw-step.on{animation:lwin .32s cubic-bezier(.22,1,.36,1)}',
-    '@keyframes lwin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}'
+    '@keyframes lwin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
+    /* menu groups, add-ons, open-days strip, hold timer, policy */
+    '.lw-cat{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;margin:18px 0 8px}',
+    '.lw-cat:first-child{margin-top:0}',
+    '.lw-opt .desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45;font-weight:400}',
+    '.lw-opt>span:first-child{min-width:0;flex:1}',
+    '.lw-chip{display:inline-block;margin-top:6px;font-size:10.5px;letter-spacing:.04em;color:var(--accent2);border:.5px solid rgba(204,255,0,.35);border-radius:20px;padding:2px 8px}',
+    '.lw-days{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-bottom:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}',
+    '.lw-days::-webkit-scrollbar{display:none}',
+    '.lw-day{flex:0 0 auto;width:54px;background:var(--surface);border:.5px solid var(--line);border-radius:12px;padding:8px 0;text-align:center;color:var(--text);cursor:pointer;font-family:inherit}',
+    '.lw-day small{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}',
+    '.lw-day b{display:block;font-size:16px;font-weight:600;margin-top:2px}',
+    '.lw-day i{display:block;width:5px;height:5px;border-radius:50%;margin:5px auto 0;background:transparent}',
+    '.lw-day.open i{background:var(--accent)}',
+    '.lw-day.closed{opacity:.45}',
+    '.lw-day.sel{border-color:var(--accent);background:var(--surface2)}',
+    '.lw-day:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+    '.lw-more{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--muted)}',
+    '.lw-more .lw-date{margin:0;padding:8px 10px;font-size:13px;width:auto;flex:1;min-width:0}',
+    '.lw-next{margin:4px 0 12px;padding:14px;border:.5px solid var(--line);border-radius:14px;background:var(--surface)}',
+    '.lw-next-t{font-size:13px;color:var(--text);margin-bottom:10px}',
+    '.lw-hold{font-size:12px;color:var(--muted);margin:-6px 0 14px}',
+    '.lw-hold b{color:var(--accent2);font-weight:600}',
+    '.lw-policy{font-size:12px;color:var(--muted);line-height:1.55;border-top:.5px solid var(--line);padding-top:10px;margin-top:10px}',
+    '.lw-check{display:flex;gap:10px;align-items:flex-start;margin:6px 0 4px;cursor:pointer}',
+    '.lw-check input{width:18px;height:18px;margin-top:1px;accent-color:#ccff00;flex:0 0 auto}',
+    '.lw-check span{font-size:13px;line-height:1.45}',
+    '.lw-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}',
+    '.lw-btn.ghost{background:var(--surface2);color:var(--text);border:.5px solid var(--line)}',
+    'a.lw-btn{display:block;text-align:center;text-decoration:none}'
   ].join('\n');
+
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function money(n) { return '$' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+  function money(n) { return '$' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
+  function cents(c) { return money(Number(c || 0) / 100); }
   function timeLabel(iso) {
     try { return new Date(iso).toLocaleTimeString([], tzOpt({ hour: 'numeric', minute: '2-digit' })); }
     catch (e) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
@@ -148,11 +181,25 @@
     try { return new Date(iso).toLocaleString([], tzOpt({ weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })); }
     catch (e) { return new Date(iso).toLocaleString([], { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
   }
+  // A salon-calendar date key (YYYY-MM-DD) shown as a label. Noon UTC keeps
+  // the weekday right in every time zone.
+  function dayParts(key) {
+    var d = new Date(key + 'T12:00:00Z');
+    return {
+      wd: d.toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' }),
+      day: d.getUTCDate(),
+      long: d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    };
+  }
+  function addDays(key, n) {
+    var d = new Date(key + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
 
   function apiGet(action, extra) {
     var p = new URLSearchParams(Object.assign({ action: action, tenant: cfg.tenant }, extra));
     return fetch(API + '?' + p.toString()).then(function (r) { return r.json(); })
-      .then(function (j) { if (!j.ok) throw new Error(j.error || 'Request failed'); return j; });
+      .then(function (j) { if (!j.ok) { var e = new Error(j.message || j.error || 'Request failed'); e.data = j; throw e; } return j; });
   }
   function apiPost(body) {
     return fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -160,211 +207,285 @@
       .then(function (r) { return r.json(); });
   }
 
-  function el(html) {
-    var t = document.createElement('template');
-    t.innerHTML = html;
-    return t.content.firstElementChild;
-  }
-
-  // \u2500\u2500 polish helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  // Progress indicator (dots). Step order for the booking flow.
-  var BOOK_STEPS = ['service','staff','time','details','done'];
+  // ── polish helpers ──────────────────────────────────────
+  var BOOK_STEPS = ['service', 'staff', 'time', 'details', 'done'];
   function progressHtml(current, hasStaff) {
-    var steps = hasStaff === false ? ['service','time','details','done'] : BOOK_STEPS;
+    var steps = hasStaff === false ? ['service', 'time', 'details', 'done'] : BOOK_STEPS;
     var idx = steps.indexOf(current);
-    if (idx < 0) return ''; // manage/cancel flows don't get the bar
-    return '<div class="lw-progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + (steps.length-1) + '" aria-valuenow="' + idx + '" aria-label="Booking progress step ' + (idx+1) + ' of ' + steps.length + '">' +
-      steps.map(function(_, i){
+    if (idx < 0) return '';
+    return '<div class="lw-progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + (steps.length - 1) + '" aria-valuenow="' + idx + '" aria-label="Booking progress step ' + (idx + 1) + ' of ' + steps.length + '">' +
+      steps.map(function (_, i) {
         var cls = i < idx ? 'done' : (i === idx ? 'on' : '');
         return '<i class="' + cls + '"></i>';
       }).join('') + '</div>';
   }
 
-  // Auto-format phone: (555) 555-5555 as they type. Preserves cursor at end.
+  // Phone: US numbers format as (555) 555-5555; anything starting with "+" is
+  // international and kept as typed (digits, spaces, dashes).
+  function phoneDigits(v) { return String(v || '').replace(/\D/g, ''); }
+  function phoneValid(v) {
+    var s = String(v || '').trim(), d = phoneDigits(s);
+    if (!/^[+\d\s().-]+$/.test(s)) return false;
+    if (s.charAt(0) === '+') return d.length >= 8 && d.length <= 15;
+    return d.length === 10 || (d.length === 11 && d.charAt(0) === '1') || (d.length >= 8 && d.length <= 15);
+  }
   function fmtPhone(v) {
-    var d = String(v || '').replace(/\D/g, '').slice(0, 10);
+    var s = String(v || '');
+    if (s.trim().charAt(0) === '+') return '+' + s.replace(/[^\d\s-]/g, '').replace(/^\s+/, '').slice(0, 20);
+    var d = phoneDigits(s);
+    if (d.length > 10) return d.slice(0, 15);
     if (!d) return '';
     if (d.length < 4) return d;
-    if (d.length < 7) return '(' + d.slice(0,3) + ') ' + d.slice(3);
-    return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6);
+    if (d.length < 7) return '(' + d.slice(0, 3) + ') ' + d.slice(3);
+    return '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
   }
   function wirePhone(input, onValid) {
     if (!input) return;
-    input.addEventListener('input', function() {
-      var caret = input.selectionEnd;
-      var raw = input.value.replace(/\D/g, '');
-      input.value = fmtPhone(raw);
-      // Move caret to end (simple UX; edge cases rare on mobile)
-      try { input.setSelectionRange(input.value.length, input.value.length); } catch(e){}
-      if (onValid && raw.length === 10) onValid(raw);
+    input.addEventListener('input', function () {
+      input.value = fmtPhone(input.value);
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+      if (onValid && phoneValid(input.value)) onValid(input.value);
     });
-    input.addEventListener('blur', function() {
-      var raw = input.value.replace(/\D/g, '');
-      if (onValid && raw.length === 10) onValid(raw);
+    input.addEventListener('blur', function () {
+      if (onValid && phoneValid(input.value)) onValid(input.value);
     });
   }
 
-  // Deposit amount for a service. Uses service.deposit_override_* first,
-  // else falls back to global policy on catalog.deposit_policy (opt-in from
-  // backend; safe if missing).
-  function depositFor(service, catalog) {
-    if (!service) return 0;
-    if (service.deposit_override_type === 'none') return 0;
-    var price = Number(service.price || 0);
-    if (service.deposit_override_type === 'fixed') return Number(service.deposit_override_amount || 0);
-    if (service.deposit_override_type === 'percent') return Math.round(price * Number(service.deposit_override_amount || 0) / 100);
-    var policy = (catalog && catalog.deposit_policy) || null;
-    if (!policy || !policy.enabled) return 0;
-    var amt = policy.type === 'percent'
-      ? Math.round(price * Number(policy.amount || 0) / 100)
-      : Number(policy.amount || 0);
-    if (price >= 250 && policy.premium_amount) amt = Number(policy.premium_amount);
-    if (policy.min_amount && amt < Number(policy.min_amount)) amt = Number(policy.min_amount);
-    return amt;
-  }
-
-  // Returning-client lookup \u2014 soft: 404 or error means "not returning".
+  // Returning visitor: the server answers with a FIRST name only.
   var CLIENT_CACHE = {};
   function lookupClient(phone) {
-    if (!phone || phone.length < 10) return Promise.resolve(null);
-    if (CLIENT_CACHE[phone] !== undefined) return Promise.resolve(CLIENT_CACHE[phone]);
-    return apiGet('client_lookup', { phone: phone }).then(function(j){
-      var c = j && j.client ? j.client : null;
-      CLIENT_CACHE[phone] = c;
+    var key = phoneDigits(phone);
+    if (!phoneValid(phone)) return Promise.resolve(null);
+    if (CLIENT_CACHE[key] !== undefined) return Promise.resolve(CLIENT_CACHE[key]);
+    return apiPost({ action: 'client_lookup', client_phone: phone }).then(function (j) {
+      var c = j && j.ok && j.client ? j.client : null;
+      CLIENT_CACHE[key] = c;
       return c;
-    }).catch(function(){ CLIENT_CACHE[phone] = null; return null; });
+    }).catch(function () { CLIENT_CACHE[key] = null; return null; });
   }
 
-  // Focus first meaningful control on a step. iOS-safe (no focus if soft-kb
-  // would pop unexpectedly on modal open).
   function focusFirst(host) {
     try {
       var el = host.querySelector('input, button.lw-opt, button.lw-btn');
       if (el && el.focus) el.focus({ preventScroll: true });
-    } catch(e) {}
+    } catch (e) {}
   }
 
   function Widget(root) {
-    this.root = root; // shadow root
+    this.root = root;
     this.host = root.querySelector('.lw');
+    this.addons = [];
   }
-
   Widget.prototype.render = function (html) {
     this.host.innerHTML = (this.header || '') + html;
-  };
-  Widget.prototype.go = function (step) {
-    var self = this;
-    this.host.querySelectorAll('.lw-step').forEach(function (s) {
-      s.classList.toggle('on', s.getAttribute('data-step') === step);
-    });
-    this.host.scrollTop = 0;
-    if (typeof self.onStep === 'function') self.onStep(step);
+    tickHold(this);
   };
   Widget.prototype.msg = function (kind, text) {
     var e = this.host.querySelector('.lw-err');
     if (e) e.textContent = text || '';
   };
 
-  function stepService(w, catalog) {
-    if (!catalog.services || !catalog.services.length) {
+  // ── 5-minute hold on the picked time ─────────────────────
+  function releaseHold(w) {
+    var h = w.hold; w.hold = null;
+    if (h && h.hold_token) apiPost({ action: 'release_hold', hold_token: h.hold_token }).catch(function () {});
+  }
+  function holdLeft(w) { return w.hold ? Math.max(0, Date.parse(w.hold.expires_at) - Date.now()) : 0; }
+  function holdText(w) {
+    var left = holdLeft(w);
+    if (!w.hold) return '';
+    if (!left) return 'Your hold has expired — you can still try to confirm, or pick the time again.';
+    var m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
+    return 'We’re holding this time for you for <b>' + m + ':' + (s < 10 ? '0' : '') + s + '</b>.';
+  }
+  function tickHold(w) {
+    var el = w.host.querySelector('.lw-hold');
+    if (el) el.innerHTML = holdText(w);
+    if (w._tick) return;
+    w._tick = setInterval(function () {
+      var e = w.host.querySelector('.lw-hold');
+      if (e) e.innerHTML = holdText(w);
+    }, 1000);
+  }
+
+  function errText(result, fallback) {
+    var r = result || {};
+    var phone = r.salon_phone || (state.catalog && state.catalog.phone) || '';
+    if (r.error === 'within_policy_window') return 'Your appointment is less than ' + (r.window_hours || '') + ' hours away, so it can’t be changed online. ' + (phone ? 'Please call the salon at ' + phone + '.' : 'Please call the salon.');
+    if (r.error === 'rate_limited' || r.error === 'booking_disabled') return r.message || fallback;
+    if (r.error === 'hold_expired') return 'Your hold on this time ran out — go back and pick the time again.';
+    if (r.error === 'addon_unavailable') return 'There isn’t room for ' + (r.service_name || 'that add-on') + ' right after — remove it or pick another time.';
+    if (r.error === 'code_not_found') return 'No booking matches that code.';
+    if (r.error === 'code_phone_mismatch') return 'That code and phone don’t match a booking.';
+    if (r.error === 'appointment_passed') return 'That appointment has already passed.';
+    if (r.error === 'not_reschedulable') return 'That booking can no longer be changed.';
+    if (r.error === 'not_cancellable') return 'That booking is no longer cancellable.';
+    if (r.conflict) return 'That time was just taken — go back and pick another.';
+    return r.message || (r.error && !/^[a-z_]+$/.test(r.error) ? r.error : fallback);
+  }
+
+  function policyHtml(c, depositNote) {
+    var lines = [];
+    var h = Number(c.cancellation_window_hours || 0);
+    if (h) lines.push('Need to cancel or move it? You can do it online up to ' + h + ' hours before your appointment; after that, please call the salon' + (c.phone ? ' at ' + esc(c.phone) : '') + '.');
+    if (depositNote) lines.push(depositNote);
+    return lines.length ? '<div class="lw-policy">' + lines.join('<br>') + '</div>' : '';
+  }
+
+  // ── step 1: the menu, grouped by category ────────────────
+  function depositChip(s, c) {
+    if (!s.deposit_cents) return '';
+    return '<span class="lw-chip">' + (c.deposit_everyone ? cents(s.deposit_cents) + ' deposit' : 'Deposit may apply') + '</span>';
+  }
+  function stepService(w, c) {
+    releaseHold(w);
+    w.addons = []; w.time = null; w.managing = null;
+    if (!c.enabled) {
+      w.render('<div class="lw-note" style="margin:0 0 16px">' + esc(c.message || 'Online booking is turned off right now.') + '</div>' +
+        '<button class="lw-link" data-cancel>Manage an existing appointment</button>');
+      w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w); });
+      return;
+    }
+    if (!c.services || !c.services.length) {
       w.render('<div class="lw-empty">No services listed yet.</div>');
       return;
     }
-    var hasStaff = !!(catalog.staff && catalog.staff.length);
+    var hasStaff = !!(c.staff && c.staff.length);
+    var groups = [], byCat = {};
+    c.services.forEach(function (s, i) {
+      var k = s.category || '';
+      if (!byCat[k]) { byCat[k] = []; groups.push(k); }
+      byCat[k].push(i);
+    });
+    var named = groups.some(function (g) { return !!g; });
+    var html = groups.map(function (g) {
+      return (named ? '<div class="lw-cat">' + esc(g || 'More services') + '</div>' : '') +
+        '<div class="lw-opts" role="list">' + byCat[g].map(function (i) {
+          var s = c.services[i];
+          return '<button class="lw-opt" role="listitem" data-i="' + i + '" aria-label="Choose ' + esc(s.name) + (s.price != null ? ' for ' + money(s.price) : '') + '"><span><b>' + esc(s.name) + '</b>' +
+            (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min</div>' : '') +
+            (s.description ? '<div class="desc">' + esc(s.description) + '</div>' : '') + depositChip(s, c) +
+            '</span>' + (s.price != null ? '<span class="lw-price">' + money(s.price) + '</span>' : '') + '</button>';
+        }).join('') + '</div>';
+    }).join('');
     w.render(
       progressHtml('service', hasStaff) +
-      '<div class="lw-step on" data-step="service" role="region" aria-label="Step 1: Choose a service">' +
-      '<div class="lw-label">' + (hasStaff ? '1 of 4' : '1 of 3') + ' \u00b7 Choose a service</div>' +
-      '<div class="lw-opts" role="list">' + catalog.services.map(function (s, i) {
-        return '<button class="lw-opt" role="listitem" data-i="' + i + '" aria-label="Choose ' + esc(s.name) + (s.price != null ? ' for ' + money(s.price) : '') + '"><span><b>' + esc(s.name) + '</b>' +
-          (s.duration_minutes ? '<div class="meta">' + s.duration_minutes + ' min' + (s.category ? ' \u00b7 ' + esc(s.category) : '') + '</div>' : '') +
-          '</span>' + (s.price != null ? '<span class="lw-price">' + money(s.price) + '</span>' : '') + '</button>';
-      }).join('') + '</div>' +
+      '<div class="lw-step on" data-step="service" role="region" aria-label="Choose a service">' +
+      '<div class="lw-label">Choose a service</div>' + html +
       '<button class="lw-link" data-cancel>Manage or cancel an appointment</button></div>'
     );
     focusFirst(w.host);
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
-        w.service = catalog.services[Number(b.getAttribute('data-i'))];
-        if (catalog.staff && catalog.staff.length) { stepStaff(w, catalog); }
-        else { w.staff = null; stepTime(w, catalog); }
+        w.service = c.services[Number(b.getAttribute('data-i'))];
+        w.staff = null;
+        if (hasStaff) stepStaff(w, c); else stepTime(w, c);
       });
     });
     w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w); });
   }
 
-  function stepStaff(w, catalog) {
-    var anyLabel = (w.managing && w.staff) ? 'Keep my current team member' : 'Any available';
-    var opts = ['<button class="lw-opt" data-i="-1"><span><b>' + anyLabel + '</b></span></button>'];
-    catalog.staff.forEach(function (s, i) {
-      var sel = w.staff && w.staff.id === s.id ? ' sel' : '';
-      opts.push('<button class="lw-opt' + sel + '" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
+  // ── step 2: who ─────────────────────────────────────────
+  function stepStaff(w, c) {
+    var opts = [];
+    if (w.managing) {
+      // Rescheduling: keep the stylist they have — their real id, so the times
+      // shown are THAT stylist's free times.
+      var cur = w.managing.booking && w.managing.booking.staff;
+      if (cur && cur.id) opts.push('<button class="lw-opt" data-keep="1"><span><b>Keep ' + esc(cur.name || 'my current team member') + '</b></span></button>');
+    } else if (c.allow_any_staff) {
+      opts.push('<button class="lw-opt" data-i="-1"><span><b>Any available</b><div class="meta">We’ll match you with the best free team member</div></span></button>');
+    }
+    (c.staff || []).forEach(function (s, i) {
+      if (w.managing && w.managing.booking && w.managing.booking.staff && w.managing.booking.staff.id === s.id) return;
+      opts.push('<button class="lw-opt" data-i="' + i + '"><span><b>' + esc(s.name) + '</b>' +
         (s.role ? '<div class="meta">' + esc(s.role) + '</div>' : '') + '</span></button>');
     });
     w.render(
-      progressHtml('staff', true) +
-      '<div class="lw-step on" data-step="staff" role="region" aria-label="Step 2: Choose a team member"><button class="lw-back" data-back="service" aria-label="Back to services">\u2190 Back</button>' +
-      '<div class="lw-label">2 of 4 \u00b7 Choose a team member</div><div class="lw-opts" role="list">' + opts.join('') + '</div></div>'
+      progressHtml(w.managing ? '' : 'staff', true) +
+      '<div class="lw-step on" data-step="staff" role="region" aria-label="Choose a team member"><button class="lw-back" data-back aria-label="Back">← Back</button>' +
+      '<div class="lw-label">Choose a team member</div><div class="lw-opts" role="list">' + opts.join('') + '</div></div>'
     );
     focusFirst(w.host);
     w.host.querySelector('[data-back]').addEventListener('click', function () {
-      if (w.managing) { renderManageCard(w, w.managing.booking); return; }
-      stepService(w, catalog);
+      if (w.managing) { renderManageCard(w, w.managing.booking, w.managing.policy); return; }
+      stepService(w, c);
     });
     w.host.querySelectorAll('.lw-opt').forEach(function (b) {
       b.addEventListener('click', function () {
+        if (b.getAttribute('data-keep')) { w.staff = w.managing.booking.staff; stepTime(w, c); return; }
         var i = Number(b.getAttribute('data-i'));
-        w.staff = i === -1 ? null : catalog.staff[i];
-        stepTime(w, catalog);
+        w.staff = i === -1 ? null : c.staff[i];
+        stepTime(w, c);
       });
     });
   }
 
-  function stepTime(w, catalog) {
+  // ── step 3: when ────────────────────────────────────────
+  function stepTime(w, c) {
+    releaseHold(w);
     var today = salonToday();
     var date = (w.date && w.date >= today) ? w.date : today;
-    var hasStaff = !!(catalog.staff && catalog.staff.length);
-    var stepNum = hasStaff ? '3 of 4' : '2 of 3';
+    var hasStaff = !!(c.staff && c.staff.length);
+    var chips = [];
+    for (var i = 0; i < 14; i++) {
+      var k = addDays(today, i), p = dayParts(k);
+      chips.push('<button class="lw-day' + (k === date ? ' sel' : '') + '" data-day="' + k + '" aria-label="' + esc(p.long) + '"><small>' + esc(p.wd) + '</small><b>' + p.day + '</b><i></i></button>');
+    }
     w.render(
-      progressHtml('time', hasStaff) +
-      '<div class="lw-step on" data-step="time" role="region" aria-label="Step: Pick a time"><button class="lw-back" data-back="staff" aria-label="Back">\u2190 Back</button>' +
-      '<div class="lw-label">' + stepNum + ' \u00b7 Pick a time</div>' +
-      '<input type="date" class="lw-date" id="lwDate" value="' + date + '" min="' + today + '" aria-label="Choose date"/>' +
-      '<div class="lw-slots" id="lwSlots" role="list" aria-live="polite" aria-busy="true"><div class="lw-empty">Pick a date above.</div></div></div>'
+      progressHtml(w.managing ? '' : 'time', hasStaff) +
+      '<div class="lw-step on" data-step="time" role="region" aria-label="Pick a time"><button class="lw-back" data-back aria-label="Back">← Back</button>' +
+      '<div class="lw-label">' + (w.managing ? 'Pick a new time' : 'Pick a time') + (w.staff ? ' · ' + esc(w.staff.name) : '') + '</div>' +
+      '<div class="lw-days" role="list" aria-label="Next two weeks">' + chips.join('') + '</div>' +
+      '<label class="lw-more">Another date <input type="date" class="lw-date" id="lwDate" value="' + date + '" min="' + today + '" aria-label="Choose another date"/></label>' +
+      '<div class="lw-err" role="alert"></div>' +
+      '<div class="lw-slots" id="lwSlots" role="list" aria-live="polite" aria-busy="true"></div></div>'
     );
-    var input = w.host.querySelector('#lwDate');
-    input.addEventListener('change', function () { w.date = input.value; loadSlots(w, catalog, input.value); });
-    w.host.querySelector('[data-back]').addEventListener('click', function () {
-      if (w.managing) { stepStaff(w, catalog); return; }
-      if (catalog.staff && catalog.staff.length) { stepStaff(w, catalog); }
-      else { stepService(w, catalog); }
+    function pick(k) {
+      w.date = k;
+      w.host.querySelectorAll('.lw-day').forEach(function (b) { b.classList.toggle('sel', b.getAttribute('data-day') === k); });
+      var inp = w.host.querySelector('#lwDate'); if (inp) inp.value = k;
+      loadSlots(w, c, k);
+    }
+    w.host.querySelectorAll('.lw-day').forEach(function (b) {
+      b.addEventListener('click', function () { pick(b.getAttribute('data-day')); });
     });
-    loadSlots(w, catalog, date);
+    var input = w.host.querySelector('#lwDate');
+    input.addEventListener('change', function () { if (input.value) pick(input.value); });
+    w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (w.managing) { if (hasStaff || (w.managing.booking && w.managing.booking.staff)) stepStaff(w, c); else renderManageCard(w, w.managing.booking, w.managing.policy); return; }
+      if (hasStaff) stepStaff(w, c); else stepService(w, c);
+    });
+    // Mark which of the next 14 days have any opening.
+    var od = { service_id: w.service.id, from: today, days: 14 };
+    if (w.staff) od.staff_id = w.staff.id;
+    apiGet('open_days', od).then(function (j) {
+      (j.days || []).forEach(function (d) {
+        var b = w.host.querySelector('.lw-day[data-day="' + d.date + '"]');
+        if (b) { b.classList.add(d.open ? 'open' : 'closed'); if (!d.open) b.setAttribute('aria-label', b.getAttribute('aria-label') + ' (fully booked)'); }
+      });
+    }).catch(function () {});
+    w.date = date;
+    loadSlots(w, c, date);
   }
 
-  function loadSlots(w, catalog, date) {
+  function loadSlots(w, c, date) {
     var host = w.host.querySelector('#lwSlots');
-    // Skeleton: 9 shimmering slot placeholders while the availability call runs.
+    if (!host) return;
     host.setAttribute('aria-busy', 'true');
     var sk = [];
     for (var i = 0; i < 9; i++) sk.push('<div class="lw-slot-sk" aria-hidden="true"></div>');
     host.innerHTML = sk.join('');
-    var p = { service_id: w.service.id, date: date, limit: 200 };
+    var p = { service_id: w.service.id, date: date, limit: 200, one_per_time: 1 };
     if (w.staff) p.staff_id = w.staff.id;
     apiGet('availability', p).then(function (data) {
-      // "Any available" returns one slot per free stylist \u2014 show each time once.
-      var seenT = {};
+      if (w.date !== date) return; // user moved on to another day
       var now = Date.now();
-      var slots = (data.slots || []).filter(function (s) {
-        var iso = s.starts_at || s; var t = Date.parse(iso);
-        if (!t || t < now || seenT[t]) return false; seenT[t] = 1; return true;
-      }).sort(function (a, b) { return Date.parse(a.starts_at || a) - Date.parse(b.starts_at || b); });
-      if (w.date !== undefined && date !== (w.date || date)) return; // user moved on to another day
+      var slots = (data.slots || []).filter(function (s) { var t = Date.parse(s.starts_at); return t && t >= now; });
       host.setAttribute('aria-busy', 'false');
-      if (!slots.length) { renderWaitlist(w, catalog, host, date); return; }
+      if (!slots.length) { renderNoTimes(w, c, host, date, data.next_open); return; }
       host.innerHTML = slots.map(function (s) {
-        var iso = s.starts_at || s;
-        return '<button class="lw-slot" data-iso="' + esc(iso) + '" role="listitem" aria-label="Book at ' + timeLabel(iso) + '">' + timeLabel(iso) + '</button>';
+        return '<button class="lw-slot" data-iso="' + esc(s.starts_at) + '" role="listitem" aria-label="' + esc(timeLabel(s.starts_at)) + '">' + esc(timeLabel(s.starts_at)) + '</button>';
       }).join('');
       host.querySelectorAll('.lw-slot').forEach(function (b) {
         b.addEventListener('click', function () {
@@ -372,143 +493,259 @@
           b.classList.add('sel');
           w.time = b.getAttribute('data-iso');
           if (w.managing) { stepRescheduleConfirm(w); return; }
-          stepDetails(w, catalog);
+          holdTime(w, c, b);
         });
       });
-    }).catch(function (e) { host.innerHTML = '<div class="lw-empty">' + esc(e.message) + '</div>'; });
+    }).catch(function (e) {
+      host.setAttribute('aria-busy', 'false');
+      host.innerHTML = '<div class="lw-empty">' + esc(e.message) + '</div>';
+    });
   }
 
-  function renderWaitlist(w, catalog, host, date) {
-    host.innerHTML = '<div class="lw-empty">No open times on ' + esc(new Date(date + 'T12:00:00').toLocaleDateString([], { weekday:'long', month:'short', day:'numeric' })) + '.</div>' +
-      '<div class="lw-wl"><div class="lw-wl-t">Get first dibs when a slot opens</div>' +
-      '<div class="lw-wl-s">Leave your name and phone \u2014 ' + esc(catalog.tenant_name || 'we') + ' will text you the moment ' + esc(w.service.name) + ' has an opening.</div>' +
-      '<div class="lw-wl-fld"><input id="lwWlName" placeholder="Your name"/></div>' +
-      '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" placeholder="(555) 555-5555"/></div>' +
-      '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes \u2014 text me at this number the moment a slot opens. Msg &amp; data rates may apply. Reply STOP to opt out. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener" style="color:inherit">Terms</a></span></label>' +
-      '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk"></div></div>';
+  // Hold the picked time for 5 minutes, then offer add-ons that fit.
+  function holdTime(w, c, btn) {
+    var err = w.host.querySelector('.lw-err');
+    if (btn) { btn.disabled = true; btn.textContent = 'Holding…'; }
+    releaseHold(w);
+    apiPost({ action: 'hold', channel: 'public_web', service_id: w.service.id, staff_id: w.staff ? w.staff.id : null, starts_at: w.time, ttl_seconds: 300 })
+      .then(function (r) {
+        if (!r.ok || !r.hold) {
+          if (err) err.textContent = errText(r, 'That time was just taken — pick another.');
+          loadSlots(w, c, w.date);
+          return;
+        }
+        w.hold = r.hold;
+        w.heldStaff = r.hold.staff_name ? { id: r.hold.staff_id, name: r.hold.staff_name } : (w.staff || null);
+        return apiPost({ action: 'addons', hold_token: r.hold.hold_token }).then(function (a) {
+          var list = (a && a.ok && a.addons) || [];
+          if (list.length) stepAddons(w, c, list); else { w.addons = []; stepDetails(w, c); }
+        }, function () { w.addons = []; stepDetails(w, c); });
+      })
+      .catch(function (e) {
+        if (err) err.textContent = e.message || 'Something went wrong.';
+        if (btn) { btn.disabled = false; btn.textContent = timeLabel(w.time); }
+      });
+  }
+
+  function renderNoTimes(w, c, host, date, next) {
+    var html = '<div class="lw-empty" style="grid-column:1/-1">No open times on ' + esc(dayParts(date).long) + '.</div>';
+    if (next && next.date) {
+      html += '<div class="lw-next" style="grid-column:1/-1"><div class="lw-next-t">Next opening: <b>' + esc(dayParts(next.date).long) + '</b></div>' +
+        '<div class="lw-slots">' + (next.times || []).map(function (t) {
+          return '<button class="lw-slot" data-next="' + esc(t) + '">' + esc(timeLabel(t)) + '</button>';
+        }).join('') + '</div><button class="lw-link" data-goto="' + esc(next.date) + '" style="margin-top:10px">See all times that day</button></div>';
+    }
+    html += '<div style="grid-column:1/-1" id="lwWlBox"></div>';
+    host.innerHTML = html;
+    host.querySelectorAll('[data-next]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        w.time = b.getAttribute('data-next'); w.date = next.date;
+        if (w.managing) { stepRescheduleConfirm(w); return; }
+        holdTime(w, c, b);
+      });
+    });
+    var go = host.querySelector('[data-goto]');
+    if (go) go.addEventListener('click', function () {
+      var k = go.getAttribute('data-goto'); w.date = k;
+      var chip = w.host.querySelector('.lw-day[data-day="' + k + '"]');
+      w.host.querySelectorAll('.lw-day').forEach(function (b) { b.classList.toggle('sel', b === chip); });
+      var inp = w.host.querySelector('#lwDate'); if (inp) inp.value = k;
+      loadSlots(w, c, k);
+    });
+    if (!w.managing) renderWaitlist(w, c, host.querySelector('#lwWlBox'), date);
+  }
+
+  function renderWaitlist(w, c, host, date) {
+    host.innerHTML = '<div class="lw-wl"><div class="lw-wl-t">Get first dibs when a slot opens</div>' +
+      '<div class="lw-wl-s">Leave your name and phone — ' + esc(c.tenant_name || 'the salon') + ' can text you when ' + esc(w.service.name) + ' has an opening.</div>' +
+      '<div class="lw-wl-fld"><input id="lwWlName" placeholder="Your name" autocomplete="name"/></div>' +
+      '<div class="lw-wl-fld"><input id="lwWlPhone" type="tel" inputmode="tel" placeholder="Mobile number" autocomplete="tel"/></div>' +
+      '<label class="lw-wl-consent"><input type="checkbox" id="lwWlConsent"/><span>Yes — text me at this number when a slot opens. Msg &amp; data rates may apply. Reply STOP to opt out. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener" style="color:inherit">Terms</a></span></label>' +
+      '<button class="lw-wl-btn" id="lwWlGo">Join the waitlist</button><div class="lw-wl-ok" id="lwWlOk" role="status"></div></div>';
     wirePhone(host.querySelector('#lwWlPhone'));
     host.querySelector('#lwWlGo').addEventListener('click', function () {
       var name = host.querySelector('#lwWlName').value.trim();
       var phone = host.querySelector('#lwWlPhone').value.trim();
       var ok = host.querySelector('#lwWlOk');
       var consent = host.querySelector('#lwWlConsent').checked;
-      if (!name || !phone) { ok.textContent = 'Please add your name and phone.'; return; }
+      if (!name || !phoneValid(phone)) { ok.textContent = 'Please add your name and a valid mobile number.'; return; }
       if (!consent) { ok.textContent = 'Please check the box so we can text you when a slot opens.'; return; }
       var btn = host.querySelector('#lwWlGo');
-      btn.disabled = true; btn.textContent = 'Adding\u2026';
-      apiPost({ action:'waitlist_add', channel:'public_widget', service_id: w.service.id, service_name: w.service.name, date: date, client_name: name, client_phone: phone, sms_consent: true })
+      btn.disabled = true; btn.textContent = 'Adding…';
+      apiPost({ action: 'waitlist_add', channel: 'public_widget', service_id: w.service.id, service_name: w.service.name, staff_id: w.staff ? w.staff.id : null, date: date, client_name: name, client_phone: phone, sms_consent: true })
         .then(function (result) {
-          if (!result.ok) { ok.textContent = result.error || 'Could not join the waitlist.'; btn.disabled = false; btn.textContent = 'Join the waitlist'; return; }
-          ok.textContent = 'You are on the waitlist \u2014 we will text you the moment a slot opens.';
+          if (!result.ok) { ok.textContent = errText(result, 'Could not join the waitlist.'); btn.disabled = false; btn.textContent = 'Join the waitlist'; return; }
+          ok.textContent = 'You’re on the waitlist.';
           btn.style.display = 'none';
         })
         .catch(function (e) { ok.textContent = e.message || 'Something went wrong.'; btn.disabled = false; btn.textContent = 'Join the waitlist'; });
     });
   }
 
-  function stepDetails(w, catalog) {
-    var staffLine = w.staff ? ' with <b>' + esc(w.staff.name) + '</b>' : '';
-    var hasStaff = !!(catalog.staff && catalog.staff.length);
-    var stepNum = hasStaff ? '4 of 4' : '3 of 3';
-    var deposit = depositFor(w.service, catalog);
-    var depositLine = deposit > 0
-      ? '<div class="deposit-line">A ' + money(deposit) + ' deposit holds your slot \u2014 we\u2019ll text you a secure link. It goes toward your service.</div>'
-      : '';
-    var bookLabel = 'Confirm booking';
+  // ── add-ons: real menu services the same stylist can do right after ──
+  function stepAddons(w, c, list) {
+    w.addons = w.addons || [];
+    var picked = {};
+    w.addons.forEach(function (a) { picked[a.id] = true; });
+    w.render(
+      '<div class="lw-step on" data-step="addons" role="region" aria-label="Add-ons"><button class="lw-back" data-back aria-label="Back">← Back</button>' +
+      '<div class="lw-label">Add something?</div>' +
+      '<div class="lw-hold" aria-live="polite"></div>' +
+      '<p class="lw-note">' + esc((w.heldStaff && w.heldStaff.name) || 'Your stylist') + ' has time right after your ' + esc(w.service.name) + ' for these:</p>' +
+      '<div class="lw-opts">' + list.map(function (a, i) {
+        return '<label class="lw-opt" style="cursor:pointer"><span><b>' + esc(a.name) + '</b><div class="meta">+' + a.duration_minutes + ' min</div>' +
+          (a.description ? '<div class="desc">' + esc(a.description) + '</div>' : '') + '</span>' +
+          '<span class="lw-price">+' + money(a.price) + ' <input type="checkbox" data-a="' + i + '"' + (picked[a.id] ? ' checked' : '') + ' aria-label="Add ' + esc(a.name) + '" style="margin-left:8px;accent-color:#ccff00;width:18px;height:18px;vertical-align:middle"/></span></label>';
+      }).join('') + '</div>' +
+      '<div class="lw-actions"><button class="lw-btn" id="lwAddonsNext">Continue</button></div></div>'
+    );
+    w.host.querySelector('[data-back]').addEventListener('click', function () { w.addons = []; stepTime(w, c); });
+    w.host.querySelector('#lwAddonsNext').addEventListener('click', function () {
+      var sel = [];
+      w.host.querySelectorAll('input[data-a]').forEach(function (x) { if (x.checked) sel.push(list[Number(x.getAttribute('data-a'))]); });
+      w.addons = sel;
+      stepDetails(w, c, list);
+    });
+  }
+
+  // ── step 4: details + confirm ───────────────────────────
+  function depositLine(q) {
+    if (!q) return '';
+    if (q.required && q.amount_cents) return 'A ' + cents(q.amount_cents) + ' deposit is required to hold this appointment — you’ll pay it securely with Stripe right after booking (we’ll also text you the link). It goes toward your service.';
+    if (q.maybe && q.amount_cents) return 'A deposit of ' + cents(q.amount_cents) + ' may be required (for example for new clients) — if so, you’ll pay it securely right after booking.';
+    return '';
+  }
+  function stepDetails(w, c, addonList) {
+    var hasStaff = !!(c.staff && c.staff.length);
+    var staff = w.heldStaff || w.staff;
+    var items = [w.service].concat(w.addons || []);
+    var total = items.reduce(function (s, x) { return s + Number(x.price || 0); }, 0);
     w.render(
       progressHtml('details', hasStaff) +
-      '<div class="lw-step on" data-step="details" role="region" aria-label="Step: Your details"><button class="lw-back" data-back="time" aria-label="Back">\u2190 Back</button>' +
-      '<div class="lw-label">' + stepNum + ' \u00b7 Your details</div>' +
+      '<div class="lw-step on" data-step="details" role="region" aria-label="Your details"><button class="lw-back" data-back aria-label="Back">← Back</button>' +
+      '<div class="lw-label">Your details</div>' +
+      '<div class="lw-hold" aria-live="polite"></div>' +
       '<div id="lwWelcome"></div>' +
-      '<div class="lw-summary"><b>' + esc(w.service.name) + '</b>' + staffLine + '<br>' + whenLabel(w.time) + depositLine + '</div>' +
-      '<div class="lw-fld"><label for="lwPhone">Phone</label><input class="lw-inp" id="lwPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel"/></div>' +
+      '<div class="lw-summary"><b>' + items.map(function (x) { return esc(x.name); }).join(' + ') + '</b>' + (staff ? ' with <b>' + esc(staff.name) + '</b>' : '') +
+      '<br>' + esc(whenLabel(w.time)) + (total ? ' · ' + money(total) : '') +
+      '<div class="deposit-line" id="lwDep"></div>' + policyHtml(c, '') + '</div>' +
+      '<div class="lw-fld"><label for="lwPhone">Mobile phone</label><input class="lw-inp" id="lwPhone" type="tel" inputmode="tel" placeholder="(555) 555-5555 or +44…" autocomplete="tel"/></div>' +
       '<div class="lw-fld"><label for="lwName">Name</label><input class="lw-inp" id="lwName" placeholder="Your name" autocomplete="name"/></div>' +
-      '<div class="lw-fld"><label for="lwEmail">Email (optional)</label><input class="lw-inp" id="lwEmail" type="email" autocomplete="email"/></div>' +
-      '<button class="lw-btn" id="lwBook">' + esc(bookLabel) + '</button><div class="lw-err" role="alert" aria-live="polite"></div>' +
-      '<div class="lw-legal">By booking, you agree to get texts about this appointment (confirmation, reminders, changes) from ' + esc((w.catalog || state.catalog || {}).tenant_name || 'the salon') + ' at this number. Msg frequency varies; msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of purchase. Calls with the salon may be recorded and answered by an AI assistant. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener">Messaging Terms</a> \u00b7 <a href="' + LEGAL + '/privacy" target="_blank" rel="noopener">Privacy</a></div></div>'
+      '<div class="lw-fld"><label for="lwEmail">Email' + (c.require_email ? '' : ' (optional)') + '</label><input class="lw-inp" id="lwEmail" type="email" autocomplete="email"' + (c.require_email ? ' required' : '') + '/></div>' +
+      '<button class="lw-btn" id="lwBook">Confirm booking</button><div class="lw-err" role="alert" aria-live="polite"></div>' +
+      '<div class="lw-legal">By booking, you agree to get texts about this appointment (confirmation, reminders, changes) from ' + esc(c.tenant_name || 'the salon') + ' at this number. Msg frequency varies; msg &amp; data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of purchase. Calls with the salon may be recorded and answered by an AI assistant. <a href="' + LEGAL + '/sms-terms" target="_blank" rel="noopener">Messaging Terms</a> · <a href="' + LEGAL + '/privacy" target="_blank" rel="noopener">Privacy</a></div></div>'
     );
-    // Wire auto-format on phone + returning-visitor lookup on 10-digit valid.
     var phoneInput = w.host.querySelector('#lwPhone');
     var nameInput = w.host.querySelector('#lwName');
     var welcome = w.host.querySelector('#lwWelcome');
-    wirePhone(phoneInput, function(digits) {
-      // Only pre-fill name if the user hasn't typed one yet.
-      lookupClient(digits).then(function(c) {
-        if (!c) return;
-        if (nameInput && !nameInput.value) nameInput.value = c.name || '';
-        if (welcome && c.name && !welcome.innerHTML) {
-          welcome.innerHTML = '<div class="lw-welcome">Welcome back, <b>' + esc(c.name.split(' ')[0]) + '</b>. We remember your details \u2014 just tap confirm.</div>';
-        }
+    var dep = w.host.querySelector('#lwDep');
+    var ids = items.map(function (x) { return x.id; });
+    function quote(phone) {
+      if (!c.deposit_may_apply) return;
+      var q = { service_ids: ids };
+      if (phone) q.client_phone = phone;
+      apiPost(Object.assign({ action: 'deposit_quote' }, q)).then(function (r) {
+        if (r && r.ok) { w.quote = r; if (dep) dep.textContent = depositLine(r); }
+      }).catch(function () {});
+    }
+    quote(null);
+    wirePhone(phoneInput, function (phone) {
+      quote(phone);
+      lookupClient(phone).then(function (cl) {
+        if (!cl || !cl.first_name) return;
+        if (welcome && !welcome.innerHTML) welcome.innerHTML = '<div class="lw-welcome">Welcome back, <b>' + esc(cl.first_name) + '</b>.</div>';
       });
     });
-    w.host.querySelector('[data-back]').addEventListener('click', function () { stepTime(w, w.catalog || state.catalog); });
-    w.host.querySelector('#lwBook').addEventListener('click', function () { confirmBook(w); });
+    w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (addonList && addonList.length) stepAddons(w, c, addonList); else stepTime(w, c);
+    });
+    w.host.querySelector('#lwBook').addEventListener('click', function () { confirmBook(w, c); });
     focusFirst(w.host);
+    if (nameInput) nameInput.setAttribute('autocapitalize', 'words');
   }
 
-  function confirmBook(w) {
+  function confirmBook(w, c) {
     var name = w.host.querySelector('#lwName').value.trim();
     var phone = w.host.querySelector('#lwPhone').value.trim();
     var email = w.host.querySelector('#lwEmail').value.trim();
     var err = w.host.querySelector('.lw-err');
     var btn = w.host.querySelector('#lwBook');
-    if (!name || !phone) { err.textContent = 'Please add your name and phone.'; return; }
+    if (!name) { err.textContent = 'Please add your name.'; return; }
+    if (!phoneValid(phone)) { err.textContent = 'Please enter a valid mobile number (with country code if outside the US).'; return; }
+    if (c.require_email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { err.textContent = 'Please add your email — this salon asks for it to book online.'; return; }
     err.textContent = '';
-    var btnLabel = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Booking\u2026';
+    btn.disabled = true; btn.textContent = 'Booking…';
+    var items = [w.service].concat(w.addons || []);
     apiPost({
       action: 'book', channel: 'public_web',
-      service_id: w.service.id, staff_id: w.staff ? w.staff.id : null,
+      service_id: w.service.id, service_ids: items.map(function (x) { return x.id; }),
+      staff_id: w.hold ? null : (w.staff ? w.staff.id : null), hold_token: w.hold ? w.hold.hold_token : null,
       starts_at: w.time, client_name: name, client_phone: phone, client_email: email || null,
       sms_consent: 'transactional', consent_text_version: '2026-10-01'
     }).then(function (result) {
       if (!result.ok) {
-        err.textContent = result.conflict ? 'That time was just taken \u2014 go back and pick another.' : (result.error || 'Could not complete booking.');
-        btn.disabled = false; btn.textContent = btnLabel;
+        err.textContent = errText(result, 'Could not complete booking.');
+        btn.disabled = false; btn.textContent = 'Confirm booking';
         return;
       }
-      // If the backend returns a Stripe payment_link (deposit required and
-      // policy demands pay-at-book), redirect the client to complete it.
-      // Otherwise show the confirmation state as usual.
-      if (result.payment_link) {
-        btn.textContent = 'Opening secure payment\u2026';
-        location.href = result.payment_link;
-        return;
-      }
-      var code = result.booking && result.booking.confirmation_code;
-      w.render(
-        '<div class="lw-step on" data-step="done" role="status" aria-live="polite"><div class="lw-orb"></div>' +
-        '<div class="lw-done-title">You are all set!</div>' +
-        '<div class="lw-done-sub">' + esc(w.service.name) + ' on ' + whenLabel(w.time) +
-        '.<br>We texted your confirmation \u2014 keep the code below to cancel or change online.</div>' +
-        (code ? '<div class="lw-code">Your code: <b>' + esc(code) + '</b></div>' : '') +
-        '<button class="lw-link" data-cancel>Manage or cancel this appointment</button></div>'
-      );
-      w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w, { code: code }); });
+      w.hold = null; // converted into the booking
+      renderDone(w, c, result, phone, items);
     }).catch(function (e) {
       err.textContent = e.message || 'Something went wrong.';
-      btn.disabled = false; btn.textContent = btnLabel;
+      btn.disabled = false; btn.textContent = 'Confirm booking';
     });
   }
 
-  // \u2500\u2500 self-service manage: look up by code + phone, then reschedule/cancel \u2500\u2500
+  function renderDone(w, c, result, phone, items) {
+    var b = result.booking || {};
+    var code = b.confirmation_code;
+    var staffName = b.staff_name || (w.heldStaff && w.heldStaff.name) || '';
+    var calHref = result.calendar_path ? ORIGIN + result.calendar_path : '';
+    var pay = result.payment_link && /^https:\/\//.test(result.payment_link) ? result.payment_link : '';
+    var sub = esc(items.map(function (x) { return x.name; }).join(' + ')) + (staffName ? ' with ' + esc(staffName) : '') + '<br>' + esc(whenLabel(b.start_time || w.time)) + '.';
+    sub += result.texted ? '<br>We’ve texted your confirmation.' : '<br>Keep the code below — you’ll need it to change or cancel online.';
+    var payHtml = '';
+    if (pay) {
+      payHtml = '<div class="lw-summary" style="margin-top:14px"><div class="deposit-line" style="margin-top:0">A ' + cents(result.deposit && result.deposit.amount_cents) + ' deposit holds this appointment.' +
+        (result.texted ? ' We also texted you the payment link.' : '') + '</div><div class="lw-hold" id="lwPayNote" style="margin:6px 0 0">Taking you to secure payment…</div></div>' +
+        '<a class="lw-btn" href="' + esc(pay) + '" id="lwPay" rel="noopener">Pay deposit securely</a>';
+    }
+    w.render(
+      '<div class="lw-step on" data-step="done" role="status" aria-live="polite"><div class="lw-orb"></div>' +
+      '<div class="lw-done-title">You’re booked!</div>' +
+      '<div class="lw-done-sub">' + sub + '</div>' +
+      (code ? '<div class="lw-code">Your code: <b>' + esc(code) + '</b></div>' : '') +
+      payHtml +
+      '<div class="lw-actions">' + (calHref ? '<a class="lw-btn ghost" href="' + esc(calHref) + '" download="appointment.ics">Add to calendar</a>' : '') + '</div>' +
+      policyHtml(c, '') +
+      '<button class="lw-link" data-cancel>Manage or cancel this appointment</button></div>'
+    );
+    w.host.querySelector('[data-cancel]').addEventListener('click', function () { stepManage(w, { code: code, phone: phone }); });
+    if (pay) {
+      // The deposit is what holds the slot: go straight to Stripe's page.
+      setTimeout(function () { try { (window.top || window).location.href = pay; } catch (e) { location.href = pay; } }, 2500);
+    }
+  }
+
+  // ── self-service: look up by code + phone, then reschedule/cancel ──
   function stepManage(w, prefill) {
+    releaseHold(w);
     prefill = prefill || {};
     var code = (prefill.code || (w.managing && w.managing.code) || '').trim();
     var phone = prefill.phone || (w.managing && w.managing.phone) || '';
     w.render(
-      '<div class="lw-step on" data-step="manage"><button class="lw-back" data-back>\u2190 Back</button>' +
+      '<div class="lw-step on" data-step="manage"><button class="lw-back" data-back>← Back</button>' +
       '<div class="lw-label">Manage an appointment</div>' +
-      '<p class="lw-note">Find your booking with the code from your confirmation text.</p>' +
-      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwMCode" value="' + esc(code) + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
-      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwMPhone" type="tel" value="' + esc(phone) + '" placeholder="(555) 555-5555"/></div>' +
-      '<button class="lw-btn" id="lwLookup">Find my appointment</button><div class="lw-err"></div></div>'
+      '<p class="lw-note">Find your booking with the code from your confirmation.</p>' +
+      '<div class="lw-fld"><label for="lwMCode">Confirmation code</label><input class="lw-inp" id="lwMCode" value="' + esc(code) + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
+      '<div class="lw-fld"><label for="lwMPhone">Phone used to book</label><input class="lw-inp" id="lwMPhone" type="tel" inputmode="tel" value="' + esc(phone) + '" placeholder="(555) 555-5555"/></div>' +
+      '<button class="lw-btn" id="lwLookup">Find my appointment</button><div class="lw-err" role="alert"></div></div>'
     );
-    w.host.querySelector('[data-back]').addEventListener('click', function () {
-      if (w.catalog) stepService(w, w.catalog);
-    });
+    w.host.querySelector('[data-back]').addEventListener('click', function () { w.managing = null; if (w.catalog) stepService(w, w.catalog); });
     w.host.querySelector('#lwLookup').addEventListener('click', function () { doLookup(w); });
     wirePhone(w.host.querySelector('#lwMPhone'));
+    var f = w.host.querySelector(code ? '#lwMPhone' : '#lwMCode');
+    try { if (f) f.focus({ preventScroll: true }); } catch (e) {}
   }
 
   function doLookup(w) {
@@ -518,19 +755,16 @@
     var btn = w.host.querySelector('#lwLookup');
     if (!code || !phone) { err.textContent = 'Enter your code and the phone you booked with.'; return; }
     err.textContent = '';
-    btn.disabled = true; btn.textContent = 'Finding\u2026';
+    btn.disabled = true; btn.textContent = 'Finding…';
     apiPost({ action: 'lookup', channel: 'public_widget', code: code, client_phone: phone })
       .then(function (result) {
         if (!result.ok) {
-          var msg = result.error === 'code_not_found' ? 'No booking matches that code.' :
-            result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
-            (result.error || 'Could not find that booking.');
-          err.textContent = msg;
+          err.textContent = errText(result, 'Could not find that booking.');
           btn.disabled = false; btn.textContent = 'Find my appointment';
           return;
         }
-        w.managing = { code: code, phone: phone, booking: result.booking };
-        renderManageCard(w, result.booking);
+        w.managing = { code: code, phone: phone, booking: result.booking, policy: result.policy || null };
+        renderManageCard(w, result.booking, result.policy);
       })
       .catch(function (e) {
         err.textContent = e.message || 'Something went wrong.';
@@ -538,21 +772,24 @@
       });
   }
 
-  function renderManageCard(w, b) {
+  function renderManageCard(w, b, policy) {
     var cancelled = b.status === 'cancelled' || b.status === 'canceled';
     var staffName = (b.staff && b.staff.name) || '';
+    var locked = policy && policy.can_change_online === false && !cancelled;
+    var phone = (policy && policy.salon_phone) || (w.catalog && w.catalog.phone) || '';
     w.render(
       '<div class="lw-step on" data-step="manage-card">' +
-      '<div class="lw-label">' + esc((b.service && b.service.name) || 'Appointment') + (staffName ? ' \u00b7 ' + esc(staffName) : '') + '</div>' +
+      '<div class="lw-label">' + esc((b.service && b.service.name) || 'Appointment') + (staffName ? ' · ' + esc(staffName) : '') + '</div>' +
       '<div class="lw-card">' +
       '<div class="lw-card-when">' + esc(whenLabel(b.start_time)) + '</div>' +
-      (b.service && b.service.price != null ? '<div class="lw-card-meta">' + money(b.service.price) + (b.service.duration_minutes ? ' \u00b7 ' + b.service.duration_minutes + ' min' : '') + '</div>' : '') +
+      (b.service && b.service.price != null ? '<div class="lw-card-meta">' + money(b.service.price) + (b.service.duration_minutes ? ' · ' + b.service.duration_minutes + ' min' : '') + '</div>' : '') +
       (cancelled ? '<div class="lw-card-meta" style="color:#ff7a7a">This appointment is cancelled.</div>' : '') +
       '</div>' +
       (cancelled ? '<button class="lw-btn" id="lwNewBook">Book a new appointment</button>' :
+        locked ? '<p class="lw-note">Your appointment is less than ' + esc(policy.cancellation_window_hours) + ' hours away, so it can’t be changed online. ' + (phone ? 'Please call the salon at <b>' + esc(phone) + '</b>.' : 'Please call the salon.') + '</p>' :
         '<button class="lw-btn" id="lwResched">Pick a new time</button>' +
         '<button class="lw-link" data-cancel>Cancel this appointment instead</button>') +
-      '<div class="lw-err"></div></div>'
+      '<div class="lw-err" role="alert"></div></div>'
     );
     if (cancelled) {
       w.host.querySelector('#lwNewBook').addEventListener('click', function () {
@@ -561,6 +798,7 @@
       });
       return;
     }
+    if (locked) return;
     w.host.querySelector('#lwResched').addEventListener('click', function () { startReschedule(w); });
     w.host.querySelector('[data-cancel]').addEventListener('click', function () {
       stepCancel(w, { code: w.managing.code, phone: w.managing.phone });
@@ -572,28 +810,21 @@
     if (!b || !b.service) { stepManage(w); return; }
     var cat = w.catalog;
     var svc = (cat.services || []).filter(function (s) { return s.id === b.service.id; })[0] || null;
-    if (!svc) {
-      w.msg('warn', 'That service is no longer offered \u2014 please book a new appointment instead.');
-      return;
-    }
+    if (!svc) { w.msg('warn', 'That service is no longer offered online — please book a new appointment instead.'); return; }
     w.service = svc;
-    w.staff = null;
-    if (b.staff && b.staff.id) {
-      var cur = (cat.staff || []).filter(function (s) { return s.id === b.staff.id; })[0];
-      if (cur) w.staff = cur;
-    }
-    if (cat.staff && cat.staff.length) { stepStaff(w, cat); }
-    else { stepTime(w, cat); }
+    // Default: the same stylist (their id, so availability is theirs).
+    w.staff = b.staff && b.staff.id ? { id: b.staff.id, name: b.staff.name } : null;
+    if (cat.staff && cat.staff.length) stepStaff(w, cat); else stepTime(w, cat);
   }
 
   function stepRescheduleConfirm(w) {
     w.render(
-      '<div class="lw-step on" data-step="rconfirm"><button class="lw-back" data-back>\u2190 Back</button>' +
+      '<div class="lw-step on" data-step="rconfirm"><button class="lw-back" data-back>← Back</button>' +
       '<div class="lw-label">Move your appointment</div>' +
       '<div class="lw-summary"><b>' + esc(w.service.name) + '</b>' +
       (w.staff ? ' with <b>' + esc(w.staff.name) + '</b>' : '') +
-      '<br>New time: <b>' + esc(whenLabel(w.time)) + '</b></div>' +
-      '<button class="lw-btn" id="lwReschedBtn">Confirm new time</button><div class="lw-err"></div></div>'
+      '<br>New time: <b>' + esc(whenLabel(w.time)) + '</b>' + policyHtml(w.catalog || {}, '') + '</div>' +
+      '<button class="lw-btn" id="lwReschedBtn">Confirm new time</button><div class="lw-err" role="alert"></div></div>'
     );
     w.host.querySelector('[data-back]').addEventListener('click', function () { stepTime(w, w.catalog); });
     w.host.querySelector('#lwReschedBtn').addEventListener('click', function () { doReschedule(w); });
@@ -603,30 +834,27 @@
     var m = w.managing;
     var err = w.host.querySelector('.lw-err');
     var btn = w.host.querySelector('#lwReschedBtn');
-    btn.disabled = true; btn.textContent = 'Moving your appointment\u2026';
+    btn.disabled = true; btn.textContent = 'Moving your appointment…';
     apiPost({
       action: 'reschedule', channel: 'public_widget',
       code: m.code, client_phone: m.phone,
       starts_at: w.time, staff_id: w.staff ? w.staff.id : null
     }).then(function (result) {
       if (!result.ok) {
-        var msg = result.conflict ? 'That time was just taken \u2014 pick another.' :
-          result.error === 'code_not_found' ? 'No booking matches that code.' :
-          result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
-          result.error === 'appointment_passed' ? 'That appointment has already passed.' :
-          result.error === 'not_reschedulable' ? 'That booking can no longer be changed.' :
-          (result.error || 'Could not reschedule.');
-        err.textContent = msg;
+        err.textContent = errText(result, 'Could not reschedule.');
         btn.disabled = false; btn.textContent = 'Confirm new time';
         return;
       }
       var when = whenLabel(w.time);
+      var code = m.code, phone = m.phone;
       w.managing = null;
+      var calHref = ORIGIN + '/api/calendar.ics?code=' + encodeURIComponent(code) + '&phone=' + encodeURIComponent(phone);
       w.render(
         '<div class="lw-step on" data-step="rescheduled"><div class="lw-orb"></div>' +
-        '<div class="lw-done-title">You\'re all set</div>' +
-        '<div class="lw-done-sub">Your appointment is now <b>' + esc(when) + '</b>.<br>We texted your confirmation.<br>' +
-        '<button class="lw-link" data-more>Manage another appointment</button></div></div>'
+        '<div class="lw-done-title">You’re all set</div>' +
+        '<div class="lw-done-sub">Your appointment is now <b>' + esc(when) + '</b>.<br>Your code stays the same: <b>' + esc(code) + '</b>.</div>' +
+        '<div class="lw-actions"><a class="lw-btn ghost" href="' + esc(calHref) + '" download="appointment.ics">Add to calendar</a></div>' +
+        '<button class="lw-link" data-more>Manage another appointment</button></div>'
       );
       w.host.querySelector('[data-more]').addEventListener('click', function () { stepManage(w); });
     }).catch(function (e) {
@@ -638,13 +866,15 @@
   function stepCancel(w, prefill) {
     prefill = prefill || {};
     w.render(
-      '<div class="lw-step on" data-step="cancel"><button class="lw-back" data-back>\u2190 Back</button>' +
+      '<div class="lw-step on" data-step="cancel"><button class="lw-back" data-back>← Back</button>' +
       '<div class="lw-label">Cancel an appointment</div>' +
-      '<div class="lw-fld"><label>Confirmation code</label><input class="lw-inp" id="lwCode" value="' + esc(prefill.code || '') + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
-      '<div class="lw-fld"><label>Phone used to book</label><input class="lw-inp" id="lwCancelPhone" type="tel" value="' + esc(prefill.phone || '') + '" placeholder="(555) 555-5555"/></div>' +
-      '<button class="lw-btn" id="lwCancelBtn">Cancel appointment</button><div class="lw-err"></div></div>'
+      '<div class="lw-fld"><label for="lwCode">Confirmation code</label><input class="lw-inp" id="lwCode" value="' + esc(prefill.code || '') + '" placeholder="e.g. AB3X7Q" autocomplete="off"/></div>' +
+      '<div class="lw-fld"><label for="lwCancelPhone">Phone used to book</label><input class="lw-inp" id="lwCancelPhone" type="tel" inputmode="tel" value="' + esc(prefill.phone || '') + '" placeholder="(555) 555-5555"/></div>' +
+      policyHtml(w.catalog || {}, '') +
+      '<button class="lw-btn" id="lwCancelBtn">Cancel appointment</button><div class="lw-err" role="alert"></div></div>'
     );
     w.host.querySelector('[data-back]').addEventListener('click', function () {
+      if (w.managing) { renderManageCard(w, w.managing.booking, w.managing.policy); return; }
       if (w.catalog) stepService(w, w.catalog);
     });
     w.host.querySelector('#lwCancelBtn').addEventListener('click', function () { doCancel(w); });
@@ -658,23 +888,19 @@
     var btn = w.host.querySelector('#lwCancelBtn');
     if (!code || !phone) { err.textContent = 'Enter your code and the phone you booked with.'; return; }
     err.textContent = '';
-    btn.disabled = true; btn.textContent = 'Cancelling\u2026';
+    btn.disabled = true; btn.textContent = 'Cancelling…';
     apiPost({ action: 'cancel', channel: 'public_widget', code: code, client_phone: phone })
       .then(function (result) {
         if (!result.ok) {
-          var msg = result.error === 'code_not_found' ? 'No booking matches that code.' :
-            result.error === 'code_phone_mismatch' ? 'That code and phone don\'t match a booking.' :
-            result.error === 'appointment_passed' ? 'That appointment has already passed.' :
-            result.error === 'not_cancellable' ? 'That booking is no longer cancellable.' :
-            (result.error || 'Could not cancel.');
-          err.textContent = msg;
+          err.textContent = errText(result, 'Could not cancel.');
           btn.disabled = false; btn.textContent = 'Cancel appointment';
           return;
         }
+        w.managing = null;
         w.render(
           '<div class="lw-step on" data-step="cancelled"><div class="lw-orb" style="background:radial-gradient(circle at 35% 30%,#ffd9c0,#ff7a7a 55%,#7a1e00)"></div>' +
           '<div class="lw-done-title">Cancelled</div>' +
-          '<div class="lw-done-sub">Your appointment is cancelled. We\'ll text you to confirm.<br>' +
+          '<div class="lw-done-sub">Your appointment is cancelled.<br>' +
           '<button class="lw-link" data-rebook>Book something else</button></div></div>'
         );
         w.host.querySelector('[data-rebook]').addEventListener('click', function () {
@@ -687,7 +913,7 @@
       });
   }
 
-  // Silent adoption beacon \u2014 fires on every boot, first-party AND embedded
+  // Silent adoption beacon — fires on every boot, first-party AND embedded
   // sites, so LolaDesk knows which salons actually put the widget online.
   function beacon() {
     try {
@@ -721,8 +947,8 @@
     frame.className = 'lw';
     shadow.appendChild(frame);
 
+    var open = null;
     if (cfg.mode === 'modal') {
-      // Everything lives inside the shadow root so the salon's site CSS can't touch it.
       shadow.removeChild(frame);
       var fab = document.createElement('button');
       fab.className = 'lw-fab';
@@ -736,19 +962,19 @@
       var box = document.createElement('div');
       box.style.cssText = 'position:relative;width:100%;max-width:520px';
       var close = document.createElement('button');
-      close.className = 'lw-close'; close.setAttribute('aria-label', 'Close'); close.textContent = '\u2715';
+      close.className = 'lw-close'; close.setAttribute('aria-label', 'Close'); close.textContent = '✕';
       close.style.zIndex = '2';
       box.appendChild(close); box.appendChild(frame); overlay.appendChild(box);
       shadow.appendChild(overlay);
       var hide = function () { overlay.style.display = 'none'; fab.style.display = ''; };
+      open = function () { overlay.style.display = 'flex'; fab.style.display = 'none'; };
       close.addEventListener('click', hide);
       overlay.addEventListener('click', function (e) { if (e.target === overlay) hide(); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && overlay.style.display !== 'none') hide(); });
-      fab.addEventListener('click', function () { overlay.style.display = 'flex'; fab.style.display = 'none'; });
-      // Any element on the salon's site with data-loladesk-book opens the flow too.
+      fab.addEventListener('click', open);
       document.addEventListener('click', function (e) {
         var t = e.target && e.target.closest && e.target.closest('[data-loladesk-book]');
-        if (t) { e.preventDefault(); overlay.style.display = 'flex'; fab.style.display = 'none'; }
+        if (t) { e.preventDefault(); open(); }
       });
       document.body.appendChild(host);
     } else {
@@ -756,24 +982,36 @@
     }
 
     var w = new Widget(shadow);
-    w.render('<div class="lw-name">Loading\u2026</div>');
+    w.render('<div class="lw-name">Loading…</div>');
+    window.addEventListener('pagehide', function () { if (w.hold) releaseHold(w); });
 
     apiGet('catalog').then(function (data) {
       var salon = data.salon || {};
+      var bk = data.booking || {};
       TZ = salon.timezone || data.timezone || '';
       try { if (TZ) new Date().toLocaleString([], { timeZone: TZ }); } catch (e) { TZ = ''; }
+      var dp = data.deposit_policy || null;
       var c = {
         name: salon.name || data.name || 'Book an appointment',
         location: salon.location || data.location || '',
+        phone: salon.phone || '',
         tenant_name: salon.name || data.name || '',
-        deposit_policy: data.deposit_policy || null,
+        enabled: bk.enabled !== false,
+        message: bk.message || '',
+        allow_any_staff: bk.allow_any_staff !== false,
+        require_email: bk.require_email === true,
+        cancellation_window_hours: bk.cancellation_window_hours != null ? bk.cancellation_window_hours : (salon.cancellation_window_hours || 0),
+        deposit_may_apply: !!(salon.deposit_may_apply || (dp && dp.collects)),
+        deposit_everyone: !!(dp && dp.who === 'everyone'),
         services: data.services || [], staff: data.staff || []
       };
       state.catalog = c;
       w.catalog = c;
       w.header = '<div class="lw-name">' + esc(c.name) + '</div>' +
         (c.location ? '<div class="lw-meta">' + esc(c.location) + '</div>' : '<div class="lw-meta"></div>');
-      stepService(w, c);
+      // Deep link: /book?t=slug&code=AB3X7Q opens "manage" with the code filled in.
+      if (cfg.code) { if (open) open(); stepManage(w, { code: cfg.code, phone: cfg.phone }); }
+      else stepService(w, c);
     }).catch(function (e) {
       w.render('<div class="lw-name">Unavailable</div><div class="lw-meta">' + esc(e.message) + '</div>');
     });

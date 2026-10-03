@@ -10,10 +10,12 @@
 <style>
 /* ═══════════════════════════════════════════════════════════════
    Team — staff roster with photos, roles, service assignments,
-   and per-staff color used on the calendar. Preserves endpoints
-   (GET/POST/DELETE /api/staff). New fields on the wire (backend
-   TODO — safe to ignore server-side):
-     photo_url, phone, email, color, services[], active
+   per-staff color, weekly hours and time off — exactly what the
+   availability engine books from.
+     GET/POST/DELETE /api/staff   name, role, phone, email, color,
+       is_active, service_links[] (→ staff_services, with optional
+       custom_price / custom_duration_minutes), hours[] (→ staff_schedules)
+     GET/POST/DELETE /api/staff-hours   time off (→ staff_time_off)
    ═══════════════════════════════════════════════════════════════ */
 .page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
 .page-narrative b{color:var(--text);font-weight:600}
@@ -105,6 +107,55 @@
 .svc-pick.on{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:600}
 .svc-empty{color:var(--text3);font-size:12px;padding:4px 8px}
 
+/* SETUP HINTS */
+.member-hint{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;line-height:1.45;color:var(--warning);background:rgba(255,179,64,.08);border:.5px solid rgba(255,179,64,.25);border-radius:var(--r-sm);padding:7px 10px;margin-bottom:12px}
+.member-hours{font-size:12px;color:var(--text2);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.member-hours svg{color:var(--text3);flex-shrink:0}
+
+/* SECTION HEAD in modal */
+.sec{margin:6px 0 14px;padding-top:16px;border-top:.5px solid var(--border)}
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+.sec-head b{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.sec-link{background:none;border:none;color:var(--text2);font:inherit;font-size:12px;cursor:pointer;padding:4px 0}
+.sec-link:hover{color:var(--accent)}
+.sec .fine{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.45}
+
+/* WEEKLY HOURS */
+.hrs{display:flex;flex-direction:column;gap:6px}
+.hrs-row{display:grid;grid-template-columns:44px 74px 1fr;align-items:center;gap:10px;min-height:40px}
+.hrs-day{font-size:13px;font-weight:600;color:var(--text)}
+.hrs-row.off .hrs-day{color:var(--text3)}
+.hrs-tog{border:.5px solid var(--border);background:var(--surface);color:var(--text3);border-radius:20px;font:inherit;font-size:11.5px;font-weight:600;padding:6px 0;cursor:pointer;min-height:32px}
+.hrs-tog.on{background:var(--accent-dim);color:var(--accent);border-color:transparent}
+.hrs-times{display:flex;align-items:center;gap:6px}
+.hrs-times input{flex:1;min-width:0;background:var(--surface);border:.5px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);font:inherit;font-size:13px;min-height:34px;font-variant-numeric:tabular-nums;color-scheme:dark}
+.hrs-times input:focus{outline:none;border-color:var(--accent)}
+.hrs-times span{color:var(--text3);font-size:12px}
+.hrs-offtxt{font-size:12px;color:var(--text3)}
+
+/* PER-STYLIST PRICE / TIME */
+.cust{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.cust-row{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;align-items:center}
+.cust-row .nm{font-size:12.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cust-row input{background:var(--surface);border:.5px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);font:inherit;font-size:12.5px;min-height:32px;width:100%}
+.cust-row input:focus{outline:none;border-color:var(--accent)}
+.cust-cap{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+details.cust-wrap summary{cursor:pointer;font-size:12px;color:var(--text2);margin-top:10px;list-style:none}
+details.cust-wrap summary::-webkit-details-marker{display:none}
+details.cust-wrap summary:hover{color:var(--accent)}
+
+/* TIME OFF */
+.to-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.to-item{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);padding:8px 12px;font-size:12.5px;color:var(--text)}
+.to-item small{color:var(--text3);margin-left:6px}
+.to-x{background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;width:28px;height:28px;border-radius:50%}
+.to-x:hover{color:var(--danger);background:rgba(255,90,77,.08)}
+.to-add{display:grid;grid-template-columns:1fr 1fr 1.2fr auto;gap:6px}
+.to-add input{background:var(--surface);border:.5px solid var(--border);border-radius:8px;padding:7px 8px;color:var(--text);font:inherit;font-size:12.5px;min-height:34px;min-width:0;color-scheme:dark}
+.to-add input:focus{outline:none;border-color:var(--accent)}
+.to-add button{background:var(--surface2);border:.5px solid var(--border);color:var(--text);border-radius:8px;font:inherit;font-size:12px;font-weight:600;padding:0 12px;cursor:pointer;min-height:34px}
+.to-add button:hover{border-color:var(--accent)}
+
 .macts{display:flex;gap:10px;margin-top:8px}
 .macts button{flex:1;padding:12px;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;border:.5px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;min-height:44px}
 .macts .primary{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:700}
@@ -117,6 +168,7 @@
   .chip-row{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .search-box{max-width:none;width:100%}
   .row2{grid-template-columns:1fr}
+  .to-add{grid-template-columns:1fr 1fr}
   .topbar-actions{width:100%}
   .topbar-actions .btn{width:100%;justify-content:center}
 }
@@ -207,6 +259,22 @@
       <label>Services they perform</label>
       <div class="svc-picker" id="svcPicker"><div class="svc-empty">Loading services…</div></div>
       <div class="fine">If none picked, Lola offers this staff for every service.</div>
+      <details class="cust-wrap" id="custWrap" hidden>
+        <summary>Custom price or time for this stylist ›</summary>
+        <div class="cust-cap" style="margin-top:10px"><span>Service</span><span>Price $</span><span>Minutes</span></div>
+        <div class="cust" id="custList"></div>
+      </details>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head"><b>Weekly hours</b><span><button type="button" class="sec-link" onclick="useSalonHours()" id="salonHoursBtn">Use salon hours</button> · <button type="button" class="sec-link" onclick="copyFirstDay()">Copy Monday to all</button></span></div>
+      <div class="hrs" id="hrsGrid"></div>
+      <div class="fine" id="hrsFine">Clients can only book them inside these hours — and inside your salon hours.</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head"><b>Time off</b></div>
+      <div id="toBody"></div>
     </div>
 
     <div class="fld">
@@ -244,6 +312,12 @@ let FILTER = 'all';
 let QUERY = '';
 let selectedColor = COLORS[0];
 let selectedServices = new Set();
+let customLinks = {};      // service_id → { custom_price, custom_duration_minutes }
+let hoursState = {};       // day_of_week (0=Sun) → { on, start, end }
+let SALON_HOURS = null;    // booking_settings.business_hours {mon:{open,close,closed},…}
+const WEEK = [1,2,3,4,5,6,0];
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_KEY = ['sun','mon','tue','wed','thu','fri','sat'];
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -260,7 +334,7 @@ function fullName(s){ return [s.first_name || s.name, s.last_name].filter(Boolea
 function firstName(s){ return (s.first_name || (s.name||'').split(' ')[0]) || 'Staff'; }
 function initial(s){ return (fullName(s).match(/[A-Za-z]/)?.[0] || '?').toUpperCase(); }
 function colorFor(s, idx){ return s.color || COLORS[idx % COLORS.length]; }
-function isActive(s){ return s.active !== false; }
+function isActive(s){ return s.is_active !== false && s.active !== false; }
 function statusOf(s){
   if(!isActive(s)) return { key:'off', label:'Inactive' };
   if(s.status === 'away') return { key:'away', label:'Away' };
@@ -276,8 +350,18 @@ async function loadServices(){
   }catch(e){ SERVICES = []; }
 }
 
+async function loadSalonHours(){
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/booking-settings', { headers: hdr(tok) });
+    const d = await r.json().catch(()=>({}));
+    const bh = d && d.settings && d.settings.business_hours;
+    SALON_HOURS = (bh && typeof bh === 'object') ? bh : null;
+  }catch(e){ SALON_HOURS = null; }
+}
+
 async function load(){
-  await loadServices();
+  await Promise.all([loadServices(), loadSalonHours()]);
   try{
     const tok = await authToken();
     const r = await fetch('/api/staff', { headers: hdr(tok) });
@@ -292,7 +376,9 @@ function narrative(){
   const t = list.length;
   if(!t) return "No team yet. Add your first staff member and they'll appear in the calendar right away.";
   const active = list.filter(isActive).length;
-  return `<b>${active}</b> active staff · <b>${t}</b> total. Every one shown in the calendar and bookable by clients.`;
+  const noHours = list.filter(s => isActive(s) && s.has_hours === false).length;
+  const warn = noHours ? ` <span style="color:var(--warning)"><b>${noHours}</b> ha${noHours===1?'s':'ve'} no weekly hours — clients can’t book ${noHours===1?'them':'them'} yet.</span>` : '';
+  return `<b>${active}</b> active staff · <b>${t}</b> total. Every one shown in the calendar and bookable by clients.${warn}`;
 }
 
 function filterList(){
@@ -314,6 +400,11 @@ function memberHtml(s, idx){
     : [];
   const svcTags = svcNames.map(n => `<span class="member-svc">${esc(n)}</span>`).join('');
   const moreSvc = Array.isArray(s.services) && s.services.length > 4 ? `<span class="member-svc more">+${s.services.length - 4} more</span>` : '';
+  const hoursLine = hoursSummary(s);
+  const hint = !isActive(s) ? '' : (s.has_hours === false
+    ? `<div class="member-hint" role="note"><span aria-hidden="true">!</span><span>No weekly hours — clients can’t book ${esc(firstName(s))}. Tap Edit to set them.</span></div>`
+    : (Array.isArray(s.services) && s.services.length && !svcNames.length
+      ? `<div class="member-hint" role="note"><span aria-hidden="true">!</span><span>Their services were removed — pick services so they can be booked.</span></div>` : ''));
   const avImg = s.photo_url ? `<img src="${esc(s.photo_url)}" alt="">` : esc(initial(s));
   return `
     <div class="member ${isActive(s)?'':'inactive'}" role="listitem" tabindex="0" style="--memberColor:${color}"
@@ -332,10 +423,14 @@ function memberHtml(s, idx){
         ${s.phone ? `<div class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h4l2 5-3 2a11 11 0 005 5l2-3 5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>${esc(s.phone)}</div>` : ''}
         ${s.email ? `<div class="row"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>${esc(s.email)}</div>` : ''}
       </div>
-      ${(svcTags || moreSvc) ? `<div class="member-services">${svcTags}${moreSvc}</div>` : ''}
+      ${hoursLine ? `<div class="member-hours"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${esc(hoursLine)}</div>` : ''}
+      ${hint}
+      ${(svcTags || moreSvc) ? `<div class="member-services">${svcTags}${moreSvc}</div>` : (isActive(s) ? `<div class="member-services"><span class="member-svc more">All services</span></div>` : '')}
       <div class="member-acts" onclick="event.stopPropagation()">
         <button class="mbtn" onclick="edit('${esc(s.id)}')">Edit</button>
-        <button class="mbtn danger" onclick="del('${esc(s.id)}')">Remove</button>
+        ${isActive(s)
+          ? `<button class="mbtn danger" onclick="del('${esc(s.id)}')">Remove</button>`
+          : `<button class="mbtn" onclick="reactivate('${esc(s.id)}')">Reactivate</button>`}
       </div>
     </div>`;
 }
@@ -405,6 +500,152 @@ function toggleServicePick(id){
   if(selectedServices.has(id)) selectedServices.delete(id);
   else selectedServices.add(id);
   paintServicePicker();
+  paintCustom();
+}
+
+/* ── per-stylist price / time ── */
+function paintCustom(){
+  const wrap = $('custWrap'), host = $('custList');
+  const picked = SERVICES.filter(s => selectedServices.has(s.id));
+  wrap.hidden = !picked.length;
+  host.innerHTML = picked.map(s => {
+    const c = customLinks[s.id] || {};
+    const sid = esc(s.id);
+    return `<div class="cust-row"><span class="nm">${esc(s.name)}</span>
+      <input type="number" min="0" step="1" inputmode="decimal" placeholder="${esc(s.price != null ? s.price : '')}" value="${c.custom_price != null ? esc(c.custom_price) : ''}" aria-label="Custom price for ${esc(s.name)}" oninput="setCustom('${sid}','custom_price',this.value)"/>
+      <input type="number" min="5" step="5" inputmode="numeric" placeholder="${esc(s.duration_minutes || '')}" value="${c.custom_duration_minutes != null ? esc(c.custom_duration_minutes) : ''}" aria-label="Custom minutes for ${esc(s.name)}" oninput="setCustom('${sid}','custom_duration_minutes',this.value)"/></div>`;
+  }).join('');
+  if(picked.some(s => { const c = customLinks[s.id]; return c && (c.custom_price != null || c.custom_duration_minutes != null); })) wrap.open = true;
+}
+function setCustom(id, key, val){
+  customLinks[id] = customLinks[id] || {};
+  customLinks[id][key] = val === '' ? null : Number(val);
+}
+
+/* ── weekly hours ── */
+function hhmm(t){ return String(t || '').slice(0,5); }
+function fmtClock(t){
+  const [h, m] = hhmm(t).split(':').map(Number);
+  if(Number.isNaN(h)) return t;
+  const ap = h >= 12 ? 'pm' : 'am', h12 = ((h + 11) % 12) + 1;
+  return m ? `${h12}:${String(m).padStart(2,'0')}${ap}` : `${h12}${ap}`;
+}
+function salonDay(d){
+  const h = SALON_HOURS && SALON_HOURS[DAY_KEY[d]];
+  if(!h) return null;
+  return h.closed ? { on:false, start:'09:00', end:'17:00' } : { on:true, start:hhmm(h.open||'09:00'), end:hhmm(h.close||'17:00') };
+}
+function defaultHours(){
+  const out = {};
+  for(let d = 0; d < 7; d++) out[d] = salonDay(d) || { on: d !== 0, start:'09:00', end:'18:00' };
+  return out;
+}
+function hoursFromStaff(s){
+  const out = {};
+  for(let d = 0; d < 7; d++) out[d] = { on:false, start:'09:00', end:'18:00' };
+  (s.hours || []).forEach(r => { out[Number(r.day_of_week)] = { on:true, start:hhmm(r.start_time), end:hhmm(r.end_time) }; });
+  return out;
+}
+function hoursSummary(s){
+  if(!Array.isArray(s.hours) || !s.hours.length) return '';
+  const rows = s.hours.slice().sort((a,b) => ((a.day_of_week+6)%7) - ((b.day_of_week+6)%7));
+  const groups = [];
+  rows.forEach(r => {
+    const span = `${fmtClock(r.start_time)}–${fmtClock(r.end_time)}`;
+    const last = groups[groups.length-1];
+    const idx = WEEK.indexOf(Number(r.day_of_week));
+    if(last && last.span === span && last.endIdx === idx - 1){ last.endIdx = idx; last.to = r.day_of_week; }
+    else groups.push({ span, from:r.day_of_week, to:r.day_of_week, endIdx:idx });
+  });
+  return groups.map(g => (g.from === g.to ? DAY_SHORT[g.from] : `${DAY_SHORT[g.from]}–${DAY_SHORT[g.to]}`) + ' ' + g.span).join(' · ');
+}
+function paintHours(){
+  $('hrsGrid').innerHTML = WEEK.map(d => {
+    const h = hoursState[d];
+    return `<div class="hrs-row ${h.on?'':'off'}">
+      <span class="hrs-day">${DAY_SHORT[d]}</span>
+      <button type="button" class="hrs-tog ${h.on?'on':''}" onclick="toggleDay(${d})" aria-pressed="${h.on}">${h.on?'Working':'Off'}</button>
+      ${h.on ? `<div class="hrs-times">
+        <input type="time" step="900" value="${esc(h.start)}" aria-label="${DAY_SHORT[d]} start" onchange="setHour(${d},'start',this.value)"/>
+        <span>–</span>
+        <input type="time" step="900" value="${esc(h.end)}" aria-label="${DAY_SHORT[d]} end" onchange="setHour(${d},'end',this.value)"/>
+      </div>` : `<span class="hrs-offtxt">Not bookable</span>`}
+    </div>`;
+  }).join('');
+  $('salonHoursBtn').style.display = SALON_HOURS ? '' : 'none';
+}
+function toggleDay(d){ hoursState[d].on = !hoursState[d].on; paintHours(); }
+function setHour(d, k, v){ hoursState[d][k] = v; }
+function copyFirstDay(){
+  const src = hoursState[1];
+  WEEK.forEach(d => { if(d !== 1) hoursState[d] = { ...src }; });
+  paintHours();
+}
+function useSalonHours(){
+  for(let d = 0; d < 7; d++){ const h = salonDay(d); if(h) hoursState[d] = h; }
+  paintHours();
+}
+function hoursPayload(){
+  const out = [];
+  for(const d of WEEK){
+    const h = hoursState[d];
+    if(!h.on) continue;
+    if(!h.start || !h.end || h.end <= h.start) throw new Error(`${DAY_SHORT[d]}: end time must be after start time.`);
+    out.push({ day_of_week:d, start_time:h.start, end_time:h.end });
+  }
+  return out;
+}
+
+/* ── time off (saved immediately; needs a saved stylist) ── */
+function fmtDate(iso){
+  return new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+}
+function paintTimeOff(){
+  const host = $('toBody');
+  if(!editId){ host.innerHTML = `<div class="fine" style="font-size:11.5px;color:var(--text3)">Save this stylist first, then add vacations and days off here.</div>`; return; }
+  const s = STAFF.find(x => x.id === editId) || {};
+  const list = Array.isArray(s.time_off) ? s.time_off : [];
+  const items = list.map(t => {
+    const lastDay = new Date(new Date(t.ends_at).getTime() - 1);
+    const a = fmtDate(t.starts_at), b = fmtDate(lastDay.toISOString());
+    return `<div class="to-item"><span>${esc(a === b ? a : a + ' – ' + b)}${t.reason ? `<small>${esc(t.reason)}</small>` : ''}</span><button type="button" class="to-x" aria-label="Remove time off" onclick="removeTimeOff('${esc(t.id)}')">×</button></div>`;
+  }).join('');
+  const today = new Date().toLocaleDateString('en-CA');
+  host.innerHTML = `${items ? `<div class="to-list">${items}</div>` : ''}
+    <div class="to-add">
+      <input type="date" id="toFrom" min="${today}" aria-label="First day off"/>
+      <input type="date" id="toTo" min="${today}" aria-label="Last day off"/>
+      <input id="toReason" placeholder="Vacation, training…" maxlength="80" aria-label="Reason"/>
+      <button type="button" onclick="addTimeOff()">Add</button>
+    </div>
+    <div class="fine">Whole days, salon time. Lola won’t book them on these days.</div>`;
+}
+async function addTimeOff(){
+  const from = $('toFrom').value, to = $('toTo').value || from;
+  const err = $('err');
+  if(!from){ err.textContent = 'Pick the first day off.'; err.className = 'err'; return; }
+  if(to < from){ err.textContent = 'The last day off must be after the first.'; err.className = 'err'; return; }
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/staff-hours', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify({ staff_id: editId, action:'time_off', start_date: from, end_date: to, reason: $('toReason').value.trim() || null }) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Could not add time off');
+    const s = STAFF.find(x => x.id === editId);
+    if(s){ s.time_off = (s.time_off || []).concat(d.time_off).sort((a,b) => new Date(a.starts_at) - new Date(b.starts_at)); }
+    err.textContent = 'Time off added.'; err.className = 'err ok';
+    paintTimeOff();
+  }catch(e){ err.textContent = e.message; err.className = 'err'; }
+}
+async function removeTimeOff(id){
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/staff-hours?time_off_id=' + encodeURIComponent(id), { method:'DELETE', headers: hdr(tok) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Could not remove');
+    const s = STAFF.find(x => x.id === editId);
+    if(s) s.time_off = (s.time_off || []).filter(t => t.id !== id);
+    paintTimeOff();
+  }catch(e){ $('err').textContent = e.message; $('err').className = 'err'; }
 }
 
 function openForm(){
@@ -412,6 +653,8 @@ function openForm(){
   photoData = '';
   selectedColor = COLORS[STAFF.length % COLORS.length];
   selectedServices = new Set();
+  customLinks = {};
+  hoursState = defaultHours();
   $('mTitle').textContent = 'Add staff';
   $('fFirst').value = '';
   $('fLast').value = '';
@@ -423,6 +666,9 @@ function openForm(){
   $('err').textContent = '';
   paintColorSwatches();
   paintServicePicker();
+  paintCustom();
+  paintHours();
+  paintTimeOff();
   $('modal').classList.add('open');
   setTimeout(() => $('fFirst').focus(), 60);
 }
@@ -434,6 +680,9 @@ function edit(id){
   photoData = '';
   selectedColor = s.color || COLORS[STAFF.indexOf(s) % COLORS.length];
   selectedServices = new Set(Array.isArray(s.services) ? s.services : []);
+  customLinks = {};
+  (s.service_links || []).forEach(l => { customLinks[l.service_id] = { custom_price: l.custom_price, custom_duration_minutes: l.custom_duration_minutes }; });
+  hoursState = hoursFromStaff(s);
   $('mTitle').textContent = 'Edit staff';
   const parts = String(s.name || fullName(s)).split(' ');
   $('fFirst').value = s.first_name || parts[0] || '';
@@ -446,6 +695,9 @@ function edit(id){
   $('err').textContent = '';
   paintColorSwatches();
   paintServicePicker();
+  paintCustom();
+  paintHours();
+  paintTimeOff();
   $('modal').classList.add('open');
   setTimeout(() => $('fFirst').focus(), 60);
 }
@@ -465,6 +717,8 @@ async function save(){
   const first = $('fFirst').value.trim();
   const err = $('err');
   if(!first){ err.textContent = 'First name is required.'; err.className = 'err'; return; }
+  let hours;
+  try{ hours = hoursPayload(); }catch(e){ err.textContent = e.message; err.className = 'err'; return; }
   err.textContent = '';
   const btn = $('saveBtn');
   btn.disabled = true;
@@ -482,7 +736,9 @@ async function save(){
       email: $('fEmail').value.trim() || null,
       color: selectedColor,
       services: Array.from(selectedServices),
-      active: $('fActive').value === 'true'
+      service_links: Array.from(selectedServices).map(id => ({ service_id: id, ...(customLinks[id] || {}) })),
+      hours,
+      is_active: $('fActive').value === 'true'
     };
     if(photoData) body.photo_data_url = photoData;
     const r = await fetch('/api/staff', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify(body) });
@@ -502,10 +758,23 @@ async function save(){
 }
 
 async function del(id){
-  if(!confirm('Remove this staff member? Their upcoming appointments will need reassignment.')) return;
+  if(!confirm('Make this staff member inactive? They stop being bookable (you can re-activate them from Edit). Their upcoming appointments will need reassignment.')) return;
   try{
     const tok = await authToken();
     await fetch('/api/staff?id='+encodeURIComponent(id), { method:'DELETE', headers: hdr(tok) });
+    load();
+  }catch(e){ alert(e.message); }
+}
+
+async function reactivate(id){
+  const s = STAFF.find(x => x.id === id);
+  if(!s) return;
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/staff', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify({ id, name: s.name || fullName(s), role: s.role || 'Stylist', is_active: true }) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Could not reactivate');
+    if(typeof window.lolaPulse === 'function') window.lolaPulse(`${firstName(s)} is bookable again`);
     load();
   }catch(e){ alert(e.message); }
 }

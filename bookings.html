@@ -172,6 +172,66 @@
 .wl-offer:hover{transform:translateY(-1px)}
 .wl-rm{width:28px;height:28px;border-radius:9px;border:none;background:rgba(255,255,255,.06);color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit}
 .wl-rm:hover{color:var(--danger);background:rgba(255,115,105,.12)}
+/* ── Day grid internals (salon-time columns, drag, lanes) ── */
+.cal-times{position:sticky;left:0;z-index:6;background:var(--surface)}
+.day-col{position:relative;border-right:.5px solid var(--border);cursor:pointer}
+.day-col .cal-slot{border-right:0;cursor:pointer}
+.day-col.unassigned{background:repeating-linear-gradient(0deg,transparent 0 63px,rgba(255,255,255,.015) 63px 64px)}
+.cal-head.unassigned .nm{color:var(--text2);font-style:italic}
+.off-hours{position:absolute;left:0;right:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(135deg,rgba(0,0,0,.34) 0 7px,rgba(0,0,0,.22) 7px 14px)}
+.off-hours span{position:absolute;top:6px;left:8px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:700}
+.appt .proc{position:absolute;left:0;right:0;z-index:-1;background:repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0 5px,rgba(255,255,255,.02) 5px 10px);border-top:1px dashed rgba(255,255,255,.14);border-bottom:1px dashed rgba(255,255,255,.14);pointer-events:none}
+.appt .proc span{position:absolute;right:6px;bottom:2px;font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
+.wk-appt .badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
+.appt .cli .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.appt .cli .badges{margin-left:auto;display:inline-flex;gap:3px;flex:none}
+.appt .rs-h{position:absolute;left:0;right:0;bottom:0;height:8px;cursor:ns-resize;touch-action:none}
+.appt .rs-h::after{content:'';position:absolute;left:50%;bottom:2px;width:22px;height:3px;margin-left:-11px;border-radius:3px;background:rgba(255,255,255,.18);opacity:0;transition:opacity .15s}
+.appt:hover .rs-h::after{opacity:1}
+.appt.dragging{z-index:40;opacity:.92;box-shadow:0 16px 40px rgba(0,0,0,.6);transition:none;cursor:grabbing;animation:none}
+.appt.drag-bad{outline:2px solid var(--danger);outline-offset:1px}
+.appt.saving{opacity:.55;pointer-events:none}
+.appt .st.checked_in,.st.checked_in{background:rgba(48,209,88,.14);color:#30d158}
+.st{font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent);white-space:nowrap}
+.st.pending{background:rgba(255,179,64,.14);color:var(--warning)}.st.cancelled,.st.no_show{background:rgba(255,115,105,.16);color:var(--danger)}
+.st.in_progress{background:rgba(96,165,250,.14);color:var(--info)}.st.completed{background:rgba(255,255,255,.1);color:var(--text2)}
+.wk-appt .st{margin-left:4px}
+.appt-st .st{font-size:9px;padding:3px 9px;letter-spacing:.08em}
+.src,.dep{display:inline-flex;align-items:center;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:999px;border:.5px solid var(--border2);color:var(--text2);white-space:nowrap}
+.src.lola{color:#ccff00;border-color:rgba(204,255,0,.35);background:rgba(204,255,0,.06)}
+.src.web{color:var(--info);border-color:rgba(90,200,250,.3)}
+.src.ext{color:var(--text3);border-style:dashed}
+.dep.ok{color:#30d158;border-color:rgba(48,209,88,.35)}.dep.due{color:var(--warning);border-color:rgba(255,179,64,.35)}.dep.mut{color:var(--text3)}
+.ext-appt{position:absolute;border-radius:12px;padding:6px 9px;font-size:10.5px;line-height:1.35;overflow:hidden;z-index:3;color:var(--text2);background:repeating-linear-gradient(135deg,rgba(150,150,160,.14) 0 6px,rgba(150,150,160,.08) 6px 12px);border:1px solid rgba(160,160,170,.25);border-left:3px solid #6b6b73;cursor:default}
+.ext-appt .at{font-size:9.5px;color:var(--text3)}
+.ext-appt .ex-p{font-weight:650;color:var(--text2);text-transform:capitalize;margin-top:1px}
+.ext-appt .ex-n{font-size:9.5px;color:var(--text3)}
+.wk-appt.ext,.ag-item.ext{opacity:.7;border-left-color:#6b6b73;background:rgba(150,150,160,.06);cursor:default}
+.wk-appt.no_show{opacity:.6;border-left-color:var(--danger)}
+.drag-tip{position:fixed;z-index:9999;pointer-events:none;background:rgba(20,20,22,.95);border:.5px solid var(--border2);color:var(--text);font-size:11.5px;font-weight:600;padding:6px 10px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.drag-tip.bad{border-color:rgba(255,90,77,.5);color:#ffb0a8}
+.stf-filter{height:36px;padding:0 12px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-family:inherit;max-width:160px}
+.stf-switch{display:none;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.stf-switch button{flex:none;border:.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:999px;min-height:36px;font-family:inherit;cursor:pointer}
+.stf-switch button.on{background:var(--accent);color:#10140a;border-color:transparent}
+.cl-pick{position:relative}
+.cl-res{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;display:flex;flex-direction:column;background:var(--bg2);border:.5px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.cl-res:empty{display:none}
+.cl-res button{display:flex;align-items:center;gap:10px;padding:9px 12px;border:0;background:transparent;color:var(--text);font-size:13px;text-align:left;cursor:pointer;font-family:inherit}
+.cl-res button:hover{background:rgba(255,255,255,.05)}
+.cl-res .cl-av{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#565658);color:#080808;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.cl-res .cl-nm{flex:1}.cl-res .cl-ph{color:var(--text3);font-size:11.5px}
+.cl-res .cl-new{color:var(--text2);border-top:.5px solid var(--border)}
+.cl-chip{display:inline-block;margin-top:6px;font-size:11.5px;color:#30d158}
+.sugg{display:flex;gap:6px;flex-wrap:wrap}
+.sugg button{border:.5px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;padding:7px 11px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:1px}
+.sugg button small{font-size:9.5px;color:var(--text3);font-weight:500}
+.sugg button.on{border-color:rgba(242,242,244,.6);background:rgba(242,242,244,.08)}
+.sugg-empty{font-size:12px;color:var(--text3)}
+.macts.wrap{flex-wrap:wrap}
+.macts.wrap button,.macts.wrap .btn-link{flex:1 1 calc(33% - 10px);min-width:110px}
+.macts .btn-link{display:inline-flex;align-items:center;justify-content:center;padding:13px;border-radius:12px;font-size:14px;font-weight:650;text-decoration:none;background:transparent;border:.5px solid var(--border);color:var(--text2)}
+@media(max-width:760px){.cal-grid{min-width:0}.cal-head{padding:12px 10px}.stf-filter{max-width:none;flex:1}.macts.wrap button,.macts.wrap .btn-link{flex:1 1 calc(50% - 10px)}}
 </style>
 </head>
 <body data-page="bookings"><div class="app"><main class="main">
@@ -187,6 +247,7 @@
     <button onclick="nav(-1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8249;</button>
     <button onclick="goToday()" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">Today</button>
     <button onclick="nav(1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8250;</button>
+    <select id="stfFilter" class="stf-filter" aria-label="Show stylist" onchange="setStaffFilter(this.value)" style="display:none"><option value="">All stylists</option></select>
   </div>
   <div class="cal-links" style="display:flex;gap:8px;align-items:center">
     <a href="services.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Services</a>
@@ -204,220 +265,488 @@
   <div class="kpi"><div class="kpi-val" id="kStaff">0</div><div class="kpi-label">Staff working</div></div>
   <div class="kpi"><div class="kpi-val pink" id="kUtil">—</div><div class="kpi-label">Utilization</div></div>
 </div>
+<div class="stf-switch" id="stfSwitch" role="tablist" aria-label="Stylist"></div>
 <div class="cal-wrap"><div class="cal-grid" id="calGrid"><div class="empty-cal">Loading calendar...</div></div></div>
 </main></div>
 <div class="mw" id="modal"><div class="modal"><div class="grab"></div><div id="mHead"></div><div id="mBody"></div></div></div>
 <script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-const START=8,END=21,SLOT_H=64;
+const SLOT_H=64,UNASSIGNED='__none';
+// Grid range in salon-local minutes — recomputed per day from the staff's
+// working hours (earliest start → latest end), widened to fit any booking.
+let START=8,END=21,RANGE={s:8*60,e:21*60};
+// `cursor` carries the SELECTED SALON-LOCAL CALENDAR DATE as a browser-local
+// midnight, so isoDay(cursor) is that date key. It is never used as an instant.
 let cursor=new Date();cursor.setHours(0,0,0,0);
-let VIEW=localStorage.getItem('lola_cal_view')||'week';
-let STATE={bookings:[],services:[],staff:[],start:null,days:7,blocked_slots:[]};
+let VIEW=(()=>{try{return localStorage.getItem('lola_cal_view')||'week';}catch(e){return 'week';}})();
+let STATE={bookings:[],services:[],staff:[],start:null,days:7,blocked_slots:[],external:[]};
+let CTX={hours:{start_min:8*60,end_min:21*60},schedules:[],time_off:[],external:[],can_override:true};
+let STAFF_FILTER=(()=>{try{return localStorage.getItem('lola_cal_staff')||'';}catch(e){return '';}})();
+let MOBILE_COL=0;
+const MQ=window.matchMedia?window.matchMedia('(max-width:760px)'):{matches:false,addEventListener(){}};
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function hdr(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
-function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function isoDay(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
-// Bucket a booking onto the calendar day it belongs to in the SALON's
-// timezone, not the browser's. The server stores UTC instants; a New York
-// 20:00 booking is 00:00/01:00Z the next day, so a naive UTC/local read
-// pushed evening appointments onto the wrong day column. The API now keys
-// day/week windows on booking_settings.timezone — the grid must agree.
+function curKey(){return isoDay(cursor);}
+function setCursorKey(key){cursor=new Date(key+'T00:00:00');}
+// ── Salon time ────────────────────────────────────────────────────────────
+// Everything on this page is in the SALON's timezone (booking_settings.timezone),
+// never the browser's: an owner checking the calendar from Los Angeles sees the
+// New York salon's 2 PM as 2 PM, and a time she types is New York time.
 let SALON_TZ='America/New_York';
+function setTz(tz){if(!tz)return;try{new Intl.DateTimeFormat('en-US',{timeZone:tz});SALON_TZ=tz;}catch(e){}}
 function localDayKey(d){try{return new Intl.DateTimeFormat('en-CA',{timeZone:SALON_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}catch{return isoDay(d);}}
-function fmtT(d){const h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM',hh=h%12||12;return hh+':'+(m<10?'0':'')+m+' '+ap;}
+function todayKey(){return localDayKey(new Date());}
+function salonParts(v){const p={};try{new Intl.DateTimeFormat('en-US',{timeZone:SALON_TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(v)).forEach(x=>{p[x.type]=x.value;});}catch(e){}return {key:p.year+'-'+p.month+'-'+p.day,min:(Number(p.hour)%24)*60+Number(p.minute)};}
+function salonMin(v){return salonParts(v).min;}
+function fmtT(v){try{return new Intl.DateTimeFormat('en-US',{timeZone:SALON_TZ,hour:'numeric',minute:'2-digit'}).format(new Date(v));}catch(e){return '';}}
+function fmtWhen(v){try{return new Intl.DateTimeFormat('en-US',{timeZone:SALON_TZ,weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(v));}catch(e){return '';}}
+// A date KEY rendered as a calendar date (UTC noon — immune to the browser zone).
+function fmtKey(key,opts){return new Date(key+'T12:00:00Z').toLocaleDateString([],{...opts,timeZone:'UTC'});}
+function keyDow(key){return new Date(key+'T12:00:00Z').getUTCDay();}
+function addDaysKey(key,n){const [y,m,d]=key.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);}
+function mondayOf(key){return addDaysKey(key,-((keyDow(key)+6)%7));}
+function hhmm(min){min=Math.max(0,Math.min(1439,Math.round(min)));return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0');}
+function minLabel(min){const h=Math.floor(min/60)%24,m=min%60,ap=h>=12?'PM':'AM';return (h%12||12)+(m?':'+String(m).padStart(2,'0'):'')+' '+ap;}
 function fmtDur(mins){if(!mins)return '60 min';if(mins>=60)return (mins/60>=10?Math.round(mins/60):(mins/60).toFixed(1).replace(/\.0$/,''))+'h';return mins+'m';}
+function spanMin(b){return Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60);}
 function toMin(t){const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);}
 function blockLabel(b){const allDay=!b.start_time&&!b.end_time;const t=b.start_time&&b.end_time?(' · '+b.start_time.slice(0,5)+'–'+b.end_time.slice(0,5)):'';return (allDay?'Day off':(b.reason||'Blocked'))+t;}
 function initials(name){return String(name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();}
 function svcColor(id){if(!id)return 'var(--accent)';const pal=['var(--accent)','var(--info)','var(--warning)','#bf5af2','var(--danger)','#30d158','#64d2ff','var(--warning)'];let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return pal[h%pal.length];}
-function toast(msg,type){if(window.LolaUX)window.LolaUX.toast(msg,{type:type||'success'});}
+function toast(msg,type){if(window.LolaUX)window.LolaUX.toast(msg,{type:type||'success',duration:type==='error'?5200:3600});}
 function clientName(c){if(!c)return 'Client';return c.name||[c.first_name,c.last_name].filter(Boolean).join(' ')||'Client';}
-function clientPhone(c){if(!c)return '';return c.phone||c.phone_number||'';}
+function clientPhone(c){if(!c)return '';const p=c.phone||c.phone_number||'';return String(p).includes(':')?'':p;}
+const STATUS_LABEL={pending:'pending',confirmed:'confirmed',checked_in:'arrived',in_progress:'in service',completed:'completed',no_show:'no-show',cancelled:'cancelled'};
+function stClass(s){s=String(s||'confirmed');return STATUS_LABEL[s]?s:'confirmed';}
+function stPill(s){const c=stClass(s);return '<span class="st '+c+'">'+STATUS_LABEL[c]+'</span>';}
+// Where the booking came from: Lola (phone/SMS/chat), the website, the owner, or the salon's own platform.
+const PROVIDERS=/square|vagaro|boulevard|fresha|mindbody|google|zapier|cal_platform|calendly|acuity|glossgenius|booksy|schedulicity|mangomint|external/i;
+function srcInfo(b){
+  const s=String(b.source||'').toLowerCase();
+  if(b.external_provider&&!/^(dashboard|owner|lola|voice|sms|widget|public_widget|website)$/.test(s)&&PROVIDERS.test(s+' '+b.external_provider))return {k:'ext',l:String(b.external_provider).replace(/_/g,' ')};
+  if(/^(lola|voice|phone|call|sms|text|whatsapp|instagram|messenger|chat|ai|assistant|telnyx|vapi)/.test(s))return {k:'lola',l:'Lola'};
+  if(/widget|website|web|online|link|google_reserve|public/.test(s))return {k:'web',l:'Website'};
+  if(!s||/dashboard|owner|manual|pos|desk|calendar|walk/.test(s))return {k:'own',l:'Owner'};
+  if(PROVIDERS.test(s))return {k:'ext',l:s.replace(/_/g,' ')};
+  return {k:'own',l:s.replace(/_/g,' ')};
+}
+function srcBadge(b){const i=srcInfo(b);return '<span class="src '+i.k+'" title="Source: '+esc(i.l)+'">'+esc(i.l)+'</span>';}
+function depPill(b){
+  const d=String(b.deposit_status||'').toLowerCase();if(!d||d==='none'||d==='not_required')return '';
+  const cls=/paid|kept|captured|succeeded/.test(d)?'ok':(/refund|released|void/.test(d)?'mut':'due');
+  const lbl=cls==='ok'?'Deposit paid':(cls==='due'?'Deposit due':'Deposit '+d.replace(/_/g,' '));
+  return '<span class="dep '+cls+'" title="Deposit: '+esc(d)+'">'+esc(lbl)+'</span>';
+}
+function provName(p){p=String(p||'External').replace(/_/g,' ');return p.charAt(0).toUpperCase()+p.slice(1);}
+function isLive(b){return b&&b.status!=='cancelled';}
+function staffById(id){return STATE.staff.find(s=>s.id===id)||null;}
+function visibleStaff(){return STAFF_FILTER&&STATE.staff.some(s=>s.id===STAFF_FILTER)?STATE.staff.filter(s=>s.id===STAFF_FILTER):STATE.staff;}
+function passesFilter(staffId){return !STAFF_FILTER||!STATE.staff.some(s=>s.id===STAFF_FILTER)||staffId===STAFF_FILTER;}
+function canOverride(){return CTX.can_override!==false;}
+function confirmDialog(opts){if(window.LolaUX)return window.LolaUX.confirm(opts);return Promise.resolve(window.confirm((opts.title||'')+'\n'+(opts.message||'')));}
 
-async function load(){
-  document.getElementById('calDate').textContent=cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
-  const sub=document.getElementById('calSub');
-  if(VIEW==='week'){
-    sub.textContent='Loading week...';
-    const start=new Date(cursor);start.setDate(start.getDate()-((start.getDay()+6)%7));start.setHours(0,0,0,0);
-    try{
-      const r=await fetch('/api/calendar?action=week&date='+isoDay(start)+'&days=7',{headers:hdr()});
-      const d=await r.json();
-      if(!d.ok)throw new Error(d.error||'Failed');
-      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.start),days:d.days||7,blocked_slots:d.blocked_slots||[]};
-      if(d.timezone)SALON_TZ=d.timezone;
-      render();
-    }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
-  }else{
-    sub.textContent='Loading...';
-    try{
-      const r=await fetch('/api/calendar?action=day&date='+isoDay(cursor),{headers:hdr()});
-      const d=await r.json();
-      if(!d.ok)throw new Error(d.error||'Failed');
-      STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:new Date(d.date+'T00:00:00'),days:1,blocked_slots:d.blocked_slots||[]};
-      if(d.timezone)SALON_TZ=d.timezone;
-      render();
-    }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
+async function getJSON(url){const r=await fetch(url,{headers:hdr()});const d=await r.json().catch(()=>({ok:false,error:'Bad response'}));return d;}
+// Owner actions: book / move / status through /api/calendar-owner. A real
+// double-booking of the same stylist comes back needs_confirmation → one
+// clear "Book anyway" question → resent with force.
+async function ownerPost(payload,{confirmTitle='Double-book this stylist?'}={}){
+  const send=async(force)=>{
+    try{const r=await fetch('/api/calendar-owner',{method:'POST',headers:hdr(),body:JSON.stringify({...payload,override:canOverride(),force:!!force})});return await r.json();}
+    catch(e){return {ok:false,error:'Connection problem — nothing was saved.'};}
+  };
+  let d=await send(false);
+  if(d&&!d.ok&&d.needs_confirmation){
+    const go=await confirmDialog({title:confirmTitle,message:(d.error||'That stylist is already booked then.')+' Book it anyway?',confirmLabel:'Book anyway',danger:true});
+    if(!go)return {ok:false,dismissed:true};
+    d=await send(true);
   }
+  return d||{ok:false,error:'Failed'};
+}
+
+async function loadContext(dateKey,days){
+  try{
+    const d=await getJSON('/api/calendar-owner?action=context'+(dateKey?'&date='+dateKey:'')+'&days='+(days||1));
+    if(d&&d.ok){CTX=d;setTz(d.timezone);return d;}
+  }catch(e){}
+  return null;
+}
+async function load(){
+  const sub=document.getElementById('calSub');
+  document.getElementById('calDate').textContent=fmtKey(curKey(),{weekday:'long',month:'long',day:'numeric'});
+  const isWeek=VIEW==='week';
+  const startKey=isWeek?mondayOf(curKey()):curKey();
+  sub.textContent=isWeek?'Loading week...':'Loading...';
+  try{
+    const [d]=await Promise.all([
+      getJSON(isWeek?'/api/calendar?action=week&date='+startKey+'&days=7':'/api/calendar?action=day&date='+startKey),
+      loadContext(startKey,isWeek?7:1)
+    ]);
+    if(!d.ok)throw new Error(d.error||'Failed');
+    setTz(d.timezone||d.settings?.timezone);
+    STATE={bookings:d.bookings||[],services:d.services||[],staff:d.staff||[],start:startKey,days:isWeek?(d.days||7):1,blocked_slots:d.blocked_slots||[],external:CTX.external||[]};
+    renderStaffFilter();
+    render();
+  }catch(e){document.getElementById('calGrid').innerHTML='<div class="empty-cal">'+esc(e.message)+'</div>';sub.textContent='Error';}
+}
+function workMinutesFor(staffId,key){
+  const s=(CTX.schedules||[]).find(x=>x.staff_id===staffId&&Number(x.day_of_week)===keyDow(key));
+  return s?Math.max(0,toMin(s.end_time)-toMin(s.start_time)):0;
 }
 function render(){
-  const {bookings,services,staff,start,days}=STATE;
-  const g=document.getElementById('calGrid');
+  const {bookings,staff}=STATE;
   const sub=document.getElementById('calSub');
   renderWeekStrip();
-  const active=bookings.filter(b=>b.status!=='cancelled');
+  const active=bookings.filter(b=>isLive(b)&&b.status!=='no_show'&&passesFilter(b.staff_id));
   const rev=active.reduce((s,b)=>s+Number(b.total_amount||0),0);
-  const mins=active.reduce((s,b)=>s+Number(b.service?.duration_minutes||60),0);
-  const util=staff.length?(Math.round(mins/(staff.length*(END-START)*60)*100))+'%':'—';
+  const mins=active.reduce((s,b)=>s+spanMin(b),0);
+  const keys=VIEW==='week'?Array.from({length:7},(_,i)=>addDaysKey(STATE.start||curKey(),i)):[curKey()];
+  const vis=visibleStaff();
+  let cap=0;vis.forEach(s=>keys.forEach(k=>{cap+=workMinutesFor(s.id,k);}));
+  if(!cap&&vis.length)cap=vis.length*keys.length*((CTX.hours?.end_min||1260)-(CTX.hours?.start_min||480));
+  const working=(CTX.schedules||[]).length?vis.filter(s=>keys.some(k=>workMinutesFor(s.id,k)>0)).length:vis.length;
   document.getElementById('kCount').textContent=active.length;
   document.getElementById('kRev').textContent='$'+rev.toLocaleString();
-  document.getElementById('kStaff').textContent=staff.length;
-  document.getElementById('kUtil').textContent=util;
-  sub.textContent=active.length+' booking'+(active.length===1?'':'s')+' · '+staff.length+' staff';
-
+  document.getElementById('kStaff').textContent=working;
+  document.getElementById('kUtil').textContent=cap?Math.min(100,Math.round(mins/cap*100))+'%':'—';
+  sub.textContent=active.length+' booking'+(active.length===1?'':'s')+' · '+staff.length+' staff · '+SALON_TZ.replace(/_/g,' ');
   if(VIEW==='agenda')return renderAgenda();
   if(VIEW==='day')return renderDay();
   return renderWeek();
 }
 function renderWeekStrip(){
   const strip=document.getElementById('weekStrip');
-  const base=new Date(STATE.start||cursor);
-  const start=new Date(base);start.setDate(start.getDate()-((start.getDay()+6)%7));
+  const start=mondayOf(curKey()),today=todayKey();
   let html='';
   for(let i=0;i<7;i++){
-    const d=new Date(start);d.setDate(start.getDate()+i);
-    const today=d.toDateString()===new Date().toDateString();
-    const sel=isoDay(d)===isoDay(cursor);
-    const count=STATE.bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===isoDay(d)).length;
-    html+='<div class="wday'+(today?' today':'')+(sel?' sel':'')+'" onclick="pickDay(\''+isoDay(d)+'\')">'
-      +'<div class="wd">'+d.toLocaleDateString([],{weekday:'short'})+(today?'<span class="wd-dot"></span>':'')+'</div>'
-      +'<div class="wn">'+d.getDate()+'</div><div class="wc">'+d.toLocaleDateString([],{month:'short'})+(count?' · '+count:'')+'</div></div>';
+    const k=addDaysKey(start,i);
+    const count=STATE.bookings.filter(b=>isLive(b)&&passesFilter(b.staff_id)&&localDayKey(new Date(b.start_time))===k).length;
+    html+='<div class="wday'+(k===today?' today':'')+(k===curKey()?' sel':'')+'" onclick="pickDay(\''+k+'\')">'
+      +'<div class="wd">'+fmtKey(k,{weekday:'short'})+(k===today?'<span class="wd-dot"></span>':'')+'</div>'
+      +'<div class="wn">'+Number(k.slice(8))+'</div><div class="wc">'+fmtKey(k,{month:'short'})+(count?' · '+count:'')+'</div></div>';
   }
   strip.innerHTML=html;
   strip.style.display='flex';
 }
-function pickDay(iso){cursor=new Date(iso+'T00:00:00');if(VIEW==='week'){VIEW='day';setView('day');}load();}
-function loadDayWithBlocks(iso){cursor=new Date(iso+'T00:00:00');VIEW='day';document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v==='day'));load();}
+function renderStaffFilter(){
+  const sel=document.getElementById('stfFilter');if(!sel)return;
+  sel.innerHTML='<option value="">All stylists</option>'+STATE.staff.map(s=>'<option value="'+esc(s.id)+'"'+(s.id===STAFF_FILTER?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+  sel.style.display=STATE.staff.length>1?'':'none';
+}
+function setStaffFilter(v){STAFF_FILTER=v||'';MOBILE_COL=0;try{localStorage.setItem('lola_cal_staff',STAFF_FILTER);}catch(e){}render();}
+function pickDay(iso){setCursorKey(iso);if(VIEW==='week'){setView('day');return;}load();}
+function loadDayWithBlocks(iso){setCursorKey(iso);VIEW='day';document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v==='day'));load();}
 function setView(v){
-  VIEW=v;localStorage.setItem('lola_cal_view',v);
+  VIEW=v;try{localStorage.setItem('lola_cal_view',v);}catch(e){}
   document.querySelectorAll('#viewSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   load();
 }
 document.querySelectorAll('#viewSwitch button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
-function renderDay(){
-  const {bookings,services,staff}=STATE;
-  const g=document.getElementById('calGrid');
-  if(!staff.length){g.innerHTML='<div class="empty-cal">No active team members yet.<br><a href="team.html">Add your team</a> to start booking.</div>';document.getElementById('calSub').textContent='No staff';return;}
-  if(!services.length){g.innerHTML='<div class="empty-cal">No services yet.<br><a href="services.html">Add your services</a> to start booking.</div>';document.getElementById('calSub').textContent='No services';return;}
-  const hours=END-START;
-  g.style.gridTemplateColumns='64px repeat('+staff.length+',minmax(160px,1fr))';
-  let html='<div class="cal-corner"></div>';
-  staff.forEach(s=>{html+='<div class="cal-head"><div class="nm">'+esc(s.name)+'</div><div class="ro">'+esc(s.role||'Stylist')+'</div></div>';});
-  for(let h=0;h<hours;h++){
-    const hr=START+h;
-    const lbl=hr>=12?(hr===12?'12 PM':(hr-12)+' PM'):hr+' AM';
-    html+='<div class="cal-time">'+lbl+'</div>';
-    staff.forEach(s=>{html+='<div class="cal-slot" data-staff="'+s.id+'" data-hour="'+hr+'" onclick="quickBook(\''+s.id+'\','+hr+')"></div>';});
+/* ── Day view: stylist columns on the salon's own clock ── */
+let DAYCOLS=[];
+function dayItems(){
+  const key=curKey();
+  const bk=STATE.bookings.filter(b=>isLive(b)&&localDayKey(new Date(b.start_time))===key);
+  const ex=(STATE.external||[]).filter(x=>localDayKey(new Date(x.starts_at))===key);
+  return {bk,ex};
+}
+function itemSpan(startIso,endIso){
+  const p=salonParts(startIso),s=p.key===curKey()?p.min:0;
+  const e=Math.min(24*60,s+Math.max(5,Math.round((new Date(endIso)-new Date(startIso))/60000)));
+  return {s,e};
+}
+// Overlapping appointments sit side by side (lanes), never on top of each other.
+function layoutLanes(items){
+  items.sort((a,b)=>a.s-b.s||b.e-a.e);
+  let group=[],groupEnd=-1;
+  const flush=()=>{const n=group.reduce((m,i)=>Math.max(m,i.lane+1),1);group.forEach(i=>{i.lanes=n;});group=[];groupEnd=-1;};
+  for(const it of items){
+    if(group.length&&it.s>=groupEnd)flush();
+    const used=new Set(group.filter(g=>g.e>it.s).map(g=>g.lane));
+    let l=0;while(used.has(l))l++;
+    it.lane=l;group.push(it);groupEnd=Math.max(groupEnd,it.e);
   }
+  if(group.length)flush();
+  return items;
+}
+function placeLane(el,it){
+  const n=it.lanes||1,i=it.lane||0;
+  el.style.left='calc(5px + (100% - 10px) * '+(i/n)+')';
+  el.style.width='calc((100% - 10px) / '+n+' - '+(n>1?3:0)+'px)';
+  el.style.right='auto';
+}
+function renderDay(){
+  const {staff,services}=STATE;
+  const g=document.getElementById('calGrid');
+  const sw=document.getElementById('stfSwitch');
+  if(!staff.length){g.innerHTML='<div class="empty-cal">No active team members yet.<br><a href="team.html">Add your team</a> to start booking.</div>';document.getElementById('calSub').textContent='No staff';sw.innerHTML='';return;}
+  if(!services.length){g.innerHTML='<div class="empty-cal">No services yet.<br><a href="services.html">Add your services</a> to start booking.</div>';document.getElementById('calSub').textContent='No services';sw.innerHTML='';return;}
+  const key=curKey();
+  const {bk,ex}=dayItems();
+  const known=new Set(staff.map(s=>s.id));
+  const colOf=id=>(id&&known.has(id))?id:UNASSIGNED;
+  let cols=visibleStaff().map(s=>({id:s.id,name:s.name,role:s.role||'Stylist'}));
+  if(bk.some(b=>colOf(b.staff_id)===UNASSIGNED)||ex.some(x=>colOf(x.staff_id)===UNASSIGNED))cols.push({id:UNASSIGNED,name:'Unassigned',role:'No stylist yet'});
+  // Phone: one stylist at a time with a switcher.
+  if(MQ.matches&&cols.length>1){
+    MOBILE_COL=Math.max(0,Math.min(MOBILE_COL,cols.length-1));
+    sw.innerHTML=cols.map((c,i)=>'<button class="'+(i===MOBILE_COL?'on':'')+'" onclick="MOBILE_COL='+i+';renderDay()">'+esc(c.name)+'</button>').join('');
+    sw.style.display='flex';
+    cols=[cols[MOBILE_COL]];
+  }else{sw.innerHTML='';sw.style.display='none';}
+  DAYCOLS=cols;
+  // Range: earliest staff start → latest end that day, widened to fit every item.
+  const sch=(CTX.schedules||[]).filter(s=>Number(s.day_of_week)===keyDow(key));
+  let rs=sch.length?Math.min(...sch.map(s=>toMin(s.start_time))):(CTX.hours?.start_min??480);
+  let re=sch.length?Math.max(...sch.map(s=>toMin(s.end_time))):(CTX.hours?.end_min??1260);
+  const spans=[...bk.map(b=>itemSpan(b.start_time,b.end_time)),...ex.map(x=>itemSpan(x.starts_at,x.ends_at))];
+  spans.forEach(sp=>{rs=Math.min(rs,sp.s);re=Math.max(re,sp.e);});
+  const nowP=salonParts(new Date());
+  if(nowP.key===key){rs=Math.min(rs,nowP.min);re=Math.max(re,nowP.min+30);}
+  rs=Math.max(0,Math.floor(rs/60)*60);re=Math.min(24*60,Math.ceil(re/60)*60);if(re-rs<120)re=Math.min(24*60,rs+120);
+  RANGE={s:rs,e:re};START=rs/60;END=re/60;
+  const hours=(re-rs)/60,H=hours*SLOT_H;
+  g.style.gridTemplateColumns='64px repeat('+cols.length+',minmax('+(MQ.matches?'0':'160px')+',1fr))';
+  g.style.minWidth=MQ.matches?'0':'';
+  let html='<div class="cal-corner"></div>';
+  cols.forEach(c=>{
+    const off=c.id!==UNASSIGNED&&(CTX.schedules||[]).length&&!sch.some(s=>s.staff_id===c.id);
+    html+='<div class="cal-head'+(c.id===UNASSIGNED?' unassigned':'')+'"><div class="nm">'+esc(c.name)+'</div><div class="ro">'+(off?'<span class="bk-day-off">Off today</span>':esc(c.role))+'</div></div>';
+  });
+  html+='<div class="cal-times">';
+  for(let h=0;h<hours;h++)html+='<div class="cal-time">'+minLabel(rs+h*60)+'</div>';
+  html+='</div>';
+  cols.forEach(c=>{
+    html+='<div class="day-col'+(c.id===UNASSIGNED?' unassigned':'')+'" data-col="'+esc(c.id)+'" style="height:'+H+'px">';
+    for(let h=0;h<hours;h++)html+='<div class="cal-slot" data-staff="'+esc(c.id)+'" data-hour="'+(rs/60+h)+'"></div>';
+    html+='</div>';
+  });
   g.innerHTML=html;
-  const dayBookings=bookings.filter(b=>localDayKey(new Date(b.start_time))===isoDay(cursor));
-  dayBookings.forEach(b=>{
-    if(!b.staff_id)return;
-    const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
-    if(!cell)return;
-    const start=new Date(b.start_time);
-    const mins=(start.getHours()-START)*60+start.getMinutes();
-    // Multi-service bookings span the summed duration — use the actual
-    // timespan (start→end) so the grid block covers every service.
-    const dur=Math.round((new Date(b.end_time)-start)/60000)||(b.service?.duration_minutes||60);
-    const top=(mins/60)*SLOT_H,height=Math.max(30,(dur/60)*SLOT_H-5);
-    const el=document.createElement('div');
-    const color=svcColor(b.service_id);
-    el.className='appt '+(b.status||'confirmed');el.dataset.bookingId=b.id||'';el.dataset.start=b.start_time||'';
-    el.style.cssText='top:'+top+'px;height:'+height+'px;--svc:'+color;
-    const st=(b.status==='completed')?'completed':(b.status==='cancelled')?'cancelled':(b.status==='pending')?'pending':(b.status==='in_progress')?'in_progress':(b.status==='no_show')?'no_show':'confirmed';
-    el.innerHTML='<div class="at">'+fmtT(start)+' · '+fmtDur(dur)+'<span class="st '+st+'">'+st+'</span></div>'
-      +'<div class="svc"><span class="ca" style="background:'+color+'">'+esc(initials(clientName(b.client)))+'</span>'+esc(b.service?.name||'Appointment')+'</div>'
-      +'<div class="cli">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</div>';
-    el.onclick=ev=>{ev.stopPropagation();showDetail(b);};
-    cell.appendChild(el);
+  const colEl=id=>g.querySelector('.day-col[data-col="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  const top=m=>(m-rs)/60*SLOT_H;
+  // Off-hours shading from staff schedules (and approved time off).
+  if((CTX.schedules||[]).length)cols.forEach(c=>{
+    if(c.id===UNASSIGNED)return;
+    const col=colEl(c.id);if(!col)return;
+    const s=sch.find(x=>x.staff_id===c.id);
+    const shade=(a,b,label)=>{if(b<=a)return;const el=document.createElement('div');el.className='off-hours';el.style.top=top(a)+'px';el.style.height=(b-a)/60*SLOT_H+'px';if(label)el.innerHTML='<span>'+esc(label)+'</span>';col.appendChild(el);};
+    if(!s)shade(rs,re,'Off');
+    else{shade(rs,Math.max(rs,toMin(s.start_time)));shade(Math.min(re,toMin(s.end_time)),re);}
   });
-  // Blocked time — lunch, breaks, days off (staff grid shading).
-  const dayIso=isoDay(cursor);
-  const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===dayIso);
-  dayBlocks.forEach(b=>{
-    const cell=g.querySelector('.cal-slot[data-staff="'+b.staff_id+'"][data-hour="'+START+'"]');
-    if(!cell)return;
-    const sMin=b.start_time?toMin(b.start_time):START*60;
-    const eMin=b.end_time?toMin(b.end_time):END*60;
-    const top=(sMin-START*60)/60*SLOT_H,height=Math.max(30,(eMin-sMin)/60*SLOT_H-5);
-    const el=document.createElement('div');
-    el.className='cal-block';
-    el.style.cssText='top:'+top+'px;height:'+height+'px';
-    const label=(b.reason||'Blocked')+(b.start_time&&b.end_time?(' · '+b.start_time.slice(0,5)+'–'+b.end_time.slice(0,5)):'');
-    const allDay=!b.start_time&&!b.end_time;
-    el.innerHTML='<div class="bk-t">'+(allDay?'Day off':'Blocked')+'<span class="bk-x" title="Remove block">✕</span></div><div class="bk-n">'+esc(b.reason||'No reason')+'</div>';
-    el.title=label+(b.staff_id?(' — '+esc((staff.find(s=>s.id===b.staff_id)||{}).name||'')):'');
-    el.onclick=ev=>{ev.stopPropagation();deleteBlock(b);};
-    cell.appendChild(el);
+  (CTX.time_off||[]).forEach(t=>{
+    const col=colEl(t.staff_id);if(!col)return;
+    const a=salonParts(t.start_time),b=salonParts(t.end_time);
+    const s=a.key<key?rs:(a.key===key?a.min:null),e=b.key>key?re:(b.key===key?b.min:null);
+    if(s==null||e==null||e<=s)return;
+    const el=document.createElement('div');el.className='off-hours';el.style.top=top(Math.max(rs,s))+'px';el.style.height=(Math.min(re,e)-Math.max(rs,s))/60*SLOT_H+'px';el.innerHTML='<span>'+esc(t.reason||'Time off')+'</span>';col.appendChild(el);
   });
-  const now=new Date();
-  if(now.toDateString()===cursor.toDateString()){
-    const mins=(now.getHours()-START)*60+now.getMinutes();
-    if(mins>0&&mins<hours*60){
-      staff.forEach(s=>{const cell=g.querySelector('.cal-slot[data-staff="'+s.id+'"][data-hour="'+START+'"]');if(cell){const nl=document.createElement('div');nl.className='now-line';nl.style.top=(mins/60*SLOT_H)+'px';cell.appendChild(nl);}});
-    }
+  // Blocked time — lunch, breaks, days off. A block with no stylist covers everyone.
+  (STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===key).forEach(b=>{
+    const targets=b.staff_id?[b.staff_id]:cols.filter(c=>c.id!==UNASSIGNED).map(c=>c.id);
+    targets.forEach(sid=>{
+      const col=colEl(sid);if(!col)return;
+      const sMin=b.start_time?toMin(b.start_time):rs,eMin=b.end_time?toMin(b.end_time):re;
+      const el=document.createElement('div');
+      el.className='cal-block';
+      el.style.cssText='top:'+top(Math.max(rs,sMin))+'px;height:'+Math.max(24,(Math.min(re,eMin)-Math.max(rs,sMin))/60*SLOT_H-5)+'px';
+      const allDay=!b.start_time&&!b.end_time;
+      el.innerHTML='<div class="bk-t">'+(allDay?'Day off':'Blocked')+'<span class="bk-x" title="Remove block">✕</span></div><div class="bk-n">'+esc(b.reason||'No reason')+'</div>';
+      el.title=blockLabel(b)+(b.staff_id?(' — '+((staffById(b.staff_id)||{}).name||'')):' — everyone');
+      el.onclick=ev=>{ev.stopPropagation();deleteBlock(b);};
+      col.appendChild(el);
+    });
+  });
+  // Appointments (+ the salon platform's, read-only), lane-laid per column.
+  const perCol=new Map(cols.map(c=>[c.id,[]]));
+  bk.forEach(b=>{const k=colOf(b.staff_id);if(perCol.has(k))perCol.get(k).push({kind:'b',b,...itemSpan(b.start_time,b.end_time)});});
+  ex.forEach(x=>{const k=colOf(x.staff_id);if(perCol.has(k))perCol.get(k).push({kind:'x',x,...itemSpan(x.starts_at,x.ends_at)});});
+  perCol.forEach((items,cid)=>{
+    const col=colEl(cid);if(!col)return;
+    layoutLanes(items).forEach(it=>{
+      const h=Math.max(26,(it.e-it.s)/60*SLOT_H-5);
+      if(it.kind==='x'){
+        const x=it.x,el=document.createElement('div');
+        el.className='ext-appt';el.style.top=top(it.s)+'px';el.style.height=h+'px';placeLane(el,it);
+        el.title=(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
+        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+' · '+fmtDur(it.e-it.s)+'</div><div class="ex-p">'+esc(provName(x.provider))+'</div><div class="ex-n">Booked on their platform</div>';
+        el.onclick=ev=>{ev.stopPropagation();toast(provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
+        col.appendChild(el);return;
+      }
+      const b=it.b,color=svcColor(b.service_id),dur=it.e-it.s;
+      const el=document.createElement('div');
+      el.className='appt '+stClass(b.status);el.dataset.bookingId=b.id||'';el.dataset.start=b.start_time||'';
+      el.style.cssText='top:'+top(it.s)+'px;height:'+h+'px;--svc:'+color;placeLane(el,it);
+      // Processing time (color developing): a lighter middle band the stylist can sell.
+      const sv=b.service||{};const a1=Number(sv.active_duration_1_min||0),pr=Number(sv.processing_duration_min||0),a2=Number(sv.active_duration_2_min||0);
+      let proc='';
+      if(pr>0&&Math.abs(a1+pr+a2-dur)<=1)proc='<div class="proc" style="top:'+(a1/dur*100)+'%;height:'+(pr/dur*100)+'%"><span>processing</span></div>';
+      el.innerHTML=proc+'<div class="at">'+fmtT(b.start_time)+' · '+fmtDur(dur)+stPill(b.status)+'</div>'
+        +'<div class="svc"><span class="ca" style="background:'+color+'">'+esc(initials(clientName(b.client)))+'</span>'+esc(b.service?.name||'Appointment')+'</div>'
+        +'<div class="cli"><span class="cn">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</span><span class="badges">'+srcBadge(b)+depPill(b)+'</span></div>'
+        +'<div class="rs-h" title="Drag to change the end time"></div>';
+      el.onclick=ev=>{ev.stopPropagation();if(DRAG_JUST_ENDED)return;showDetail(b);};
+      attachDrag(el,b,it,cid);
+      col.appendChild(el);
+    });
+  });
+  // Click empty grid → book that stylist at that quarter hour (salon time).
+  g.querySelectorAll('.day-col').forEach(col=>{
+    col.addEventListener('click',ev=>{
+      if(ev.target.closest('.appt,.cal-block,.ext-appt'))return;
+      const y=ev.clientY-col.getBoundingClientRect().top;
+      const m=rs+Math.floor(y/SLOT_H*60/15)*15;
+      quickBook(col.dataset.col===UNASSIGNED?'':col.dataset.col,m);
+    });
+  });
+  if(nowP.key===key&&nowP.min>rs&&nowP.min<re){
+    g.querySelectorAll('.day-col').forEach(col=>{const nl=document.createElement('div');nl.className='now-line';nl.style.top=top(nowP.min)+'px';col.appendChild(nl);});
   }
 }
+
+/* ── Drag to move (time + stylist) and drag to resize, salon-time aware ── */
+let DRAG=null,DRAG_JUST_ENDED=false;
+const SNAP=5;
+function dragTip(text,bad,x,y){
+  let t=document.getElementById('dragTip');
+  if(!t){t=document.createElement('div');t.id='dragTip';t.className='drag-tip';document.body.appendChild(t);}
+  if(text==null){t.remove();return;}
+  t.textContent=text;t.classList.toggle('bad',!!bad);t.style.left=(x+14)+'px';t.style.top=(y+14)+'px';
+}
+function clashesIn(colId,s,e,selfId){
+  if(colId===UNASSIGNED)return [];
+  const key=curKey();
+  const out=[];
+  STATE.bookings.forEach(b=>{if(b.id===selfId||!isLive(b)||b.status==='no_show'||b.staff_id!==colId||localDayKey(new Date(b.start_time))!==key)return;const sp=itemSpan(b.start_time,b.end_time);if(sp.s<e&&s<sp.e)out.push(clientName(b.client));});
+  (STATE.external||[]).forEach(x=>{if(x.staff_id!==colId||localDayKey(new Date(x.starts_at))!==key)return;const sp=itemSpan(x.starts_at,x.ends_at);if(sp.s<e&&s<sp.e)out.push(x.provider||'platform');});
+  return out;
+}
+function attachDrag(el,b,it,colId){
+  el.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0||b.status==='cancelled')return;
+    const resize=ev.target.classList.contains('rs-h');
+    // Touch: a tap opens the sheet and a swipe scrolls; the resize handle still drags.
+    if(ev.pointerType==='touch'&&!resize)return;
+    const col=el.parentElement;
+    DRAG={el,b,resize,x0:ev.clientX,y0:ev.clientY,s0:it.s,dur:it.e-it.s,col0:colId,colRect:col.getBoundingClientRect(),moved:false,target:colId,ns:it.s,nd:it.e-it.s};
+    try{el.setPointerCapture(ev.pointerId);}catch(e){}
+    ev.preventDefault();
+  });
+  el.addEventListener('pointermove',ev=>{
+    const D=DRAG;if(!D||D.el!==el)return;
+    const dx=ev.clientX-D.x0,dy=ev.clientY-D.y0;
+    if(!D.moved&&Math.hypot(dx,dy)<4)return;
+    D.moved=true;el.classList.add('dragging');
+    const dMin=Math.round(dy/SLOT_H*60/SNAP)*SNAP;
+    if(D.resize){
+      D.nd=Math.max(15,Math.min(RANGE.e-D.s0,D.dur+dMin));
+      el.style.height=Math.max(26,D.nd/60*SLOT_H-5)+'px';
+      const bad=clashesIn(D.col0,D.s0,D.s0+D.nd,b.id);
+      el.classList.toggle('drag-bad',bad.length>0);
+      dragTip('Ends '+minLabel(D.s0+D.nd)+' · '+fmtDur(D.nd)+(bad.length?' · overlaps '+bad[0]:''),bad.length,ev.clientX,ev.clientY);
+      return;
+    }
+    D.ns=Math.max(RANGE.s,Math.min(RANGE.e-SNAP,D.s0+dMin));
+    let target=D.col0,tRect=D.colRect;
+    const hit=(document.elementsFromPoint?document.elementsFromPoint(ev.clientX,ev.clientY):[]).find(n=>n.classList&&n.classList.contains('day-col'));
+    if(hit){target=hit.dataset.col;tRect=hit.getBoundingClientRect();}
+    D.target=target;
+    el.style.transform='translate('+(tRect.left-D.colRect.left)+'px,'+((D.ns-D.s0)/60*SLOT_H)+'px)';
+    const bad=clashesIn(target,D.ns,D.ns+D.dur,b.id);
+    el.classList.toggle('drag-bad',bad.length>0);
+    const who=target===UNASSIGNED?'Unassigned':((staffById(target)||{}).name||'');
+    dragTip(minLabel(D.ns)+(who?' · '+who:'')+(bad.length?' · overlaps '+bad[0]:''),bad.length,ev.clientX,ev.clientY);
+  });
+  const finish=async(ev,cancelled)=>{
+    const D=DRAG;if(!D||D.el!==el)return;
+    DRAG=null;dragTip(null);
+    if(!D.moved)return;
+    DRAG_JUST_ENDED=true;setTimeout(()=>{DRAG_JUST_ENDED=false;},0);
+    if(cancelled){render();return;}
+    const payload={action:'move',booking_id:b.id};
+    if(D.resize){
+      if(D.nd===D.dur){render();return;}
+      Object.assign(payload,{date:curKey(),time:hhmm(D.s0),duration_min:D.nd});
+    }else{
+      if(D.ns===D.s0&&D.target===D.col0){render();return;}
+      Object.assign(payload,{date:curKey(),time:hhmm(D.ns),staff_id:D.target===UNASSIGNED?null:D.target});
+    }
+    el.classList.add('saving');
+    const d=await ownerPost(payload,{confirmTitle:'Overlap another appointment?'});
+    if(!d.ok){if(!d.dismissed)toast(d.error||'Could not move the appointment.','error');render();return;}
+    toast(D.resize?'Now ends '+minLabel(D.s0+D.nd)+'.':'Moved to '+minLabel(D.ns)+(D.target!==D.col0?' with '+((staffById(D.target)||{}).name||'Unassigned'):'')+'.');
+    if(d.warnings&&d.warnings.length)setTimeout(()=>toast('Heads up: '+d.warnings.join(' ')),400);
+    await load();
+  };
+  el.addEventListener('pointerup',ev=>finish(ev,false));
+  el.addEventListener('pointercancel',ev=>finish(ev,true));
+}
+
+/* ── Week view ── */
 function renderWeek(){
-  const {bookings,staff,start}=STATE;
+  const {bookings}=STATE;
   const g=document.getElementById('calGrid');
-  const base=new Date(start);base.setDate(base.getDate()-((base.getDay()+6)%7));
+  document.getElementById('stfSwitch').style.display='none';
+  const base=mondayOf(curKey()),today=todayKey();
   const labels=['MON','TUE','WED','THU','FRI','SAT','SUN'];
-  g.style.gridTemplateColumns='repeat(7,1fr)';
+  g.style.gridTemplateColumns='repeat(7,1fr)';g.style.minWidth='';
   let html='';
   for(let i=0;i<7;i++){
-    const d=new Date(base);d.setDate(base.getDate()+i);
-    const iso=isoDay(d);
-    const today=d.toDateString()===new Date().toDateString();
-    const dayBk=bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===iso);
-    const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===iso);
-    html+='<div class="wk-day'+(today?' today':'')+'">'
-      +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+d.getDate()+'</div></div>'
+    const iso=addDaysKey(base,i);
+    const dayBk=bookings.filter(b=>isLive(b)&&passesFilter(b.staff_id)&&localDayKey(new Date(b.start_time))===iso);
+    const dayEx=(STATE.external||[]).filter(x=>passesFilter(x.staff_id)&&localDayKey(new Date(x.starts_at))===iso);
+    const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===iso&&(!b.staff_id||passesFilter(b.staff_id)));
+    html+='<div class="wk-day'+(iso===today?' today':'')+'" onclick="pickDay(\''+iso+'\')">'
+      +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+Number(iso.slice(8))+'</div></div>'
       +(dayBlocks.length?'<div class="wk-block" onclick="event.stopPropagation();loadDayWithBlocks(\''+iso+'\')" title="Blocked time on this day">⏱ '+dayBlocks.length+' block'+(dayBlocks.length===1?'':'s')+'</div>':'')
-      +'<div class="wk-empty">'+(dayBk.length?'':'No bookings')+'</div>';
-    dayBk.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time)).forEach(b=>{
-      const color=svcColor(b.service_id);
-      const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':(b.status==='in_progress'?'in_progress':(b.status==='no_show'?'no_show':'confirmed')));
-      html+='<div class="wk-appt" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" style="--svc:'+color+'" onclick="showDetail(\''+b.id+'\')">'
-        +'<div class="t">'+fmtT(new Date(b.start_time))+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+' <span class="st '+st+'" style="font-size:8px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</span></div>'
+      +'<div class="wk-empty">'+(dayBk.length||dayEx.length?'':'No bookings')+'</div>';
+    const rows=[...dayBk.map(b=>({t:new Date(b.start_time).getTime(),b})),...dayEx.map(x=>({t:new Date(x.starts_at).getTime(),x}))].sort((a,b)=>a.t-b.t);
+    rows.forEach(r=>{
+      if(r.x){
+        html+='<div class="wk-appt ext" onclick="event.stopPropagation()" title="Read-only — booked on '+esc(r.x.provider||'their platform')+'"><div class="t">'+fmtT(r.x.starts_at)+' · '+fmtDur(Math.round((new Date(r.x.ends_at)-new Date(r.x.starts_at))/60000))+'</div><div class="n">'+esc(provName(r.x.provider))+'</div><div class="c">'+esc((staffById(r.x.staff_id)||{}).name||'Unassigned')+'</div></div>';
+        return;
+      }
+      const b=r.b,color=svcColor(b.service_id);
+      html+='<div class="wk-appt '+stClass(b.status)+'" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" style="--svc:'+color+'" onclick="event.stopPropagation();showDetail(\''+esc(b.id)+'\')">'
+        +'<div class="t">'+fmtT(b.start_time)+' · '+fmtDur(spanMin(b))+' '+stPill(b.status)+'</div>'
         +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
-        +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'—')+'</div></div>';
+        +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'Unassigned')+'</div>'
+        +'<div class="badges">'+srcBadge(b)+depPill(b)+'</div></div>';
     });
     html+='</div>';
   }
   g.innerHTML=html;
 }
+/* ── Agenda ── */
 function renderAgenda(){
   const {bookings}=STATE;
   const g=document.getElementById('calGrid');
-  g.style.gridTemplateColumns='1fr';
-  const dayBk=bookings.filter(b=>b.status!=='cancelled'&&localDayKey(new Date(b.start_time))===isoDay(cursor)).sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
-  if(!dayBk.length){
-    g.innerHTML='<div class="empty-cal">Nothing on the books for '+cursor.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'})+'.<br><a href="javascript:openNew()">Book a new appointment</a></div>';
+  document.getElementById('stfSwitch').style.display='none';
+  g.style.gridTemplateColumns='1fr';g.style.minWidth='';
+  const key=curKey();
+  const dayBk=bookings.filter(b=>isLive(b)&&passesFilter(b.staff_id)&&localDayKey(new Date(b.start_time))===key);
+  const dayEx=(STATE.external||[]).filter(x=>passesFilter(x.staff_id)&&localDayKey(new Date(x.starts_at))===key);
+  if(!dayBk.length&&!dayEx.length){
+    g.innerHTML='<div class="empty-cal">Nothing on the books for '+fmtKey(key,{weekday:'long',month:'long',day:'numeric'})+'.<br><a href="javascript:openNew()">Book a new appointment</a></div>';
     return;
   }
+  const rows=[...dayBk.map(b=>({t:new Date(b.start_time).getTime(),b})),...dayEx.map(x=>({t:new Date(x.starts_at).getTime(),x}))].sort((a,b)=>a.t-b.t);
   let html='<div class="agenda">';
-  dayBk.forEach(b=>{
-    const color=svcColor(b.service_id);
-    const st=b.status==='completed'?'completed':(b.status==='pending'?'pending':'confirmed');
-    html+='<div class="ag-item" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" onclick="showDetail(\''+b.id+'\')">'
-      +'<div class="ag-t">'+fmtT(new Date(b.start_time))+'<small>'+fmtDur(b.service?.duration_minutes)+'</small></div>'
+  rows.forEach(r=>{
+    if(r.x){
+      const x=r.x;
+      html+='<div class="ag-item ext"><div class="ag-t">'+fmtT(x.starts_at)+'<small>'+fmtDur(Math.round((new Date(x.ends_at)-new Date(x.starts_at))/60000))+'</small></div>'
+        +'<div class="ag-cli"><div class="ag-av" style="--svc:#6b6b73">⧉</div><div><div class="ag-name">'+esc(provName(x.provider))+' appointment</div><div class="ag-meta">Read-only · '+esc((staffById(x.staff_id)||{}).name||'Unassigned')+'</div></div></div></div>';
+      return;
+    }
+    const b=r.b,color=svcColor(b.service_id);
+    html+='<div class="ag-item" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" onclick="showDetail(\''+esc(b.id)+'\')">'
+      +'<div class="ag-t">'+fmtT(b.start_time)+'<small>'+fmtDur(spanMin(b))+'</small></div>'
       +'<div class="ag-cli"><div class="ag-av" style="--svc:'+color+'">'+esc(initials(clientName(b.client)))+'</div>'
       +'<div><div class="ag-name">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</div>'
-      +'<div class="ag-meta"><span style="color:var(--text)">'+esc(b.service?.name||'Appointment')+'</span> · '+esc(b.staff?.name||'—')+' <span class="st '+st+'" style="font-size:8.5px;font-weight:700;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</span></div></div></div>'
-      +'<div class="ag-amt">$'+Number(b.total_amount||0).toLocaleString()+'<small>'+(b.source||'dashboard')+'</small></div></div>';
+      +'<div class="ag-meta"><span style="color:var(--text)">'+esc(b.service?.name||'Appointment')+'</span> · '+esc(b.staff?.name||'Unassigned')+' '+stPill(b.status)+depPill(b)+'</div></div></div>'
+      +'<div class="ag-amt">$'+Number(b.total_amount||0).toLocaleString()+'<small>'+srcBadge(b)+'</small></div></div>';
   });
   html+='</div>';
   g.innerHTML=html;
@@ -430,23 +759,10 @@ function openModal(title,sub,body){
   document.getElementById('modal').classList.add('open');
 }
 function closeModal(){document.getElementById('modal').classList.remove('open');}
-function bookForm(staffId='',hour=10){
-  const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===staffId?' selected':'')+'>'+esc(s.name)+'</option>').join('');
-  return '<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div>'
-    +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
-    +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
-    +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff">'+stfOpts+'</select></div>'
-    +'<div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div>'
-    +'<div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup></select></div>'
-    +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
-    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div>'
-    +'<div class="mstatus" id="mstatus"></div>';
-}
 let WL={entries:[],lastPrefill:null};
 async function loadWaitlist(){
   try{
-    const r=await fetch('/api/calendar?action=waitlist_list',{headers:hdr()});
-    const d=await r.json();
+    const d=await getJSON('/api/calendar?action=waitlist_list');
     if(!d.ok)return;
     WL.entries=d.entries||[];
     const badge=document.getElementById('wlCount');
@@ -463,8 +779,8 @@ function openWaitlist(){
     return '<div class="wl-item"><div class="wl-av">'+esc(initials(e.client_name||e.client_phone||'?'))+'</div>'
       +'<div class="wl-info"><div class="wl-name">'+esc(e.client_name||e.client_phone||'Guest')+(e.client_name&&e.client_phone?' <span style="color:var(--text3);font-weight:400;font-size:11px">· '+esc(e.client_phone)+'</span>':'')+'</div>'
       +'<div class="wl-meta">'+esc(e.service_name||'Any service')+' · '+when+(e.source?' · '+esc(e.source):'')+'</div></div>'
-      +'<div class="wl-acts"><button class="wl-offer" onclick="offerSlot(\''+e.id+'\')">Offer slot</button>'
-      +'<button class="wl-rm" onclick="removeWaitlist(\''+e.id+'\')" title="Remove">✕</button></div></div>';
+      +'<div class="wl-acts"><button class="wl-offer" onclick="offerSlot(\''+esc(e.id)+'\')">Offer slot</button>'
+      +'<button class="wl-rm" onclick="removeWaitlist(\''+esc(e.id)+'\')" title="Remove">✕</button></div></div>';
   }).join('');
   openModal('Waitlist ('+WL.entries.length+')','Clients waiting for a slot to open — offer them the next free one.','<div class="wl-list">'+rows+'</div>');
 }
@@ -482,19 +798,48 @@ async function removeWaitlist(id){
     toast('Removed from waitlist.');await loadWaitlist();openWaitlist();
   }catch(e){toast(e.message||'Failed','error');}
 }
-function openNew(prefill){
-  openModal('New booking',prefill&&prefill.client_name?('Offer the freed slot to '+esc(prefill.client_name)):'Lola will confirm this client by text when you save.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="10:00"/></div></div><div class="fld"><label>Repeat</label><select id="bkRepeat"><option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup></select></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');
+
+/* ── New booking sheet: client picker, services, salon-time date/time, suggested times ── */
+const REPEAT_OPTS='<option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup>';
+let BK={client:null,walkIn:false};
+function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub=''}={}){
+  BK={client:null,walkIn:false};
+  const t=min!=null?hhmm(min):'10:00';
+  openModal(title,sub||'Lola will confirm this client by text when you save.',
+    '<div class="fld"><label>Client</label><div class="cl-pick"><input id="bkClient" placeholder="Search by name or phone — or type a new client" autocomplete="off"/><div id="bkClientRes" class="cl-res"></div></div><div id="bkClientChip"></div></div>'
+    +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
+    +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
+    +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div>'
+    +'<div class="fld"><label>Date</label><input id="bkDate" type="date" value="'+curKey()+'"/></div></div>'
+    +'<div class="row2"><div class="fld"><label>Time <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">· salon time</span></label><input id="bkTime" type="time" step="300" value="'+t+'"/></div>'
+    +'<div class="fld"><label>Repeat</label><select id="bkRepeat">'+REPEAT_OPTS+'</select></div></div>'
+    +'<div class="fld"><label>Open times</label><div id="bkSuggest" class="sugg"><span class="sugg-empty">Pick a service to see open times</span></div></div>'
+    +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="ghost" onclick="walkInNow()" title="Book this client right now with no text sent">Walk-in now</button><button class="primary" id="bkSave" onclick="saveBooking()">Confirm booking</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>');
   hydrateForm();
+  const stf=document.getElementById('bkStaff');
+  if(staffId)stf.value=staffId;else if(min!=null)stf.value='';
+  const q=document.getElementById('bkClient');
+  let timer=null;
+  q.addEventListener('input',()=>{BK.client=null;renderClientChip();clearTimeout(timer);timer=setTimeout(()=>searchClients(q.value),220);});
+  q.addEventListener('keydown',e=>{if(e.key==='Escape'){document.getElementById('bkClientRes').innerHTML='';e.stopPropagation();}});
+  ['bkStaff','bkDate'].forEach(id=>document.getElementById(id).addEventListener('change',loadSuggest));
   if(prefill){
-    if(prefill.client_name){const el=document.getElementById('bkClient');if(el)el.value=prefill.client_name;}
-    if(prefill.client_phone){const el=document.getElementById('bkPhone');if(el)el.value=prefill.client_phone;}
+    if(prefill.client_name)q.value=prefill.client_name;
+    if(prefill.client_phone)document.getElementById('bkPhone').value=prefill.client_phone;
     if(prefill.service_id){const box=document.querySelector('#bkSvcList input[value="'+prefill.service_id+'"]');if(box){box.checked=true;updSvcSummary();}}
   }
 }
+function openNew(prefill){bookingSheet({prefill,sub:prefill&&prefill.client_name?('Offer the freed slot to '+prefill.client_name):''});}
+function quickBook(staffId,min){
+  const nm=staffId?((staffById(staffId)||{}).name||''):'';
+  bookingSheet({staffId,min,sub:'Book '+(nm||'a client')+' at '+minLabel(min)+' on '+fmtKey(curKey(),{weekday:'short',month:'short',day:'numeric'})+' (salon time).'});
+}
 function hydrateForm(){
   const list=document.getElementById('bkSvcList');
-  if(list){list.innerHTML=STATE.services.map(s=>'<label class="svc-opt"><input type="checkbox" value="'+s.id+'" onchange="updSvcSummary()"/><span class="svc-nm">'+esc(s.name)+'</span><span class="svc-meta">'+(s.price?'$'+Number(s.price).toLocaleString():'—')+' · '+fmtDur(s.duration_minutes)+'</span></label>').join('');updSvcSummary();}
-  const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');}
+  if(list){list.innerHTML=STATE.services.map(s=>'<label class="svc-opt"><input type="checkbox" value="'+esc(s.id)+'" onchange="updSvcSummary();loadSuggest()"/><span class="svc-nm">'+esc(s.name)+'</span><span class="svc-meta">'+(s.price?'$'+Number(s.price).toLocaleString():'—')+' · '+fmtDur(s.duration_minutes)+'</span></label>').join('');updSvcSummary();}
+  const stf=document.getElementById('bkStaff');if(stf){stf.innerHTML=STATE.staff.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('')+'<option value="">Unassigned / any</option>';}
 }
 function svcSel(){return [...document.querySelectorAll('#bkSvcList input:checked')].map(i=>i.value);}
 function updSvcSummary(){
@@ -505,11 +850,97 @@ function updSvcSummary(){
   const el=document.getElementById('bkSvcSummary');
   if(el)el.textContent=picked.length?(picked.length+' service'+(picked.length>1?'s':'')+' · '+fmtDur(dur)+(price?' · $'+price.toLocaleString():'')):'Pick one or more services';
 }
+async function searchClients(q){
+  const box=document.getElementById('bkClientRes');if(!box)return;
+  q=String(q||'').trim();
+  if(q.length<2){box.innerHTML='';return;}
+  try{
+    const d=await getJSON('/api/calendar-owner?action=clients&q='+encodeURIComponent(q));
+    if(!d.ok){box.innerHTML='';return;}
+    if(document.getElementById('bkClient')?.value.trim()!==q)return;
+    box.innerHTML=(d.clients||[]).map((c,i)=>'<button type="button" data-i="'+i+'"><span class="cl-av">'+esc(initials(c.name))+'</span><span class="cl-nm">'+esc(c.name)+(c.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</span><span class="cl-ph">'+esc(c.phone||c.email||'')+'</span></button>').join('')
+      +'<button type="button" data-new="1" class="cl-new">+ New client “'+esc(q)+'”</button>';
+    box.querySelectorAll('button[data-i]').forEach(btn=>btn.onclick=()=>pickClient(d.clients[+btn.dataset.i]));
+    const nb=box.querySelector('[data-new]');if(nb)nb.onclick=()=>{box.innerHTML='';BK.client=null;renderClientChip();document.getElementById('bkPhone').focus();};
+  }catch(e){box.innerHTML='';}
+}
+function pickClient(c){
+  BK.client=c;
+  document.getElementById('bkClient').value=c.name;
+  document.getElementById('bkClientRes').innerHTML='';
+  if(c.phone)document.getElementById('bkPhone').value=c.phone;
+  renderClientChip();
+}
+function renderClientChip(){
+  const el=document.getElementById('bkClientChip');if(!el)return;
+  el.innerHTML=BK.client?'<span class="cl-chip">✓ Existing client · '+esc(BK.client.name)+(BK.client.phone?' · '+esc(BK.client.phone):'')+'</span>':'';
+}
+let SUGG_SEQ=0;
+async function loadSuggest(){
+  const box=document.getElementById('bkSuggest');if(!box)return;
+  const ids=svcSel();
+  if(!ids.length){box.innerHTML='<span class="sugg-empty">Pick a service to see open times</span>';return;}
+  const date=document.getElementById('bkDate').value||curKey();
+  const staff=document.getElementById('bkStaff').value;
+  const seq=++SUGG_SEQ;
+  box.innerHTML='<span class="sugg-empty">Finding open times…</span>';
+  try{
+    const d=await getJSON('/api/calendar-owner?action=suggest&service_ids='+encodeURIComponent(ids.join(','))+'&date='+date+(staff?'&staff_id='+encodeURIComponent(staff):''));
+    if(seq!==SUGG_SEQ)return;
+    if(!d.ok||!(d.slots||[]).length){box.innerHTML='<span class="sugg-empty">No open times that day — you can still book any time as the owner.</span>';return;}
+    box.innerHTML=d.slots.map((s,i)=>'<button type="button" data-i="'+i+'">'+esc(s.label||s.time)+(staff?'':'<small>'+esc(s.staff_name||'')+'</small>')+'</button>').join('');
+    box.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+      const s=d.slots[+btn.dataset.i];
+      document.getElementById('bkTime').value=s.time;document.getElementById('bkDate').value=s.date;
+      if(!staff&&s.staff_id)document.getElementById('bkStaff').value=s.staff_id;
+      box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn));
+    });
+  }catch(e){if(seq===SUGG_SEQ)box.innerHTML='<span class="sugg-empty">Open times unavailable.</span>';}
+}
+function walkInNow(){
+  const p=salonParts(new Date());
+  document.getElementById('bkDate').value=p.key;
+  document.getElementById('bkTime').value=hhmm(p.min);
+  BK.walkIn=true;
+  saveBooking();
+}
+async function saveBooking(){
+  const st=document.getElementById('mstatus');st.textContent='Saving...';st.className='mstatus';
+  const name=document.getElementById('bkClient').value.trim();
+  const phone=document.getElementById('bkPhone').value.trim();
+  const svcIds=svcSel();
+  const staffId=document.getElementById('bkStaff').value;
+  const date=document.getElementById('bkDate').value||curKey();
+  const time=document.getElementById('bkTime').value||'10:00';
+  const notes=document.getElementById('bkNotes').value.trim();
+  const walkIn=BK.walkIn;BK.walkIn=false;
+  if(!name&&!phone&&!BK.client&&!walkIn){st.textContent='Please enter or pick a client.';st.className='mstatus err';return;}
+  if(!svcIds.length){st.textContent='Pick at least one service.';st.className='mstatus err';return;}
+  // Repeat modes: '1' = none; 'w6' = weekly x6, 'b4' = bi-weekly x4, 'm12' = monthly x12.
+  const rv=String((document.getElementById('bkRepeat')||{}).value||'1');
+  const rm=/^([wbm])(\d+)$/.exec(rv);
+  const repeat=rm?{rule:{w:'weekly',b:'biweekly',m:'monthly'}[rm[1]],count:parseInt(rm[2],10)}:null;
+  const btn=document.getElementById('bkSave');if(btn)btn.disabled=true;
+  try{
+    const d=await ownerPost({action:'book',service_ids:svcIds,staff_id:staffId||null,date,time,
+      client_id:BK.client?.id||null,client_name:BK.client?null:(name||null),client_phone:BK.client?null:(phone||null),
+      notes:notes||null,repeat,walk_in:walkIn});
+    if(!d.ok){if(d.dismissed){st.textContent='';return;}st.textContent=d.error||'Failed';st.className='mstatus err';return;}
+    closeModal();
+    const ruleLabel={weekly:'weekly',biweekly:'bi-weekly',monthly:'monthly'}[(d.series||{}).rule]||'recurring';
+    toast(d.series?('Series created — '+d.series.total+' '+ruleLabel+' appointments'+(d.series.sms_sent?', one confirmation text sent.':'.')):(walkIn?'Walk-in booked.':'Booking confirmed — Lola will text the client.'),'success');
+    if(d.warnings&&d.warnings.length)setTimeout(()=>toast('Heads up: '+[...new Set(d.warnings)].slice(0,3).join(' ')),500);
+    if(WL.lastPrefill){const pid=WL.lastPrefill.id;WL.lastPrefill=null;fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id:pid,status:'offered'})}).catch(()=>{});}
+    if(date!==curKey()){setCursorKey(date);}
+    await load();loadWaitlist();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+  finally{if(btn)btn.disabled=false;}
+}
 /* ── Blocked time (lunch, breaks, days off) ── */
 function openBlock(){
-  const stfOpts=STATE.staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+'</option>').join('');
+  const stfOpts=STATE.staff.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
   openModal('Block time','Mark lunch, a break, or a day off — Lola and the calendar will treat the slot as unavailable.','<div class="fld"><label>Staff</label><select id="bkBlockStaff">'+stfOpts+'</select></div>'
-    +'<div class="fld"><label>Date</label><input id="bkBlockDate" type="date" value="'+isoDay(cursor)+'"/></div>'
+    +'<div class="fld"><label>Date</label><input id="bkBlockDate" type="date" value="'+curKey()+'"/></div>'
     +'<div class="row2"><div class="fld"><label>Start time</label><input id="bkBlockStart" type="time" value="12:00"/></div>'
     +'<div class="fld"><label>End time</label><input id="bkBlockEnd" type="time" value="13:00"/></div></div>'
     +'<div class="fld"><label>Reason</label><input id="bkBlockReason" placeholder="Lunch, training, meeting, day off…"/></div>'
@@ -546,80 +977,54 @@ async function deleteBlock(b){
       toast('Block removed.');await load();
     }catch(e){toast(e.message||'Failed','error');}
   };
-  if(window.LolaUX){window.LolaUX.confirm({title:'Remove this block?',message:label+' — the time becomes bookable again.',confirmLabel:'Remove block',danger:true}).then(ok=>{if(ok)go();});}
-  else if(confirm('Remove '+label+'?'))go();
+  const ok=await confirmDialog({title:'Remove this block?',message:label+' — the time becomes bookable again.',confirmLabel:'Remove block',danger:true});
+  if(ok)go();
 }
-function quickBook(staffId,hour){openModal('New booking','Book '+esc(STATE.staff.find(s=>s.id===staffId)?.name||'')+' at '+String(hour).padStart(2,'0')+':00.','<div class="fld"><label>Client name</label><input id="bkClient" placeholder="Client name"/></div><div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div><div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div><div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div><div class="fld"><label>Time</label><input id="bkTime" type="time" value="'+String(hour).padStart(2,'0')+':00"/></div></div><div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div><div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBooking()">Confirm booking</button></div><div class="mstatus" id="mstatus"></div>');hydrateForm();if(staffId)document.getElementById('bkStaff').value=staffId;}
-async function saveBooking(){
-  const st=document.getElementById('mstatus');st.textContent='Saving...';st.className='mstatus';
-  const name=document.getElementById('bkClient').value.trim();
-  const phone=document.getElementById('bkPhone').value.trim();
-  const svcIds=svcSel();
-  const staffId=document.getElementById('bkStaff').value;
-  const time=document.getElementById('bkTime').value||'10:00';
-  const notes=document.getElementById('bkNotes').value.trim();
-  if(!name&&!phone){st.textContent='Please enter client name or phone.';st.className='mstatus err';return;}
-  if(!svcIds.length){st.textContent='Pick at least one service.';st.className='mstatus err';return;}
-  const starts=new Date(isoDay(cursor)+'T'+time+':00');
-  // Repeat modes: '1' = none; 'w6' = weekly x6, 'b4' = bi-weekly x4, 'm12' = monthly x12.
-  const rv=String((document.getElementById('bkRepeat')||{}).value||'1');
-  const rm=/^([wbm])(\d+)$/.exec(rv);
-  const repeat=rm?{rule:{w:'weekly',b:'biweekly',m:'monthly'}[rm[1]],count:parseInt(rm[2],10)}:null;
-  try{
-    // Single service, no recurrence → the canonical booking path (holds,
-    // waitlist, external mesh write). Multi-service OR a series → the salon
-    // path, which persists per-service line items and generates each
-    // occurrence through the same availability rules (one SMS total).
-    const multi=svcIds.length>1||!!repeat;
-    const url=multi?'/api/salon':'/api/calendar';
-    const payload=multi
-      ?{resource:'appointment',service_ids:svcIds,staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard',repeat}
-      :{action:'book',service_id:svcIds[0],staff_id:staffId,starts_at:starts.toISOString(),client_name:name||null,client_phone:phone||null,notes:notes||null,channel:'dashboard'};
-    const r=await fetch(url,{method:'POST',headers:hdr(),body:JSON.stringify(payload)});
-    const d=await r.json();
-    if(!d.ok){st.textContent=d.conflict?(d.error||'That time is already booked — try another time.'):(d.error||'Failed');st.className='mstatus err';return;}
-    closeModal();
-    const ruleLabel={weekly:'weekly',biweekly:'bi-weekly',monthly:'monthly'}[(d.series||{}).rule]||'recurring';
-    toast(d.series?('Series created — '+d.series.total+' '+ruleLabel+' appointments, one confirmation text sent.'):'Booking confirmed — Lola will text the client.','success');
-    if(WL.lastPrefill){const pid=WL.lastPrefill.id;WL.lastPrefill=null;fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'waitlist_remove',id:pid,status:'offered'})}).catch(()=>{});}
-    await load();loadWaitlist();
-  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
-}
+/* ── Appointment detail ── */
 function findBooking(id){return STATE.bookings.find(b=>b.id===id)||null;}
+function actBtn(label,fn,cls){return '<button class="'+(cls||'ghost')+'" onclick="'+fn+'">'+label+'</button>';}
 function showDetail(idOrBk){
   const b=typeof idOrBk==='string'?findBooking(idOrBk):idOrBk;
   if(!b)return;
   const color=svcColor(b.service_id);
-  const st=(b.status||'confirmed');
+  const st=stClass(b.status);
   const recurTag=/\[recurring series (\d+)\/(\d+)\]/.exec(b.notes||'');
   const seriesRule=b.series_rule||null;
   const seriesWhen=b.series_pos&&b.series_total?{pos:b.series_pos,total:b.series_total}:null;
-  const when=new Date(b.start_time).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  const when=fmtWhen(b.start_time)+' – '+fmtT(b.end_time);
+  const id=esc(b.id);
+  const S=(s)=>"setStatus('"+id+"','"+s+"')";
+  const acts=[];
+  if(st==='pending'){acts.push(actBtn('Confirm',S('confirmed'),'primary'));}
+  if(st==='confirmed'){acts.push(actBtn('Arrived',S('checked_in')));acts.push(actBtn('Start service',S('in_progress')));acts.push(actBtn('No-show',S('no_show')));}
+  if(st==='checked_in'){acts.push(actBtn('Start service',S('in_progress')));acts.push(actBtn('No-show',S('no_show')));}
+  if(st==='in_progress'){acts.push(actBtn('Mark completed',S('completed')));}
+  if(['confirmed','checked_in','in_progress','completed'].includes(st))acts.push('<a class="ghost btn-link" href="pos.html?booking_id='+encodeURIComponent(b.id)+'">Checkout</a>');
+  if(st==='completed'||st==='no_show')acts.push(actBtn('Reopen',S('confirmed')));
+  if(st!=='cancelled'&&st!=='completed'&&st!=='no_show')acts.push(actBtn('Reschedule',"openReschedule('"+id+"')"));
+  if(st!=='cancelled'&&st!=='completed')acts.push(actBtn('Cancel',"seriesCancelChoice('"+id+"')",'danger'));
+  const src=srcInfo(b);
   openModal(st==='cancelled'?'Cancelled appointment':(b.service?.name||'Appointment'),
-    when+' · '+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60)),
+    when+' · '+fmtDur(spanMin(b)),
     '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">'
     +'<div class="detail-av" style="background:linear-gradient(135deg,'+color+',#2a2a2a)">'+esc(initials(clientName(b.client)))+'</div>'
     +'<div><div style="font-size:16px;font-weight:650">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★ VIP</span>':'')+'</div>'
     +'<div style="font-size:12px;color:var(--text3)">'+esc(clientPhone(b.client)||'no phone on file')+'</div></div>'
-    +'<div class="st '+st+'" style="margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:rgba(242,242,244,.14);color:var(--accent)">'+st+'</div></div>'
+    +'<div style="margin-left:auto" class="appt-st">'+stPill(b.status)+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Service</div><div class="dr-v">'+esc(b.service?.name||'—')+(b.service?.price?' · $'+Number(b.service.price).toLocaleString():'')+'</div></div>'
     +'<div id="bkLineItems"></div>'
-    +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'—')+'</div></div>'
-    +'<div class="detail-row"><div class="dr-l">Time</div><div class="dr-v">'+when+'</div></div>'
-    +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(Math.round((new Date(b.end_time)-new Date(b.start_time))/60000)||(b.service?.duration_minutes||60))+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'Unassigned')+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Time</div><div class="dr-v">'+esc(when)+' <span style="color:var(--text3);font-size:11px">('+esc(SALON_TZ.replace(/_/g,' '))+')</span></div></div>'
+    +'<div class="detail-row"><div class="dr-l">Duration</div><div class="dr-v">'+fmtDur(spanMin(b))+'</div></div>'
     +'<div class="detail-row"><div class="dr-l">Revenue</div><div class="dr-v">$'+Number(b.total_amount||b.service?.price||0).toLocaleString()+'</div></div>'
+    +'<div class="detail-row"><div class="dr-l">Source</div><div class="dr-v">'+srcBadge(b)+(b.external_provider&&src.k!=='ext'?' <span style="color:var(--text3);font-size:11px">· synced to '+esc(String(b.external_provider).replace(/_/g,' '))+'</span>':'')+'</div></div>'
+    +(b.deposit_status?'<div class="detail-row"><div class="dr-l">Deposit</div><div class="dr-v">'+depPill(b)+'</div></div>':'')
     +(b.confirmation_code?'<div class="detail-row"><div class="dr-l">Confirmation</div><div class="dr-v" style="font-family:ui-monospace,monospace;letter-spacing:.06em">'+esc(b.confirmation_code)+'</div></div>':'')
     +((seriesWhen||recurTag)?(function(){const pos=seriesWhen?seriesWhen.pos:recurTag[1],total=seriesWhen?seriesWhen.total:recurTag[2];const lbl={weekly:'Every week',biweekly:'Every 2 weeks',monthly:'Monthly'}[seriesRule]||'Weekly';return '<div class="detail-row"><div class="dr-l">Repeats</div><div class="dr-v">'+lbl+' — occurrence '+esc(pos)+' of '+esc(total)+'</div></div>';})():'')
     +(b.notes?'<div class="detail-row"><div class="dr-l">Notes</div><div class="dr-v">'+esc(b.notes)+'</div></div>':'')
-    +'<div class="macts" style="margin-top:18px"><button class="ghost" onclick="closeModal()">Close</button>'
-    +(st==='confirmed'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'in_progress\')">Start service</button>':'')
-    +(st==='in_progress'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'completed\')">Mark completed</button>'
-      +'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'no_show\')">No-show</button>':'')
-    +(st==='completed'||st==='no_show'?'<button class="ghost" onclick="setStatus(\''+b.id+'\',\'confirmed\')">Reopen</button>':'')
-    +(st!=='cancelled'?'<button class="ghost" onclick="openReschedule(\''+b.id+'\')">Reschedule</button>':'')
-    +(st!=='cancelled'?'<button class="danger" onclick="seriesCancelChoice(\''+b.id+'\')">Cancel</button>':'')+'</div>'
+    +'<div class="macts wrap" style="margin-top:18px">'+actBtn('Close','closeModal()')+acts.join('')+'</div>'
     +'<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Activity</div><div id="bkNotesList" style="font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:6px;max-height:140px;overflow:auto"><div style="color:var(--text3)">…</div></div>'
-    +'<div style="display:flex;gap:8px;margin-top:10px"><input id="bkNote" placeholder="Add an internal note…" style="flex:1" onkeydown="if(event.key===\'Enter\')addNote(\''+b.id+'\')"/><button class="ghost" onclick="addNote(\''+b.id+'\')">Add</button></div></div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px"><input id="bkNote" placeholder="Add an internal note…" style="flex:1" onkeydown="if(event.key===\'Enter\')addNote(\''+id+'\')"/><button class="ghost" onclick="addNote(\''+id+'\')">Add</button></div></div>'
     +'<div class="mstatus" id="mstatus"></div>');
   loadNotes(b.id);
   loadLineItems(b.id);
@@ -627,30 +1032,32 @@ function showDetail(idOrBk){
 async function loadLineItems(bookingId){
   const el=document.getElementById('bkLineItems');if(!el)return;
   try{
-    const r=await fetch('/api/calendar?action=booking_services&booking_id='+bookingId,{headers:hdr()});
-    const d=await r.json();
+    const d=await getJSON('/api/calendar?action=booking_services&booking_id='+encodeURIComponent(bookingId));
     if(!d.ok||!d.items?.length){el.innerHTML='';return;}
     el.innerHTML='<div class="detail-row"><div class="dr-l">Services ('+d.items.length+')</div><div class="dr-v">'
-      +d.items.map(i=>esc(i.service?.name||'Service')+' — $'+Number(i.price||0).toLocaleString()+' · '+fmtDur(i.active_duration_1_min||i.service?.duration_minutes||60)).join('<br/>')
+      +d.items.map(i=>esc(i.service?.name||'Service')+' — $'+Number(i.price||0).toLocaleString()+' · '+fmtDur((Number(i.active_duration_1_min||0)+Number(i.processing_duration_min||0)+Number(i.active_duration_2_min||0))||i.service?.duration_minutes||60)).join('<br/>')
       +'</div></div>';
   }catch(e){el.innerHTML='';}
 }
+// Status changes go through /api/calendar-owner → the canonical update
+// (status history, no-show fee void, client texts) — never a bare row write.
+const STATUS_TOAST={confirmed:'Confirmed.',checked_in:'Checked in — client has arrived.',in_progress:'Service started.',completed:'Marked completed.',no_show:'Marked no-show.',cancelled:'Cancelled.'};
 async function setStatus(id,status){
+  const prev=findBooking(id);
   try{
-    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'appointment',action:'update',id,status})});
+    const r=await fetch('/api/calendar-owner',{method:'POST',headers:hdr(),body:JSON.stringify({action:'status',booking_id:id,status})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    toast(status==='completed'?'Marked completed.':(status==='no_show'?'Marked no-show.':(status==='in_progress'?'Service started.':'Reopened.')),'success');
+    toast(prev&&(prev.status==='completed'||prev.status==='no_show')&&status==='confirmed'?'Reopened.':(STATUS_TOAST[status]||'Updated.'),'success');
     await load();showDetail(id);
-  }catch(e){toast(e.message||'Could not update status.','err');}
+  }catch(e){toast(e.message||'Could not update status.','error');}
 }
 async function loadNotes(bookingId){
   const el=document.getElementById('bkNotesList');if(!el)return;
   try{
-    const r=await fetch('/api/calendar?action=booking_notes&booking_id='+bookingId,{headers:hdr()});
-    const d=await r.json();
+    const d=await getJSON('/api/calendar?action=booking_notes&booking_id='+encodeURIComponent(bookingId));
     if(!d.ok)throw new Error(d.error||'Failed');
-    el.innerHTML=d.notes.length?d.notes.map(n=>'<div style="border-left:2px solid var(--line);padding-left:10px"><div style="color:var(--text3);font-size:10px">'+esc(n.author||'Staff')+' · '+new Date(n.created_at).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</div><div>'+esc(n.content)+'</div></div>').join(''):'<div style="color:var(--text3)">No notes yet.</div>';
+    el.innerHTML=d.notes.length?d.notes.map(n=>'<div style="border-left:2px solid var(--line);padding-left:10px"><div style="color:var(--text3);font-size:10px">'+esc(n.author||'Staff')+' · '+esc(fmtWhen(n.created_at))+'</div><div>'+esc(n.content)+'</div></div>').join(''):'<div style="color:var(--text3)">No notes yet.</div>';
   }catch(e){el.innerHTML='<div style="color:var(--text3)">Notes unavailable.</div>';}
 }
 async function addNote(bookingId){
@@ -662,32 +1069,37 @@ async function addNote(bookingId){
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
     loadNotes(bookingId);
-  }catch(e){toast(e.message||'Could not add note.','err');}
+  }catch(e){toast(e.message||'Could not add note.','error');}
 }
+/* ── Reschedule (salon time; status kept as-is; series: this or this + following) ── */
 function openReschedule(id){
   const b=findBooking(id);if(!b)return;
-  const color=svcColor(b.service_id);
-  openModal('Reschedule','Move '+esc(clientName(b.client))+' to a new time. Lola checks availability before saving.',
-    '<div class="fld"><label>New date</label><input id="rsDate" type="date" value="'+isoDay(new Date(b.start_time))+'"/></div>'
-    +'<div class="fld"><label>New time</label><input id="rsTime" type="time" value="'+new Date(b.start_time).toTimeString().slice(0,5)+'"/></div>'
-    +'<div class="fld"><label>Staff</label><select id="rsStaff"></select></div>'
-    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveReschedule(\''+id+'\')">Move appointment</button></div>'
+  const p=salonParts(b.start_time);
+  openModal('Reschedule','Move '+clientName(b.client)+' to a new time (salon time). The appointment keeps its status.',
+    '<div class="row2"><div class="fld"><label>New date</label><input id="rsDate" type="date" value="'+p.key+'"/></div>'
+    +'<div class="fld"><label>New time</label><input id="rsTime" type="time" step="300" value="'+hhmm(p.min)+'"/></div></div>'
+    +'<div class="row2"><div class="fld"><label>Staff</label><select id="rsStaff"></select></div>'
+    +'<div class="fld"><label>Length</label><input id="rsDur" type="number" min="5" step="5" value="'+spanMin(b)+'"/></div></div>'
+    +(b.series_id?'<div class="fld"><label>Apply to</label><select id="rsScope"><option value="this">This appointment only</option><option value="following">This and following in the series</option></select></div>':'')
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveReschedule(\''+esc(id)+'\')">Move appointment</button></div>'
     +'<div class="mstatus" id="mstatus"></div>');
   const sel=document.getElementById('rsStaff');
-  sel.innerHTML=STATE.staff.map(s=>'<option value="'+s.id+'"'+(s.id===b.staff_id?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+  sel.innerHTML=STATE.staff.map(s=>'<option value="'+esc(s.id)+'"'+(s.id===b.staff_id?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'<option value=""'+(b.staff_id?'':' selected')+'>Unassigned</option>';
 }
 async function saveReschedule(id){
   const st=document.getElementById('mstatus');st.textContent='Moving...';st.className='mstatus';
   const date=document.getElementById('rsDate').value,time=document.getElementById('rsTime').value;
   const staffId=document.getElementById('rsStaff').value;
+  const dur=parseInt(document.getElementById('rsDur').value,10);
+  const scope=(document.getElementById('rsScope')||{}).value||'this';
   if(!date||!time){st.textContent='Pick a date and time.';st.className='mstatus err';return;}
-  const starts=new Date(date+'T'+time+':00');
-  try{
-    const r=await fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'reschedule',booking_id:id,starts_at:starts.toISOString(),staff_id:staffId,channel:'dashboard'})});
-    const d=await r.json();
-    if(!d.ok){st.textContent=d.conflict?'That time just filled — pick another.':(d.error||'Failed');st.className='mstatus err';return;}
-    closeModal();toast('Appointment moved.');await load();
-  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+  const d=await ownerPost({action:'move',booking_id:id,date,time,staff_id:staffId||null,duration_min:dur>0?dur:undefined,series_scope:scope});
+  if(!d.ok){if(d.dismissed){st.textContent='';return;}st.textContent=d.error||'Failed';st.className='mstatus err';return;}
+  closeModal();
+  toast(d.series_moved?('Moved — '+(d.series_moved+1)+' appointments in the series.'):'Appointment moved.');
+  if(d.warnings&&d.warnings.length)setTimeout(()=>toast('Heads up: '+d.warnings.join(' ')),400);
+  if(date!==curKey()&&VIEW!=='week')setCursorKey(date);
+  await load();
 }
 function cancelBooking(id){
   const b=findBooking(id);if(!b)return;
@@ -701,15 +1113,14 @@ function cancelBooking(id){
           toast(d.waitlist_matches.count+' client'+(d.waitlist_matches.count===1?' is':'s are')+' on the waitlist for this service — offer the freed slot.','success');
         }else{toast('Booking cancelled — client notified.','success');}
         load();loadWaitlist();
-      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}else toast(e.message,'error');});
   };
-  if(window.LolaUX){window.LolaUX.confirm({title:'Cancel this booking?',message:esc(clientName(b.client))+' · '+esc(b.service?.name||'Appointment')+' — this frees the slot and texts the client.',confirmLabel:'Cancel booking',danger:true}).then(ok=>{if(ok)doCancel();});}
-  else if(confirm('Cancel this booking?'))doCancel();
+  confirmDialog({title:'Cancel this booking?',message:clientName(b.client)+' · '+(b.service?.name||'Appointment')+' — this frees the slot and texts the client.',confirmLabel:'Cancel booking',cancelLabel:'Keep it',danger:true}).then(ok=>{if(ok)doCancel();});
 }
 // ── Series scope handling ──────────────────────────────────────────────
-// A series occurrence (series_id present) offers this / this-and-following /
-// all at cancel time; a plain booking cancels directly. 'this' on a series
-// cancels only that occurrence — matching the API contract.
+// A series occurrence offers this / this-and-following / all; backing out of
+// the dialog (Keep / backdrop / Esc → false) does NOTHING. A plain booking
+// cancels directly after its own confirmation.
 function seriesCancelChoice(id){
   const b=findBooking(id);if(!b)return;
   if(!b.series_id){cancelBooking(id);return;}
@@ -719,42 +1130,47 @@ function seriesCancelChoice(id){
       .then(r=>r.json()).then(d=>{
         if(!d.ok)throw new Error(d.error||'Failed');
         closeModal();
-        toast(scope==='this'?('Occurrence cancelled — the rest of the series stands.'):(d.cancelled_count+' occurrences cancelled ('+scope+').'),'success');
+        toast(scope==='this'?('Occurrence cancelled — the rest of the series stands.'):((d.cancelled_count||'All')+' occurrences cancelled ('+(scope==='all'?'entire series':'this + following')+').'),'success');
         load();loadWaitlist();
-      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+      }).catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}else toast(e.message,'error');});
   };
   if(window.LolaUX){
-    window.LolaUX.confirm({title:'Cancel series',message:'This appointment is part of a recurring series. Cancel just this one, this one and every later one, or the whole series?',confirmLabel:'This occurrence only',danger:true,extraButtons:[
+    window.LolaUX.confirm({title:'Cancel series',message:'This appointment is part of a recurring series. Cancel just this one, this one and every later one, or the whole series?',confirmLabel:'This occurrence only',cancelLabel:'Keep',danger:true,extraButtons:[
       {label:'This + following',value:'following',danger:true},
       {label:'Entire series',value:'all',danger:true}
     ]}).then((scope)=>{
-      if(scope===true||scope===null)return cancelOne(id);
-      if(scope==='following'||scope==='all')doCancel(scope);else cancelOne(id);
+      if(scope===false||scope==null)return; // backed out — nothing is cancelled
+      if(scope==='following'||scope==='all')return doCancel(scope);
+      if(scope===true)return doCancel('this');
     });
   }else{
     const v=prompt('Cancel scope — type: this / following / all','this');
     if(!v)return; const sc=v.trim().toLowerCase();
-    if(sc==='following'||sc==='all')doCancel(sc);else cancelOne(id);
-  }
-  function cancelOne(sid){
-    fetch('/api/calendar',{method:'POST',headers:hdr(),body:JSON.stringify({action:'cancel',booking_id:sid,series_scope:'this',channel:'dashboard',reason:'client_request'})})
-      .then(r=>r.json()).then(d=>{if(!d.ok)throw new Error(d.error||'Failed');closeModal();toast('Occurrence cancelled — the rest of the series stands.','success');load();loadWaitlist();})
-      .catch(e=>{if(st){st.textContent=e.message;st.className='mstatus err';}});
+    if(sc==='following'||sc==='all'||sc==='this')doCancel(sc);
   }
 }
 
 function nav(dir){
-  if(VIEW==='week'){const d=new Date(cursor);d.setDate(d.getDate()+dir*7);cursor=d;}
-  else{cursor.setDate(cursor.getDate()+dir);}
+  setCursorKey(addDaysKey(curKey(),VIEW==='week'?dir*7:dir));
   load();
 }
-function goToday(){cursor=new Date();cursor.setHours(0,0,0,0);load();}
+function goToday(){setCursorKey(todayKey());load();}
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape')closeModal();
-  if(e.key==='ArrowRight'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(1);}
-  if(e.key==='ArrowLeft'&&!e.metaKey&&!e.ctrlKey&&!document.querySelector('.mw.open')){nav(-1);}
+  if(e.key==='Escape'&&!document.querySelector('.lola-dialog-layer'))closeModal();
+  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||'');
+  if(typing||document.querySelector('.mw.open')||e.metaKey||e.ctrlKey)return;
+  if(e.key==='ArrowRight')nav(1);
+  if(e.key==='ArrowLeft')nav(-1);
 });
-(async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();loadWaitlist();})();
+(MQ.addEventListener?MQ.addEventListener.bind(MQ):(t,f)=>MQ.addListener&&MQ.addListener(f))('change',()=>{if(VIEW==='day')render();});
+(async()=>{
+  try{await window.LolaAuth.ready;}catch(e){return;}
+  // The salon's "today", not the browser's: an owner in LA at 10 PM is already
+  // looking at tomorrow in New York.
+  const ctx=await loadContext(null,1);
+  setCursorKey(ctx&&ctx.date?ctx.date:todayKey());
+  load();loadWaitlist();
+})();
 </script>
 <script src="/lola-stage.js" defer></script>
 <script src="/lola-calendar-bridge.js" defer></script>

@@ -21,6 +21,28 @@ const keyBase = () => String(process.env.SUPABASE_SERVICE_KEY || process.env.TEL
 
 export function hookKey(tenantId) { return crypto.createHmac('sha256', keyBase()).update(String(tenantId)).digest('hex').slice(0, 32); }
 export function inboundUrl(tenantId) { return `${appUrl()}/api/hooks/booking?t=${encodeURIComponent(tenantId)}&k=${hookKey(tenantId)}`; }
+/** Where the salon's Zap posts back the time block it created (same per-salon key). */
+export function callbackUrl(tenantId, bookingId) { return `${appUrl()}/api/zap-callback?t=${encodeURIComponent(tenantId)}&k=${hookKey(tenantId)}${bookingId ? `&b=${encodeURIComponent(bookingId)}` : ''}`; }
+
+// The external ids Zapier can use: the stylist's id in the salon's system
+// (Boulevard staff id, mapped in provider_mappings) and the time block Lola's
+// Zap created for this booking (posted back to /api/zap-callback).
+const ZAP_PROVIDERS = ['zapier', 'boulevard'];
+export async function externalStaffId(c, tenantId, staffId) {
+  if (!staffId) return null;
+  try {
+    const { data } = await c.from('provider_mappings').select('provider,external_id').eq('tenant_id', tenantId).eq('entity_type', 'staff').eq('local_id', staffId).in('provider', ZAP_PROVIDERS);
+    const rows = data || [];
+    return (rows.find((r) => r.provider === 'boulevard') || rows.find((r) => r.provider === 'zapier'))?.external_id || null;
+  } catch (_) { return null; }
+}
+export async function externalBookingId(c, tenantId, booking) {
+  try {
+    const { data } = await c.from('provider_mappings').select('external_id').eq('tenant_id', tenantId).eq('provider', 'zapier').eq('entity_type', 'booking').eq('local_id', booking.id).maybeSingle();
+    if (data?.external_id) return String(data.external_id);
+  } catch (_) {}
+  return booking.external_provider === 'zapier' && booking.external_id ? String(booking.external_id) : null;
+}
 export function checkKey(tenantId, k) {
   const want = hookKey(tenantId), got = String(k || '');
   return got.length === want.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
@@ -55,6 +77,7 @@ export async function bookingEvent(c, tenant, bookingId, event = 'booking.create
     c.from('booking_settings').select('timezone').eq('tenant_id', tenant.id).maybeSingle().then((r) => r.data).catch(() => null),
   ]);
   const tz = bs?.timezone || 'America/New_York';
+  const [extStaff, extId] = await Promise.all([externalStaffId(c, tenant.id, b.staff_id), externalBookingId(c, tenant.id, b)]);
   const name = (cl?.name || [cl?.first_name, cl?.last_name].filter(Boolean).join(' ') || '').trim();
   const local = (iso) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso)).replace(',', ''); } catch (_) { return iso; } };
   return {
@@ -64,6 +87,10 @@ export async function bookingEvent(c, tenant, bookingId, event = 'booking.create
     duration_min: Math.round((new Date(b.end_time || b.start_time) - new Date(b.start_time)) / 60e3),
     service: svc?.name || '', stylist_name: st?.name || '', client_name: name, client_phone: cl?.phone && !String(cl.phone).includes(':') ? cl.phone : '', client_email: cl?.email || '',
     title: `Lola: ${name || 'Client'}${svc?.name ? ' — ' + svc.name : ''}`, confirmation_code: b.confirmation_code || '', status: b.status || '',
+    // Ids for the Zap: who in THEIR system (Boulevard staff id) and which time
+    // block to delete/move (the id the Zap posted back after Create Timeblock).
+    staff_id: b.staff_id || '', external_staff_id: extStaff || '', external_id: extId || '',
+    callback_url: callbackUrl(tenant.id, b.id),
     ...extra,
   };
 }
@@ -97,6 +124,26 @@ function toIso(v, tz) {
   const t = Date.parse(s); return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
+const norm = (v) => String(v || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** 'local:<id>' for a single unambiguous stylist, else null. */
+export async function matchStaffByName(c, tenantId, staffName) {
+  try {
+    const { data } = await c.from('staff').select('id,name').eq('tenant_id', tenantId);
+    const list = (data || []).filter((s) => s.is_active !== false);
+    const n = norm(staffName);
+    if (!n) return null;
+    const full = list.filter((s) => norm(s.name) === n);
+    if (full.length === 1) return 'local:' + full[0].id;
+    if (full.length > 1) return null;
+    const first = n.split(' ')[0];
+    const lastInit = n.split(' ')[1]?.[0] || null;
+    let byFirst = list.filter((s) => norm(s.name).split(' ')[0] === first);
+    // A last name/initial must agree when we know one ("Ana R" ≠ "Ana Lopez").
+    if (lastInit) byFirst = byFirst.filter((s) => { const l = norm(s.name).split(' ')[1] || ''; return !l || l[0] === lastInit; });
+    return byFirst.length === 1 ? 'local:' + byFirst[0].id : null;
+  } catch (_) { return null; }
+}
+
 /** One event from their system → LolaDesk's local busy time. */
 export async function inboundEvent(c, tenant, body, { tz = 'America/New_York' } = {}) {
   const b = typeof body === 'string' ? (() => { try { return JSON.parse(body); } catch (_) { return {}; } })() : (body || {});
@@ -116,15 +163,19 @@ export async function inboundEvent(c, tenant, body, { tz = 'America/New_York' } 
   if (!end) end = new Date(Date.parse(start) + (dur > 0 ? dur : 60) * 60e3).toISOString();
   if (Date.parse(end) <= Date.parse(start)) return { ok: false, error: 'end is before start' };
   const staffName = String(pick(b, ['staff', 'staff_name', 'stylist', 'provider', 'staff.name', 'staffName']) || '').trim();
+  const extStaffId = String(pick(b, ['staff_id', 'staffId', 'staff.id', 'provider_id']) || '').trim();
   let staff = null;
-  if (staffName) {
+  // 1) Their stylist id, mapped to ours (provider_mappings) — exact.
+  if (extStaffId) {
     try {
-      const { data } = await c.from('staff').select('id,name').eq('tenant_id', tenant.id);
-      const n = staffName.toLowerCase();
-      const hit = (data || []).find((s) => String(s.name || '').toLowerCase() === n) || (data || []).find((s) => String(s.name || '').toLowerCase().split(' ')[0] === n.split(' ')[0]);
-      if (hit) staff = 'local:' + hit.id;
+      const { data } = await c.from('provider_mappings').select('local_id').eq('tenant_id', tenant.id).eq('entity_type', 'staff').eq('external_id', extStaffId).in('provider', ZAP_PROVIDERS);
+      const ids = [...new Set((data || []).map((r) => r.local_id).filter(Boolean))];
+      if (ids.length === 1) staff = 'local:' + ids[0];
     } catch (_) {}
   }
+  // 2) By name — but ONLY a unique match. Two "Ana"s → unmapped: the
+  //    appointment takes a chair instead of blocking the wrong stylist.
+  if (!staff && staffName) staff = await matchStaffByName(c, tenant.id, staffName);
   const row = {
     tenant_id: tenant.id, provider: 'zapier', external_booking_id: id, starts_at: start, ends_at: end,
     duration_min: Math.round((Date.parse(end) - Date.parse(start)) / 60e3), staff_id: staff,

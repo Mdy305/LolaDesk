@@ -17,10 +17,14 @@ import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
 import { confirmText } from './lib/lola-persona.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
-import { createCanonicalBooking, makeConfirmationCode, sendConfirmationSMS } from './lib/booking-repository.js';
+import { createCanonicalBooking, sendConfirmationSMS, updateCanonicalBooking } from './lib/booking-repository.js';
 import { offerRebooking } from './lib/rebooking.js';
 import { randomUUID } from 'node:crypto';
-import { whenForTenant } from './lib/salon-time.js';
+import { whenForTenant, salonTz } from './lib/salon-time.js';
+import { zonedLocalToUtc, localDateKey, dayBoundsUtc } from './lib/timezone.js';
+import { requestDeposit } from './lib/deposits.js';
+import { writeThrough } from './lib/booking-outbox.js';
+import { stylistClashes, serviceMinutes as serviceMin } from './calendar-owner.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -41,19 +45,30 @@ async function confirmSMS(c,tenantId,bookingId){
   }catch(e){}
 }
 
-// n-th (0-based) occurrence start for a series cadence. UTC-day math keeps the
-// same wall time across DST-adjacent weeks; monthly clamps to the month's last
-// day (Jan 31 -> Feb 28) instead of spilling into March.
-function nextOccurrence(startISO,rule,n){
+const sameInstant=(a,b)=>new Date(a).getTime()===new Date(b).getTime();
+// n-th (0-based) occurrence start for a series cadence: UTC-day math; monthly
+// clamps to the month's last day (Jan 31 -> Feb 28) instead of spilling into March.
+function utcOccurrence(startISO,rule,n){
   const d=new Date(startISO);
-  if(rule==='biweekly') d.setUTCDate(d.getUTCDate()+14*n);
-  else if(rule==='monthly'){
-    const day=d.getUTCDate();
-    d.setUTCMonth(d.getUTCMonth()+n);
-    if(d.getUTCDate()!==day) d.setUTCDate(0);
+  if(rule==='biweekly')d.setUTCDate(d.getUTCDate()+14*n);
+  else if(rule==='monthly'){const day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+n);const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,last));}
+  else d.setUTCDate(d.getUTCDate()+7*n);
+  return d.toISOString();
+}
+// Blocked time (lunch, breaks, days off) for one stylist in [start,end), keyed
+// on the SALON-local date with the block's local times converted to instants —
+// the same convention as the availability engine (was UTC hours before).
+async function blockedHit(c,T,staffId,startIso,endIso,tz){
+  const s=new Date(startIso).getTime(),e=new Date(endIso).getTime();
+  const keys=[...new Set([localDateKey(startIso,tz),localDateKey(new Date(e-1),tz)])];
+  for(const key of keys){
+    const {data:bk}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',key);
+    const day=dayBoundsUtc(key,tz);
+    if((bk||[]).some(b=>(!b.staff_id||b.staff_id===staffId)&&
+      overlaps(s,e,new Date(b.start_time?zonedLocalToUtc(key,b.start_time,tz):day.start).getTime(),
+        new Date(b.end_time?zonedLocalToUtc(key,b.end_time,tz):day.end).getTime())))return key;
   }
-  else d.setUTCDate(d.getUTCDate()+7*n); // weekly default
-  return d;
+  return null;
 }
 
 export default async function handler(req,res){
@@ -170,20 +185,25 @@ export default async function handler(req,res){
         if(!date)return res.status(400).json({ok:false,error:'date required'});
         const {data:svc}=serviceId?await c.from('services').select('duration_minutes').eq('id',serviceId).maybeSingle():{data:null};
         const dur=Number(svc?.duration_minutes||60);
-        let bq=c.from('bookings').select('start_time,end_time,staff_id').eq('tenant_id',T)
-          .gte('start_time',date+'T00:00:00').lte('start_time',date+'T23:59:59').neq('status','cancelled');
+        // Salon-local day and salon-local block times (Vercel runs in UTC — reading
+        // hours off a Date here used to shift every window by the UTC offset).
+        const tz=await salonTz(T);
+        const day=dayBoundsUtc(date,tz);
+        let bq=c.from('bookings').select('start_time,end_time,staff_id,status').eq('tenant_id',T)
+          .lt('start_time',day.end).gt('end_time',day.start).neq('status','cancelled');
         if(staffId)bq=bq.eq('staff_id',staffId);
         const [{data:busy},{data:blocks}]=await Promise.all([bq,
-          c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',date)]);
-        const bR=(busy||[]).map(b=>({s:toMin(new Date(b.start_time).toTimeString().slice(0,5)),e:toMin(new Date(b.end_time).toTimeString().slice(0,5))}));
+          c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',day.key)]);
+        const ms=v=>new Date(v).getTime();
+        const bR=(busy||[]).map(b=>({s:ms(b.start_time),e:ms(b.end_time)}));
         const kR=(blocks||[]).filter(b=>!staffId||!b.staff_id||b.staff_id===staffId)
-          .map(b=>({s:b.start_time?toMin(b.start_time):DAY_START*60,e:b.end_time?toMin(b.end_time):DAY_END*60}));
+          .map(b=>({s:ms(b.start_time?zonedLocalToUtc(day.key,b.start_time,tz):day.start),e:ms(b.end_time?zonedLocalToUtc(day.key,b.end_time,tz):day.end)}));
         const slots=[];
         for(let m=DAY_START*60;m+dur<=DAY_END*60;m+=30){
-          if(!bR.some(r=>overlaps(m,m+dur,r.s,r.e))&&!kR.some(r=>overlaps(m,m+dur,r.s,r.e))){
-            const hh=String(Math.floor(m/60)).padStart(2,'0'),mm=String(m%60).padStart(2,'0');
-            slots.push({time:hh+':'+mm,starts_at:new Date(date+'T'+hh+':'+mm+':00').toISOString()});
-          }
+          const hh=String(Math.floor(m/60)).padStart(2,'0'),mm=String(m%60).padStart(2,'0');
+          const at=zonedLocalToUtc(day.key,hh+':'+mm+':00',tz),s0=ms(at),e0=s0+dur*60000;
+          if(!bR.some(r=>overlaps(s0,e0,r.s,r.e))&&!kR.some(r=>overlaps(s0,e0,r.s,r.e)))
+            slots.push({time:hh+':'+mm,starts_at:at});
           if(slots.length>=12)break;
         }
         return res.json({ok:true,slots,duration:dur});
@@ -316,6 +336,8 @@ export default async function handler(req,res){
       }
       if(action==='update'||action==='reschedule'){
         const patch={updated_at:new Date().toISOString()};
+        if(body.status&&!['pending','confirmed','checked_in','in_progress','completed','no_show','cancelled'].includes(String(body.status)))
+          return res.status(400).json({ok:false,error:'Invalid status: '+body.status});
         if(body.status)patch.status=body.status;
         if(body.staff_id)patch.staff_id=body.staff_id;
         if(body.notes!=null)patch.notes=body.notes;
@@ -344,6 +366,7 @@ export default async function handler(req,res){
               .gt('start_time',ex.start_time).order('start_time');
             if(laterErr)return res.status(500).json({ok:false,error:'Could not read the series: '+(laterErr.message||JSON.stringify(laterErr))});
             const moving=new Set([body.id,...(later||[]).map(o=>o.id)]);
+            const tz=await salonTz(T);
             const checkOcc=async(occ)=>{
               if(!occ.staff_id)return null;
               const st=new Date(occ.start_time),en=new Date(occ.end_time);
@@ -351,11 +374,8 @@ export default async function handler(req,res){
                 .neq('status','cancelled').lt('start_time',en.toISOString()).gt('end_time',st.toISOString());
               if(cf&&cf.some(x=>!moving.has(x.id)))
                 return 'Occurrence '+st.toISOString().slice(0,10)+' is already booked — the first '+occ.moved+' were moved.';
-              const ds=st.toISOString().slice(0,10);
-              const {data:bk}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds);
-              const rs=st.getHours()*60+st.getMinutes(),re=en.getHours()*60+en.getMinutes();
-              if((bk||[]).some(b=>(!b.staff_id||b.staff_id===occ.staff_id)&&
-                overlaps(rs,re,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60)))
+              const ds=await blockedHit(c,T,occ.staff_id,st.toISOString(),en.toISOString(),tz);
+              if(ds)
                 return 'Occurrence '+ds+' falls in blocked time — the first '+occ.moved+' were moved.';
               return null;
             };
@@ -384,8 +404,11 @@ export default async function handler(req,res){
             return res.json({ok:true,appointment:movedTarget,series_moved:moved});
           }
         }
-        const {data,error}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
-        if(error)throw error;
+        // Status changes go through the canonical update (status history, fee
+        // void on no-show/cancel, cancellation text) — never a bare row write.
+        const {updated_at:_u,...canon}=patch;
+        const data=await updateCanonicalBooking(T,body.id,canon,{source:'dashboard',reason:body.status?'owner_'+body.status:'owner_edit'});
+        if(!data)return res.status(404).json({ok:false,error:'Booking not found'});
         // Auto-rebooking loop: a visit reaching `completed` fires ONE offer
         // for the same service at the service's refresh interval (Loop #3).
         // Fire-and-forget — a failed offer never fails the completion.
@@ -398,101 +421,89 @@ export default async function handler(req,res){
         }
         return res.json({ok:true,appointment:data});
       }
-      // create
+      // create — every occurrence (and every service segment of a multi-service
+      // visit) is validated by the availability engine in the SALON's timezone
+      // (staff hours, lunch/blocked time, time off, holds, the salon platform's
+      // own appointments). Nothing is written until ALL occurrences fit. The
+      // first occurrence confirms by SMS and requests the deposit; every
+      // occurrence is written through to the salon's external platform.
+      // (Owner overrides — walk-ins, off-grid, past — live in api/calendar-owner.js.)
       const ids=body.service_ids?.length?body.service_ids:[body.service_id];
       if(!ids[0])return res.status(400).json({ok:false,error:'service required'});
+      const tz=await salonTz(T);
+      const {data:svcRows}=await c.from('services').select('*').eq('tenant_id',T).in('id',ids);
+      const seq=ids.map(id=>(svcRows||[]).find(x=>x.id===id)).filter(Boolean);
+      if(!seq.length)return res.status(400).json({ok:false,error:'service not found'});
+      const price=seq.reduce((s,x)=>s+Number(x.price||0),0);
+      const startDt=body.starts_at?new Date(body.starts_at)
+        :new Date(zonedLocalToUtc(String(body.date||localDateKey(new Date(),tz)),String(body.start_time||'09:00').slice(0,5)+':00',tz));
+      if(Number.isNaN(startDt.getTime()))return res.status(400).json({ok:false,error:'invalid start time'});
+      const rule=String(body.repeat?.rule||'').toLowerCase();
+      const count=['weekly','biweekly','monthly'].includes(rule)?Math.min(52,Math.max(1,parseInt(body.repeat?.count,10)||1)):1;
+      const occStarts=[];
+      // Legacy contract: occurrences are exact UTC-day multiples of the first
+      // (api/calendar-owner.js — what the owner calendar uses — keeps salon wall time).
+      for(let n=0;n<count;n++)occStarts.push(n===0?startDt.toISOString():utcOccurrence(startDt.toISOString(),rule,n));
+      // Owner rules (same as api/calendar-owner.js): walk-ins, past, off-grid and
+      // off-schedule times are the owner's call. Only a real same-stylist overlap
+      // (LolaDesk or the salon platform) or a blocked window in SALON time refuses
+      // — and `force` books it anyway. Conflicts answer 200 {ok:false, conflict}.
+      const staffId=body.staff_id||null;
+      const force=body.force===true;
+      const lenMs=seq.reduce((t,x)=>t+serviceMin(x),0)*60000;
+      const occ=[];
+      for(const [i,st] of occStarts.entries()){
+        const en=new Date(new Date(st).getTime()+lenMs).toISOString();
+        if(staffId&&!force){
+          const ds=localDateKey(st,tz);
+          const where=count>1?'Occurrence '+(i+1)+' ('+ds+')':'That time';
+          const clash=await stylistClashes(c,T,staffId,st,en);
+          if(clash.length)return res.json({ok:false,conflict:true,needs_confirmation:true,created_count:0,failed_at_occurrence:i+1,
+            error:where+' is already booked for this stylist'+(clash[0].kind==='external'?' on '+(clash[0].provider||'the salon platform'):'')+' — nothing was booked.'});
+          const blk=await blockedHit(c,T,staffId,st,en,tz);
+          if(blk)return res.json({ok:false,conflict:true,needs_confirmation:true,created_count:0,failed_at_occurrence:i+1,
+            error:where+' falls in blocked time — staff unavailable. Nothing was booked.'});
+        }
+        occ.push({start:st,end:en});
+      }
       let clientId=body.client_id||null;
+      if(clientId){const {data:own}=await c.from('clients').select('id').eq('id',clientId).eq('tenant_id',T).maybeSingle();if(!own)clientId=null;}
       if(!clientId&&(body.client_phone||body.client_name)){
         const cl=await upsertClient(T,{phone:body.client_phone,name:body.client_name});
         clientId=cl?.id||null;
       }
-      const {data:svcs}=await c.from('services').select('id,duration_minutes,price').in('id',ids);
-      const dur=(svcs||[]).reduce((s,x)=>s+Number(x.duration_minutes||60),0)||60;
-      const price=(svcs||[]).reduce((s,x)=>s+Number(x.price||0),0);
-      const startDt=body.starts_at?new Date(body.starts_at):new Date(body.date+'T'+(body.start_time||'09:00')+':00');
-      const endDt=new Date(startDt.getTime()+dur*60000);
-      if(body.staff_id){
-        const {data:cf}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',body.staff_id)
-          .neq('status','cancelled').lt('start_time',endDt.toISOString()).gt('end_time',startDt.toISOString());
-        if(cf?.length)return res.json({ok:false,conflict:true,error:'That time is already booked'});
-        const ds=startDt.toISOString().slice(0,10);
-        const {data:bk}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds);
-        const rs=startDt.getHours()*60+startDt.getMinutes();
-        if((bk||[]).some(b=>(!b.staff_id||b.staff_id===body.staff_id)&&
-          overlaps(rs,rs+dur,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60)))
-          return res.json({ok:false,conflict:true,error:'Staff unavailable at that time'});
-      }
-      const {data:booking,error}=await c.from('bookings').insert({
-        tenant_id:T,client_id:clientId,service_id:ids[0],staff_id:body.staff_id||null,
-        start_time:startDt.toISOString(),end_time:endDt.toISOString(),
-        status:'confirmed',total_amount:price,notes:body.notes||null,
-        source:body.channel||body.source||'dashboard',confirmation_code:makeConfirmationCode()}).select().single();
-      if(error)throw error;
-      for(const [i,sid] of ids.entries()){
-        const sv=(svcs||[]).find(x=>x.id===sid);
-        if(!sv)continue;
-        const {error:svcErr}=await c.from('booking_services').insert({
-          booking_id:booking.id,service_id:sid,staff_id:body.staff_id||null,
-          sequence_no:i+1,active_duration_1_min:Number(sv.duration_minutes||60),
-          price:Number(sv.price||0)});
-        if(svcErr)throw new Error('booking_services write failed (sequence '+
-          (i+1)+'): '+(svcErr.message||JSON.stringify(svcErr)));
-      }
-      // Awaited so the response reflects the confirmation; confirmSMS never throws.
-      await confirmSMS(c,T,booking.id);
-
-      // ── Recurring series (OpenSalon parity): repeat_weeks 2..12 clones the
-      // appointment weekly through the SAME booking path, so availability,
-      // holds, buffers, and staff schedules apply per occurrence. Only the
-      // FIRST occurrence confirms by SMS — a standing series must not spam
-      // the client with N Telnyx messages. Each occurrence is an ordinary
-      // booking row, so per-instance edit/cancel stays natural.
-      // body.repeat = { rule: 'weekly'|'biweekly'|'monthly', count: 2..52 }.
-      // Every occurrence goes through the SAME booking path (staff overlap,
-      // blocked slots, booking_services, status history) and carries real
-      // series identity (series_id/pos/total/rule — 20260902_booking_series.sql),
-      // so the dashboard and the API can act on this / this-and-following /
-      // ALL occurrences. Only the FIRST occurrence confirms by SMS — a
-      // standing series must not spam the client with N Telnyx messages.
-      const rule=String(body.repeat?.rule||'').toLowerCase();
-      const count=Math.min(52,Math.max(0,parseInt(body.repeat?.count,10)||0));
-      if(count>1&&['weekly','biweekly','monthly'].includes(rule)){
-        const seriesId=randomUUID();
-        await c.from('bookings').update({
-          series_id:seriesId,series_pos:1,series_total:count,series_rule:rule,
-          notes:(booking.notes||'')+' [recurring series 1/'+count+']'})
-          .eq('id',booking.id).eq('tenant_id',T);
-        for(let w=2;w<=count;w++){
-          const occStart=nextOccurrence(startDt.toISOString(),rule,w-1);
-          const occEnd=new Date(occStart.getTime()+(endDt.getTime()-startDt.getTime()));
-          // availability check for this occurrence: staff bookings + blocked slots
-          if(body.staff_id){
-            const {data:cf2}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',body.staff_id)
-              .neq('status','cancelled').lt('start_time',occEnd.toISOString()).gt('end_time',occStart.toISOString());
-            if(cf2?.length){
-              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_occurrence:w,series_id:seriesId,
-                error:'Occurrence '+w+' ('+occStart.toISOString().slice(0,10)+') is already booked — the first '+(w-1)+' were created.'});
-            }
-            const ds2=occStart.toISOString().slice(0,10);
-            const {data:bk2}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',ds2);
-            const rs2=occStart.getHours()*60+occStart.getMinutes();
-            if((bk2||[]).some(b=>(!b.staff_id||b.staff_id===body.staff_id)&&
-              overlaps(rs2,rs2+dur,b.start_time?toMin(b.start_time):DAY_START*60,b.end_time?toMin(b.end_time):DAY_END*60))){
-              return res.status(409).json({ok:false,conflict:true,created_count:w-1,failed_at_occurrence:w,series_id:seriesId,
-                error:'Occurrence '+w+' ('+ds2+') falls in blocked time — the first '+(w-1)+' were created.'});
-            }
-          }
-          await createCanonicalBooking({
-            tenantId:T,clientId,serviceId:ids[0],staffId:body.staff_id||null,
-            startTime:occStart.toISOString(),endTime:occEnd.toISOString(),
-            status:'confirmed',totalAmount:price,
-            notes:(body.notes||'')+' [recurring series '+w+'/'+count+']',
-            source:body.channel||body.source||'dashboard',sendConfirmation:false,
-            series:{id:seriesId,pos:w,total:count,rule}});
+      const seriesId=count>1?randomUUID():null;
+      const created=[];
+      for(const [i,o] of occ.entries()){
+        const row=await createCanonicalBooking({
+          tenantId:T,clientId,serviceId:seq[0].id,staffId,startTime:o.start,endTime:o.end,
+          status:'confirmed',totalAmount:price,notes:seriesId?((body.notes||'')+' [recurring series '+(i+1)+'/'+count+']').trim():(body.notes||null),
+          source:body.channel||body.source||'dashboard',sendConfirmation:false,
+          series:seriesId?{id:seriesId,pos:i+1,total:count,rule}:null});
+        created.push(row);
+        for(const [k,sv] of seq.entries()){
+          const phased=Number(sv.active_duration_1_min||0)||Number(sv.processing_duration_min||0);
+          const {error:svcErr}=await c.from('booking_services').insert({
+            booking_id:row.id,service_id:sv.id,staff_id:staffId,sequence_no:k+1,
+            active_duration_1_min:phased?Number(sv.active_duration_1_min||0):Number(sv.duration_minutes||60),
+            processing_duration_min:phased?Number(sv.processing_duration_min||0):0,
+            active_duration_2_min:phased?Number(sv.active_duration_2_min||0):0,
+            price:Number(sv.price||0)});
+          if(svcErr)throw new Error('booking_services write failed (sequence '+(k+1)+'): '+(svcErr.message||JSON.stringify(svcErr)));
         }
-        return res.json({ok:true,appointment:booking,booking,series:{id:seriesId,total:count,rule,sms_sent:1}});
+        try{
+          await writeThrough(c,{tenantId:T,booking:row,ctx:{
+            client:{id:clientId,name:body.client_name||null,phone:body.client_phone||null},
+            service:{id:seq[0].id,name:seq.map(x=>x.name).join(' + ')},staff:{id:staffId},
+            startsAt:o.start,endsAt:o.end,durationMin:Math.round((new Date(o.end)-new Date(o.start))/60000),
+            price,timezone:tz,notes:body.notes||'Booked from the LolaDesk calendar'}});
+        }catch(e){ /* the outbox never fails a booking */ }
       }
-
+      const booking=created[0];
+      // ONE confirmation text and ONE deposit request for the whole visit/series.
+      await confirmSMS(c,T,booking.id);
+      requestDeposit({tenantId:T,booking,policy:null}).catch(()=>{});
+      if(seriesId)return res.json({ok:true,appointment:booking,booking,series:{id:seriesId,total:count,rule,sms_sent:1}});
       return res.json({ok:true,appointment:booking,booking});
     }
 

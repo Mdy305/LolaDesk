@@ -30,14 +30,58 @@ function activeSegments(startIso, phases, allowProcessingOverlap){
   return out;
 }
 
-async function eligibleStaff(tenantId,serviceId,requestedStaffId){
+// Who can take this service (the Team page's service picker → staff_services):
+//  • a stylist with picks takes only the services they picked;
+//  • a stylist with no picks does everything ("If none picked, Lola offers
+//    this staff for every service").
+// Links to removed services are ignored. No links at all → everyone does everything.
+async function eligibleStaff(tenantId,serviceId,requestedStaffId,activeServiceIds=null){
   const staff=await listStaff(tenantId);
-  const links=await getStaffServices(tenantId);
+  const all=await getStaffServices(tenantId);
+  const links=activeServiceIds?all.filter(x=>activeServiceIds.has(x.service_id)):all;
+  const specialised=new Set(links.map(x=>x.staff_id));
   const serviceLinks=links.filter(x=>x.service_id===serviceId);
   const allowed=new Set(serviceLinks.map(x=>x.staff_id));
-  let out=allowed.size?staff.filter(x=>allowed.has(x.id)):staff;
+  let out=staff.filter(x=>allowed.has(x.id) || !specialised.has(x.id));
   if(requestedStaffId) out=out.filter(x=>x.id===requestedStaffId);
   return {staff:out,links:serviceLinks};
+}
+
+// ── Salon hours (booking-settings.html): business_hours {mon..sun:{open,close,closed}}
+// and closures ['YYYY-MM-DD'] on booking_settings (or its metadata fallback).
+// A closure date or a closed weekday has no slots; stylist shifts are clamped
+// to opening hours. Hours that are still the untouched schema default
+// (10–20, Sunday closed) are only enforced once the owner has saved them
+// (metadata.hours_confirmed_at), so a salon that never opened the page keeps
+// its stylists' own hours.
+const WEEK_KEYS=['sun','mon','tue','wed','thu','fri','sat'];
+const DEFAULT_HOURS=JSON.stringify(['mon','tue','wed','thu','fri','sat','sun'].map(d=>d==='sun'?[d,'10:00','20:00',true]:[d,'10:00','20:00',false]));
+function clock(text){
+  if(text==null||text==='') return null;
+  const m=String(text).trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm|a|p)?$/);
+  if(!m) return null;
+  let h=Number(m[1]); const mi=Number(m[2]||0);
+  if(m[3]){ const pm=m[3][0]==='p'; if(h===12) h=0; if(pm) h+=12; }
+  return h>24||mi>59?null:Math.min(1440,h*60+mi);
+}
+const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
+export function salonDay(settings,dateKey,dayOfWeek){
+  const md=isObj(settings?.metadata)?settings.metadata:{};
+  const closures=(Array.isArray(settings?.closures)?settings.closures:(Array.isArray(md.closures)?md.closures:[])).map(x=>String(x).slice(0,10));
+  if(closures.includes(dateKey)) return {closed:true,reason:'closure'};
+  const bh=isObj(settings?.business_hours)?settings.business_hours:(isObj(md.business_hours)?md.business_hours:null);
+  if(!bh) return null;
+  if(!md.hours_confirmed_at){
+    const sig=JSON.stringify(['mon','tue','wed','thu','fri','sat','sun'].map(d=>[d,bh[d]?.open,bh[d]?.close,bh[d]?.closed===true]));
+    if(sig===DEFAULT_HOURS) return null;
+  }
+  const key=WEEK_KEYS[dayOfWeek];
+  const h=bh[key];
+  if(!isObj(h)) return null;
+  if(h.closed===true||h.closed==='true') return {closed:true,reason:'business_hours'};
+  const open=clock(h.open), close=clock(h.close);
+  if(open==null||close==null||close<=open) return null;
+  return {open,close};
 }
 
 function scheduleForStaff(schedules,staffId,dayOfWeek){
@@ -105,6 +149,8 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   catch{ return {ok:false,error:'invalid_date',slots:[]}; }
   const {key:dateKey,start:from,end:to}=bounds;
   const dayOfWeek=localWeekday(new Date(from),timeZone);
+  const salon=salonDay(settings,dateKey,dayOfWeek);
+  if(salon?.closed) return {ok:true,slots:[],service,settings,closed:salon.reason,...(context?{day:{},services}:{})};
   const schedules=await getStaffSchedules(tenantId);
   const timeOff=await getStaffTimeOff(tenantId,from,to);
   const blocks=await getBlockedSlots(tenantId,dateKey);
@@ -117,7 +163,7 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
     start:b.start_time?zonedLocalToUtc(dateKey,b.start_time,timeZone):from,
     end:b.end_time?zonedLocalToUtc(dateKey,b.end_time,timeZone):to
   }));
-  const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId);
+  const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId,new Set(services.map(x=>x.id)));
   const existing=await listBookings(tenantId,from,to);
   const holds=await listActiveHolds(tenantId,from,to);
   const external=await listExternalBusy(tenantId,from,to,existing);
@@ -133,12 +179,17 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   for(const member of staff){
     const schedule=scheduleForStaff(schedules,member.id,dayOfWeek);
     if(!schedule) continue;
-    const startMinute=mins(schedule.start_time), endMinute=mins(schedule.end_time);
+    let startMinute=mins(schedule.start_time), endMinute=mins(schedule.end_time);
     if(startMinute==null || endMinute==null || endMinute<=startMinute) continue;
+    // A stylist is bookable only while the salon is open.
+    if(salon){ startMinute=Math.max(startMinute,salon.open); endMinute=Math.min(endMinute,salon.close); }
+    if(endMinute<=startMinute) continue;
     const custom=links.find(x=>x.staff_id===member.id);
     const phases=servicePhases(service,custom?.custom_duration_minutes);
     const before=Number(settings.default_buffer_before_min||0);
-    const after=Number(settings.default_buffer_after_min||0);
+    // Per-service clean-up time wins over the salon-wide default.
+    const svcAfter=service.buffer_after_min;
+    const after=(svcAfter!=null && svcAfter!=='' && Number.isFinite(Number(svcAfter)))?Math.max(0,Number(svcAfter)):Number(settings.default_buffer_after_min||0);
     const interval=Math.max(5,Number(settings.slot_interval_minutes||15));
     if(day){
       const busy=[];
@@ -148,7 +199,7 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
       external.filter(x=>x.staff_id===member.id).forEach(x=>busy.push({start:x.start,end:x.end,booking:true}));
       timeOff.filter(x=>x.staff_id===member.id).forEach(x=>busy.push({start:x.start_time,end:x.end_time,booking:false}));
       blockedWindows.filter(x=>!x.staff_id||x.staff_id===member.id).forEach(x=>busy.push({start:x.start,end:x.end,booking:false}));
-      day[member.id]={name:member.name,shift:[zonedLocalToUtc(dateKey,minuteToTimeText(startMinute),timeZone),zonedLocalToUtc(dateKey,minuteToTimeText(endMinute),timeZone)],busy,buffers:{before:Number(settings.default_buffer_before_min||0),after:Number(settings.default_buffer_after_min||0)}};
+      day[member.id]={name:member.name,shift:[zonedLocalToUtc(dateKey,minuteToTimeText(startMinute),timeZone),zonedLocalToUtc(dateKey,minuteToTimeText(endMinute),timeZone)],busy,buffers:{before,after}};
     }
 
     for(let minute=startMinute; minute+before+phases.total+after<=endMinute; minute+=interval){
