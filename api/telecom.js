@@ -1,4 +1,4 @@
-import { getUserFromToken, bearer } from './lib/auth.js';
+import { getUserFromToken, bearer, isAdminEmail } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, upsertTenantNumber } from './lib/db.js';
 import { invalidateRouting } from './lib/tenant-resolver.js';
@@ -11,9 +11,13 @@ function jsonBody(req) {
   return req.body;
 }
 
+// Platform-wide Telnyx controls (account capabilities, every number, messaging profiles, 10DLC,
+// SIMs, ports) — platform admins only (ADMIN_EMAILS). Salons set up their own line and texting
+// through Lola / /api/setup instead.
 async function authTenant(req) {
   const user = await getUserFromToken(bearer(req));
   if (!user) throw Object.assign(new Error('Not authenticated'), { status: 401 });
+  if (!isAdminEmail(user.email)) throw Object.assign(new Error('Not authorized'), { status: 403 });
   const tenant = await resolveTenantForUser(user);
   if (!tenant) throw Object.assign(new Error('No tenant mapped to this account'), { status: 404 });
   return { user, tenant };
@@ -143,7 +147,7 @@ async function provisionNumber(body, tenant) {
   const metadata = {
     order_id: ordered?.id || ordered?.order_id || null,
     phone_number_id: phoneNumberId,
-    status: ordered?.status || item?.status || 'ordered',
+    status: ordered?.status || 'ordered',
     voice_attached: Boolean(phoneNumberId && voiceConnectionId),
     messaging_attached: Boolean(messagingProfileId)
   };

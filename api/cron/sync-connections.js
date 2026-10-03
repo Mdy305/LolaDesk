@@ -48,6 +48,17 @@ export default async function handler(req, res) {
   try { const { unifyAssistantVoices } = await import('../lib/one-voice.js'); await unifyAssistantVoices({ heal: true }); } catch (_) {}
   let instagram = null;
   try { const { refreshInstagramTokens } = await import('../lib/instagram-dm.js'); instagram = await refreshInstagramTokens(client); } catch (_) {}
+  // Facebook Messenger: Page tokens still work and Pages are still subscribed (re-subscribe when not).
+  let messenger = null;
+  try { const { checkMessengerPages } = await import('../lib/messenger-dm.js'); messenger = await checkMessengerPages(client); } catch (_) {}
+  // WhatsApp: numbers newly on a WhatsApp Business Account → their salon; Meta's template verdicts.
+  let whatsapp = null;
+  try {
+    const wa = await import('../lib/whatsapp-setup.js');
+    const s = await wa.syncWhatsApp(client);
+    const t = await wa.syncTemplateStatuses(client);
+    whatsapp = { ok: s.ok, matched: (s.matched || []).length, unmatched: (s.unmatched || []).length, conflicts: (s.conflicts || []).length, templates_updated: t.updated };
+  } catch (_) {}
   const snapshot = await liveTelnyxSnapshot();
   let wiring = null;
   try { wiring = snapshot.error ? null : await wireTenantNumbers(client, { heal: true, snapshot }); } catch (e) { wiring = { ok: false, error: String(e?.message || e) }; }
@@ -61,6 +72,8 @@ export default async function handler(req, res) {
     connection_names: result.connection_names || {},
     wiring: wiring ? { ok: wiring.ok, broken: wiring.broken, healed: wiring.healed, messaging_profile: wiring.messaging_profile } : null,
     instagram,
+    messenger,
+    whatsapp,
     duration_ms: Date.now() - started,
     generated_at: new Date().toISOString()
   });

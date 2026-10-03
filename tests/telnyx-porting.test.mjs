@@ -81,71 +81,88 @@ test('POST without a session -> 401 (tenant-scoped)', async () => {
   assert.equal(out.body.error, 'not authenticated');
 });
 
-test('POST auto-fills the authorized contact from the signed-in owner and submits a real Telnyx porting order', async () => {
+// The Settings form now feeds the same engine Lola uses (api/lib/setup/telecom.js): details are
+// saved as a draft (PIN + account number encrypted only), Lola asks for what's missing, and a
+// complete, confirmed request runs the full documented Telnyx flow.
+process.env.INTEGRATION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+const { decrypt } = await import('../api/lib/crypto.js');
+const telnyxStub = (calls, { rejectCreate = false } = {}) => async (url, opts = {}) => {
+  const u = String(url), m = (opts.method || 'GET').toUpperCase();
+  calls.push({ u, m, body: opts.body ? JSON.parse(opts.body) : null });
+  const J = (o, s = 200) => ({ ok: s < 300, status: s, json: async () => o, text: async () => JSON.stringify(o), arrayBuffer: async () => new ArrayBuffer(0) });
+  if (u.endsWith('/portability_checks')) return J({ data: [{ phone_number: '+13055550111', portable: true, fast_portable: false }] });
+  if (u.endsWith('/porting_orders') && m === 'POST') return rejectCreate ? J({ errors: [{ detail: 'porting not enabled on this account' }] }, 403) : J({ data: { id: 'port-2', status: { value: 'draft' } } });
+  if (u.endsWith('/porting_orders/port-2/actions/confirm')) return J({ data: { id: 'port-2', status: { value: 'in-process' } } });
+  if (u.endsWith('/porting_orders/port-2/requirements')) return J({ data: [] });
+  if (u.endsWith('/porting_orders/port-2')) return J({ data: { id: 'port-2', status: { value: 'draft' }, requirements_met: true } });
+  if (u.endsWith('/documents')) return J({ data: { id: 'doc-1' } });
+  return J({ data: [] });
+};
+
+test('tolerates the legacy Settings form payload (carrier/pin): saved as a draft, secrets encrypted, owner auto-filled, nothing sent yet', async () => {
   setupTenant();
-  let hits = [];
-  stubFetch(async (url, opts) => {
-    hits.push({ url: String(url), opts });
-    assert.ok(String(url).includes('/porting_orders'), 'must POST the porting order');
-    return okFetch({
-      data: { id: 'port-1', status: 'submitted', phone_numbers: [{ phone_number: '+13055550100', id: 'pn1' }] }
-    });
-  });
+  const calls = []; stubFetch(telnyxStub(calls));
   const [res, out] = makeRes();
-  await handler(authReq({ phone_number: '3055550100' }), res);
+  await handler(authReq({ phone_number: '3055550111', carrier: 'Verizon', account_number: 'ACC-9', pin: '1234' }), res);
   assert.equal(out.code, 200);
   assert.equal(out.body.ok, true);
-  assert.equal(out.body.telnyx_order.id, 'port-1');
-  const row = out.body.port_request;
-  assert.equal(row.requested_phone_number, '+13055550100');
-  assert.equal(row.status, 'submitted');
+  assert.match(out.body.say, /name on the phone account/);
+  const row = ((await fake.from('tenant_number_ports').select('*')).data || [])[0];
+  assert.equal(row.requested_phone_number, '+13055550111');
+  assert.equal(row.current_carrier, 'Verizon', 'carrier alias -> current_carrier');
   assert.equal(row.authorized_contact_name, 'Jane Owner', 'name auto-filled from the owner profile');
   assert.equal(row.authorized_contact_email, 'owner@x.com', 'email auto-filled from the owner session');
-  const sent = JSON.parse(hits[0].opts.body);
-  assert.deepEqual(sent.phone_numbers, ['+13055550100']);
+  assert.equal(row.account_pin ?? null, null, 'no plaintext PIN');
+  assert.equal(row.account_number ?? null, null, 'no plaintext account number');
+  assert.equal(decrypt(row.pin_enc), '1234');
+  assert.equal(decrypt(row.account_number_enc), 'ACC-9');
+  assert.ok(!calls.some((c) => c.u.endsWith('/porting_orders')), 'no Telnyx order until the details are complete and confirmed');
   restoreFetch();
 });
 
-test('tolerates the legacy Settings form payload (carrier/pin) and normalizes it', async () => {
+test('a complete, confirmed request submits a real Telnyx porting order (create → details → confirm)', async () => {
   setupTenant();
-  stubFetch(async () => okFetch({
-    data: { id: 'port-2', status: 'submitted', phone_numbers: [{ phone_number: '+13055550111', id: 'pn2' }] }
-  }));
+  const calls = []; stubFetch(telnyxStub(calls));
   const [res, out] = makeRes();
-  await handler(authReq({
-    phone_number: '3055550111',
-    carrier: 'Verizon',
-    account_number: 'ACC-9',
-    pin: '1234'
-  }), res);
+  await handler(authReq({ phone_number: '3055550111', carrier: 'Verizon', account_number: 'ACC-9', pin: '1234', entity_name: 'Salon One LLC',
+    street: '1 Main St', city: 'Miami', state: 'FL', zip: '33101', no_bill: true, confirmed: true }), res);
   assert.equal(out.code, 200);
   assert.equal(out.body.ok, true);
-  const row = out.body.port_request;
-  assert.equal(row.current_carrier, 'Verizon', 'carrier alias -> current_carrier');
-  assert.equal(row.account_pin, '1234', 'pin alias -> account_pin');
-  assert.equal(row.account_number, 'ACC-9');
-  assert.equal(row.authorized_contact_email, 'owner@x.com');
+  assert.equal(out.body.submitted, true);
+  const create = calls.find((c) => c.m === 'POST' && c.u.endsWith('/porting_orders'));
+  assert.deepEqual(create.body.phone_numbers, ['+13055550111']);
+  const patch = calls.find((c) => c.m === 'PATCH' && c.body?.end_user);
+  assert.equal(patch.body.end_user.admin.pin_passcode, '1234');
+  assert.equal(patch.body.end_user.admin.auth_person_name, 'Jane Owner');
+  assert.ok(calls.some((c) => c.u.endsWith('/porting_orders/port-2/actions/confirm')));
+  const row = ((await fake.from('tenant_number_ports').select('*')).data || [])[0];
+  assert.equal(row.telnyx_order_id, 'port-2');
+  assert.equal(row.status, 'submitted');
   restoreFetch();
 });
 
-test('a Telnyx rejection fails loudly and never writes a tenant row', async () => {
+test('a Telnyx rejection fails loudly and never records an order', async () => {
   setupTenant();
-  stubFetch(async () => ({ ok: false, status: 403, json: async () => ({ errors: [{ detail: 'porting not enabled on this account' }] }) }));
+  const calls = []; stubFetch(telnyxStub(calls, { rejectCreate: true }));
   const [res, out] = makeRes();
-  await handler(authReq({ phone_number: '3055550122' }), res);
-  assert.equal(out.code, 403);
-  assert.match(out.body.error, /porting not enabled/);
-  const rows = await fake.from('tenant_number_ports').select('*');
-  assert.equal((rows.data || []).length, 0, 'no tenant row written when Telnyx rejects');
+  await handler(authReq({ phone_number: '3055550111', account_number: 'ACC-9', pin: '1234', entity_name: 'Salon One LLC',
+    street: '1 Main St', city: 'Miami', state: 'FL', zip: '33101', no_bill: true, confirmed: true }), res);
+  assert.equal(out.code, 400);
+  assert.equal(out.body.ok, false);
+  const row = ((await fake.from('tenant_number_ports').select('*')).data || [])[0];
+  assert.equal(row.telnyx_order_id ?? null, null, 'no order recorded when Telnyx rejects');
+  assert.equal(row.status, 'failed');
+  assert.match(row.last_error, /porting not enabled/);
   restoreFetch();
 });
 
-test('still requires a number and a resolvable contact', async () => {
+test('still requires a number: asks for it in plain words', async () => {
   setupTenant();
-  stubFetch(async () => okFetch({ data: { id: 'port-3' } }));
+  stubFetch(telnyxStub([]));
   const [res, out] = makeRes();
   await handler(authReq({}), res);
-  assert.equal(out.code, 400);
-  assert.equal(out.body.error, 'requested_phone_number is required');
+  assert.equal(out.code, 200);
+  assert.deepEqual(out.body.needs, ['phone_number']);
+  assert.match(out.body.say, /salon number you want to move/);
   restoreFetch();
 });

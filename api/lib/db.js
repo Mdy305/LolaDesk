@@ -100,16 +100,39 @@ export async function getTenantByPhoneStrict(toNumber){
 // operator_phone (set in Settings via /api/operator-setup) identifies
 // their salon. Deliberately NO demo fallback — an unrecognized caller
 // on the owner line must get null, never someone else's salon.
+// STRICT: operator_phone is not unique, so if two DIFFERENT salons list the
+// same cell, nobody is "the owner" (null) — the old .limit(1) handed the
+// sender whichever salon Postgres returned first, business snapshot and all.
+// Duplicate rows of the SAME salon (one owner signed up twice: same salon
+// line) still resolve, with the same deterministic pick as the line lookup.
 export async function getTenantByOperatorPhone(fromNumber){
   const c = db();
   if(!c) return null;
   const phone = e164(fromNumber);
   if(!phone) return null;
-  const { data } = await c
+  const { data, error } = await c
     .from('tenants').select('*')
     .eq('operator_phone', phone)
-    .limit(1);
-  return data?.[0] || null;
+    .limit(10);
+  if(error || !data) return null;
+  const live = data.filter(t => t && t.id && t.id !== DEMO_TENANT_ID);
+  if(!live.length) return null;
+  const salonKey = (t) => e164(t.phone_number) || ('id:' + t.id);
+  if(new Set(live.map(salonKey)).size !== 1) {
+    console.warn('[db] operator phone is registered on', live.length, 'different salons — not treating the sender as an owner');
+    return null;
+  }
+  const score = (t) => (t.subscription_status === 'active' ? 4 : 0) + (t.status === 'active' ? 2 : 0) + (t.stripe_subscription_id ? 1 : 0);
+  live.sort((a, b) => score(b) - score(a) || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  return live[0];
+}
+
+/** Same salon? (same row, or duplicate rows of one salon sharing its line). */
+export function sameSalon(a, b){
+  if(!a || !b) return false;
+  if(a.id && a.id === b.id) return true;
+  const pa = e164(a.phone_number), pb = e164(b.phone_number);
+  return !!(pa && pb && pa === pb);
 }
 
 // ── Update a call row by its Telnyx id (transcript append, outcome) ──
@@ -339,12 +362,13 @@ export async function isOptedOut(tenantId, phone){
 }
 
 // ── CONVERSATIONS + MESSAGES ──
-export async function startConversation(tenantId, { clientId, channel, agent='lola' }){
+export async function startConversation(tenantId, { clientId, channel, agent='lola', participant }){
   const c = db();
   if(!c) return null;
-  const { data } = await c.from('conversations').insert({
-    tenant_id: tenantId, client_id: clientId, channel, agent
-  }).select().single();
+  const row = { tenant_id: tenantId, client_id: clientId || null, channel, agent, status: 'open', started_at: new Date().toISOString() };
+  // Owner / staff threads have no client: who the thread belongs to rides in metadata.participant.
+  if(participant) row.metadata = { participant: String(participant) };
+  const { data } = await c.from('conversations').insert(row).select().single();
   return data;
 }
 
@@ -364,28 +388,70 @@ export async function logMessage({ conversationId, tenantId, role, agent='lola',
   });
 }
 
-export async function getOrStartConversation(tenantId, { clientId, channel, agent='lola' }){
+// Which open thread does this turn belong to?
+//  • A client (clientId): that client's open thread on this channel from the last hour.
+//  • No client but a participant ('owner', 'user:<auth user id>'): that person's own thread on this
+//    channel for this tenant (client_id IS NULL + metadata.participant) — the owner's and each staff
+//    member's conversations are separate and survive across turns (PARTICIPANT_WINDOW_MS).
+//  • Neither: always a NEW thread. Never share one client-less thread between unknown senders.
+// The old code filtered .eq('client_id', undefined) for owner threads: PostgREST rejects
+// "client_id=eq.undefined", so every owner turn opened a fresh conversation and Lola forgot the thread.
+/** The signed-in person's own thread key: each login (owner, each staff member) gets its own;
+ *  no login (owner phone line / SMS) → the salon's 'owner' thread. */
+export function participantFor(user){
+  return user && user.id ? 'user:' + String(user.id) : 'owner';
+}
+export const PARTICIPANT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export async function getOrStartConversation(tenantId, { clientId, channel, agent='lola', participant } = {}){
   const c = db();
-  if(!c) return null;
-  const cutoff = new Date(Date.now() - 60*60*1000).toISOString();
-  const { data: open } = await c.from('conversations').select('*')
-    .eq('tenant_id', tenantId).eq('channel', channel).eq('status', 'open')
-    .eq('client_id', clientId)
-    .gte('started_at', cutoff)
-    .order('started_at', { ascending: false })
-    .limit(1).maybeSingle();
-  if(open) return open;
-  return startConversation(tenantId, { clientId, channel, agent });
+  if(!c || !tenantId) return null;
+  if(clientId){
+    const cutoff = new Date(Date.now() - 60*60*1000).toISOString();
+    const { data: open } = await c.from('conversations').select('*')
+      .eq('tenant_id', tenantId).eq('channel', channel).eq('status', 'open')
+      .eq('client_id', clientId)
+      .gte('started_at', cutoff)
+      .order('started_at', { ascending: false })
+      .limit(1).maybeSingle();
+    if(open) return open;
+    return startConversation(tenantId, { clientId, channel, agent });
+  }
+  if(participant){
+    const who = String(participant);
+    const cutoff = new Date(Date.now() - PARTICIPANT_WINDOW_MS).toISOString();
+    // Direct JSON lookup first (busy Instagram/Messenger channels have many client-less threads).
+    try{
+      const { data: hit, error } = await c.from('conversations').select('*')
+        .eq('tenant_id', tenantId).eq('channel', channel).eq('status', 'open')
+        .is('client_id', null).eq('metadata->>participant', who)
+        .gte('started_at', cutoff).order('started_at', { ascending: false }).limit(1);
+      const h = !error && Array.isArray(hit) ? hit.find(r => r && r.tenant_id === tenantId && r.metadata && r.metadata.participant === who) : null;
+      if(h) return h;
+    }catch(_){ /* fall back to the scan below */ }
+    const { data: rows } = await c.from('conversations').select('*')
+      .eq('tenant_id', tenantId).eq('channel', channel).eq('status', 'open')
+      .is('client_id', null)
+      .gte('started_at', cutoff)
+      .order('started_at', { ascending: false })
+      .limit(50);
+    const mine = (rows || []).find(r => r && r.tenant_id === tenantId && r.metadata && r.metadata.participant === who);
+    if(mine) return mine;
+    return startConversation(tenantId, { channel, agent, participant: who });
+  }
+  return startConversation(tenantId, { channel, agent });
 }
 
+// The LAST `limit` turns, oldest first (ascending + limit returned the FIRST turns of a long
+// thread forever, so a reused owner thread would never show Lola what was just said).
 export async function getConversationHistory(conversationId, limit=12){
   const c = db();
-  if(!c) return [];
-  const { data } = await c.from('messages').select('role, content')
+  if(!c || !conversationId) return [];
+  const { data } = await c.from('messages').select('role, content, created_at')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(limit);
-  return (data||[]).map(m => ({ role: m.role, content: m.content }));
+  const at = (m) => Date.parse(m.created_at || '') || 0;
+  return (data||[]).slice().sort((a, b) => at(a) - at(b)).map(m => ({ role: m.role, content: m.content }));
 }
 
 // ── CALLS ──

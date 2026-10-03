@@ -35,10 +35,30 @@ const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/a
 const DYNVAR_PATHS = new Set(['/api/agent-variables', '/api/lola/dynamic-variables']);
 
 /** Telnyx documents assistant updates as POST /ai/assistants/{id}; older accounts took PATCH. Try both. */
-const badVariable = (e) => /dynamic.?variables|must be a boolean, string, or integer/i.test(String(e?.message || '') + ' ' + JSON.stringify(e?.details || e?.body || ''));
+const errText = (e) => String(e?.message || '') + ' ' + JSON.stringify(e?.details || e?.body || '');
+const badVariable = (e) => /dynamic.?variables|must be a boolean, string, or integer/i.test(errText(e));
+const dupTools = (e) => /tool.{0,40}(must be unique|not unique)|names must be unique/i.test(errText(e));
+const toolName = (t) => norm(t?.webhook?.name || t?.function?.name || t?.name || '');
+
+/**
+ * Telnyx refuses ANY update while two tools share a name ("Webhook tools names must be unique").
+ * Keep one tool per name: the one already wired to LolaDesk correctly, else one on our host, else the
+ * first. Tools without a name (hangup, transfer…) are always kept.
+ */
+export function dedupeTools(tools) {
+  const list = Array.isArray(tools) ? tools : [];
+  const rank = (t) => { const d = diagnoseTool(t); const u = parse(t?.webhook?.url); return !d ? 3 : (u && ourHost(u.hostname)) ? 2 : 1; };
+  const best = new Map();
+  list.forEach((t, i) => { const n = toolName(t); if (!n) return; const cur = best.get(n); if (!cur || rank(t) > rank(list[cur.i])) best.set(n, { i }); });
+  const keep = new Set([...best.values()].map((x) => x.i));
+  const removed = [];
+  const out = list.filter((t, i) => { const n = toolName(t); if (!n || keep.has(i)) return true; removed.push(t?.webhook?.name || t?.function?.name || n); return false; });
+  return { tools: out, removed };
+}
 export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   const path = '/ai/assistants/' + encodeURIComponent(id);
   if (body && body.dynamic_variables && typeof body.dynamic_variables === 'object') body = { ...body, dynamic_variables: telnyxSafeVariables(body.dynamic_variables) };
+  if (body && Array.isArray(body.tools)) body = { ...body, tools: dedupeTools(body.tools).tools };
   const send = async (b) => {
     try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
     catch (e) {
@@ -50,10 +70,12 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   catch (e) {
     // Telnyx re-validates the assistant's STORED defaults on every update: one null (booking_url)
     // blocks every change, even a voice switch. Clean the stored values and send it again once.
-    if (!badVariable(e)) throw e;
+    // Same for duplicate tool names: repair BOTH stored problems in the one retry.
+    if (!badVariable(e) && !dupTools(e)) throw e;
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
-    return send({ ...body, dynamic_variables: dv });
+    const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
+    return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}) });
   }
 }
 
@@ -96,6 +118,14 @@ export function toolUrl(name) {
   // X-LolaDesk-Salon (Telnyx turns X- headers into dynamic variables), so web calls know the salon too.
   return `${appUrl()}/api/lola-tools?tool=${encodeURIComponent(norm(name))}&to={{telnyx_agent_target}}&from={{telnyx_end_user_target}}&salon={{loladesk_salon}}&call={{call_control_id}}&ch={{telnyx_conversation_channel}}&k=${toolKey()}`;
 }
+/** Same endpoint, signed: replaces any old k=, keeps every other parameter (incl. {{…}} placeholders). */
+function signKeep(url) {
+  const raw = String(url || '');
+  const [base, q = ''] = raw.split('?');
+  const parts = q.split('&').filter((x) => x && !/^k=/.test(x));
+  parts.push('k=' + toolKey());
+  return base + '?' + parts.join('&');
+}
 /** The salon-details webhook, signed (caller memory is only shared with a signed request). */
 export const variablesUrl = () => `${appUrl()}/api/agent-variables?k=${toolKey('variables')}`;
 function parse(u) { try { return new URL(String(u || '').replace(/\{\{[^}]*\}\}/g, 'x')); } catch (_) { return null; } }
@@ -107,6 +137,8 @@ export function diagnoseTool(tool) {
   const name = norm(w.name), u = parse(w.url);
   if (!SKILL_NAMES.has(name)) {
     if (!u || !ourHost(u.hostname) || !GOOD_PATHS.has(u.pathname)) return { name: w.name, url: w.url, problem: 'unknown_tool', fixable: false };
+    // One of our dedicated /api/lola/* endpoints: keep it, but it must carry the signature.
+    if (!toolKeyOk(u.searchParams.get('k'))) return { name: w.name, url: w.url, problem: 'unsigned_keep', fixable: true };
     return null;
   }
   if (!u) return { name: w.name, url: w.url, problem: 'no_url', fixable: true };
@@ -121,7 +153,7 @@ export function diagnoseTool(tool) {
     if (w.method && String(w.method).toUpperCase() !== 'POST') return { name: w.name, url: w.url, problem: 'method', fixable: true };
     return null;
   }
-  if (GOOD_PATHS.has(u.pathname)) return null;
+  if (GOOD_PATHS.has(u.pathname)) return toolKeyOk(u.searchParams.get('k')) ? null : { name: w.name, url: w.url, problem: 'unsigned_keep', fixable: true };
   return { name: w.name, url: w.url, problem: u.pathname.includes('insights') ? 'insights_url' : 'wrong_path', fixable: true };
 }
 
@@ -134,14 +166,15 @@ export async function wireAssistant({ heal = false } = {}) {
   try { a = telnyxData(await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { timeoutMs: 9000 })); }
   catch (e) { return { ok: false, error: 'Could not read the assistant from Telnyx: ' + String(e?.message || e) }; }
   if (!a || typeof a !== 'object') return { ok: false, error: 'Assistant not found in Telnyx' };
-  const tools = Array.isArray(a.tools) ? a.tools : [];
+  const allTools = Array.isArray(a.tools) ? a.tools : [];
+  const { tools, removed: duplicateTools } = dedupeTools(allTools);
   const issues = [], fixed = [], unknown = [];
   const next = tools.map((t) => {
     const d = diagnoseTool(t);
     if (!d) return t;
     if (!d.fixable) { unknown.push({ name: d.name, url: d.url }); return t; }
     issues.push(d);
-    const url = toolUrl(t.webhook.name);
+    const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(t.webhook.name);
     fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem });
     return { ...t, webhook: { ...t.webhook, url, method: 'POST' } };   // /api/lola-tools only answers POST
   });
@@ -153,13 +186,15 @@ export async function wireAssistant({ heal = false } = {}) {
   const added = [];
   for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
   const patch = {};
-  if (fixed.length || added.length) patch.tools = next;
+  if (fixed.length || added.length || duplicateTools.length) patch.tools = next;
   // Her first words come from the call itself ({{lola_greeting}}: "Hey Sarah, welcome back…" for a
   // returning client), with the recording + AI notice; the default (no webhook answer) discloses too.
   // Telnyx refuses the WHOLE assistant update if any stored default is null/object
   // ("Value for key 'booking_url' must be a boolean, string, or integer") — so sanitize them, and heal them.
   const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
-  const dv0 = telnyxSafeVariables(dvRaw);
+  // Empty stored defaults become safe words (used only if the salon-details webhook can't answer in time).
+  const SAFE_DEFAULTS = { company_name: 'our salon', business_type: 'salon', caller_known: 'false' };
+  const dv0 = telnyxSafeVariables(Object.fromEntries(Object.entries(dvRaw).map(([k, v]) => [k, v == null && SAFE_DEFAULTS[k] ? SAFE_DEFAULTS[k] : v])));
   const dvBroken = Object.keys(dvRaw).filter((k) => JSON.stringify(dvRaw[k]) !== JSON.stringify(dv0[k]));
   if (dvBroken.length) patch.dynamic_variables = { ...dv0 };
   const personal = String(a.greeting || '').trim() === GREETING_VAR;
@@ -209,10 +244,10 @@ export async function wireAssistant({ heal = false } = {}) {
   return {
     web_calls: webCalls || (healed && !error && !webCallsError),
     web_calls_error: webCallsError,
-    ok: (!fixed.length && !added.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
+    ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, added_tools: added, unknown_tools: unknown,
+    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: duplicateTools,
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
     healed, error,

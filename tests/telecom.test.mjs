@@ -40,6 +40,8 @@ process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'fake-service-key';
 process.env.APP_URL = 'https://www.loladesk.com';
 process.env.TELNYX_API_KEY = 'test-telnyx-key';
+// /api/telecom is the platform operator's control plane: ADMIN_EMAILS only.
+process.env.ADMIN_EMAILS = 'owner@salon.com';
 
 const { default: handler } = await import('../api/telecom.js');
 
@@ -117,6 +119,13 @@ function call(req){
 function post(action, body){
   return call({ method: 'POST', headers: { authorization: 'Bearer tok-owner' }, query: { action }, body });
 }
+
+test('refuses a signed-in salon owner who is not a platform admin', async () => {
+  seed();
+  fake.auth.users.set('tok-salon', { id: 'u2', email: 'someone@else.com' });
+  const r = await call({ method: 'GET', headers: { authorization: 'Bearer tok-salon' }, query: { action: 'capabilities' } });
+  assert.equal(r.status, 403);
+});
 
 test('rejects unauthenticated requests', async () => {
   seed();

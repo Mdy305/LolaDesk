@@ -31,6 +31,11 @@ export default async function handler(req, res) {
       c.from('billing_policies').select('*').eq('tenant_id', tenant.id).maybeSingle()
     ]);
     if (!service) return res.status(404).json({ ok: false, error: 'service_not_found' });
+    // A stylist id from the browser must belong to THIS salon.
+    if (staff_id) {
+      const { data: st } = await c.from('staff').select('id').eq('id', staff_id).eq('tenant_id', tenant.id).maybeSingle();
+      if (!st) return res.status(404).json({ ok: false, error: 'staff_not_found' });
+    }
 
     // Upsert client by phone.
     let { data: existing } = await c.from('clients')

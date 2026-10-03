@@ -122,6 +122,16 @@
 </main></div>
 <script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
+// Platform-wide Telnyx controls: LolaDesk platform admins only (/api/telecom is ADMIN_EMAILS-gated).
+// Salons set up their own line and texting by talking to Lola (or /api/setup).
+(window.LolaAuth&&window.LolaAuth.ready?window.LolaAuth.ready:Promise.resolve(null)).then(function(a){
+  if(a&&a.platform_admin===true) return;
+  var m=document.querySelector('main.main'); if(!m) return;
+  m.innerHTML='<div class="page-head"><div><h1 class="page-title">Phone &amp; texting</h1><p style="font-size:13px;color:var(--text3);margin-top:6px">This page is for the LolaDesk team. To set up your number, forwarding, moving your number, or business texting, just ask Lola — she does it all for you.</p></div></div><div class="card"><div class="card-body" style="padding:18px 22px"><a class="btn" href="dashboard.html">Talk to Lola</a></div></div>';
+  window.loadAll=function(){};
+}).catch(function(){});
+</script>
+<script>
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}

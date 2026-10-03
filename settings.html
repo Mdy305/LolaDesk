@@ -264,6 +264,15 @@
     <div class="btn-row"><button class="btn-p" id="igBtn" onclick="igToggle()" disabled>Connect Instagram</button></div>
     <div class="msg" id="igMsg"></div>
   </div>
+
+  <div class="card" id="fbCard">
+    <h3>Lola on Facebook Messenger</h3>
+    <div class="desc">Lola answers your Facebook Page’s Messenger — same Lola, same memory as on your phone and Instagram. She books, moves and cancels right in your calendar.</div>
+    <div class="status" id="fbStatus"><span class="dot off"></span><div class="status-txt"><b>Checking…</b></div></div>
+    <div id="fbPages" class="btn-row" style="display:none;flex-wrap:wrap"></div>
+    <div class="btn-row"><button class="btn-p" id="fbBtn" onclick="fbToggle()" disabled>Connect Facebook</button></div>
+    <div class="msg" id="fbMsg"></div>
+  </div>
 </div>
 
 <!-- LOLA AI -->
@@ -424,7 +433,7 @@ async function igLoad(){
     else { st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Not connected</b><small>Use your Business or Creator account</small></div>'; b.textContent='Connect Instagram'; b.disabled=false; }
   }catch(e){}
   const p=new URLSearchParams(location.search).get('instagram');
-  if(p) msg('igMsg', p==='connected'?'Connected — Lola now answers your Instagram DMs.':p==='cancelled'?'Instagram connection cancelled.':'Instagram didn’t connect. Make sure it’s a Business or Creator account, then try again.', p==='connected');
+  if(p) msg('igMsg', p==='connected'?'Connected — Lola now answers your Instagram DMs.':p==='cancelled'?'Instagram connection cancelled.':p==='taken'?'That Instagram account is already connected to another salon on LolaDesk. If it’s yours, contact LolaDesk support.':'Instagram didn’t connect. Make sure it’s a Business or Creator account, then try again.', p==='connected');
 }
 async function igToggle(){
   const b=document.getElementById('igBtn'); b.disabled=true;
@@ -434,6 +443,44 @@ async function igToggle(){
     if(d.url){ location.href=d.url; return; }
     msg('igMsg',d.say||'Couldn’t start the Instagram connection.',false);
   }catch(e){ msg('igMsg','Couldn’t reach LolaDesk. Try again.',false); }
+  finally{ b.disabled=false; }
+}
+// Facebook Messenger → Lola (the salon's Facebook Page)
+let FB={};
+async function fbLoad(){
+  try{
+    const r=await fetch('/api/messenger?action=status',{headers:H()}); FB=await r.json();
+    const st=document.getElementById('fbStatus'), b=document.getElementById('fbBtn'), pg=document.getElementById('fbPages'); if(!st||!b) return;
+    pg.style.display='none'; pg.innerHTML='';
+    if(FB.connected){ st.innerHTML='<span class="dot live"></span><div class="status-txt"><b>'+esc(FB.page||'Connected')+'</b><small>Live — Lola is answering your Messenger</small></div>'; b.textContent='Disconnect'; b.disabled=false; }
+    else if(FB.available===false){ st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Coming soon</b><small>Facebook Messenger is waiting on Meta’s approval for LolaDesk</small></div>'; b.disabled=true; }
+    else if(Array.isArray(FB.choose)&&FB.choose.length){
+      st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Pick your salon’s Page</b><small>You manage more than one Facebook Page</small></div>';
+      FB.choose.forEach(function(p){ const x=document.createElement('button'); x.className='btn-g'; x.textContent=p.name; x.onclick=function(){ fbChoose(p.id,x); }; pg.appendChild(x); });
+      pg.style.display=''; b.textContent='Start over'; b.disabled=false;
+    }
+    else if(FB.needs_reconnect){ st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Sign in again</b><small>Facebook needs you to reconnect your Page</small></div>'; b.textContent='Reconnect Facebook'; b.disabled=false; }
+    else { st.innerHTML='<span class="dot off"></span><div class="status-txt"><b>Not connected</b><small>Use the Facebook account that manages your salon’s Page</small></div>'; b.textContent='Connect Facebook'; b.disabled=false; }
+  }catch(e){}
+  const p=new URLSearchParams(location.search).get('messenger');
+  if(p) msg('fbMsg', p==='connected'?'Connected — Lola now answers your Facebook Messenger.':p==='choose'?'Pick which Page is your salon.':p==='cancelled'?'Facebook connection cancelled.':p==='taken'?'That Facebook Page is already connected to another salon on LolaDesk. If it’s yours, contact LolaDesk support.':p==='nopage'?'We didn’t find a Facebook Page you manage. Create one for your salon (or ask its admin to add you), then connect again.':p==='expired'?'That sign-in timed out — try again.':'Facebook didn’t connect. Make sure you’re an admin of the Page, then try again.', p==='connected'||p==='choose');
+}
+async function fbChoose(id,btn){
+  if(btn) btn.disabled=true;
+  try{
+    const r=await fetch('/api/messenger?action=choose',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},H()),body:JSON.stringify({page_id:id})}); const d=await r.json();
+    msg('fbMsg',d.say||(d.ok?'Connected.':'Couldn’t connect that Page.'),!!d.ok); await fbLoad();
+  }catch(e){ msg('fbMsg','Couldn’t reach LolaDesk. Try again.',false); }
+  finally{ if(btn) btn.disabled=false; }
+}
+async function fbToggle(){
+  const b=document.getElementById('fbBtn'); b.disabled=true;
+  try{
+    if(FB.connected){ if(!confirm('Disconnect Facebook Messenger? Lola will stop answering your Page’s messages.')){ return; } await fetch('/api/messenger?action=disconnect',{method:'POST',headers:H()}); msg('fbMsg','Disconnected. Lola no longer answers your Messenger.',true); await fbLoad(); return; }
+    const r=await fetch('/api/messenger?action=connect',{headers:H()}); const d=await r.json();
+    if(d.url){ location.href=d.url; return; }
+    msg('fbMsg',d.say||'Couldn’t start the Facebook connection.',false);
+  }catch(e){ msg('fbMsg','Couldn’t reach LolaDesk. Try again.',false); }
   finally{ b.disabled=false; }
 }
 // Any booking system by its calendar link (read-only busy time)
@@ -510,6 +557,7 @@ async function load(){
     renderBookingLink();
     renderLolaWidget(d.lola_agent_id);
     igLoad();
+    fbLoad();
     icalLoad();
     zapLoad();
     bookingModeLoad();
@@ -725,7 +773,7 @@ async function startPort(){
       account_number:val('portAccount'),account_pin:val('portPin')})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Port request failed');
-    msg('portMsg','Port started. Typically completes in 7-10 business days. We will text you updates.',true);
+    msg('portMsg',d.submitted?(d.say||'Port started. We will text you updates.'):((d.say||'Saved.')+' Tell Lola the rest and she’ll finish it for you.'),true);
   }catch(e){msg('portMsg',e.message,false);}
 }
 

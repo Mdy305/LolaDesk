@@ -361,8 +361,16 @@ export async function integrationProviderHealth(tenant) {
   integrations.push(state('voice', 'Voice & Text', voiceReady ? 'healthy' : 'blocked', voiceReady ? `Live on ${tenant.phone_number}` : (tenant.phone_number ? 'Telnyx server connection is missing' : 'No Lola phone number is assigned'), voiceReady ? 'test' : 'open_numbers', { phone: tenant.phone_number || null }));
 
   const whatsappRow = byProvider.get('whatsapp');
-  const whatsappReady = Boolean(whatsappRow?.status === 'connected' || tenant.whatsapp_enabled);
-  integrations.push(state('whatsapp', 'WhatsApp', whatsappReady ? 'healthy' : 'not_connected', whatsappReady ? 'Connected and available for tenant messaging' : 'Not connected for this tenant', whatsappReady ? 'test' : 'connect'));
+  let whatsappReady = Boolean(whatsappRow?.status === 'connected' || tenant.whatsapp_enabled);
+  let whatsappRequested = false;
+  if (!whatsappReady) {
+    try {
+      const { data: wa } = await client.from('tenant_channels').select('channel,status,account_id').eq('tenant_id', tenant.id).in('channel', ['whatsapp', 'whatsapp_request']);
+      whatsappReady = (wa || []).some((r) => r.channel === 'whatsapp' && r.status === 'active');
+      whatsappRequested = !whatsappReady && (wa || []).some((r) => r.channel === 'whatsapp_request' && r.status === 'pending');
+    } catch { /* channels table not there yet */ }
+  }
+  integrations.push(state('whatsapp', 'WhatsApp', whatsappReady ? 'healthy' : (whatsappRequested ? 'attention' : 'not_connected'), whatsappReady ? 'Connected and available for tenant messaging' : (whatsappRequested ? 'Requested — LolaDesk is finishing Meta’s approval' : 'Not connected for this tenant'), whatsappReady ? 'test' : (whatsappRequested ? 'refresh' : 'connect')));
 
   for (const id of PROVIDERS) {
     const row = byProvider.get(id);

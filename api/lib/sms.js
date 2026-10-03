@@ -95,6 +95,12 @@ export async function sendSms(opts = {}) {
   if (!o.from) o.from = await _resolveSalonLine(o.tenant, o.tenantId);
   const tenant = o.tenant;
   delete o.body; delete o.message; delete o.tenant;
+  // A WhatsApp template (outside the 24-hour window) needs no free text.
+  if (o.template && String(o.type || o.channel || '').toUpperCase() === 'WHATSAPP') {
+    if (!o.from || !o.to) return { skipped: true, reason: !o.from ? 'no_salon_number' : 'no_recipient' };
+    return sendWhatsAppTemplate(o);
+  }
+  delete o.template;
   if (!o.from || !o.to || !o.text) {
     const reason = !o.from ? 'no_salon_number' : (!o.to ? 'no_recipient' : 'no_text');
     console.warn('[sms] not sent:', reason, tenant && tenant.id ? `tenant=${tenant.id}` : '');
@@ -127,4 +133,39 @@ async function _resolveSalonLine(tenant, tenantId) {
   // platform's) line. The shared env number is only for platform messages.
   if (id) return null;
   return process.env.TELNYX_FROM_NUMBER || process.env.TELNYX_NUMBER || null;
+}
+
+/**
+ * A pre-approved WhatsApp template (documented: POST /messages/whatsapp,
+ * whatsapp_message.type 'template'). Templates can be sent any time; free
+ * text only inside 24h of the client's last WhatsApp message.
+ *   template: { name, language = 'en_US', template_id?, params?: string[] }
+ * Same contract as sendSms: { skipped, failed, reason } instead of throwing.
+ */
+export async function sendWhatsAppTemplate({ from, to, tenantId, tenant, template, skipOptOut = false } = {}) {
+  if (!template || (!template.name && !template.template_id)) return { skipped: true, reason: 'no_template' };
+  if (!tenantId && tenant && tenant.id) tenantId = tenant.id;
+  if (!from) from = await _resolveSalonLine(tenant, tenantId);
+  if (!skipOptOut && tenantId) {
+    try { if (await isOptedOut(tenantId, to)) return { skipped: true, reason: 'opted_out' }; } catch { }
+  }
+  const fromE = e164(from), toE = e164(to);
+  if (!/^\+\d{7,15}$/.test(String(fromE || '')) || !/^\+\d{7,15}$/.test(String(toE || ''))) return { skipped: true, reason: 'bad_number' };
+  const t = {};
+  if (template.template_id) t.template_id = template.template_id;
+  else { t.name = template.name; t.language = { code: template.language || 'en_US' }; }
+  const params = Array.isArray(template.params) ? template.params : [];
+  if (params.length) t.components = [{ type: 'body', parameters: params.map((x) => ({ type: 'text', text: String(x) })) }];
+  const r = await fetch('https://api.telnyx.com/v2/messages/whatsapp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.TELNYX_API_KEY}` },
+    body: JSON.stringify({ from: fromE, to: toE, type: 'WHATSAPP', whatsapp_message: { type: 'template', template: t } }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || (Array.isArray(j?.errors) && j.errors.length)) {
+    const reason = j?.errors?.[0]?.detail || j?.errors?.[0]?.title || `telnyx_${r.status}`;
+    console.warn('[sms] Telnyx refused the WhatsApp template:', reason);
+    return { skipped: true, failed: true, reason, errors: j?.errors || [] };
+  }
+  return j;
 }

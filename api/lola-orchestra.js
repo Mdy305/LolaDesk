@@ -1,6 +1,6 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './lib/db.js';
+import { getOrStartConversation, participantFor, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './lib/db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { runAgentOrchestra } from './lib/agent-orchestra.js';
 import { executeSkill } from './lib/orchestrator.js';
@@ -39,9 +39,9 @@ export default async function handler(req,res){
 
   try{
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    let tenant=null;
+    let tenant=null, user=null;
     try{
-      const user=await getUserFromToken(bearer(req));
+      user=await getUserFromToken(bearer(req));
       if(user) tenant=await resolveTenantForUser(user);
     }catch{}
     if(!tenant?.id) return res.status(401).json({error:'Not authenticated'});
@@ -53,7 +53,8 @@ export default async function handler(req,res){
     let conversation=null;
     let memoryBlock='';
     try{
-      conversation=await getOrStartConversation(tenant.id,{channel:body.channel||'dashboard',agent:'lola'});
+      // The signed-in person's own thread (owner and each staff member separately), reused across turns.
+      conversation=await getOrStartConversation(tenant.id,{channel:body.channel||'dashboard',agent:'lola',participant:participantFor(user)});
       let profile=profileFromMemoryRows(await getOwnerMemory(tenant.id));
       memoryBlock=buildClientMemoryBlock(profile)||'';
       if(conversation?.id&&messages.length<=2){

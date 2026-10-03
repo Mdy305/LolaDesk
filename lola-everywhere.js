@@ -343,6 +343,7 @@
   function applyActions(actions) {
     for (const a of actions || []) {
       if (a.navigate) { store.sset('lola.reopen', '1'); setTimeout(() => { location.href = a.navigate; }, 900); }
+      if (a.open === 'oauth' && /^https:\/\/(www\.)?(facebook\.com|instagram\.com|api\.instagram\.com)\//.test(String(a.url || ''))) setTimeout(() => { location.href = a.url; }, 1600);
       if (a.refresh) {
         window.dispatchEvent(new CustomEvent('lola:refresh', { detail: a }));
         if (a.refresh === 'bookings' && window.LolaCalendar && typeof window.LolaCalendar.reload === 'function') setTimeout(() => window.LolaCalendar.reload(), 400);

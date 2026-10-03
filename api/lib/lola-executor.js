@@ -1,4 +1,5 @@
-import { db, getTenantByPhone, getTenantBySlug } from './db.js';
+import { db, getTenantBySlug } from './db.js';
+import { resolveInboundTenant } from './tenant-resolver.js';
 import crm from './lola-crm.js';
 import { resolveBookingRequest } from './booking-resolver.js';
 import { getAvailability, holdAvailability } from './availability-engine-v2.js';
@@ -15,7 +16,8 @@ export async function resolveExecutionTenant(input={}){
   const c=db();
   if(input.tenant_id && c){ const {data,error}=await c.from('tenants').select('*').eq('id',input.tenant_id).maybeSingle(); if(error)throw error; if(data)return data; }
   if(input.tenant) return getTenantBySlug(input.tenant);
-  if(input.to||input.called_number) return getTenantByPhone(input.to||input.called_number);
+  // Strict number → salon (never the demo-salon fallback of getTenantByPhone).
+  if(input.to||input.called_number){ try{ const r=await resolveInboundTenant({to:input.to||input.called_number}); return r.status==='resolved'?r.tenant:null; }catch{ return null; } }
   return null;
 }
 

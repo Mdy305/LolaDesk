@@ -116,7 +116,7 @@ export async function answerClient({ tenant, client = null, channel = 'sms', tex
   const fresh = !history.length;
   const d = todayIn(tz, now);
   const greet = fresh ? welcomeBack(story, { salon: tenant?.name }) : '';
-  const channelName = { sms: 'text message', whatsapp: 'WhatsApp', instagram: 'Instagram DM', web: 'website chat' }[channel] || channel;
+  const channelName = { sms: 'text message', whatsapp: 'WhatsApp', instagram: 'Instagram DM', messenger: 'Facebook Messenger', web: 'website chat' }[channel] || channel;
   const system = buildLolaSystemPrompt({ tenant, channel, memoryBlock: buildClientMemoryBlock(story.profile) }) + `
 
 TODAY: ${d ? `${d.weekday} ${d.year}-${d.month}-${d.day}` : new Date(now).toDateString()} (salon time zone ${tz}).

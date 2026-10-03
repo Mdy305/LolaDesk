@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     const tenantId = readState(query.state);
     if (!tenantId || !c) return back('expired');
     try { await connectInstagram(c, tenantId, query.code); return back('connected'); }
-    catch (e) { console.warn('[instagram] connect', String(e?.message || e).slice(0, 200)); return back('failed'); }
+    catch (e) { console.warn('[instagram] connect', String(e?.message || e).slice(0, 200)); return back(e?.code === 'taken' ? 'taken' : 'failed'); }
   }
 
   // A DM.

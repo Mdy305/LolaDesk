@@ -2,7 +2,7 @@
  * /api/telnyx-sms — Telnyx SMS webhook · MULTI-TENANT + 10DLC compliant
  * Handles both API v1 (form-encoded) and API v2 (JSON) from Telnyx.
  */
-import { getTenantByOperatorPhone, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
+import { getTenantByOperatorPhone, sameSalon, upsertClient, getClientMemory, setClientMemory, getOrStartConversation, logMessage, getConversationHistory, logUsage, e164, setOptOut, isOptedOut } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 // Imported (not only re-exported): a bare `export { … } from` does NOT make
 // sendSMS usable inside this file, so every reply here used to throw silently.
@@ -137,11 +137,16 @@ async function handleText(req,res,noteEvent){
       const care = await handleCareText(db(), { to: toN, from: fromN, text }, { send: (m) => sendSMS({ ...m, type }) });
       if(care) return res.status(200).json({ ok:true, handled: care.handled });
     }catch(e){ console.warn('[care-sms]', String(e?.message||e).slice(0,120)); }
-    const ownerTenant = await getTenantByOperatorPhone(fromN).catch(()=>null);
+    // Owner only on LolaDesk's own owner line: a number no salon owns ('not_found' — never a salon's
+    // disabled/ambiguous line), and when OWNER_LINE_NUMBER is configured, exactly that number. The
+    // sender must be the operator phone of exactly ONE salon (getTenantByOperatorPhone is strict).
+    const ownerLine = e164(process.env.OWNER_LINE_NUMBER || process.env.LOLADESK_OWNER_LINE || '');
+    const onOwnerLine = routing.status === 'not_found' && (!ownerLine || ownerLine === toN);
+    const ownerTenant = onOwnerLine ? await getTenantByOperatorPhone(fromN).catch(()=>null) : null;
     if(ownerTenant?.id){
       let conv=null, hist=[];
       try{
-        conv = await getOrStartConversation(ownerTenant.id, { channel:'operator', agent:'jarvis' });
+        conv = await getOrStartConversation(ownerTenant.id, { channel:'operator', agent:'jarvis', participant:'owner' });
         if(conv?.id) hist = await getConversationHistory(conv.id, 10);
       }catch{}
       const brain = await answerOwner(ownerTenant, hist, text, { channel:'sms' });
@@ -167,10 +172,17 @@ async function handleText(req,res,noteEvent){
   // ── The owner texting their own salon line ──
   // If a hot lead is open, the text goes to that client (Lola relays it).
   // Otherwise the owner is talking to Lola, their assistant — never treated as a client.
-  if(row.operator_phone && fromN && fromN === e164(row.operator_phone)){
+  // Owner = the sender is THIS salon's operator phone AND that phone belongs to exactly one salon
+  // (this one). If another salon also lists the same cell, it's ambiguous → treated as a client:
+  // a spoofed/shared number must never get the owner brain (business snapshot) or relay powers.
+  // On the salon's OWN line the salon already trusts its own operator phone, so the cell may also be listed
+  // on another (test / duplicate) salon without the owner losing their assistant here. The strict
+  // one-salon rule only guards LolaDesk's shared owner line (above) and the owner voice line.
+  const isOwnerText = !!(row.operator_phone && fromN && fromN === e164(row.operator_phone));
+  if(isOwnerText){
     try{ const rel = await relayOwnerReply(db(), row, { text }); if(rel.handled) return res.status(200).json({ ok:true, handled:'owner_relay', sent: rel.sent }); }catch{}
     let conv=null, hist=[];
-    try{ conv = await getOrStartConversation(row.id, { channel:'operator', agent:'jarvis' }); if(conv?.id) hist = await getConversationHistory(conv.id, 10); }catch{}
+    try{ conv = await getOrStartConversation(row.id, { channel:'operator', agent:'jarvis', participant:'owner' }); if(conv?.id) hist = await getConversationHistory(conv.id, 10); }catch{}
     const brain = await answerOwner(row, hist, text, { channel:'sms' }).catch(()=>({ ok:false }));
     const reply = brain && brain.ok ? brain.text : "I can text you your day, revenue, or who's due. When a hot lead comes in, reply to my alert and I'll pass your message on.";
     try{ if(conv?.id){ await logMessage({ conversationId: conv.id, tenantId: row.id, role:'user', agent:'jarvis', content:text }); await logMessage({ conversationId: conv.id, tenantId: row.id, role:'assistant', agent:'jarvis', content:reply }); } }catch{}

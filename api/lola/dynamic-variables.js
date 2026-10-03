@@ -3,7 +3,7 @@
 // Every value in the response is coerced to a plain string —
 // Telnyx rejects null / undefined / objects during save validation.
 import { db } from '../lib/db.js';
-import { tenantForCalledNumber } from './_tool-tenant.js';
+import { toolAuth, tenantForCalledNumber } from './_tool-tenant.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -41,6 +41,13 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const to = body.to || body.To || '';
     const from = body.from || body.From || '';
+    // Caller memory (name, visits, no-shows, birthday, tags) is private — same rule as
+    // /api/agent-variables: only LolaDesk's own signed request (k=… signed for 'variables', or the
+    // legacy x-lola-tool-secret header), only for a real phone caller (never a website visitor).
+    // Anyone else gets the salon's public facts only.
+    const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
+    const web = /web/i.test(String(body?.data?.payload?.telnyx_conversation_channel || body?.telnyx_conversation_channel || ''));
+    const mayRemember = toolAuth(req, 'variables') === 'signed' && !web && isPhone(from);
 
     if (!to) {
       const p = emptyPayload();
@@ -72,7 +79,7 @@ export default async function handler(req, res) {
 
     let caller_brief = 'First-time caller — no history.';
     let client_id = '';
-    if (from) {
+    if (from && mayRemember) {
       const { data: cl } = await c.from('clients')
         .select('id, first_name, last_name, name, visit_count, no_show_count, birthday, tags')
         .eq('tenant_id', tenant.id).eq('phone', from).maybeSingle();

@@ -1,6 +1,6 @@
 import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
-import { searchNumbers, getAccountBalance, provisionNumberForTenant, listOwnedNumbers, attachOwnedNumberForTenant } from './lib/telnyx-provision.js';
+import { searchNumbers, getAccountBalance, provisionNumberForTenant, attachOwnedNumberForTenant, freePlatformNumbers } from './lib/telnyx-provision.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
 import { db, e164 } from './lib/db.js';
 
@@ -19,20 +19,6 @@ async function ownedByAnotherSalon(tenantId, number){
 // actually means she can take the first booking. Best-effort: the number is
 // already wired, so a seed failure must surface in the response, not fail
 // the whole provision.
-// Platform numbers no salon uses yet — the only ones a salon may pick for free (multi-tenant:
-// a salon never sees another salon's number, nor the platform's Telnyx balance).
-async function freePlatformNumbers(){
-  const owned = await listOwnedNumbers().catch(() => []);
-  if(!owned.length) return [];
-  const c = db(); if(!c) return [];
-  const [a, b] = await Promise.all([
-    c.from('tenant_numbers').select('phone_number,status').limit(5000),
-    c.from('tenants').select('phone_number').limit(5000),
-  ]);
-  const taken = new Set([...(a.data || []).filter(r => r.status !== 'released').map(r => r.phone_number), ...(b.data || []).map(r => r.phone_number)].filter(Boolean));
-  try{ const { data } = await c.from('platform_settings').select('value').eq('key', 'customer_care').maybeSingle(); if(data?.value?.number) taken.add(data.value.number); }catch(_){}
-  return owned.filter(n => !taken.has(n.phone_number)).map(n => ({ phone_number: n.phone_number, status: n.status, sms_enabled: n.sms_enabled }));
-}
 const isAdmin = (email) => String(process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(String(email || '').toLowerCase());
 
 async function seedBookability(tenant){
@@ -65,7 +51,7 @@ export default async function handler(req,res){
       const balance=who&&isAdmin(who.email)?await getAccountBalance().catch(()=>null):null;
       // Free platform numbers (no salon uses them) — attaching one costs nothing, so onboarding
       // never stalls on credit. Never another salon's number.
-      const owned=who?await freePlatformNumbers().catch(()=>[]):[];
+      const owned=who?(await freePlatformNumbers().catch(()=>[])).map(n=>({phone_number:n.phone_number,status:n.status,sms_enabled:n.sms_enabled})):[];
       return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:(()=>{ const v = n.cost_information?.monthly_cost ?? n.cost?.amount; return v!=null && v!=='' ? '$'+Number(v).toFixed(2)+'/mo' : ''; })()})),owned});
     }catch(e){return res.status(200).json({ok:false,error:e.message});}
   }

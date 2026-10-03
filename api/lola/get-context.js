@@ -4,25 +4,22 @@
 // business identity + everything LolaBrain needs to speak as them.
 // Given the "from" number, returns the caller's client record if known.
 //
-// This endpoint has NO auth — it's called by Telnyx AI Assistant, not a
-// browser. Security is by shared secret in x-lola-tool-secret header.
+// Called by the Telnyx AI Assistant, not a browser. The salon's public facts are public;
+// the CALLER's record (name, visit/no-show counts) is private and only returned to LolaDesk's
+// own signed request (k=… on the tool URL, or the legacy x-lola-tool-secret header), for the
+// caller line Telnyx saw — never to an anonymous POST that names someone's phone number.
 import { db } from '../lib/db.js';
-import { tenantForCalledNumber } from './_tool-tenant.js';
-
-function verifyToolAuth(req) {
-  const secret = process.env.LOLA_TOOL_SECRET;
-  if (!secret) return true; // dev: allow while unset
-  return req.headers?.['x-lola-tool-secret'] === secret;
-}
+import { toolAuth, verifiedCaller, tenantForCalledNumber } from './_tool-tenant.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  if (!verifyToolAuth(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (toolAuth(req) === 'refused') return res.status(401).json({ error: 'unauthorized' });
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const to = body.to_number || body.to;
-    const from = body.from_number || body.from;
+    // Only a verified caller line unlocks the client lookup (null for unsigned / website requests).
+    const from = verifiedCaller(req, body);
     if (!to) return res.status(400).json({ error: 'missing_to_number' });
 
     const c = db();

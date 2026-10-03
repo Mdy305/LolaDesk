@@ -58,9 +58,15 @@ function okFetch(jsonBody, status = 200) {
 function setupTenant(calls = [], tenantExtra = {}) {
   fake.reset();
   fake.auth.users.set('tok-1', { id: 'u1', email: 'owner@x.com', user_metadata: {} });
-  fake.seed('tenants', [{ id: 't1', name: 'Salon One', slug: 'salon-one', owner_email: 'owner@x.com', ...tenantExtra }]);
+  fake.seed('tenants', [{ id: 't1', name: 'Salon One', slug: 'salon-one', owner_email: 'owner@x.com', phone_number: LINE, ...tenantExtra }]);
   fake.seed('calls', calls);
 }
+
+// The salon's Lola line. One Telnyx assistant serves EVERY salon, so a conversation is this
+// salon's only when its metadata names this line (or one of its call ids).
+const LINE = '+14155550999';
+const MINE = { telnyx_agent_target: LINE };
+const OTHER = { telnyx_agent_target: '+13055550100' };   // another salon's live call
 
 function makeRes() {
   const out = { code: 200, body: null };
@@ -119,8 +125,9 @@ test('GET normalizes Telnyx conversations and picks the newest live one as whisp
     assert.ok(!String(url).includes('messages'), 'GET must not post messages');
     return okFetch({
       data: [
-        { id: 'conv-old', status: 'ended', started_at: '2026-08-30T10:00:00Z' },
-        { id: 'conv-new', status: 'in_progress', started_at: '2026-08-31T10:00:00Z', last_message_at: '2026-08-31T10:05:00Z' }
+        { id: 'conv-other', status: 'in_progress', started_at: '2026-08-31T11:00:00Z', metadata: OTHER },
+        { id: 'conv-old', status: 'ended', started_at: '2026-08-30T10:00:00Z', metadata: MINE },
+        { id: 'conv-new', status: 'in_progress', started_at: '2026-08-31T10:00:00Z', last_message_at: '2026-08-31T10:05:00Z', metadata: MINE }
       ]
     });
   });
@@ -131,7 +138,8 @@ test('GET normalizes Telnyx conversations and picks the newest live one as whisp
   assert.equal(out.body.telnyx_ready, true);
   assert.equal(out.body.assistant_id, 'assistant-test');
   const ids = out.body.conversations.map((c) => c.id);
-  assert.deepEqual(ids, ['conv-old', 'conv-new']);
+  assert.deepEqual(ids, ['conv-old', 'conv-new'], "another salon's conversation is never listed");
+  assert.ok(!JSON.stringify(out.body).includes('conv-other') && !JSON.stringify(out.body).includes('metadata'), 'no cross-salon ids, no raw metadata');
   assert.equal(out.body.conversations.find((c) => c.id === 'conv-old').status, 'ended');
   assert.equal(out.body.whisper_target.conversationId, 'conv-new', 'newest live conversation wins');
 });
@@ -142,6 +150,7 @@ test('POST whisper injects a system message into the explicit conversation and a
   process.env.TELNYX_ASSISTANT_ID = 'assistant-test';
   let posted = null;
   stubFetch(async (url, opts = {}) => {
+    if (opts.method !== 'POST') return okFetch({ data: [{ id: 'conv-x', status: 'in_progress', metadata: MINE }] });
     assert.ok(String(url).endsWith('/ai/assistants/assistant-test/conversations/conv-x/messages'), 'posts to the Add Messages API');
     assert.equal(opts.method, 'POST');
     const body = JSON.parse(opts.body);
@@ -175,17 +184,18 @@ test('POST whisper auto-resolves the newest live conversation when none is given
   let listCalls = 0, postUrl = null;
   stubFetch(async (url, opts = {}) => {
     if (opts.method === 'POST') { postUrl = String(url); return okFetch({ data: { id: 'm' } }); }
-    listCalls += 1;
+    if (String(url).includes('/assistants/')) listCalls += 1;   // the salon-scoped metadata lookups are extra, by design
     return okFetch({ data: [
-      { id: 'conv-ended', status: 'ended', started_at: '2026-08-30T10:00:00Z' },
-      { id: 'conv-live', status: 'in_progress', last_message_at: '2026-08-31T10:05:00Z' }
+      { id: 'conv-other', status: 'in_progress', last_message_at: '2026-08-31T11:00:00Z', metadata: OTHER },
+      { id: 'conv-ended', status: 'ended', started_at: '2026-08-30T10:00:00Z', metadata: MINE },
+      { id: 'conv-live', status: 'in_progress', last_message_at: '2026-08-31T10:05:00Z', metadata: MINE }
     ] });
   });
   const [res, out] = makeRes();
   await handler({ ...authReq(), method: 'POST', body: { text: 'Push the 3pm to 4pm.' } }, res);
   restoreFetch();
   assert.equal(out.code, 200);
-  assert.ok(postUrl.endsWith('/conversations/conv-live/messages'), 'used the newest live conversation');
+  assert.ok(postUrl.endsWith('/conversations/conv-live/messages'), "used this salon's newest live conversation (never another salon's)");
   assert.equal(listCalls, 1);
 });
 
@@ -193,7 +203,7 @@ test('POST whisper -> 409 when no conversation is live; 503 when Telnyx is not c
   setupTenant();
   process.env.TELNYX_API_KEY = 'test-key';
   process.env.TELNYX_ASSISTANT_ID = 'assistant-test';
-  stubFetch(async () => okFetch({ data: [{ id: 'conv-z', status: 'ended' }] }));
+  stubFetch(async () => okFetch({ data: [{ id: 'conv-z', status: 'ended', metadata: MINE }, { id: 'conv-o', status: 'in_progress', metadata: OTHER }] }));
   const [res, out] = makeRes();
   await handler({ ...authReq(), method: 'POST', body: { text: 'hello' } }, res);
   restoreFetch();
@@ -207,7 +217,9 @@ test('POST whisper -> 409 when no conversation is live; 503 when Telnyx is not c
   assert.equal(out2.body.error, 'telnyx_not_configured');
 
   process.env.TELNYX_API_KEY = 'test-key';
-  stubFetch(async () => ({ ok: false, status: 422, json: async () => ({ error: { message: 'conversation not found' } }) }));
+  stubFetch(async (url, opts = {}) => opts.method === 'POST'
+    ? ({ ok: false, status: 422, json: async () => ({ error: { message: 'conversation not found' } }) })
+    : okFetch({ data: [{ id: 'conv-nope', status: 'in_progress', metadata: MINE }] }));
   const [res3, out3] = makeRes();
   await handler({ ...authReq(), method: 'POST', body: { conversation_id: 'conv-nope', text: 'hello' } }, res3);
   restoreFetch();
@@ -215,6 +227,22 @@ test('POST whisper -> 409 when no conversation is live; 503 when Telnyx is not c
   assert.equal(out3.body.error, 'whisper_failed');
   assert.equal(out3.body.detail, 'conversation not found');
   assert.ok(!JSON.stringify(out3.body).includes('test-key'), 'the Telnyx key must never appear in a response');
+});
+
+test("POST whisper into ANOTHER salon's conversation -> 404, nothing sent", async () => {
+  setupTenant();
+  process.env.TELNYX_API_KEY = 'test-key';
+  process.env.TELNYX_ASSISTANT_ID = 'assistant-test';
+  let posted = false;
+  stubFetch(async (url, opts = {}) => { if (opts.method === 'POST') { posted = true; return okFetch({ data: {} }); } return okFetch({ data: [{ id: 'conv-o', status: 'in_progress', metadata: OTHER }, { id: 'conv-bare', status: 'in_progress' }] }); });
+  const [res, out] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { conversation_id: 'conv-o', text: 'cancel everything' } }, res);
+  const [res2, out2] = makeRes();
+  await handler({ ...authReq(), method: 'POST', body: { conversation_id: 'conv-bare', text: 'hi' } }, res2);
+  restoreFetch();
+  assert.equal(out.code, 404);
+  assert.equal(out2.code, 404, 'a conversation with no proof of ownership is not steerable');
+  assert.equal(posted, false);
 });
 
 test('POST whisper rejects empty / oversized text', async () => {

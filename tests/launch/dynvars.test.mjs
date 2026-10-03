@@ -13,6 +13,9 @@ globalThis.fetch = async (url, init = {}) => {
     if (init.method === 'PATCH' || init.method === 'POST') {
       const b = JSON.parse(init.body); sent.push(b);
       if (refuseTelephony && b.telephony_settings) return J({ errors: [{ detail: 'telephony_settings: unknown field' }] }, 422);
+      const names = (merged0) => (merged0.tools || []).map((t) => t?.webhook?.name).filter(Boolean);
+      const m0 = { ...assistant, ...b }; const nm = names(m0);
+      if (new Set(nm).size !== nm.length) return J({ errors: [{ detail: 'Webhook tools names must be unique, the following are not unique: ' + [...new Set(nm.filter((x, i) => nm.indexOf(x) !== i))].join(', ') }] }, 422);
       const merged = { ...assistant, ...b };
       if (bad(merged.dynamic_variables)) return J({ errors: [{ detail: '"Aiassistantdynamicvariables": Value for key \'booking_url\' must be a boolean, string, or integer' }] }, 422);
       assistant = merged; return J({ data: assistant });
@@ -48,5 +51,20 @@ refuseTelephony = true; sent.length = 0;
 r = await wireAssistant({ heal: true });
 ok(/&k=[\w-]{24}$/.test(assistant.tools[0].webhook.url) && /agent-variables\?k=/.test(assistant.dynamic_variables_webhook_url), 'tools + salon details are signed even when Telnyx refuses an optional setting');
 ok(assistant.telephony_settings.default_texml_app_id === 'app-9' && r.web_calls === false && /unknown field/.test(r.web_calls_error || ''), 'the number routing is kept and the refusal is reported, not hidden');
+// Duplicate tool names (Telnyx: "Webhook tools names must be unique") + empty defaults, together — the live case.
+refuseTelephony = false;
+const dupTool = (u) => ({ type: 'webhook', webhook: { name: 'handle_recovery', url: u, method: 'POST' } });
+assistant = { ...assistant, dynamic_variables: { company_name: null, hours: null, lola_greeting: 'Hi, this is Lola, a virtual assistant. This call may be recorded.' },
+  tools: [dupTool('https://old.example.com/x'), dupTool('https://www.loladesk.com/api/lola-tools?tool=handle_recovery'), { type: 'webhook', webhook: { name: 'escalate', url: 'https://www.loladesk.com/api/lola-tools?tool=escalate' } }, { type: 'webhook', webhook: { name: 'escalate', url: 'https://www.loladesk.com/api/lola-tools?tool=escalate' } }, { type: 'hangup', hangup: {} }] };
+r = await wireAssistant({ heal: true });
+const tn = assistant.tools.map((t) => t?.webhook?.name).filter(Boolean);
+ok(!r.error && new Set(tn).size === tn.length && r.duplicate_tools.length === 2, 'duplicate tools removed so Telnyx accepts the update: ' + JSON.stringify(r.duplicate_tools));
+ok(assistant.tools.find((t) => t?.webhook?.name === 'handle_recovery').webhook.url.includes('loladesk.com/api/lola-tools') && assistant.tools.some((t) => t.type === 'hangup'), 'the copy wired to LolaDesk is the one kept; unnamed tools (hangup) stay');
+ok(assistant.dynamic_variables.company_name === 'our salon' && assistant.dynamic_variables.hours === '', 'and the empty defaults are cleaned in the same update (company name → “our salon”)');
+// A plain voice change on an assistant still stuck with duplicates gets through on the retry.
+assistant.tools = [dupTool('https://a.example.com'), dupTool('https://www.loladesk.com/api/lola-tools?tool=handle_recovery')];
+sent.length = 0;
+await updateAssistant('assistant-dv1', { voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.v2', api_key_ref: 's' } });
+ok(assistant.voice_settings.voice.endsWith('.v2') && assistant.tools.length === 1, 'a voice switch blocked by duplicate tools is retried with them deduped and lands');
 console.log(fails ? `\n${fails} FAILED` : '\nall dynvars checks passed');
 process.exit(fails ? 1 : 0);

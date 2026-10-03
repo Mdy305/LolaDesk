@@ -67,6 +67,18 @@ export default async function handler(req, res){
       await client.from('conversations').update({ last_message:text, unread:false }).eq('id', conversationId);
       return res.status(200).json({ ok:true, conversation_id: conversationId });
     }
+    if(channel === 'messenger'){
+      const { replyAsSalon } = await import('./lib/messenger-dm.js');
+      const r = await replyAsSalon(client, tenant.id, conv.client_id, text);
+      if(!r.ok){
+        // Outside Facebook's 24-hour window nothing is sent — the note stays in the thread.
+        if(r.outside_window){ try{ await logMessage({ conversationId, tenantId: tenant.id, role:'assistant', agent:'owner', content:'(Not sent — Facebook’s 24-hour reply window had closed) ' + text }); }catch{} }
+        return res.status(400).json({ ok:false, error: r.error });
+      }
+      await logMessage({ conversationId, tenantId: tenant.id, role:'assistant', agent:'owner', content:text });
+      await client.from('conversations').update({ last_message:text, unread:false }).eq('id', conversationId);
+      return res.status(200).json({ ok:true, conversation_id: conversationId });
+    }
     if(!['sms','whatsapp'].includes(channel)){
       return res.status(400).json({ ok:false, error:`Replying from the dashboard isn't supported for ${channel} yet` });
     }

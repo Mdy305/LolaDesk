@@ -32,6 +32,9 @@ export default async function handler(req, res) {
       status = (f.get('RecordingStatus') || 'completed').toLowerCase();
     }
     if (!callId || !url || status !== 'completed') return res.status(200).send('ignored');
+    // This webhook is unsigned (TeXML callbacks): never store anything but a plain https link, so a
+    // forged callback can't plant a javascript:/data: link in a salon's call log.
+    try { if (new URL(url).protocol !== 'https:') return res.status(200).send('ignored'); } catch { return res.status(200).send('ignored'); }
     const c = db();
     if (c) {
       const { error } = await c.from('calls').update({ recording_audio_url: url }).eq('telnyx_call_control_id', callId);

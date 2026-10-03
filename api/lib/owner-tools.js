@@ -22,6 +22,11 @@ import { learnBusiness, parseKnowledge } from './business-learn.js';
 import { SEGMENTS, audience, createCampaign, startCampaign, campaignsWithStats, inSendingHours } from './marketing.js';
 import { buildFillPlan, latestPlan, setPlanStatus } from './fill-plan.js';
 import { askToConfirm, confirmationStatus } from './appointment-confirm.js';
+// Setup through Lola: the salon's line (new number / forwarding / moving a number), business-texting
+// registration, and channels (Instagram, Facebook Messenger, WhatsApp) — she does it all by conversation.
+import * as telecomSetup from './setup/telecom-tools.js';
+import * as channelSetup from './setup/channel-tools.js';
+const SETUP_MODULES = [telecomSetup, channelSetup];
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SEND_CAP = 25; // max clients one segment text can reach
@@ -71,6 +76,8 @@ export const OWNER_TOOLS = [
   fn('confirmation_status', "Who has confirmed their appointment for a day and who hasn't. Use for 'who confirmed tomorrow', 'confirmations'.", { date: dateArg }),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
+for (const m of SETUP_MODULES) for (const t of m.SETUP_TOOLS || []) if (!OWNER_TOOLS.some((x) => x.function.name === t.function.name)) OWNER_TOOLS.push(t);
+const setupModuleFor = (name) => SETUP_MODULES.find((m) => (m.SETUP_TOOLS || []).some((t) => t.function.name === name)) || null;
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
 const NEEDS_CONFIRM = new Set(['confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
@@ -99,6 +106,7 @@ export async function ownerSystemPrompt(tenant) {
     'When the owner asks you to do something, call the matching tool. Never claim you did something unless a tool result says it happened.',
     'Keep spoken replies short: one or two sentences, warm and plain.',
     'For texts, calls, cancellations, moves, no-shows and gap fills, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
+    'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
     'You are also their marketing manager: when they ask how to grow, give 2-3 specific moves for THIS business (who to text, what offer, when), then offer to send the text with text_clients_segment.',
     marketingBrief(tenant),
   ].filter(Boolean).join('\n');
@@ -260,6 +268,15 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
   if (!c) return { ok: false, say: "My database isn't connected right now." };
   const tz = await tenantTz(tenant.id);
   const confirmed = args.confirmed === true;
+  // Setup tools: run them; anything that spends money or can't be undone waits for the owner's "yes".
+  const setupMod = setupModuleFor(name);
+  if (setupMod) {
+    let out;
+    try { out = await setupMod.runSetupTool({ tenant, name, args, req }); }
+    catch (e) { out = { ok: false, say: "I couldn't finish that just now — try again in a moment." }; }
+    if (out && out.needs_confirmation && !confirmed && setupMod.SETUP_CONFIRM?.has(name)) return park(tenant.id, name, args, out.say);
+    return out || { ok: false, say: 'Something went wrong — try again.' };
+  }
   try {
     switch (name) {
       case 'confirm_appointments': {

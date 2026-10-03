@@ -18,6 +18,7 @@
   function route(item){
     if(item.action==='open_numbers') return location.href='numbers.html';
     if(item.action==='open_activation') return location.href='activation-studio.html';
+    if(item.id==='whatsapp'&&['connect','reconnect'].includes(item.action)) return turnOnWhatsApp(item.id);
     if(['connect','reconnect'].includes(item.action)&&!['voice','website','whatsapp'].includes(item.id)){
       var tok=''; try{ tok=localStorage.getItem('loladesk_token')||''; }catch(e){}
       return fetch('/api/oauth/connect?format=json&provider='+encodeURIComponent(item.id),{headers:{Authorization:'Bearer '+tok}})
@@ -25,6 +26,21 @@
         .catch(()=>alert('Could not reach LolaDesk — check your connection.'));
     }
     runHealth(item.id);
+  }
+  // WhatsApp: the real flow — finishes at once when the number is already approved by Meta,
+  // otherwise LolaDesk's team is asked to complete Meta's step (no fake "connected").
+  async function turnOnWhatsApp(id){
+    const button=document.querySelector(`[data-int-action="${CSS.escape(id)}"]`);
+    if(button){button.disabled=true;button.textContent='Turning on…';}
+    try{
+      const r=await fetch('/api/channels',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:JSON.stringify({action:'turn_on_whatsapp'})});
+      const d=await r.json().catch(()=>({}));
+      window.showToast?.(d.say||(r.ok?'WhatsApp request sent.':'Could not turn on WhatsApp right now.'),d.ok?'ok':'err');
+      if(!window.showToast&&d.say) alert(d.say);
+    }catch(error){
+      window.showToast?.('Could not reach LolaDesk — check your connection.','err');
+    }
+    return runHealth(id);
   }
   async function runHealth(id){
     const button=document.querySelector(`[data-int-action="${CSS.escape(id)}"]`);

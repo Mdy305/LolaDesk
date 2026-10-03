@@ -86,6 +86,7 @@ async function handleTranscript(ws, state, payload){
     const extra = Array.isArray(payload.messages) ? payload.messages : [];
     const out = await dashboardBrainReply({
       tenant: state.tenant,
+      user: state.user || null,
       body: {
         messages: [{ role:'user', content:text }, ...extra],
         system: payload.system,
@@ -160,6 +161,7 @@ async function authenticate(ws, state, token){
       return;
     }
     state.tenant = tenant;
+    state.user = user;   // her conversation thread is this person's own (owner / each staff member)
     state.authed = true;
     send(ws, { type:'ready', ok:true });
   }catch(e){

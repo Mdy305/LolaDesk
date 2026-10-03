@@ -281,9 +281,13 @@ async function findActiveCallByPhone(phoneNumber) {
   return 'call_' + uuidv4();
 }
 
+// Strict: the salon that owns the dialed number, or null — never a placeholder/default tenant.
 async function getTenantByPhone(phoneNumber) {
-  // TODO: Lookup tenant by phone number
-  return 'tenant_default';
+  try {
+    const { resolveInboundTenant } = await import('./tenant-resolver.js');
+    const r = await resolveInboundTenant({ to: phoneNumber });
+    return r.status === 'resolved' ? r.tenant.id : null;
+  } catch (_) { return null; }
 }
 
 async function sendMmsResponse({ to, text, tenantId }) {

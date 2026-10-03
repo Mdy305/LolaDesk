@@ -22,7 +22,7 @@ import { chat } from './llm.js';
 import { executeSkill } from './orchestrator.js';
 import { SKILLS } from '../lola-tools.js';
 import { resolveDate } from './operator-db.js';
-import { getOrStartConversation, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
+import { getOrStartConversation, participantFor, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lola-skills.js';
 import { OWNER_TOOLS, OWNER_TOOL_NAMES, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
 import { routeOwnerIntent, agentFor } from './owner-intents.js';
@@ -235,7 +235,7 @@ function lastUserText(messages){
  * Compute Lola's reply for a dashboard/direct-voice conversation.
  * Pure brain — no req/res, no telephony state. Returns { status, json }.
  */
-export async function dashboardBrainReply({ tenant, body, req }){
+export async function dashboardBrainReply({ tenant, body, req, user }){
   // `let`: past conversation is merged in below (a `const` here made that
   // assignment throw, silently skipping Lola's history).
   let messages = Array.isArray(body.messages) ? body.messages : [];
@@ -247,7 +247,13 @@ export async function dashboardBrainReply({ tenant, body, req }){
   const lastUserTextMsg = lastUserText(messages);
   let memConversation = null, memoryBlock = '';
   try{
-    memConversation = await getOrStartConversation(tenant.id, { channel: body.channel || 'dashboard', agent: 'lola' });
+    // [harden] Each signed-in person keeps their OWN thread with Lola, reused across turns:
+    // the owner and every staff member separately (participant 'user:<auth id>'). Callers pass the
+    // already-verified `user`; otherwise it is read from the request's token; no login → the salon's
+    // 'owner' thread. (Before: no clientId → .eq('client_id', undefined) → a new thread every turn.)
+    let who = user || null;
+    if(!who && req){ try{ who = await getUserFromToken(bearer(req)); }catch{} }
+    memConversation = await getOrStartConversation(tenant.id, { channel: body.channel || 'dashboard', agent: 'lola', participant: participantFor(who) });
     let ownerProfile = profileFromMemoryRows(await getOwnerMemory(tenant.id));
     memoryBlock = buildClientMemoryBlock(ownerProfile) || '';
     if(memConversation?.id && messages.length <= 2){

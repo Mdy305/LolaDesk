@@ -46,6 +46,36 @@ export function forwardingPlan(lolaNumber, carrier = 'att', { ringSeconds = 10 }
   ], note: 'Most business lines also accept *92 then the number for no-answer forwarding — your provider’s portal is the reliable way.' };
 }
 
+/**
+ * The forwarding row (tenant_channels, unique per channel+number) belongs to ONE salon.
+ * Another salon can never take it over: a number already verified (or being tested right
+ * now) for another salon is refused in plain words. Only a stale, never-verified row left
+ * by someone else may be re-claimed (a typo'd number someone abandoned).
+ */
+export async function claimForwardingRow(c, tenantId, salonNumber, at = new Date().toISOString()) {
+  const STALE_MS = 15 * 60e3;
+  try {
+    const { data } = await c.from('tenant_channels').select('tenant_id,status,updated_at,expires_at').eq('channel', 'forwarding').eq('account_id', salonNumber).limit(1);
+    const row = (data || [])[0] || null;
+    if (row && row.tenant_id && row.tenant_id !== tenantId) {
+      const fresh = Date.now() - new Date(row.updated_at || row.expires_at || 0).getTime() < STALE_MS;
+      if (row.status === 'verified' || fresh) {
+        return { ok: false, code: 'forwarding_number_taken', say: 'That number is already set up with another salon on LolaDesk, so I can’t use it here. If it really is your salon’s number, contact LolaDesk support and we’ll sort it out.' };
+      }
+    }
+    const patch = { tenant_id: tenantId, status: 'testing', expires_at: at, updated_at: at };
+    if (row) {
+      // Only ever touch the row we were allowed to claim (ours, or another's stale unverified test).
+      let q = c.from('tenant_channels').update(patch).eq('channel', 'forwarding').eq('account_id', salonNumber);
+      if (row.tenant_id) q = q.eq('tenant_id', row.tenant_id);
+      await q;
+    } else {
+      await c.from('tenant_channels').insert({ ...patch, channel: 'forwarding', account_id: salonNumber, username: null });
+    }
+    return { ok: true };
+  } catch (_) { return { ok: true }; }
+}
+
 /** LolaDesk calls the salon's own number; if forwarding works, the call comes back to Lola's line. */
 export async function startForwardingTest(c, tenant, salonNumber) {
   const to = e164(salonNumber), from = e164(tenant.phone_number || '');
@@ -53,7 +83,12 @@ export async function startForwardingTest(c, tenant, salonNumber) {
   if (!from) return { ok: false, say: 'Lola needs her phone number first (Salon → Phone & texting).' };
   if (digits(to) === digits(from)) return { ok: false, say: 'That’s Lola’s own number — enter the salon number your clients already call.' };
   const startedAt = new Date().toISOString();
-  try { await c.from('tenant_channels').upsert({ tenant_id: tenant.id, channel: 'forwarding', account_id: to, username: null, status: 'testing', expires_at: startedAt, updated_at: startedAt }, { onConflict: 'channel,account_id' }); } catch (_) {}
+  try {
+    const { data: lines } = await c.from('tenant_numbers').select('tenant_id,status').eq('phone_number', to).limit(3);
+    if ((lines || []).some((r) => r.tenant_id && r.tenant_id !== tenant.id && r.status !== 'released')) return { ok: false, code: 'forwarding_number_taken', say: 'That number belongs to another salon on LolaDesk, so I can’t use it here. Enter the number your own clients call.' };
+  } catch (_) {}
+  const claim = await claimForwardingRow(c, tenant.id, to, startedAt);
+  if (!claim.ok) return { ok: false, say: claim.say, code: claim.code };
   const candidates = await connectionCandidates(c, process.env.TELNYX_VOICE_APP_ID || null, 'TELNYX_VOICE_APP_ID');
   const state = encodeState({ k: 'fwd_test', t: tenant.id });
   for (const cand of candidates) {

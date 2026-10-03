@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-telnyx';
+export const RELEASE = 'lola-wired';
 let lastHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
 function silentWav() {
@@ -136,11 +136,14 @@ export async function buildStatus() {
       const { diagnoseTool, toolUrl } = await import('./lib/assistant-wiring.js');
       const { toolKeyOk } = await import('./lib/tool-key.js');
       const unsignedTools = (Array.isArray(a.tools) ? a.tools : []).filter((t) => { const d = diagnoseTool(t); return d && d.fixable; }).length;
+      const { dedupeTools } = await import('./lib/assistant-wiring.js');
+      const dups = dedupeTools(a.tools).removed;
+      if (dups.length) live.duplicate_tools = dups;
       let varsSigned = false; try { varsSigned = toolKeyOk(new URL(String(a.dynamic_variables_webhook_url || '')).searchParams.get('k'), 'variables'); } catch (_) {}
       live.phone_tools_ok = unsignedTools === 0;
       live.salon_details_ok = varsSigned;
       live.website_calls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
-      const wiringOff = unsignedTools > 0 || !varsSigned || !live.website_calls;
+      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls;
       const rewire = found.source !== 'env' || wiringOff;   // a different assistant than Vercel's id, or wiring that drifted: re-wire
       // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
       const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
@@ -162,6 +165,7 @@ export async function buildStatus() {
           try {
             const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true });
             if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
+            if (w.healed && !w.error && dups.length) { healed.push(`Removed ${dups.length} duplicate tool${dups.length > 1 ? 's' : ''} from Lola’s Telnyx assistant (${dups.slice(0, 4).join(', ')}) — Telnyx accepts changes to her again.`); delete live.duplicate_tools; }
             if (w.healed && !w.error && wiringOff) {
               healed.push(`Lola’s phone wiring secured: ${[unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean).join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
@@ -227,7 +231,8 @@ export async function buildStatus() {
   if (!settings.CRON_SECRET) fixes.push('Add CRON_SECRET in Vercel (any long random word), then Redeploy — without it calendar sync, reminders, deposits and Boulevard writes never run.');
   if (!settings.INTEGRATION_ENCRYPTION_KEY) fixes.push('Add INTEGRATION_ENCRYPTION_KEY in Vercel (run: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"), then Redeploy — needed to connect Boulevard/Square/calendar links securely.');
   if (!settings.ADMIN_EMAILS) fixes.push('Add ADMIN_EMAILS in Vercel = your login email, then Redeploy — unlocks Admin and the full “Lola, run a check”.');
-  if (live.assistant_bad_values) fixes.push(`Lola’s Telnyx assistant has an empty value for ${live.assistant_bad_values.join(', ')} — Telnyx refuses every change to her until it’s text. Telnyx → AI → Assistants → Lola → Dynamic Variables: set ${live.assistant_bad_values[0]} to https://www.loladesk.com (or delete it), then Save.`);
+  if (live.assistant_bad_values) fixes.push(`Lola’s Telnyx assistant still has ${live.assistant_bad_values.length} empty default value${live.assistant_bad_values.length > 1 ? 's' : ''} (${live.assistant_bad_values.slice(0, 4).join(', ')}${live.assistant_bad_values.length > 4 ? '…' : ''}). LolaDesk cleans them automatically on the next check (in about 10 minutes). If this stays: Telnyx → AI → Assistants → Lola → Dynamic Variables → delete the empty rows → Save.`);
+  if (live.duplicate_tools) fixes.push(`Lola’s Telnyx assistant has the same tool twice (${live.duplicate_tools.slice(0, 4).join(', ')}) — Telnyx refuses every change to her until each name is unique. LolaDesk removes the extra copies automatically on the next check; if this stays: Telnyx → AI → Assistants → Lola → Tools → delete the duplicate → Save.`);
   if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);

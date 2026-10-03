@@ -3,7 +3,7 @@
 // engine (staff schedules, time off, blocked time, buffers, holds, existing
 // bookings) in the salon's timezone. Next 3 openings that day, or across the
 // next 7 days when no date is given.
-import { verifyToolAuth, tenantForCalledNumber } from './_tool-tenant.js';
+import { toolAuth, tenantForCalledNumber } from './_tool-tenant.js';
 import { getAvailability } from '../lib/availability-engine-v2.js';
 import { salonTz, fmtSalon } from '../lib/salon-time.js';
 import { localDateKey } from '../lib/timezone.js';
@@ -12,7 +12,9 @@ import { gateNewBooking, turnedAway, CALLER_LINE } from '../lib/billing-enforce.
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  if (!verifyToolAuth(req)) return res.status(401).json({ error: 'unauthorized' });
+  // Public skill (anyone may ask for openings / book): refused only in legacy strict mode
+  // (LOLA_TOOL_SECRET set and neither that header nor the signed k=… present).
+  if (toolAuth(req) === 'refused') return res.status(401).json({ error: 'unauthorized' });
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const { to_number, service_id, staff_id, date } = body;
