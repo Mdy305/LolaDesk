@@ -13,9 +13,11 @@
    Preserves the original endpoints (GET/POST/DELETE /api/services)
    and adds Jobs-level layer: narrative, categories, search,
    duration/price sorting, add-photo, deposit override per service.
-   New fields on the wire (backend TODO — safe to ignore server-side):
-     category, photo_url, sort_order, deposit_override_amount,
-     deposit_override_type, buffer_after_min, tags[]
+   POST with `id` updates (never duplicates). Fields on the wire:
+     category, duration_minutes, buffer_after_min, is_addon,
+     active_duration_1_min / processing_duration_min / active_duration_2_min
+     (processing time — the engine frees the stylist during processing),
+     photo_url, sort_order, deposit_override_amount, deposit_override_type, tags[]
    ═══════════════════════════════════════════════════════════════ */
 .page-narrative{font-size:14px;color:var(--text2);margin-top:4px;line-height:1.55;max-width:640px}
 .page-narrative b{color:var(--text);font-weight:600}
@@ -94,6 +96,17 @@
 .macts button{flex:1;padding:12px;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;border:.5px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;min-height:44px}
 .macts .primary{background:var(--accent);color:#10140a;border-color:var(--accent);font-weight:700}
 .macts .primary:hover{box-shadow:0 4px 14px var(--accent-glow)}
+.svc-hint{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;line-height:1.45;color:var(--warning);background:rgba(255,179,64,.08);border:.5px solid rgba(255,179,64,.25);border-radius:var(--r-sm);padding:7px 10px;margin:-4px 0 12px}
+.svc-hint a{color:inherit;font-weight:600}
+.svc-tag.addon{color:#10140a;background:var(--accent);border-color:var(--accent);font-weight:600}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.phase-box{background:var(--surface);border:.5px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px}
+.phase-box .phase-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+.phase-box .phase-head b{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.phase-box .phase-total{font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums}
+.phase-box .fld{margin-bottom:0}
+.phase-box .fld label{letter-spacing:.04em}
+.phase-box .fld input{background:var(--bg2)}
 .err{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px}
 .err.ok{color:var(--accent)}
 
@@ -102,6 +115,7 @@
   .chip-row{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .search-box{max-width:none;width:100%}
   .row2{grid-template-columns:1fr}
+  .row3{grid-template-columns:1fr 1fr 1fr}
   .topbar-actions{width:100%}
   .topbar-actions .btn{width:100%;justify-content:center}
 }
@@ -190,9 +204,27 @@
       <div class="fld"><label>Duration (min)</label><input id="fDur" type="number" min="5" max="480" placeholder="60" inputmode="numeric"/></div>
     </div>
 
+    <div class="phase-box">
+      <div class="phase-head"><b>Processing time</b><span class="phase-total" id="phaseTotal">Optional</span></div>
+      <div class="row3">
+        <div class="fld"><label>Apply</label><input id="fA1" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+        <div class="fld"><label>Processing</label><input id="fProc" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+        <div class="fld"><label>Finish</label><input id="fA2" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+      </div>
+      <div class="fine" style="font-size:11px;color:var(--text3);margin-top:8px">For color and treatments: the stylist is free during processing, so Lola can book a quick service in that gap.</div>
+    </div>
+
+    <div class="fld">
+      <label>Type</label>
+      <select id="fAddon">
+        <option value="false">Main service</option>
+        <option value="true">Add-on — booked alongside a main service</option>
+      </select>
+    </div>
+
     <div class="row2">
       <div class="fld"><label>Price ($)</label><input id="fPrice" type="number" min="0" step="1" placeholder="0" inputmode="decimal"/></div>
-      <div class="fld"><label>Buffer after (min)</label><input id="fBuffer" type="number" min="0" placeholder="10" inputmode="numeric"/><div class="fine">Recovery time. Overrides global default.</div></div>
+      <div class="fld"><label>Buffer after (min)</label><input id="fBuffer" type="number" min="0" placeholder="Salon default" inputmode="numeric"/><div class="fine">Clean-up time after this service. Empty = salon default.</div></div>
     </div>
 
     <div class="fld"><label>Description</label><textarea id="fDesc" placeholder="Two lines shown to clients on the booking page."></textarea></div>
@@ -234,6 +266,7 @@ let editId = null;
 let photoData = '';
 let FILTER = 'All';
 let QUERY = '';
+let SETUP = null;   // { staff:[{id,name,is_active,has_hours,services}], links:[…] } from GET /api/services
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -252,7 +285,8 @@ async function load(){
     const r = await fetch('/api/services', { headers: hdr(tok) });
     const d = await r.json().catch(()=>({}));
     SVCS = d.ok ? (d.services || []) : [];
-  }catch(e){ SVCS = []; }
+    SETUP = d.ok ? (d.setup || null) : null;
+  }catch(e){ SVCS = []; SETUP = null; }
   render();
 }
 
@@ -266,13 +300,36 @@ function priceFmt(s){
 function isPremium(s){ return Number(s.price||0) >= 250; }
 function activeList(){ return SVCS.filter(s => s.is_active !== false); }
 
+// Same rule as the availability engine: a stylist with picks does only those
+// services; a stylist with no picks does everything. Only active stylists
+// with weekly hours can actually be booked.
+function bookableStylists(s){
+  if(!SETUP || !Array.isArray(SETUP.staff)) return null;
+  return SETUP.staff.filter(m => m.is_active !== false && m.has_hours &&
+    (!(m.services||[]).length || (m.services||[]).includes(s.id)));
+}
+function setupHint(s){
+  const who = bookableStylists(s);
+  if(who == null || who.length) return '';
+  const anyStaff = SETUP.staff.some(m => m.is_active !== false);
+  const msg = !anyStaff ? 'No stylists yet — add your team so clients can book this.'
+    : 'No stylist with hours can take this, so it can’t be booked. Assign it on Team.';
+  return `<div class="svc-hint" role="note"><span aria-hidden="true">!</span><span>${msg} <a href="team.html" onclick="event.stopPropagation()">Open Team →</a></span></div>`;
+}
+function phasesOf(s){
+  const a1 = Number(s.active_duration_1_min||0), p = Number(s.processing_duration_min||0), a2 = Number(s.active_duration_2_min||0);
+  return (a1 || p || a2) ? { a1, p, a2, total: a1 + p + a2 } : null;
+}
+
 function narrative(){
   const list = activeList();
   const t = list.length;
   if(!t) return "No services yet. Add your first service and Lola will start quoting it on every call.";
   const cats = new Set(list.map(catOf));
   const revenue = list.reduce((s,x) => s + Number(x.price||0), 0);
-  return `<b>${t}</b> service${t===1?'':'s'} across <b>${cats.size}</b> categor${cats.size===1?'y':'ies'}. Menu total value: <b>$${revenue.toLocaleString()}</b>.`;
+  const unbookable = list.filter(s => { const w = bookableStylists(s); return w && !w.length; }).length;
+  const warn = unbookable ? ` <span style="color:var(--warning)"><b>${unbookable}</b> can’t be booked yet — no stylist assigned.</span>` : '';
+  return `<b>${t}</b> service${t===1?'':'s'} across <b>${cats.size}</b> categor${cats.size===1?'y':'ies'}. Menu total value: <b>$${revenue.toLocaleString()}</b>.${warn}`;
 }
 
 function paintChips(){
@@ -298,11 +355,14 @@ function filterList(){
 }
 
 function cardHtml(s){
-  const dur = s.duration_minutes || 60;
+  const ph = phasesOf(s);
+  const dur = ph ? ph.total : (s.duration_minutes || 60);
+  const durText = ph && ph.p ? `${dur} min · ${ph.p} processing` : `${dur} min`;
+  const buf = s.buffer_after_min ? ` · +${Number(s.buffer_after_min)} clean-up` : '';
   const desc = s.description ? `<div class="svc-desc">${esc(s.description)}</div>` : '';
-  const tags = Array.isArray(s.tags) && s.tags.length
-    ? `<div class="svc-tags">${s.tags.map(t => `<span class="svc-tag">${esc(t)}</span>`).join('')}</div>`
-    : '';
+  const tagList = (s.is_addon ? ['<span class="svc-tag addon">Add-on</span>'] : [])
+    .concat(Array.isArray(s.tags) ? s.tags.map(t => `<span class="svc-tag">${esc(t)}</span>`) : []);
+  const tags = tagList.length ? `<div class="svc-tags">${tagList.join('')}</div>` : '';
   const photo = s.photo_url
     ? `<div class="svc-photo"><img src="${esc(s.photo_url)}" alt=""></div>`
     : `<div class="svc-photo empty">No photo</div>`;
@@ -316,8 +376,9 @@ function cardHtml(s){
       <div class="svc-price ${!Number(s.price||0)?'free':''}">${priceFmt(s)}</div>
       <div class="svc-meta">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        ${dur} min
+        ${esc(durText + buf)}
       </div>
+      ${setupHint(s)}
       ${desc}
       ${tags}
       <div class="svc-acts" onclick="event.stopPropagation()">
@@ -364,7 +425,10 @@ function openForm(){
   $('fCategory').value = 'Hair';
   $('fDur').value = '60';
   $('fPrice').value = '';
-  $('fBuffer').value = '10';
+  $('fBuffer').value = '';
+  $('fA1').value = ''; $('fProc').value = ''; $('fA2').value = '';
+  $('fAddon').value = 'false';
+  syncPhases();
   $('fDesc').value = '';
   $('fDepType').value = '';
   $('fDepAmt').value = '';
@@ -380,10 +444,18 @@ function edit(id){
   photoData = '';
   $('mTitle').textContent = 'Edit service';
   $('fName').value = s.name || '';
-  $('fCategory').value = catOf(s);
+  if(s.category && ![...$('fCategory').options].some(o => o.value === s.category)){
+    const o = document.createElement('option'); o.value = o.textContent = s.category; $('fCategory').appendChild(o);
+  }
+  $('fCategory').value = s.category || 'Other';
   $('fDur').value = s.duration_minutes || 60;
   $('fPrice').value = s.price != null ? s.price : '';
   $('fBuffer').value = s.buffer_after_min != null ? s.buffer_after_min : '';
+  $('fA1').value = Number(s.active_duration_1_min||0) || '';
+  $('fProc').value = Number(s.processing_duration_min||0) || '';
+  $('fA2').value = Number(s.active_duration_2_min||0) || '';
+  $('fAddon').value = s.is_addon ? 'true' : 'false';
+  syncPhases();
   $('fDesc').value = s.description || '';
   $('fDepType').value = s.deposit_override_type || '';
   $('fDepAmt').value = s.deposit_override_amount || '';
@@ -393,6 +465,24 @@ function edit(id){
   setTimeout(() => $('fName').focus(), 60);
 }
 function closeModal(){ $('modal').classList.remove('open'); }
+
+// Processing time: Apply + Processing + Finish IS the duration.
+function phaseVals(){
+  const n = id => Math.max(0, Math.round(Number($(id).value || 0)) || 0);
+  return { a1: n('fA1'), p: n('fProc'), a2: n('fA2') };
+}
+function syncPhases(){
+  const v = phaseVals();
+  const total = v.a1 + v.p + v.a2;
+  const dur = $('fDur');
+  if(total > 0){
+    dur.value = total; dur.readOnly = true; dur.style.opacity = '.6';
+    $('phaseTotal').textContent = `${total} min total · stylist free for ${v.p}`;
+  } else {
+    dur.readOnly = false; dur.style.opacity = '';
+    $('phaseTotal').textContent = 'Optional';
+  }
+}
 
 $('photoInput').onchange = () => {
   const f = $('photoInput').files[0];
@@ -419,6 +509,10 @@ async function save(){
       name,
       category: $('fCategory').value,
       duration_minutes: Number($('fDur').value || 60),
+      active_duration_1_min: phaseVals().a1,
+      processing_duration_min: phaseVals().p,
+      active_duration_2_min: phaseVals().a2,
+      is_addon: $('fAddon').value === 'true',
       price: $('fPrice').value !== '' ? Number($('fPrice').value) : 0,
       description: $('fDesc').value.trim(),
       buffer_after_min: $('fBuffer').value !== '' ? Number($('fBuffer').value) : null,

@@ -69,7 +69,8 @@ function stubTelnyx(){
     if (path === '/available_phone_numbers') return json({ data: [{ phone_number: '+13055550100', region_information: [{ region_name: 'FL' }] }] });
     if (path === '/phone_numbers') return json({ data: [{ id: 'PN1', phone_number: '+13055550100', status: 'active', connection_id: 'CONN-1' }] });
     if (path === '/phone_numbers/PN1/voice') return json({ data: { connection_id: 'CONN-1' } });
-    if (path === '/messaging_phone_numbers/%2B13055550100' || path === '/messaging_phone_numbers/+13055550100') {
+    // Documented: GET/PATCH /phone_numbers/{id}/messaging (the old /messaging_phone_numbers route isn't in Telnyx's docs)
+    if (path === '/phone_numbers/PN1/messaging') {
       // PATCH assigns a profile; GET returns the current assignment.
       if (body?.messaging_profile_id) return json({ data: { phone_number: '+13055550100', messaging_profile_id: body.messaging_profile_id } });
       return json({ data: { phone_number: '+13055550100', messaging_profile_id: 'MP-1', messaging_product: 'sms' } });
@@ -79,8 +80,9 @@ function stubTelnyx(){
       { id: 'MP-1', name: 'Client SMS', webhook_url: 'https://www.loladesk.com/api/telnyx-sms', features: ['SMS', 'MMS', 'WhatsApp'], tcr_campaign_id: 'CAMP-1', tcr_campaign_status: 'active' },
       { id: 'MP-2', name: 'Marketing', webhook_url: null, features: ['SMS'] }
     ] });
-    if (path === '/10dlc/brands') return json({ data: [{ id: 'BR-1', brand: 'MMA Salon', status: 'verified' }] });
-    if (path === '/10dlc/campaigns') return json({ data: [{ id: 'CAMP-1', campaign_id: 'CM12345', status: 'active', use_case: 'CONVERSATIONAL' }] });
+    // Documented lists: GET /10dlc/brand and /10dlc/campaign → { page, records, totalRecords }
+    if (path === '/10dlc/brand') return json({ page: 1, totalRecords: 1, records: [{ brandId: 'BR-1', displayName: 'MMA Salon', identityStatus: 'verified' }] });
+    if (path === '/10dlc/campaign') return json({ page: 1, totalRecords: 1, records: [{ campaignId: 'CAMP-1', tcrCampaignId: 'CM12345', campaignStatus: 'active', usecase: 'CONVERSATIONAL' }] });
     if (path === '/10dlc/phoneNumberAssignmentByProfile') return json({ data: { messagingProfileId: body.messagingProfileId, tcrCampaignId: body.tcrCampaignId } });
     if (path === '/sim_cards') return json({ data: [{ id: 'SIM-1', iccid: '8901234567890', status: { value: 'suspended' }, data_limit: { amount: '500', unit: 'MB' } }] });
     if (path === '/sim_cards/SIM-1/actions/enable') return json({ data: { id: 'SIM-1', status: { value: 'active' } } });
@@ -184,7 +186,7 @@ test('messaging profile assign patches the tenant number', async () => {
     const { status, json } = await post('messaging_profiles.assign', { messaging_profile_id: 'MP-2' });
     assert.equal(status, 200);
     assert.equal(json.data.messaging_profile_id, 'MP-2');
-    const call = t.calls.find(c => c.path.includes('messaging_phone_numbers') && c.method === 'PATCH');
+    const call = t.calls.find(c => c.path.includes('/phone_numbers/PN1/messaging') && c.method === 'PATCH');
     assert.ok(call, 'expected a PATCH to the messaging phone number');
   }finally{ globalThis.fetch = t.realFetch; }
 });

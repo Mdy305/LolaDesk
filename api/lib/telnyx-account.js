@@ -15,7 +15,8 @@ import { db } from './db.js';
 
 const KEY = 'telnyx_messaging_profile_id';
 const smsUrl = () => appUrl() + '/api/telnyx-sms';
-const OUR_SMS_PATHS = /\/api\/(telnyx-sms|telnyx-webhook|webhooks\/telnyx)\b/;
+// Only /api/telnyx-sms answers clients (STOP/HELP, Lola's replies); the generic call webhook doesn't.
+const OUR_SMS_PATHS = /\/api\/telnyx-sms\b/;
 const ours = (u) => { try { const x = new URL(u); const a = new URL(appUrl()); return x.hostname.replace(/^www\./, '') === a.hostname.replace(/^www\./, '') && OUR_SMS_PATHS.test(x.pathname); } catch (_) { return false; } };
 
 /** The messaging profile salon numbers join: env first, else the one LolaDesk adopted. */
@@ -36,14 +37,18 @@ export async function wireMessaging(client, { heal = false } = {}) {
   if (!profile) {
     const list = telnyxData(await telnyxRequest('/messaging_profiles', { query: { 'page[size]': 100 }, timeoutMs: 8000 })) || [];
     profile = list.find(p => ours(p.webhook_url)) || list.find(p => /lola/i.test(p.name || '')) || list[0] || null;
-    if (!profile && heal) { profile = telnyxData(await telnyxRequest('/messaging_profiles', { method: 'POST', body: { name: 'LolaDesk', webhook_url: smsUrl(), webhook_failover_url: smsUrl() }, timeoutMs: 10000 })); did.push('created'); }
+    if (!profile && heal) { profile = telnyxData(await telnyxRequest('/messaging_profiles', { method: 'POST', body: { name: 'LolaDesk', whitelisted_destinations: ['US', 'CA'], enabled: true, webhook_api_version: '2', webhook_url: smsUrl(), webhook_failover_url: smsUrl() }, timeoutMs: 10000 })); did.push('created'); }
     if (profile?.id && heal) { await remember(client, profile.id); did.push('adopted'); }
   }
   if (!profile) return { ok: false, say: 'There’s no messaging profile in your Telnyx account yet.', did };
   const webhookOk = ours(profile.webhook_url);
-  if (!webhookOk && heal) {
-    await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profile.id), { method: 'PATCH', body: { webhook_url: smsUrl() }, timeoutMs: 8000 });
-    did.push('webhook');
+  // Texting works only on an enabled profile that sends v2 JSON webhooks to /api/telnyx-sms.
+  const settingsOk = profile.enabled !== false && (profile.webhook_api_version == null || String(profile.webhook_api_version) === '2');
+  if ((!webhookOk || !settingsOk) && heal) {
+    const body = { enabled: true, webhook_api_version: '2' };
+    if (!webhookOk) { body.webhook_url = smsUrl(); body.webhook_failover_url = smsUrl(); }
+    try { await telnyxRequest('/messaging_profiles/' + encodeURIComponent(profile.id), { method: 'PATCH', body, timeoutMs: 8000 }); did.push(webhookOk ? 'settings' : 'webhook'); }
+    catch (e) { return { ok: false, id: profile.id, say: 'Telnyx refused the texting settings: ' + String(e?.message || e).slice(0, 140), did }; }
   }
   return { ok: webhookOk || did.includes('webhook'), id: profile.id, name: profile.name || null, webhook_ok: webhookOk || did.includes('webhook'), did,
     env_set: !!(process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE) };

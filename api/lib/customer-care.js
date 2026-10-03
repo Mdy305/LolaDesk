@@ -196,7 +196,7 @@ export async function provisionCare(c, { phone_number = null, area_code = '305',
   // 3. Wire voice to the support assistant, texts to the LolaDesk profile.
   const wired = { voice: false, texts: false };
   if (num.id) {
-    try { await telnyxRequest(`/phone_numbers/${num.id}/voice`, { method: 'PATCH', body: { connection_id: texml }, timeoutMs: 10000 }); wired.voice = true; } catch (_) {}
+    try { await telnyxRequest(`/phone_numbers/${num.id}`, { method: 'PATCH', body: { connection_id: texml }, timeoutMs: 10000 }); wired.voice = true; } catch (_) {}
     const mp = await messagingProfileId(c).catch(() => null);
     if (mp) { try { await telnyxRequest(`/phone_numbers/${num.id}/messaging`, { method: 'PATCH', body: { messaging_profile_id: mp }, timeoutMs: 10000 }); wired.texts = true; } catch (_) {} }
   }

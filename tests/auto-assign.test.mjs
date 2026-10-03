@@ -115,7 +115,7 @@ test('assigns a free owned number end to end: routing row + tenant column + resu
     assert.equal(saved.phone_number, '+15550000002');
     // every link path actually hit Telnyx; the LolaBrain attach re-points the
     // voice connection to the assistant's own TeXML app (no dead endpoint)
-    assert.ok(spy.calls.some(c => c.method === 'PATCH' && c.url.includes('/phone_numbers/n2/voice') && c.body?.connection_id === 'brain-app-1'));
+    assert.ok(spy.calls.some(c => c.method === 'PATCH' && /\/phone_numbers\/n2(\?|$)/.test(c.url) && c.body?.connection_id === 'brain-app-1'));
     assert.ok(spy.calls.some(c => c.method === 'PATCH' && c.url.includes('/phone_numbers/n2/messaging')));
     assert.equal(spy.calls.some(c => c.url.includes('/ai/assistants/lola-brain-1/phone_numbers')), false);
   }finally{ spy.restore(); }

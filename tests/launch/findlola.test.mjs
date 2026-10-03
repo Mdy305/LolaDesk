@@ -12,18 +12,21 @@ const assistants = [
   { id: 'assistant-test', name: 'test bot', telephony_settings: {}, updated_at: '2026-10-01' },
 ];
 const phone = [{ id: 'n1', phone_number: '+13055550100', connection_id: 'old-dead-app' }];
-const updates = [], patches = [], starts = [];
+const updates = [], patches = [], starts = [], answers = [];
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   const am = u.match(/\/ai\/assistants\/([^/?]+)/);
   if (am) { const a = assistants.find((x) => x.id === decodeURIComponent(am[1])); if (!a) return J({ errors: [{ detail: 'Resource not found' }] }, 404); if (init.method === 'POST' || init.method === 'PATCH') { const b = JSON.parse(init.body); updates.push({ id: a.id, ...b }); Object.assign(a, b); } return J({ data: a }); }
   if (u.includes('/ai/assistants')) return J({ data: assistants });
-  if (/\/phone_numbers\/n\d\/voice/.test(u)) { const b = JSON.parse(init.body); patches.push(b.connection_id); phone[0].connection_id = b.connection_id; return J({ data: phone[0] }); }
+  if (/\/phone_numbers\/n\d$/.test(u) && init.method === 'PATCH') { const b = JSON.parse(init.body); patches.push(b.connection_id); phone[0].connection_id = b.connection_id; return J({ data: phone[0] }); }
   if (u.includes('/phone_numbers')) return J({ data: phone });
-  if (/\/calls\/[^/]+\/actions\/ai_assistant_start/.test(u)) { starts.push(JSON.parse(init.body).assistant_id); return J({ data: {} }); }
+  if (/\/calls\/[^/]+\/actions\/ai_assistant_start/.test(u)) { starts.push(JSON.parse(init.body).assistant?.id); return J({ data: {} }); }
+  if (/\/calls\/[^/]+\/actions\/answer/.test(u)) { answers.push(u); return J({ data: {} }); }
   if (u.includes('/text-to-speech/speech')) return new Response(new Uint8Array(3000), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
   if (u.endsWith('/balance')) return J({ data: { balance: '9', available_credit: '9' } });
-  if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
+  if (u.includes('/chat/completions')) return J({ choices: [{ message: { role: 'assistant', content: 'ready' } }] });
+  if (u.includes('/ai/audio/transcriptions')) return J({ text: '' });
+  if (/\/ai\/(openai\/)?models/.test(u)) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
   if (u.includes('/10dlc/phone_number_campaigns')) return J({ records: phone.map((p) => ({ phoneNumber: p.phone_number })) });
   return J({ data: [] });
 };
@@ -56,7 +59,7 @@ const raw = JSON.stringify({ data: { event_type: 'call.initiated', payload: { ca
 const ts = String(Math.floor(Date.now() / 1000));
 const sig = crypto.sign(null, Buffer.from(ts + '|' + raw), ed.privateKey).toString('base64');
 await new Promise((resolve) => { const req = Readable.from([Buffer.from(raw)]); Object.assign(req, { method: 'POST', headers: { 'telnyx-signature-ed25519': sig, 'telnyx-timestamp': ts }, query: {} }); const res = { statusCode: 200, status(c) { this.statusCode = c; return this; }, json(o) { resolve(o); }, end() { resolve(); }, send() { resolve(); } }; hook(req, res); });
-ok(starts.includes('assistant-lola2'), 'an incoming call is answered by Lola even when the salon has no assistant of its own');
+ok(starts.includes('assistant-lola2') && answers.some((u) => u.includes('in-1')), 'an incoming call is answered (answer, then ai_assistant_start {assistant:{id}}) by Lola even when the salon has no assistant of its own');
 
 // No assistant at all on the account → one plain instruction.
 assistants.length = 0; W._resetAssistantCache();

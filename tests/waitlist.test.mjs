@@ -200,7 +200,7 @@ test('offerFreedSlot texts the first consenting client and marks them offered', 
     assert.equal(r.entry.client_name, 'Maya'); // first CONSENTING client, not the first entry
     assert.equal(spy.calls.length, 1);
     const body = spy.calls[0].body;
-    assert.equal(body.to, '5551234');
+    assert.equal(body.to, '+5551234');   // Telnyx requires E.164: the funnel normalizes
     assert.equal(body.from, '+15551234567');
     assert.match(body.text, /Balayage spot just opened/i);
     assert.match(body.text, /STOP to opt out/i);

@@ -3,10 +3,21 @@
 //   - onboarding/step2-ingest.js (extract salon info from website)
 //   - lola/ask.js (Drop C — "ask Lola anything about your business")
 //   - inbox autopilot replies (planned)
-const TELNYX_AI = 'https://api.telnyx.com/v2/ai/chat/completions';
-const DEFAULT_MODEL = process.env.TELNYX_LLM_MODEL || 'moonshotai/Kimi-K2-Instruct';
+// Documented endpoint (POST /v2/ai/chat/completions is deprecated) and listed models:
+// the fast Llama first (reads a website in seconds), Kimi K2.6 as the fallback.
+const TELNYX_AI = 'https://api.telnyx.com/v2/ai/openai/chat/completions';
+const DEFAULT_MODEL = process.env.TELNYX_LLM_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
+const FALLBACK_MODEL = 'moonshotai/Kimi-K2.6';
 
-export async function chat({ messages, model, max_tokens, temperature, response_format }) {
+export async function chat(opts) {
+  try { return await chatOnce(opts); }
+  catch (e) {
+    if (opts?.model || !/\b(400|404|422)\b|model/i.test(String(e?.message))) throw e;
+    return chatOnce({ ...opts, model: FALLBACK_MODEL, max_tokens: Math.max(opts?.max_tokens || 1200, 2000) });
+  }
+}
+
+async function chatOnce({ messages, model, max_tokens, temperature, response_format }) {
   const key = process.env.TELNYX_API_KEY;
   if (!key) throw new Error('TELNYX_API_KEY missing');
 

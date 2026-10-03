@@ -52,6 +52,7 @@ export async function searchNumbers(areaCode, { limit = 10 } = {}){
   p.set('filter[country_code]', 'US');
   p.set('filter[features][]', 'voice');
   p.append('filter[features][]', 'sms');
+  p.append('filter[features][]', 'mms');   // clients text Lola photos of their hair
   p.set('filter[limit]', String(limit));
   p.set('filter[phone_number_type]', 'local');
   if(areaCode && /^\d{3}$/.test(areaCode)) p.set('filter[national_destination_code]', areaCode);
@@ -81,7 +82,8 @@ export async function getOrCreateTexmlApp(){
   try{
     const j = await tFetch('/texml_applications', {
       method: 'POST',
-      body: JSON.stringify({ friendly_name: 'LolaDesk', webhook_url: webhookUrl, webhook_api_version: '2', inbound: { channel_limit: 10 }, outbound: { channel_limit: 10 } })
+      // Telnyx: POST /texml_applications requires friendly_name AND voice_url.
+      body: JSON.stringify({ friendly_name: 'LolaDesk', voice_url: webhookUrl, voice_method: 'post', status_callback: webhookUrl, inbound: { channel_limit: 10 }, outbound: { channel_limit: 10 } })
     });
     return j?.data || {};
   }catch(e){
@@ -95,7 +97,7 @@ export async function getOrCreateTexmlApp(){
         try{
           await tFetch('/texml_applications/' + adopt.id, {
             method: 'PATCH',
-            body: JSON.stringify({ webhook_url: webhookUrl, webhook_api_version: '2' })
+            body: JSON.stringify({ friendly_name: 'LolaDesk', voice_url: webhookUrl, voice_method: 'post' })
           });
         }catch(patchErr){ console.warn('[PROVISION] adopted app webhook update:', patchErr.message); }
         return adopt;
@@ -108,6 +110,9 @@ export async function getOrCreateTexmlApp(){
 export async function purchaseNumber(phoneNumber, texmlAppId){
   const body = { phone_numbers: [{ phone_number: phoneNumber }] };
   if(texmlAppId) body.connection_id = texmlAppId;
+  // Attach texting at order time too (documented on POST /number_orders), so a slow order can't leave it unlinked.
+  const profileId = process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE || await adoptedProfileId().catch(() => null);
+  if(profileId) body.messaging_profile_id = profileId;
   const j = await tFetch('/number_orders', { method: 'POST', body: JSON.stringify(body) });
   return j?.data || {};
 }
@@ -115,9 +120,8 @@ export async function purchaseNumber(phoneNumber, texmlAppId){
 export async function linkMessagingProfile(phoneNumberId, override = null){
   const profileId = override || process.env.TELNYX_MESSAGING_PROFILE_ID || process.env.TELNYX_MESSAGING_PROFILE || await adoptedProfileId();
   if(!profileId) return false;
-  await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) })
-    .catch(e => console.warn('[PROVISION] SMS profile:', e.message));
-  return true;
+  try { await tFetch('/phone_numbers/' + phoneNumberId + '/messaging', { method: 'PATCH', body: JSON.stringify({ messaging_profile_id: profileId }) }); return true; }
+  catch(e){ console.warn('[PROVISION] SMS profile:', e.message); return false; }
 }
 
 // ── Canonical voice connection ────────────────────────────────────
@@ -174,9 +178,8 @@ export async function getCanonicalVoiceConnectionId(){
 export async function linkVoiceConnection(phoneNumberId){
   const connectionId = await getCanonicalVoiceConnectionId();
   if(!connectionId) return false;
-  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: connectionId }) })
-    .catch(e => console.warn('[PROVISION] Voice connection:', e.message));
-  return true;
+  try { await tFetch('/phone_numbers/' + phoneNumberId, { method: 'PATCH', body: JSON.stringify({ connection_id: connectionId }) }); return true; }
+  catch(e){ console.warn('[PROVISION] Voice connection:', e.message); return false; }
 }
 
 /**
@@ -324,17 +327,21 @@ export async function linkLolaBrain(phoneNumberId){
   // connection looked healthy.)
   const appId = await getLolaBrainConnectionId();
   if(!appId) return false;
-  await tFetch('/phone_numbers/' + phoneNumberId + '/voice', { method: 'PATCH', body: JSON.stringify({ connection_id: appId }) })
-    .catch(e => console.warn('[PROVISION] LolaBrain:', e.message));
-  return true;
+  // connection_id is a field of the number (PATCH /phone_numbers/{id}); /voice has no connection_id.
+  try { await tFetch('/phone_numbers/' + phoneNumberId, { method: 'PATCH', body: JSON.stringify({ connection_id: appId }) }); return true; }
+  catch(e){ console.warn('[PROVISION] LolaBrain:', e.message); return false; }
 }
 
 export async function setDynamicVariablesWebhook(){
-  const assistantId = process.env.TELNYX_LOLA_BRAIN_ID;
-  if(!assistantId) return false;
-  await tFetch('/ai/assistants/' + assistantId, { method: 'PATCH', body: JSON.stringify({ dynamic_variables_webhook_url: appUrl() + '/api/agent-variables' }) })
-    .catch(e => console.warn('[PROVISION] DynVars:', e.message));
-  return true;
+  // The resolved Lola (a stale/mistyped env id is found on the account), the documented update
+  // method, and the signed URL — so the salon details really load on every call.
+  try{
+    const { resolveAssistant, updateAssistant, variablesUrl } = await import('./assistant-wiring.js');
+    const found = await resolveAssistant();
+    if(!found.id) return false;
+    await updateAssistant(found.id, { dynamic_variables_webhook_url: variablesUrl() });
+    return true;
+  }catch(e){ console.warn('[PROVISION] DynVars:', e.message); return false; }
 }
 
 /**
@@ -348,17 +355,22 @@ export async function setDynamicVariablesWebhook(){
 export async function provisionNumberForTenant(tenant, { areaCode, requestedNumber, persist = true } = {}){
   const phoneNumber = requestedNumber || (await searchNumbers(areaCode || ''))[0].phone_number;
   const canonicalAppId = await getCanonicalVoiceConnectionId();
-  const texmlApp = await getOrCreateTexmlApp();
+  // The legacy TeXML app is only needed when Lola's own app can't be found.
+  const texmlApp = canonicalAppId ? null : await getOrCreateTexmlApp();
   // Prefer the LolaBrain assistant's app (ultra-smart AI path); the legacy
   // TeXML app (getOrCreateTexmlApp) remains the fallback connection.
   const texmlAppId = canonicalAppId || texmlApp?.id || texmlApp?.data?.id;
   await purchaseNumber(phoneNumber, texmlAppId);
-  // Telnyx needs a beat for the order to land before we can address the
-  // number. Overridable via env so tests don't sleep.
-  await new Promise(r => setTimeout(r, Number(process.env.TELNYX_ORDER_SETTLE_MS || 3000)));
-
-  const numbersRes = await tFetch('/phone_numbers?filter[phone_number]=' + encodeURIComponent(phoneNumber)).catch(() => ({ data: [] }));
-  const phoneNumberId = numbersRes?.data?.[0]?.id;
+  // The order lands asynchronously: look for the number until it's on the account (up to ~10s),
+  // instead of guessing one fixed wait. Overridable via env so tests don't sleep.
+  const settle = Number(process.env.TELNYX_ORDER_SETTLE_MS ?? 2000);
+  let phoneNumberId = null;
+  for(let i = 0; i < 5 && !phoneNumberId; i++){
+    if(settle) await new Promise(r => setTimeout(r, settle));
+    const numbersRes = await tFetch('/phone_numbers?filter[phone_number]=' + encodeURIComponent(phoneNumber)).catch(() => ({ data: [] }));
+    phoneNumberId = numbersRes?.data?.[0]?.id || null;
+    if(!settle) break;
+  }
 
   const smsLinked = phoneNumberId ? await linkMessagingProfile(phoneNumberId) : false;
   const brainLinked = phoneNumberId ? await linkLolaBrain(phoneNumberId) : false;

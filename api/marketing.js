@@ -27,6 +27,8 @@ function bookingLink(req, tenant) {
 }
 
 export default async function handler(req, res) {
+  // The marketing tables heal themselves (no manual SQL run needed).
+  try { const { ensureMigrations } = await import('./lib/migrate.js'); await ensureMigrations(); } catch (_) {}
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {

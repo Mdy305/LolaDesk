@@ -26,6 +26,15 @@ export async function publicTenant(req, body={}){
   if(slug){
     const {data}=await c.from('tenants').select('*').eq('slug',slug).maybeSingle();
     if(data) return data;
+    // Slugs are case-insensitive on links people type ("MMA-Salon" = "mma-salon").
+    // ilike with LIKE wildcards escaped, so "_" / "%" can't match other salons;
+    // more than one hit is ambiguous → not found, never a guess.
+    if(/^[\w.-]+$/.test(slug)){
+      const pattern=slug.replace(/[\\%_]/g,(m)=>'\\'+m);
+      const {data:ci}=await c.from('tenants').select('*').ilike('slug',pattern).limit(2);
+      const hits=(ci||[]).filter(t=>String(t.slug||'').toLowerCase()===slug.toLowerCase());
+      if(hits.length===1) return hits[0];
+    }
     if(UUID.test(slug)){
       const {data:byId}=await c.from('tenants').select('*').eq('id',slug).maybeSingle();
       if(byId) return byId;

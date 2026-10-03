@@ -43,10 +43,11 @@ ok(agoWords(new Date(now - 10 * DAY).toISOString(), now) === 'last week' && agoW
 ok(welcomeBack(await clientStory(db(), T.tenants[0], { id: 'x', first_name: 'Client', phone: '+1305' })) === '', 'a stranger gets no fake familiarity');
 
 // ── 2. The phone: her first words are personal, with the notice ──
-let r = await run('agent-variables.js', { body: { data: { payload: { telnyx_agent_target: '+13055550100', telnyx_end_user_target: '+13055554444' } } } });
+const { toolKey } = await import(P + 'lib/tool-key.js');
+let r = await run('agent-variables.js', { url: '/api/agent-variables?k=' + toolKey('variables'), body: { data: { payload: { telnyx_agent_target: '+13055550100', telnyx_end_user_target: '+13055554444' } } } });
 const g = r.dynamic_variables?.lola_greeting || '';
 ok(/^Hey Sarah, welcome back to MMA Salon!/.test(g) && /may be recorded/.test(g) && /AI assistant/.test(g) && /ash blonde from last month/.test(g), 'Sarah calls → ' + g);
-r = await run('agent-variables.js', { body: { data: { payload: { telnyx_agent_target: '+13055550100', telnyx_end_user_target: '+17865550000' } } } });
+r = await run('agent-variables.js', { url: '/api/agent-variables?k=' + toolKey('variables'), body: { data: { payload: { telnyx_agent_target: '+13055550100', telnyx_end_user_target: '+17865550000' } } } });
 ok(/^Thanks for calling MMA Salon!/.test(r.dynamic_variables.lola_greeting) && /may be recorded/.test(r.dynamic_variables.lola_greeting), 'a new caller → ' + r.dynamic_variables.lola_greeting);
 r = await run('lola-tools.js', { query: { tool: 'recall_client', salon: '+13055550100' }, body: { client_phone: '(305) 555-4444' } });
 ok(/^Hey Sarah, welcome back/.test(r.speak), 'website chat / hidden caller ID: she recognises Sarah from her number');

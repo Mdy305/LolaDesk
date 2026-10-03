@@ -18,6 +18,8 @@
  */
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
+import { telnyxSafeVariables } from './booking-link.js';
+import { toolKey, toolKeyOk } from './tool-key.js';
 
 
 // Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
@@ -26,19 +28,32 @@ export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
-  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory']);
+  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message']);
 // Dedicated endpoints that are also fine for a tool to call directly.
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
 const DYNVAR_PATHS = new Set(['/api/agent-variables', '/api/lola/dynamic-variables']);
 
 /** Telnyx documents assistant updates as POST /ai/assistants/{id}; older accounts took PATCH. Try both. */
+const badVariable = (e) => /dynamic.?variables|must be a boolean, string, or integer/i.test(String(e?.message || '') + ' ' + JSON.stringify(e?.details || e?.body || ''));
 export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   const path = '/ai/assistants/' + encodeURIComponent(id);
-  try { return await telnyxRequest(path, { method: 'POST', body, timeoutMs }); }
+  if (body && body.dynamic_variables && typeof body.dynamic_variables === 'object') body = { ...body, dynamic_variables: telnyxSafeVariables(body.dynamic_variables) };
+  const send = async (b) => {
+    try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
+    catch (e) {
+      if (![404, 405].includes(Number(e?.status))) throw e;
+      return telnyxRequest(path, { method: 'PATCH', body: b, timeoutMs });
+    }
+  };
+  try { return await send(body); }
   catch (e) {
-    if (![404, 405].includes(Number(e?.status))) throw e;
-    return telnyxRequest(path, { method: 'PATCH', body, timeoutMs });
+    // Telnyx re-validates the assistant's STORED defaults on every update: one null (booking_url)
+    // blocks every change, even a voice switch. Clean the stored values and send it again once.
+    if (!badVariable(e)) throw e;
+    const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
+    const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
+    return send({ ...body, dynamic_variables: dv });
   }
 }
 
@@ -79,8 +94,10 @@ const norm = (n) => String(n || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
 export function toolUrl(name) {
   // salon={{loladesk_salon}}: on a salon's website widget the call carries the header
   // X-LolaDesk-Salon (Telnyx turns X- headers into dynamic variables), so web calls know the salon too.
-  return `${appUrl()}/api/lola-tools?tool=${encodeURIComponent(norm(name))}&to={{telnyx_agent_target}}&from={{telnyx_end_user_target}}&salon={{loladesk_salon}}&call={{call_control_id}}&ch={{telnyx_conversation_channel}}`;
+  return `${appUrl()}/api/lola-tools?tool=${encodeURIComponent(norm(name))}&to={{telnyx_agent_target}}&from={{telnyx_end_user_target}}&salon={{loladesk_salon}}&call={{call_control_id}}&ch={{telnyx_conversation_channel}}&k=${toolKey()}`;
 }
+/** The salon-details webhook, signed (caller memory is only shared with a signed request). */
+export const variablesUrl = () => `${appUrl()}/api/agent-variables?k=${toolKey('variables')}`;
 function parse(u) { try { return new URL(String(u || '').replace(/\{\{[^}]*\}\}/g, 'x')); } catch (_) { return null; } }
 function ourHost(h) { const a = parse(appUrl()); return !!a && (h === a.hostname || h.replace(/^www\./, '') === a.hostname.replace(/^www\./, '')); }
 
@@ -100,6 +117,8 @@ export function diagnoseTool(tool) {
     if (!/telnyx_agent_target/.test(String(w.url)) && !/telnyx_agent_target|"to"/.test(JSON.stringify(w.body_parameters || {}))) return { name: w.name, url: w.url, problem: 'salon_unknown', fixable: true };
     if (!/loladesk_salon/.test(String(w.url))) return { name: w.name, url: w.url, problem: 'web_salon_unknown', fixable: true };
     if (!/call_control_id/.test(String(w.url))) return { name: w.name, url: w.url, problem: 'conversation_unlinked', fixable: true };
+    if (!toolKeyOk(q.get('k'))) return { name: w.name, url: w.url, problem: 'unsigned', fixable: true };
+    if (w.method && String(w.method).toUpperCase() !== 'POST') return { name: w.name, url: w.url, problem: 'method', fixable: true };
     return null;
   }
   if (GOOD_PATHS.has(u.pathname)) return null;
@@ -124,10 +143,10 @@ export async function wireAssistant({ heal = false } = {}) {
     issues.push(d);
     const url = toolUrl(t.webhook.name);
     fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem });
-    return { ...t, webhook: { ...t.webhook, url, method: t.webhook.method || 'POST' } };
+    return { ...t, webhook: { ...t.webhook, url, method: 'POST' } };   // /api/lola-tools only answers POST
   });
   const dv = parse(a.dynamic_variables_webhook_url);
-  const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname);
+  const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname) && toolKeyOk(dv.searchParams.get('k'), 'variables');
   // Tools every Lola must have (added once, never duplicated).
   const REQUIRED = [{ name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } }];
   const have = new Set(next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')));
@@ -137,16 +156,29 @@ export async function wireAssistant({ heal = false } = {}) {
   if (fixed.length || added.length) patch.tools = next;
   // Her first words come from the call itself ({{lola_greeting}}: "Hey Sarah, welcome back…" for a
   // returning client), with the recording + AI notice; the default (no webhook answer) discloses too.
-  const dv0 = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+  // Telnyx refuses the WHOLE assistant update if any stored default is null/object
+  // ("Value for key 'booking_url' must be a boolean, string, or integer") — so sanitize them, and heal them.
+  const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+  const dv0 = telnyxSafeVariables(dvRaw);
+  const dvBroken = Object.keys(dvRaw).filter((k) => JSON.stringify(dvRaw[k]) !== JSON.stringify(dv0[k]));
+  if (dvBroken.length) patch.dynamic_variables = { ...dv0 };
   const personal = String(a.greeting || '').trim() === GREETING_VAR;
   const fallbackGreeting = personal ? dv0.lola_greeting : a.greeting;
   const disclosure = { greeting: personal && greetingDiscloses(dv0.lola_greeting), rules: String(a.instructions || '').includes(COMPLIANCE_MARK) };
   if (!disclosure.greeting) {
     patch.greeting = GREETING_VAR;
-    patch.dynamic_variables = { ...dv0, lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
+    patch.dynamic_variables = { ...(patch.dynamic_variables || dv0), lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
   }
   if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
-  if (!dynOk) patch.dynamic_variables_webhook_url = appUrl() + '/api/agent-variables';
+  if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
+  // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.
+  if (!(Number(a.dynamic_variables_webhook_timeout_ms) >= 2500)) patch.dynamic_variables_webhook_timeout_ms = 3000;
+  // Salon websites talk to this same Lola through the Telnyx widget (WebRTC anonymous login): Telnyx
+  // requires telephony_settings.supports_unauthenticated_web_calls = true. Safe because every tool is
+  // signed and changing a booking needs the caller's own verified phone line (see /api/lola-tools).
+  const webCalls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
+  let webCallsError = null;
+  if (!webCalls) patch.telephony_settings = { ...(a.telephony_settings || {}), supports_unauthenticated_web_calls: true };
   // Her ONE voice (the valet-girl Lola from ElevenLabs) on the phone too — see lib/one-voice.js.
   let voice = null;
   try {
@@ -157,16 +189,32 @@ export async function wireAssistant({ heal = false } = {}) {
   } catch (_) { voice = null; }
   let healed = false, error = null;
   if (heal && Object.keys(patch).length) {
-    try { await updateAssistant(id, patch); healed = true; }
+    // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
+    // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
+    const OPTIONAL = ['dynamic_variables_webhook_timeout_ms', 'telephony_settings', 'voice_settings'];
+    const core = Object.fromEntries(Object.entries(patch).filter(([k]) => !OPTIONAL.includes(k)));
+    const extras = OPTIONAL.filter((k) => k in patch);
+    try { if (Object.keys(core).length) await updateAssistant(id, core); healed = true; }
     catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
+    for (const k of extras) {
+      try { await updateAssistant(id, { [k]: patch[k] }); healed = healed || !error; }
+      catch (e) {
+        // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
+        if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
+        if (k === 'voice_settings' && voice) voice.error = String(e?.message || e);
+        else if (k === 'telephony_settings') webCallsError = String(e?.message || e).slice(0, 160);
+      }
+    }
   }
   return {
-    ok: (!fixed.length && !added.length && dynOk && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
+    web_calls: webCalls || (healed && !error && !webCallsError),
+    web_calls_error: webCallsError,
+    ok: (!fixed.length && !added.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, added_tools: added, unknown_tools: unknown,
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
-    dynamic_variables: { ok: dynOk, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url },
+    dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
     healed, error,
   };
 }

@@ -82,12 +82,15 @@ export async function runBridgeStep(event) {
   const step = bridgeStep(event);
   if (!step) return { ok: true, ignored: true };
   const run = (a, b) => telnyxRequest(`/calls/${encodeURIComponent(step.id)}/actions/${a}`, { method: 'POST', body: b, timeoutMs: 8000 });
-  try { await run(step.action, step.body); }
+  // Telnyx retries a webhook that answers late: the same command_id makes the retry a no-op (documented on every action).
+  const evId = event?.data?.id || null;
+  const withId = (b, tag) => (evId ? { ...(b || {}), command_id: `${evId}:${tag}` } : b);
+  try { await run(step.action, withId(step.body, step.action)); }
   catch (e) {
     console.warn('[bridge]', step.action, 'failed:', String(e?.message || e).slice(0, 160));
     if (!step.fallback) throw e;
     console.warn('[bridge]', step.action, 'refused, falling back:', String(e?.message || e).slice(0, 140));
-    await run(step.fallback.action, step.fallback.body);
+    await run(step.fallback.action, withId(step.fallback.body, 'fallback-' + step.fallback.action));
     return { ok: true, did: step.fallback.action, fallback: true };
   }
   return { ok: true, did: step.action };

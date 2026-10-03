@@ -5,7 +5,10 @@
  * Public (the sign-in page talks to her too), so: size cap + per-IP limit.
  */
 const URL_STT = 'https://api.telnyx.com/v2/ai/audio/transcriptions';
-const MODELS = () => [process.env.LOLA_STT_MODEL, 'distil-whisper/distil-large-v2', 'openai/whisper-large-v3-turbo'].filter(Boolean);
+// Telnyx STT docs: whisper-large-v3-turbo is the fast + accurate one, distil-large-v2 the lightweight fallback.
+const MODELS = () => [process.env.LOLA_STT_MODEL, 'openai/whisper-large-v3-turbo', 'distil-whisper/distil-large-v2'].filter(Boolean);
+// Words a salon says that generic speech-to-text mishears (Whisper's prompt biases toward them).
+const SALON_WORDS = 'LolaDesk, Lola, balayage, highlights, keratin, blowout, ombré, toner, gloss, root touch-up, extensions, lash lift, brow lamination, microblading, manicure, pedicure, gel, facial, Botox, filler, appointment, reschedule, deposit, no-show';
 const hits = new Map();
 function limited(ip, max = 60, windowMs = 10 * 60e3) {
   const now = Date.now(), h = (hits.get(ip) || []).filter((t) => now - t < windowMs);
@@ -13,18 +16,21 @@ function limited(ip, max = 60, windowMs = 10 * 60e3) {
 }
 let workingModel = null;
 
-export async function transcribeAudio(buf, mime = 'audio/webm') {
+export async function transcribeAudio(buf, mime = 'audio/webm', { deadline = Date.now() + 45000, prompt = '' } = {}) {
   const key = process.env.TELNYX_API_KEY;
   if (!key) return { ok: false, error: 'telnyx_not_configured' };
   const ext = /mp4|m4a|aac/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : /wav/.test(mime) ? 'wav' : 'webm';
   const models = workingModel ? [workingModel] : [...new Set(MODELS())];
   let last = '';
   for (const model of models) {
+    const left = deadline - Date.now();
+    if (left < 3000) { last = last || 'timeout'; break; }   // stay inside Vercel's 60s, whatever happens
     const fd = new FormData();
     fd.append('file', new Blob([buf], { type: mime }), 'speech.' + ext);
     fd.append('model', model);
     fd.append('language', 'en');
-    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 20000);
+    fd.append('prompt', [SALON_WORDS, prompt].filter(Boolean).join(', ').slice(0, 800));
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), Math.min(20000, left));
     try {
       const r = await fetch(URL_STT, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: fd, signal: ac.signal });
       const j = await r.json().catch(() => ({}));
@@ -34,6 +40,7 @@ export async function transcribeAudio(buf, mime = 'audio/webm') {
     } catch (e) { last = String(e?.name === 'AbortError' ? 'timeout' : (e?.message || e)); }
     finally { clearTimeout(t); }
   }
+  if (workingModel && !/^(401|403)/.test(last) && deadline - Date.now() > 6000) { workingModel = null; return transcribeAudio(buf, mime, { deadline, prompt }); }   // the remembered model stopped answering: try them all again
   return { ok: false, error: 'stt_failed', detail: last };
 }
 

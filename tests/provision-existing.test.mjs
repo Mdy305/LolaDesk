@@ -74,7 +74,7 @@ globalThis.fetch = async (url, opts = {}) => {
     // list all owned numbers (page[size]=100)
     return json({ data: [{ id: 'pn-1', phone_number: OWNED, status: 'active', connection_id: null }, { id: 'pn-2', phone_number: '+17622620243', status: 'active', connection_id: 'legacy' }] });
   }
-  if (path.includes('/phone_numbers/pn-1/voice') && method === 'PATCH') return json({ data: { id: 'pn-1' } });
+  if (/\/phone_numbers\/pn-1$/.test(path) && method === 'PATCH') return json({ data: { id: 'pn-1' } });
   if (path.includes('/phone_numbers/pn-1/messaging') && method === 'PATCH') return json({ data: { id: 'pn-1' } });
   if (path.includes('/ai/assistants/asst-lolabrain') && method === 'GET') {
     // The LolaBrain attach resolves the assistant's own TeXML app and points

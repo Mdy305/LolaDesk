@@ -53,7 +53,7 @@ async function findAndBuyTemporaryNumber(tenant, requestedNumber){
 
   const phoneNumberId = orderData?.data?.phone_numbers?.[0]?.id;
   if(phoneNumberId && process.env.TELNYX_VOICE_APP_ID){
-    await fetch(`${TELNYX}/phone_numbers/${phoneNumberId}/voice`, {
+    await fetch(`${TELNYX}/phone_numbers/${phoneNumberId}`, {
       method: 'PATCH',
       headers: authHeaders(),
       body: JSON.stringify({ connection_id: process.env.TELNYX_VOICE_APP_ID })

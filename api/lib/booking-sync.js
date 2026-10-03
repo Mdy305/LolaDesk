@@ -46,6 +46,7 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
 
   const appointments = [];
   const providerErrors = [];
+  const fetchedOk = new Set();   // providers whose list we actually received
   for(const integration of targets){
     try{
       // Call the connector directly (not via listAllAppointments, which
@@ -53,7 +54,9 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
       // the audit log instead of silently returning zero rows.
       const connector = getConnector(integration.provider);
       const apps = await connector.listAppointments(integration, { from, to });
+      if(!Array.isArray(apps)) throw new Error('provider returned no appointment list');
       appointments.push(...apps.map(a => ({ ...a, provider: integration.provider })));
+      fetchedOk.add(integration.provider);
     }catch(e){
       providerErrors.push({ provider: integration.provider, error: String(e?.message || e).slice(0, 200) });
     }
@@ -84,13 +87,17 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
   }
 
   // Prune rows the provider no longer reports (removed or cancelled upstream).
-  const freshIds = new Set(rows.map(r => r.external_booking_id));
+  // ONLY for providers we heard from this run: a provider whose fetch failed
+  // (outage, expired token) keeps its cached busy time — wiping it would open
+  // those chairs to double bookings until the next good sync.
+  const freshIds = new Set(rows.map(r => `${r.provider}\u0000${r.external_booking_id}`));
   const providerList = targets.map(t => t.provider);
+  const prunable = providerList.filter(p => fetchedOk.has(p));
   let stale = [];
   try{
-    const { data: cached } = await client.from('cached_availability')
-      .select('id,external_booking_id').eq('tenant_id', tenantId).in('provider', providerList);
-    stale = (cached || []).filter(r => !freshIds.has(r.external_booking_id));
+    const { data: cached } = prunable.length ? await client.from('cached_availability')
+      .select('id,provider,external_booking_id').eq('tenant_id', tenantId).in('provider', prunable) : { data: [] };
+    stale = (cached || []).filter(r => prunable.includes(r.provider) && !freshIds.has(`${r.provider}\u0000${r.external_booking_id}`));
     if(stale.length){
       await client.from('cached_availability').delete()
         .eq('tenant_id', tenantId).in('id', stale.map(s => s.id));
@@ -115,6 +122,7 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
     upserted,
     stale_removed: stale.length,
     provider_errors: providerErrors,
+    pruned_providers: prunable,
     duration_ms: Date.now() - started
   };
 }

@@ -11,8 +11,16 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-signature';
+export const RELEASE = 'lola-telnyx';
 let lastHeal = 0;
+// 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
+function silentWav() {
+  const n = 9600, b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin(i / 7) * 30), 44 + i * 2);
+  return b;
+}
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;
 
@@ -49,17 +57,30 @@ export async function buildStatus() {
     const bal = await tget('/balance');
     live.telnyx_key = bal.ok;
     if (bal.ok) live.telnyx_balance_ok = Number(bal.j?.data?.available_credit ?? bal.j?.data?.balance ?? 1) > 0;
-    const models = await tget('/ai/models');
+    let models = await tget('/ai/openai/models');            // documented (GET /ai/models is deprecated)
+    if (!models.ok || !(models.j?.data || []).length) models = await tget('/ai/models');
     const ids = (models.j?.data || []).map((m) => m.id || m.name).filter(Boolean);
     live.telnyx_ai = models.ok && ids.length > 0;
     live.fast_model = ids.some((x) => /Llama-3\.3-70B/i.test(x));
+    // Her brain and her ears, for real: one tiny thought, one tiny transcription (the exact paths the app uses).
+    if (live.telnyx_key) {
+      const [brain, ears] = await Promise.all([
+        (async () => { try { const { chat } = await import('./lib/llm.js'); const r = await chat({ messages: [{ role: 'user', content: 'Reply with the single word: ready' }], maxTokens: 20, temperature: 0, deadlineMs: 12000 }); return r.ok && r.text ? { ok: true, model: r.model } : { ok: false, error: clip(r.error || 'empty answer') }; } catch (e) { return { ok: false, error: clip(e) }; } })(),
+        (async () => { try { const { transcribeAudio } = await import('./lola/hear.js'); const r = await transcribeAudio(silentWav(), 'audio/wav', { deadline: Date.now() + 12000 }); return r.ok ? { ok: true, model: r.model } : { ok: false, error: clip(r.detail || r.error) }; } catch (e) { return { ok: false, error: clip(e) }; } })(),
+      ]);
+      live.brain = brain.ok; if (brain.ok) live.brain_model = brain.model; else live.brain_error = brain.error;
+      live.hearing = ears.ok; if (ears.ok) live.hearing_model = ears.model; else live.hearing_error = ears.error;
+    }
     // Texting registration (10DLC) for every number on the account
     const nums = await tget('/phone_numbers?page[size]=100');
     const list = (nums.j?.data || []).map((n) => n.phone_number).filter(Boolean);
     live.numbers = list.length;
-    const reg = await tget('/10dlc/phone_number_campaigns?page[size]=250');
+    // Documented paging: page + recordsPerPage; only ASSIGNED numbers can text (pending/failed can't).
+    const reg = await tget('/10dlc/phone_number_campaigns?recordsPerPage=500&page=1');
     if (reg.ok) {
-      const registered = new Set((reg.j?.records || reg.j?.data || []).map((r) => r.phoneNumber || r.phone_number).filter(Boolean));
+      const recs = Array.isArray(reg.j?.records) ? reg.j.records : Array.isArray(reg.j?.data?.records) ? reg.j.data.records : Array.isArray(reg.j?.data) ? reg.j.data : [];
+      const registered = new Set(recs.filter((r) => !r.assignmentStatus || r.assignmentStatus === 'ASSIGNED').map((r) => r.phoneNumber || r.phone_number).filter(Boolean));
+      live.numbers_pending_10dlc = recs.filter((r) => r.assignmentStatus === 'PENDING_ASSIGNMENT').length;
       live.numbers_registered_10dlc = list.filter((n) => registered.has(n)).length;
     } else live.numbers_registered_10dlc = null;
   }
@@ -111,10 +132,26 @@ export async function buildStatus() {
       live.salon_numbers_ringing_lola = onAcct.filter((n) => good.has(n.connection_id)).length;
       // Self-repair, at most every 10 minutes per server.
       const voiceOff = voices.possible && voices.lola < voices.total;
-      const rewire = found.source !== 'env';   // a different assistant than Vercel's id: make sure its tools point at LolaDesk
-      const needs = rewire || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
+      // Her wiring as Telnyx documents it: signed tools, signed salon-details webhook, website calls allowed.
+      const { diagnoseTool, toolUrl } = await import('./lib/assistant-wiring.js');
+      const { toolKeyOk } = await import('./lib/tool-key.js');
+      const unsignedTools = (Array.isArray(a.tools) ? a.tools : []).filter((t) => { const d = diagnoseTool(t); return d && d.fixable; }).length;
+      let varsSigned = false; try { varsSigned = toolKeyOk(new URL(String(a.dynamic_variables_webhook_url || '')).searchParams.get('k'), 'variables'); } catch (_) {}
+      live.phone_tools_ok = unsignedTools === 0;
+      live.salon_details_ok = varsSigned;
+      live.website_calls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
+      const wiringOff = unsignedTools > 0 || !varsSigned || !live.website_calls;
+      const rewire = found.source !== 'env' || wiringOff;   // a different assistant than Vercel's id, or wiring that drifted: re-wire
+      // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
+      const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
+      const dvBad = Object.keys(dvRaw).filter((k) => { const v = dvRaw[k]; return v == null || typeof v === 'object' || (typeof v === 'number' && !Number.isInteger(v)); });
+      if (dvBad.length) live.assistant_bad_values = dvBad;
+      const needs = rewire || dvBad.length > 0 || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
       if (needs && Date.now() - lastHeal > 10 * 60e3) {
         lastHeal = Date.now();
+        if (dvBad.length) {
+          try { const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true }); if (w.healed && !w.error) { healed.push(`Lola’s phone settings cleaned (${dvBad.join(', ')} had an empty value Telnyx refuses).`); delete live.assistant_bad_values; } } catch (_) {}
+        }
         if (voiceOff) {
           const u = await ov.unifyAssistantVoices({ heal: true });
           if (u.fixed.length) healed.push(`${u.fixed.length} phone assistant${u.fixed.length > 1 ? 's now speak' : ' now speaks'} in Lola’s own voice (was: ${[...new Set(u.fixed.map((f) => f.from))].join(', ')}).`);
@@ -122,7 +159,16 @@ export async function buildStatus() {
           live.phone_assistants_in_lola_voice = u.lola;
         }
         if (!live.phone_greeting || rewire) {
-          try { const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true }); if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; } } catch (_) {}
+          try {
+            const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true });
+            if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
+            if (w.healed && !w.error && wiringOff) {
+              healed.push(`Lola’s phone wiring secured: ${[unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean).join(', ')}.`);
+              live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
+            }
+            if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
+            if (w.error) live.wiring_error = clip(w.error);
+          } catch (_) {}
         }
         if (live.salon_numbers_ringing_lola < live.salon_numbers) {
           // Point every salon number that doesn't reach Lola (no connection, or a dead/other one) at her phone app.
@@ -130,7 +176,7 @@ export async function buildStatus() {
           if (brainApp) {
             const { telnyxRequest } = await import('./lib/telnyx-client.js');
             for (const num of onAcct.filter((x) => !good.has(x.connection_id) && x.id)) {
-              try { await telnyxRequest(`/phone_numbers/${encodeURIComponent(num.id)}/voice`, { method: 'PATCH', body: { connection_id: brainApp }, timeoutMs: 8000 }); n++; }
+              try { const r = await telnyxRequest(`/phone_numbers/${encodeURIComponent(num.id)}`, { method: 'PATCH', body: { connection_id: brainApp }, timeoutMs: 8000 }); const got = r?.data?.connection_id ?? r?.connection_id; if (!got || got === brainApp) n++; }
               catch (e) { live.numbers_heal_error = clip(e); }
             }
           } else {
@@ -171,6 +217,8 @@ export async function buildStatus() {
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');
   else if (live.telnyx_key === false) fixes.push('Telnyx refuses the TELNYX_API_KEY in Vercel — create a new key in Telnyx → API Keys, paste it in Vercel, Redeploy.');
   if (live.telnyx_balance_ok === false) fixes.push('Your Telnyx balance is empty — calls, texts and Lola’s brain stop. Top up in Telnyx → Billing.');
+  if (live.brain === false) fixes.push(`Lola can’t think right now — Telnyx inference refused her (${live.brain_error}). Telnyx → AI → Inference: make sure it’s enabled and your balance is above $0; then say “Lola, run a check”.`);
+  if (live.hearing === false) fixes.push(`Lola can’t hear in the app — Telnyx speech-to-text refused her (${live.hearing_error}). Telnyx → AI: make sure speech-to-text is enabled for your account (set LOLA_STT_MODEL in Vercel if Telnyx names a different model).`);
   if (settings.TELNYX_API_KEY && live.telnyx_key && !live.telnyx_ai) fixes.push('Telnyx AI isn’t enabled on your account — Telnyx → AI → Inference: turn it on (Lola’s brain and hearing run there).');
   if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
@@ -179,6 +227,11 @@ export async function buildStatus() {
   if (!settings.CRON_SECRET) fixes.push('Add CRON_SECRET in Vercel (any long random word), then Redeploy — without it calendar sync, reminders, deposits and Boulevard writes never run.');
   if (!settings.INTEGRATION_ENCRYPTION_KEY) fixes.push('Add INTEGRATION_ENCRYPTION_KEY in Vercel (run: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"), then Redeploy — needed to connect Boulevard/Square/calendar links securely.');
   if (!settings.ADMIN_EMAILS) fixes.push('Add ADMIN_EMAILS in Vercel = your login email, then Redeploy — unlocks Admin and the full “Lola, run a check”.');
+  if (live.assistant_bad_values) fixes.push(`Lola’s Telnyx assistant has an empty value for ${live.assistant_bad_values.join(', ')} — Telnyx refuses every change to her until it’s text. Telnyx → AI → Assistants → Lola → Dynamic Variables: set ${live.assistant_bad_values[0]} to https://www.loladesk.com (or delete it), then Save.`);
+  if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
+  if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
+  if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
+  if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   fixes.push(...vfix);
   return { ok: fixes.length === 0, release: RELEASE, settings, live, healed, fixes, checked_at: new Date().toISOString() };
 }

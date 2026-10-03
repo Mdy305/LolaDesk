@@ -24,6 +24,7 @@
     mic_blocked: 'I can’t hear you — the microphone is blocked for this site. Click the icon left of the address bar, set Microphone to Allow, then tap me again.',
     no_mic: 'I can’t find a microphone on this device. You can type to me instead.',
     no_speech: 'I didn’t catch anything. Tap me and talk — I’m listening.',
+    silent_mic: 'Your microphone is sending silence — check it isn’t muted, or pick the right mic in your browser’s site settings, then tap me again.',
     hear_failed: 'I couldn’t make that out. Say it again, or type it.',
     unsupported: 'This browser won’t share the microphone with me. Type to me, or open LolaDesk in Chrome or Safari.',
     insecure: 'Voice needs the secure site. Open https://www.loladesk.com.',
@@ -86,16 +87,19 @@
         } catch (_) { sr = null; }
       }
 
-      // Hearing when you start and stop.
-      let ctx = null, an = null, buf = null, raf = 0;
+      // Hearing when you start and stop. The noise floor is the QUIETEST the room has been (a rolling
+      // minimum), never the first instant — people start talking the moment they tap, and a laptop
+      // mic with noise suppression is quiet. Loudness only decides WHEN to stop listening; it never
+      // throws a recording away (that was "I didn't catch anything" while you were talking).
+      let ctx = null, an = null, buf = null, raf = 0, vad = true;
       try {
         const AC = window.AudioContext || window.webkitAudioContext;
         ctx = new AC(); if (ctx.state === 'suspended') ctx.resume().catch(() => {});
         an = ctx.createAnalyser(); an.fftSize = 1024; buf = new Float32Array(an.fftSize);
         ctx.createMediaStreamSource(stream).connect(an);
-      } catch (_) { an = null; }
-      const t0 = performance.now(); let floor = 0.008, spoke = false, lastLoud = 0, finished = false, cancelled = false;
-      const MAX = opts.maxMs || 15000, WAIT = opts.waitMs || 7000, TAIL = opts.tailMs || 1100;
+      } catch (_) { an = null; vad = false; }
+      const t0 = performance.now(); let floor = 1, peak = 0, spoke = false, lastLoud = 0, finished = false, cancelled = false, heardAny = false;
+      const MAX = opts.maxMs || 15000, WAIT = opts.waitMs || 8000, TAIL = opts.tailMs || 1300, BLIND = opts.blindMs || 9000;
 
       function level() {
         if (!an) return 0;
@@ -105,12 +109,19 @@
       function loop() {
         if (finished) return;
         const now = performance.now(), v = level(), el = now - t0;
-        if (el < 350) floor = Math.max(floor, v * 0.9);
-        const loud = v > Math.max(0.018, floor * 2.6);
-        if (loud) { spoke = true; lastLoud = now; }
-        opts.onLevel && opts.onLevel(Math.min(1, v * 8));
-        if (spoke && now - lastLoud > TAIL) return finish();
-        if (!spoke && !srInterim && !srFinal && el > WAIT) return finish();
+        // The browser kept the analyser's audio suspended: it can't tell when you stop, so listen blind.
+        if (vad && el > 1200 && ctx && ctx.state !== 'running') vad = false;
+        if (vad) heardAny = true;
+        floor = Math.min(floor * 1.002 + 0.00002, Math.max(v, 0.0015));   // rolling minimum that slowly forgets
+        peak = Math.max(peak, v);
+        const loud = vad && v > Math.max(0.006, floor * 3);
+        if (loud) { if (!spoke && el > 120) spoke = true; lastLoud = now; }
+        opts.onLevel && opts.onLevel(Math.min(1, v * 10));
+        const words = !!(srInterim || srFinal);
+        if (spoke && now - lastLoud > TAIL && !(srInterim && now - lastLoud < TAIL * 2)) return finish();
+        if (!vad && !words && el > BLIND) return finish();
+        if (!vad && words && srFinal && !srInterim && el > 2500) return finish();
+        if (vad && !spoke && !words && el > WAIT) return finish();
         if (el > MAX) return finish();
         raf = requestAnimationFrame(loop);
       }
@@ -128,9 +139,10 @@
           if (cancelled) return done({ text: '', error: 'cancelled' });
           const quick = srFinal.trim(), partial = srInterim.trim();
           if (quick) return done({ text: (quick + (partial ? ' ' + partial : '')).trim() });
-          if (!spoke && !partial && an) return done({ text: '', error: 'no_speech', say: SAY.no_speech });
+          // Only true digital silence (a muted or dead mic) is skipped; anything else is transcribed.
+          if (vad && heardAny && peak < 0.0025 && !partial) return done({ text: '', error: 'no_speech', say: SAY.silent_mic });
           const blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/webm').split(';')[0] });
-          if (blob.size < 1200) return done(partial ? { text: partial } : { text: '', error: 'no_speech', say: SAY.no_speech });
+          if (blob.size < 600) return done(partial ? { text: partial } : { text: '', error: 'no_speech', say: SAY.no_speech });
           opts.onThinking && opts.onThinking();
           try {
             const text = await transcribe(blob, blob.type);

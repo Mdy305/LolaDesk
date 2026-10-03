@@ -10,7 +10,7 @@ const R = (f) => readFileSync(new URL('../../' + f, import.meta.url), 'utf8');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 
 const calls = [], actions = [], stt = [];
-let sttStatus = { 'distil-whisper/distil-large-v2': 404 }, refuseAssistant = false, llmText = '{"reply":"Sure!","action":"none"}';
+let sttStatus = { 'openai/whisper-large-v3-turbo': 404 }, refuseAssistant = false, llmText = '{"reply":"Sure!","action":"none"}';
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   if (u.includes('/ai/audio/transcriptions')) {
@@ -33,9 +33,9 @@ const call = async (mod, req) => { const h = (await import(P + mod)).default; re
 // ── 1. Her ears: Telnyx speech-to-text ──
 const audio = Buffer.alloc(4000, 7).toString('base64');
 let r = await call('lola/hear.js', { method: 'POST', body: { audio, mime: 'audio/webm' } });
-ok(r.ok && r.text === 'Call my phone.' && stt[0].model === 'distil-whisper/distil-large-v2' && stt[1].model === 'openai/whisper-large-v3-turbo' && stt[1].name === 'speech.webm', 'speech → text on Telnyx (falls through to a model the account has): ' + r.text);
+ok(r.ok && r.text === 'Call my phone.' && stt[0].model === 'openai/whisper-large-v3-turbo' && stt[1].model === 'distil-whisper/distil-large-v2' && stt[1].name === 'speech.webm', 'speech → text on Telnyx (falls through to a model the account has): ' + r.text);
 stt.length = 0; await call('lola/hear.js', { method: 'POST', body: { audio, mime: 'audio/mp4' } });
-ok(stt.length === 1 && stt[0].model === 'openai/whisper-large-v3-turbo' && stt[0].name === 'speech.m4a', 'remembers the working model; Safari audio accepted');
+ok(stt.length === 1 && stt[0].model === 'distil-whisper/distil-large-v2' && stt[0].name === 'speech.m4a', 'remembers the working model; Safari audio accepted');
 r = await call('lola/hear.js', { method: 'POST', body: {} });
 ok(r.status === 400, 'no audio → a clear error');
 

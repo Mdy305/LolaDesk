@@ -116,23 +116,28 @@ async function provisionNumber(body, tenant) {
     throw Object.assign(new Error('Tenant already has a phone number. Pass replace_existing=true to replace it.'), { status: 409 });
   }
 
-  const ordered = telnyxData(await telnyxRequest('/number_orders', {
-    method: 'POST',
-    body: { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` }
-  }));
-  const item = ordered?.phone_numbers?.[0] || {};
-  const phoneNumberId = item.id || item.phone_number_id || null;
-  // Prefer the LolaBrain assistant's own TeXML app (the AI voice path),
-  // falling back to TELNYX_VOICE_APP_ID.
+  // Prefer the LolaBrain assistant's own TeXML app (the AI voice path), falling back to TELNYX_VOICE_APP_ID.
   const voiceConnectionId = body.voice_connection_id || await getCanonicalVoiceConnectionId();
   const messagingProfileId = body.messaging_profile_id || (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID);
-  if (phoneNumberId && voiceConnectionId) {
-    await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, { method: 'PATCH', body: { connection_id: voiceConnectionId } });
+  // Documented: POST /number_orders takes connection_id + messaging_profile_id, so the number is wired the moment it lands.
+  const orderBody = { phone_numbers: [{ phone_number: phoneNumber }], customer_reference: `tenant:${tenant.id}` };
+  if (voiceConnectionId) orderBody.connection_id = voiceConnectionId;
+  if (messagingProfileId) orderBody.messaging_profile_id = messagingProfileId;
+  const ordered = telnyxData(await telnyxRequest('/number_orders', { method: 'POST', body: orderBody }));
+  // The order's phone_numbers[].id is the ORDER LINE, not the number: look the number itself up.
+  let phoneNumberId = null;
+  for (let i = 0; i < 4 && !phoneNumberId; i++) {
+    try { phoneNumberId = await numberIdFor(phoneNumber); } catch (_) {}
+    if (!phoneNumberId && i < 3) await new Promise((r) => setTimeout(r, Number(process.env.TELNYX_ORDER_SETTLE_MS ?? 1500)));
   }
-  if (messagingProfileId) {
-    await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
-      method: 'PATCH', body: { messaging_profile_id: messagingProfileId }
-    });
+  if (phoneNumberId && voiceConnectionId) {
+    try { await telnyxRequest(`/phone_numbers/${phoneNumberId}`, { method: 'PATCH', body: { connection_id: voiceConnectionId } }); }
+    catch (e) { console.warn('[telecom] voice link:', e?.message); }
+  }
+  if (phoneNumberId && messagingProfileId) {
+    try {
+      await telnyxRequest(`/phone_numbers/${phoneNumberId}/messaging`, { method: 'PATCH', body: { messaging_profile_id: messagingProfileId } });
+    } catch (e) { console.warn('[telecom] messaging link:', e?.message); }
   }
 
   const metadata = {
@@ -160,14 +165,14 @@ async function updateRouting(body) {
   const phoneNumberId = required(body, 'phone_number_id');
   const result = {};
   if (body.voice_connection_id) {
-    result.voice = telnyxData(await telnyxRequest(`/phone_numbers/${phoneNumberId}/voice`, {
+    result.voice = telnyxData(await telnyxRequest(`/phone_numbers/${phoneNumberId}`, {
       method: 'PATCH', body: { connection_id: body.voice_connection_id }
     }));
   }
   if (body.messaging_profile_id) {
     const phoneNumber = normalizeE164(body.phone_number);
     if (!phoneNumber) throw Object.assign(new Error('phone_number is required to configure messaging'), { status: 400 });
-    result.messaging = telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
+    result.messaging = telnyxData(await telnyxRequest(`/phone_numbers/${phoneNumberId}/messaging`, {
       method: 'PATCH', body: { messaging_profile_id: body.messaging_profile_id }
     }));
   }
@@ -257,6 +262,9 @@ async function createMessagingProfile(body) {
     method: 'POST',
     body: {
       name,
+      whitelisted_destinations: Array.isArray(body.whitelisted_destinations) && body.whitelisted_destinations.length ? body.whitelisted_destinations : ['US', 'CA'],
+      enabled: true,
+      webhook_api_version: '2',
       webhook_url: webhookUrl,
       webhook_failover_url: body.webhook_failover_url || webhookUrl
     }
@@ -267,10 +275,17 @@ async function assignMessagingProfile(body, tenant) {
   const messagingProfileId = required(body, 'messaging_profile_id');
   const phoneNumber = normalizeE164(body.phone_number || tenant.phone_number);
   if (!phoneNumber) throw Object.assign(new Error('A valid phone_number is required — get a number first'), { status: 400 });
-  return telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, {
+  const id = await numberIdFor(phoneNumber);
+  if (!id) throw Object.assign(new Error('That number isn’t on this Telnyx account'), { status: 404 });
+  return telnyxData(await telnyxRequest(`/phone_numbers/${id}/messaging`, {
     method: 'PATCH',
     body: { messaging_profile_id: messagingProfileId }
   }));
+}
+
+async function numberIdFor(phoneNumber) {
+  const list = telnyxData(await telnyxRequest('/phone_numbers', { query: { 'filter[phone_number]': phoneNumber, 'page[size]': 5 } }));
+  return ((Array.isArray(list) ? list : []).find((n) => normalizeE164(n.phone_number) === phoneNumber) || {}).id || null;
 }
 
 // ── ROUTING STATUS for one number (voice connection + messaging profile) ──
@@ -292,7 +307,7 @@ async function numberStatus(body, tenant) {
     } catch { result.voice = null; }
   }
   try {
-    const m = telnyxData(await telnyxRequest(`/messaging_phone_numbers/${encodeURIComponent(phoneNumber)}`, { timeoutMs: 8000 }));
+    const m = record?.id ? telnyxData(await telnyxRequest(`/phone_numbers/${record.id}/messaging`, { timeoutMs: 8000 })) : null;
     result.messaging = {
       messaging_profile_id: m?.messaging_profile_id || null,
       messaging_product: m?.messaging_product || null
@@ -302,19 +317,20 @@ async function numberStatus(body, tenant) {
 }
 
 // ── 10DLC / A2P compliance state (brands + campaigns) ──
+const recordsOf = (j) => Array.isArray(j?.records) ? j.records : Array.isArray(j?.data?.records) ? j.data.records : Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
 async function complianceStatus() {
   const out = { brands: [], campaigns: [] };
   try {
-    const brands = telnyxData(await telnyxRequest('/10dlc/brands', { query: { 'page[size]': 100 }, timeoutMs: 8000 }));
-    out.brands = (Array.isArray(brands) ? brands : []).map(b => ({ id: b.id, name: b.brand, status: b.status || 'unknown' }));
+    const brands = recordsOf(await telnyxRequest('/10dlc/brand', { query: { recordsPerPage: 100, page: 1 }, timeoutMs: 8000 }));
+    out.brands = brands.map(b => ({ id: b.brandId || b.id, name: b.displayName || b.brand || null, status: b.identityStatus || b.status || 'unknown' }));
   } catch (e) { out.brands_error = String(e.message || e); }
   try {
-    const campaigns = telnyxData(await telnyxRequest('/10dlc/campaigns', { query: { 'page[size]': 100 }, timeoutMs: 8000 }));
-    out.campaigns = (Array.isArray(campaigns) ? campaigns : []).map(c => ({
-      id: c.id,
-      campaign_id: c.campaign_id || null,
-      status: c.status || 'unknown',
-      use_case: c.use_case || null
+    const campaigns = recordsOf(await telnyxRequest('/10dlc/campaign', { query: { recordsPerPage: 100, page: 1 }, timeoutMs: 8000 }));
+    out.campaigns = campaigns.map(c => ({
+      id: c.campaignId || c.id,
+      campaign_id: c.tcrCampaignId || c.campaign_id || null,
+      status: c.campaignStatus || c.status || 'unknown',
+      use_case: c.usecase || c.use_case || null
     }));
   } catch (e) { out.campaigns_error = String(e.message || e); }
   return out;

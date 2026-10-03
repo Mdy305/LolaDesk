@@ -36,6 +36,7 @@ export default async function handler(req, res) {
       case 'call.initiated': {
         // Inbound call. Resolve tenant by the "to" (their Lola number)
         // and answer the call with their Telnyx AI Assistant.
+        if (p.direction && p.direction !== 'incoming') break;   // calls LolaDesk dials are driven by their own flows
         const to = p.to;
         const tenant = await tenantForNumber(c, to);
         if (!tenant) break;
@@ -43,41 +44,35 @@ export default async function handler(req, res) {
         let aid = tenant.telnyx_assistant_id;
         if (!aid) { try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); aid = (await resolveAssistant()).id; } catch (_) {} }
         if (!aid) break;
-        try { await answerCallWithAssistant(p.call_control_id, aid); }
+        const cmd = payload?.data?.id || null;
+        try { await answerCallWithAssistant(p.call_control_id, aid, { commandId: cmd }); }
         catch (e) {
-          if (aid === tenant.telnyx_assistant_id) { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); const alt = (await resolveAssistant()).id; if (alt && alt !== aid) await answerCallWithAssistant(p.call_control_id, alt); else throw e; } else throw e;
+          if (aid === tenant.telnyx_assistant_id) { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); const alt = (await resolveAssistant()).id; if (alt && alt !== aid) await answerCallWithAssistant(p.call_control_id, alt, { commandId: cmd && cmd + ':alt' }); else throw e; } else throw e;
         }
         await c.from('calls').insert({
           tenant_id: tenant.id,
-          call_control_id: p.call_control_id,
-          from: p.from,
-          to: p.to,
-          direction: 'in',
-          status: 'active',
-          started_at: new Date().toISOString()
-        });
+          telnyx_call_control_id: p.call_control_id,
+          from_number: p.from,
+          to_number: p.to,
+          direction: 'inbound',
+          status: 'in_progress'
+        }).then((r) => r, () => null);
         break;
       }
       case 'call.answered': {
-        await c.from('calls').update({ status: 'active', started_at: new Date().toISOString() })
-          .eq('call_control_id', p.call_control_id);
+        await c.from('calls').update({ status: 'in_progress' })
+          .eq('telnyx_call_control_id', p.call_control_id);
         break;
       }
       case 'call.hangup': {
-        await c.from('calls').update({
-          status: 'ended',
-          ended_at: new Date().toISOString(),
-          duration_sec: p.hangup_source === 'callee' ? null : null
-        }).eq('call_control_id', p.call_control_id);
+        await c.from('calls').update({ status: 'completed' }).eq('telnyx_call_control_id', p.call_control_id);
         break;
       }
+      case 'call.conversation.ended':           // Telnyx's documented event name
       case 'ai_assistant.conversation_ended': {
-        // Persist transcript + outcome.
-        await c.from('calls').update({
-          transcript: p.transcript || [],
-          summary: p.summary || null,
-          outcome: p.outcome || 'handled'
-        }).eq('call_control_id', p.call_control_id);
+        // The transcript + summary land through the insights webhook (call.conversation_insights.generated);
+        // here the call is simply closed. (transcript/outcome are generated columns — never written.)
+        await c.from('calls').update({ status: 'completed' }).eq('telnyx_call_control_id', p.call_control_id);
         break;
       }
 

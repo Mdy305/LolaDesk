@@ -103,7 +103,7 @@ export async function originateCallback(client, tenant, to) {
     try {
       data = telnyxData(await telnyxRequest('/calls', {
         method: 'POST',
-        body: { connection_id: cand.id, from, to, if_machine: 'continue' },
+        body: { connection_id: cand.id, from, to },
         timeoutMs: 15000
       }));
       usedConnection = cand.id;

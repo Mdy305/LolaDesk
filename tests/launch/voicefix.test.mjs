@@ -1,7 +1,7 @@
 // ONE voice, everywhere: the valet-girl Lola from ElevenLabs. Every phone assistant is switched to it
 // (the ElevenLabs key linked in Telnyx automatically), the app never substitutes another voice,
 // and /api/status says exactly why she's quiet when she is.
-process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
+process.env.TELNYX_PUBLIC_KEY = 'pk-test'; process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
 process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1'; process.env.CRON_SECRET = 'x'; process.env.ADMIN_EMAILS = 'a@b.c'; process.env.INTEGRATION_ENCRYPTION_KEY = 'k';
 process.env.ELEVENLABS_API_KEY = 'el-key-999'; process.env.ELEVENLABS_VOICE_ID = 'ValetLola01'; delete process.env.VOICE_PROVIDER; delete process.env.LOLA_TELNYX_VOICE;
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
@@ -20,10 +20,12 @@ globalThis.fetch = async (url, init = {}) => {
   const am = u.match(/\/ai\/assistants\/([^/?]+)/);
   if (am) { const a = assistants.find((x) => x.id === decodeURIComponent(am[1])); if (init.method === 'POST' || init.method === 'PATCH') { const b = JSON.parse(init.body); updates.push({ id: a.id, ...b }); Object.assign(a, b); } return J({ data: a }); }
   if (u.includes('/ai/assistants')) return J({ data: assistants });
-  if (/\/phone_numbers\/n\d\/voice/.test(u)) { numberPatches.push(u); const n = phone.find((p) => u.includes('/' + p.id + '/')); n.connection_id = JSON.parse(init.body).connection_id; return J({ data: n }); }
+  if (/\/phone_numbers\/n\d$/.test(u) && init.method === 'PATCH') { numberPatches.push(u); const n = phone.find((p) => u.endsWith('/' + p.id)); n.connection_id = JSON.parse(init.body).connection_id; return J({ data: n }); }
   if (u.includes('/phone_numbers')) return J({ data: phone });
   if (u.endsWith('/balance')) return J({ data: { balance: '12.50', available_credit: '12.50' } });
-  if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
+  if (u.includes('/chat/completions')) return J({ choices: [{ message: { role: 'assistant', content: 'ready' } }] });
+  if (u.includes('/ai/audio/transcriptions')) return J({ text: '' });
+  if (/\/ai\/(openai\/)?models/.test(u)) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
   if (u.includes('/10dlc/phone_number_campaigns')) return J({ records: phone.map((p) => ({ phoneNumber: p.phone_number })) });
   return J({ data: [] });
 };
@@ -46,7 +48,7 @@ const v1 = updates.filter((u) => u.voice_settings);
 ok(v1.length === 2 && v1.every((u) => u.voice_settings.voice === 'ElevenLabs.eleven_multilingual_v2.ValetLola01' && u.voice_settings.api_key_ref === secrets[0].identifier), 'both phone assistants (salon Lola + support Lola) now speak in her voice');
 ok(assistants[0].voice_settings.voice_speed === 1, 'their other voice settings are kept');
 ok(s.healed.some((h) => /2 phone assistants now speak in Lola’s own voice/.test(h) && /KokoroTTS/.test(h)), 'status says what it switched: ' + s.healed[0]);
-ok(numberPatches.some((u) => u.includes('/n2/')) && s.live.salon_numbers_ringing_lola === 2, 'the salon number that didn’t ring Lola now does');
+ok(numberPatches.some((u) => u.endsWith('/n2')) && s.live.salon_numbers_ringing_lola === 2, 'the salon number that didn’t ring Lola now does');
 ok(s.ok && s.fixes.length === 0, 'nothing left to fix');
 ok(!JSON.stringify(s).includes('el-key-999') && !JSON.stringify(s).includes('secret-key-123') && !JSON.stringify(s).includes('+1305'), 'never reveals a key or a phone number');
 updates.length = 0;

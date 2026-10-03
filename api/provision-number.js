@@ -66,7 +66,7 @@ export default async function handler(req,res){
       // Free platform numbers (no salon uses them) — attaching one costs nothing, so onboarding
       // never stalls on credit. Never another salon's number.
       const owned=who?await freePlatformNumbers().catch(()=>[]):[];
-      return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:n.cost?.amount?'$'+Number(n.cost.amount).toFixed(2)+'/mo':''})),owned});
+      return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:(()=>{ const v = n.cost_information?.monthly_cost ?? n.cost?.amount; return v!=null && v!=='' ? '$'+Number(v).toFixed(2)+'/mo' : ''; })()})),owned});
     }catch(e){return res.status(200).json({ok:false,error:e.message});}
   }
 
