@@ -48,9 +48,9 @@ export default async function handler(req, res){
     if(!text) return res.status(400).json({ error: 'A message is required' });
 
     // Owner-scoped, same gate as /api/lola.
-    let tenant = null;
+    let tenant = null, user = null;
     try{
-      const user = await getUserFromToken(bearer(req));
+      user = await getUserFromToken(bearer(req));
       if(user) tenant = await resolveTenantForUser(user);
     }catch{}
     if(!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
@@ -64,7 +64,7 @@ export default async function handler(req, res){
       temperature: body.temperature
     };
 
-    const out = await dashboardBrainReply({ tenant, body: brainBody, req });
+    const out = await dashboardBrainReply({ tenant, body: brainBody, req, user });
     const reply = extractReply(out.json);
 
     // Brain degraded (upstream error with no deterministic fallback) → let

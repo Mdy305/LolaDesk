@@ -7,7 +7,7 @@
  * Integrated with memory, personalization, and transactional safety.
  */
 
-import { db } from './db.js';
+import { db, e164 } from './db.js';
 
 // ─────────────────────────────────────────────────────────────────
 // TIER 2: AVAILABILITY & INTELLIGENT SCHEDULING
@@ -182,15 +182,29 @@ export async function handleServiceHistory(tenant, { clientPhone, clientId }) {
   }
 }
 
-export async function handlePreferenceCapture(tenant, { clientId, preferences = [] }) {
+export async function handlePreferenceCapture(tenant, { clientId, clientPhone, preferences = [] }) {
   try {
-    await db.from('client_memories')
+    // client_memories is keyed (tenant_id, client_phone, key) — the real unique constraint every
+    // other writer uses. The old upsert used onConflict 'client_id,key' (no such constraint/column)
+    // and `db.from` (db is a factory), so preferences were never saved. The client must belong to
+    // THIS salon: the phone is read from the salon's own client row, never another tenant's.
+    const c = db();
+    if (!c || !tenant?.id) throw new Error('no database');
+    let phone = clientPhone || null;
+    if (clientId) {
+      const { data: cl } = await c.from('clients').select('phone').eq('tenant_id', tenant.id).eq('id', clientId).maybeSingle();
+      if (!cl) throw new Error('client not in this salon');
+      phone = cl.phone || phone;
+    }
+    if (!phone) throw new Error('no client phone');
+    const { error } = await c.from('client_memories')
       .upsert({
         tenant_id: tenant.id,
-        client_id: clientId,
+        client_phone: e164(phone),
         key: 'preferences',
         value: { preferences, captured_at: new Date().toISOString() }
-      }, { onConflict: 'client_id,key' });
+      }, { onConflict: 'tenant_id,client_phone,key' });
+    if (error) throw new Error(error.message);
     
     return {
       speak: `Got it! I've saved that to your profile so every stylist knows exactly what you love.`,

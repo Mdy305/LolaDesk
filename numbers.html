@@ -182,7 +182,7 @@ async function loadTelecomAssets() {
         portData.orders.map(order => `
         <div class="num-card" style="margin-bottom: 8px; padding: 12px 16px;">
           <div class="num-info">
-            <div class="num-number" style="font-size: 16px;">${order.phone_numbers.map(fmtNumber).join(', ')}</div>
+            <div class="num-number" style="font-size: 16px;">${(order.phone_numbers || [order.requested_phone_number]).filter(Boolean).map(fmtNumber).join(', ')}</div>
             <div class="num-meta">Status: <span style="color:var(--pink2)">${order.status}</span></div>
           </div>
         </div>
@@ -340,8 +340,8 @@ async function search(){
           </div>
         </div>
         <div class="num-price">
-          <div class="num-price-val">$${n.monthly || RETAIL_MONTHLY}</div>
-          <div class="num-price-per">/month</div>
+          <div class="num-price-val">Included</div>
+          <div class="num-price-per">in your plan</div>
         </div>
         <button class="buy-btn" onclick="buy('${n.phone_number}', this)">Get this number</button>
       </div>
@@ -359,20 +359,22 @@ async function buy(phone, btn){
     const token = localStorage.getItem('loladesk_token');
     if(token) headers['Authorization'] = 'Bearer ' + token;
 
-    const r = await fetch('/api/telnyx-numbers', {
+    // Salons get their number through the setup engine (tenant-scoped, included in the plan);
+    // clicking "Get this number" is the owner's confirmation.
+    const r = await fetch('/api/setup', {
       method:'POST',
       headers,
-      body: JSON.stringify({ action:'buy', phone_number: phone })
+      body: JSON.stringify({ action:'get_number', phone_number: phone, confirmed: true })
     });
     const data = await r.json();
-    if(data.ok){
+    if(data.ok && !data.needs_confirmation){
       showToast(`<b>${fmtNumber(phone)}</b> is now your Lola line. She's live!`);
       btn.textContent = '✓ Yours';
       setTimeout(()=>{ window.location.href='dashboard.html'; }, 2200);
     }else{
       btn.disabled = false;
       btn.textContent = 'Get this number';
-      showToast('Could not complete — check your billing details.');
+      showToast(data.say || 'Could not complete — try again in a minute.');
     }
   }catch(e){
     btn.disabled = false;

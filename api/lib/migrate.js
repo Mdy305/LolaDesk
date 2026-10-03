@@ -194,6 +194,32 @@ const TENANT_CHANNELS_DDL = `create table if not exists public.tenant_channels (
 create index if not exists idx_tenant_channels_tenant on public.tenant_channels (tenant_id);
 alter table public.tenant_channels enable row level security;`;
 
+// Channels (Messenger, WhatsApp): per-connection detail + last error on tenant_channels,
+// the salon-level WhatsApp switch, and the WhatsApp message templates LolaDesk submits
+// per WhatsApp Business Account (same as sql/channels.sql).
+const TENANT_CHANNELS_COLUMNS_DDL = `alter table public.tenant_channels
+  add column if not exists meta jsonb not null default '{}'::jsonb,
+  add column if not exists last_error text;
+alter table public.tenants
+  add column if not exists whatsapp_enabled boolean not null default false;`;
+
+const WHATSAPP_TEMPLATES_DDL = `create table if not exists public.whatsapp_templates (
+  id          uuid primary key default gen_random_uuid(),
+  waba_id     text not null,
+  name        text not null,
+  language    text not null default 'en_US',
+  category    text not null default 'UTILITY',
+  telnyx_template_id text,
+  status      text not null default 'PENDING',
+  reason      text,
+  tenant_id   uuid references public.tenants(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (waba_id, name, language)
+);
+create index if not exists idx_whatsapp_templates_waba on public.whatsapp_templates (waba_id);
+alter table public.whatsapp_templates enable row level security;`;
+
 // Lola's marketing engine — campaigns, recipients, the 30-day fill plan, saved analyses.
 // (Same as sql/lola-marketing.sql + sql/revenue-engine.sql, so salons never depend on a manual SQL run.)
 const LOLA_CAMPAIGNS_DDL = `create table if not exists public.lola_campaigns (
@@ -366,6 +392,21 @@ async function runMigrations() {
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
+  await ensureTable(c, 'whatsapp_templates', WHATSAPP_TEMPLATES_DDL, applied);
+  // tenant_channels.meta / last_error + tenants.whatsapp_enabled (Messenger + WhatsApp channels).
+  try {
+    const col = await c.from('tenant_channels').select('meta,last_error').limit(1);
+    const tcol = await c.from('tenants').select('whatsapp_enabled').limit(1);
+    if ((col.error && /meta|last_error/i.test(String(col.error?.message || col.error))) || (tcol.error && /whatsapp_enabled/i.test(String(tcol.error?.message || tcol.error)))) {
+      const res = await c.rpc('exec_sql', { p_sql: TENANT_CHANNELS_COLUMNS_DDL });
+      if (res?.error) throw new Error(res.error?.message || 'exec_sql returned an error');
+      console.log('[migrate] applied tenant_channels.meta/last_error + tenants.whatsapp_enabled');
+      applied.push('tenant_channels.meta');
+    }
+  } catch (e) {
+    console.warn('[migrate] channel columns ensure failed:', String(e?.message || e).slice(0, 160));
+  }
+
   await ensureTable(c, 'telnyx_events', TELNYX_EVENTS_DDL, applied);
   await ensureTable(c, 'lola_campaigns', LOLA_CAMPAIGNS_DDL, applied);
   await ensureTable(c, 'lola_campaign_recipients', LOLA_CAMPAIGN_RECIPIENTS_DDL, applied);
@@ -485,4 +526,88 @@ export function ensureBookingSetupSchema(){
     return applied.length ? 'applied' : 'up-to-date';
   })().catch((e) => { _setupEnsured = null; console.warn('[migrate] setup schema:', String(e?.message || e).slice(0, 160)); return 'error'; });
   return _setupEnsured;
+}
+
+// ── Telecom setup (api/lib/setup/telecom.js): per-salon porting + 10DLC ──────
+// Same SQL as sql/telecom-setup.sql. Port PINs, account numbers and EINs are
+// stored ONLY encrypted (*_enc, AES-256-GCM via lib/crypto.js).
+const TELECOM_PORTS_DDL = `create table if not exists public.tenant_number_ports (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  requested_phone_number text not null,
+  status text not null default 'draft',
+  current_carrier text,
+  account_number text,
+  account_pin text,
+  billing_name text,
+  billing_address text,
+  authorized_contact_name text,
+  authorized_contact_email text,
+  telnyx_order_id text,
+  foc_date timestamptz,
+  temporary_phone_number text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.tenant_number_ports
+  add column if not exists entity_name text,
+  add column if not exists account_number_enc text,
+  add column if not exists pin_enc text,
+  add column if not exists billing_street text,
+  add column if not exists billing_city text,
+  add column if not exists billing_state text,
+  add column if not exists billing_zip text,
+  add column if not exists billing_phone_number text,
+  add column if not exists loa_document_id text,
+  add column if not exists invoice_document_id text,
+  add column if not exists telnyx_order_ids jsonb default '[]'::jsonb,
+  add column if not exists telnyx_status text,
+  add column if not exists requirements_met boolean,
+  add column if not exists exceptions jsonb default '[]'::jsonb,
+  add column if not exists last_error text,
+  add column if not exists submitted_at timestamptz,
+  add column if not exists completed_at timestamptz,
+  add column if not exists synced_at timestamptz;
+create index if not exists idx_tenant_number_ports_tenant on public.tenant_number_ports(tenant_id, created_at desc);
+create index if not exists idx_tenant_number_ports_order on public.tenant_number_ports(telnyx_order_id);`;
+
+const TENANT_COMPLIANCE_DDL = `create table if not exists public.tenant_compliance (
+  tenant_id uuid primary key references public.tenants(id) on delete cascade,
+  stage text not null default 'collecting',
+  entity_type text,
+  legal_name text,
+  ein_enc text,
+  details jsonb default '{}'::jsonb,
+  brand_id text,
+  brand_status text,
+  brand_identity_status text,
+  otp_reference text,
+  campaign_id text,
+  campaign_status text,
+  usecase text,
+  numbers jsonb default '[]'::jsonb,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  synced_at timestamptz
+);
+create index if not exists idx_tenant_compliance_brand on public.tenant_compliance(brand_id);
+create index if not exists idx_tenant_compliance_campaign on public.tenant_compliance(campaign_id);
+alter table public.tenant_compliance enable row level security;`;
+
+let _telecomEnsured = null;
+export function resetTelecomSchema(){ _telecomEnsured = null; }
+/** Memoized per cold start; never throws. */
+export function ensureTelecomSchema(){
+  if(_telecomEnsured) return _telecomEnsured;
+  _telecomEnsured = (async () => {
+    const c = db();
+    if(!c) return 'no-db';
+    const applied = [];
+    await ensureColumns(c, 'tenant_number_ports', 'id,entity_name,account_number_enc,pin_enc,billing_street,billing_city,billing_state,billing_zip,billing_phone_number,loa_document_id,invoice_document_id,telnyx_order_ids,telnyx_status,requirements_met,exceptions,last_error,submitted_at,completed_at,synced_at', TELECOM_PORTS_DDL, applied);
+    await ensureTable(c, 'tenant_compliance', TENANT_COMPLIANCE_DDL, applied);
+    return applied.length ? 'applied' : 'up-to-date';
+  })().catch((e) => { _telecomEnsured = null; console.warn('[migrate] telecom schema:', String(e?.message || e).slice(0, 160)); return 'error'; });
+  return _telecomEnsured;
 }

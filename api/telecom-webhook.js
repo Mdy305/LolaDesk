@@ -64,7 +64,14 @@ export default async function handler(req, res) {
   const summary = summarize(event);
   console.log('[TELNYX_WEBHOOK]', JSON.stringify(summary));
 
-  // Acknowledge immediately. Durable persistence can subscribe to this stable
-  // summary contract without coupling the webhook to a specific DB schema.
-  return res.status(200).json({ received: true, event_id: summary.event_id, event_type: summary.event_type });
+  // Porting (porting_order.*) and 10DLC brand/campaign events move the salon's setup forward
+  // (lib/setup/telecom.js re-reads the order/campaign from Telnyx; the payload only names it).
+  // Telnyx wants a 2xx within ~2s: wait briefly, then acknowledge — the work finishes in the
+  // background and the telecom-sync cron catches anything missed.
+  const work = import('./lib/setup/telecom.js').then((m) => m.handleTelecomEvent(event)).catch((e) => ({ handled: false, error: String(e?.message || e).slice(0, 160) }));
+  let timer = null;
+  const outcome = await Promise.race([work, new Promise((r) => { timer = setTimeout(() => r({ handled: 'pending' }), Number(process.env.TELECOM_WEBHOOK_WAIT_MS ?? 1500)); })]);
+  clearTimeout(timer);
+
+  return res.status(200).json({ received: true, event_id: summary.event_id, event_type: summary.event_type, handled: outcome?.handled ?? false });
 }

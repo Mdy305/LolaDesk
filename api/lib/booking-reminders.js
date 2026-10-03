@@ -81,6 +81,13 @@ async function enrich(client, bookings) {
       .filter((r) => r.provider === 'whatsapp' && r.status === 'connected')
       .map((r) => r.tenant_id)
   );
+  // …or its number is live on a WhatsApp Business Account (api/lib/whatsapp-setup.js).
+  if (tenantIds.length) {
+    try {
+      const { data: wa } = await client.from('tenant_channels').select('tenant_id,status').eq('channel', 'whatsapp').eq('status', 'active').in('tenant_id', tenantIds);
+      for (const r of wa || []) waTenantIds.add(r.tenant_id);
+    } catch { /* no channels table yet → integrations signal only */ }
+  }
   return bookings.map((b) => ({
     ...b,
     tenant: tMap[b.tenant_id] || null,
@@ -203,7 +210,19 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
 
       // Channel choice: prefer WhatsApp when the salon has it connected AND
       // the client has opted in (clients.whatsapp_enabled). Otherwise SMS.
-      const channel = b.tenant_whatsapp && b.client.whatsapp_enabled ? 'whatsapp' : 'sms';
+      let channel = b.tenant_whatsapp && b.client.whatsapp_enabled ? 'whatsapp' : 'sms';
+      // WhatsApp rules: free text only inside 24h of the client's last WhatsApp
+      // message; outside it, only an APPROVED template — else the reminder goes by SMS.
+      let plan = null;
+      if (channel === 'whatsapp') {
+        try {
+          const { planWhatsApp } = await import('./whatsapp-setup.js');
+          const first = String(b.client.name || '').trim().split(/\s+/)[0] || 'there';
+          const when = fmtWhen(b.start_time, b.settings?.timezone);
+          plan = await planWhatsApp(client, { tenantId: b.tenant_id, clientId: b.client.id, templateName: 'appointment_reminder', params: [first, (b.service && b.service.name) || 'salon', (b.tenant && b.tenant.name) || 'the salon', when], now: now.getTime() });
+        } catch { plan = null; }
+        if (!plan) channel = 'sms';
+      }
 
       const row = await claim(client, b, channel, band.id);
       if (!row) { result.skipped++; result[band.id].skipped++; continue; }
@@ -214,7 +233,8 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
           to: b.client.phone,
           text: buildReminderText(b, band.id),
           tenantId: b.tenant_id,
-          type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS'
+          type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS',
+          ...(plan && plan.template ? { template: plan.template } : {})
         });
         await mark(client, row.id, 'sent');
         result.sent++;

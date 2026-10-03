@@ -138,6 +138,24 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
   <p class="muted" style="margin:6px 0 16px">Four autonomous agents keep the platform running itself — routing heals against Telnyx, missed callers get a follow-up text, cancelled clients are invited to rebook, and broken booking syncs re-run themselves. Runs hourly; every run is recorded in the ledger.</p>
   <div id="apWrap"><div class="state">Load to see what Lola's agents did.</div></div>
 
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Salon lines · forwarding · ports · 10DLC · costs</h2>
+    <button class="btn" onclick="loadTelecom(false)">Refresh</button>
+    <button class="btn" onclick="loadTelecom(true)">Check against Telnyx</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Every salon's numbers (with Telnyx drift), forwarding, number moves (port orders, FOC dates, carrier exceptions), business-texting registration (brand / campaign / number assignment) and what LolaDesk paid this month. Salons never see any of this — they just talk to Lola.</p>
+  <div id="telecomState"><div class="state">Load to see every salon's line and texting status.</div></div>
+
+  <div style="margin-top:34px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h2 style="font-size:15px;letter-spacing:-.01em">Channels · Instagram · Messenger · WhatsApp</h2>
+    <button class="btn" onclick="loadChannels()">Refresh</button>
+    <button class="btn" onclick="channelAction('sync_whatsapp',this)">Sync WhatsApp</button>
+    <button class="btn" onclick="channelAction('sync_templates',this)">Sync templates</button>
+    <button class="btn" onclick="channelAction('check_messenger',this)">Check Messenger pages</button>
+  </div>
+  <p class="muted" style="margin:6px 0 16px">Every salon's Meta pages and tokens, WhatsApp numbers on a WhatsApp Business Account, template approvals, pending WhatsApp requests (with the exact Telnyx portal step) and last errors.</p>
+  <div id="channelsState"><div class="state">Load to see every salon's channels.</div></div>
+
   <div style="margin-top:34px;display:flex;align-items:center;gap:12px">
     <h2 style="font-size:15px;letter-spacing:-.01em">10DLC Onboarding</h2>
     <button class="btn" onclick="loadCompliance()">Refresh</button>
@@ -707,6 +725,72 @@ async function loadCompliance(){
   }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the compliance API.</div>'; }
 }
 
+// ── Salon lines / ports / 10DLC / costs ───────────────────
+async function loadTelecom(live){
+  const wrap = document.getElementById('telecomState');
+  wrap.innerHTML = '<div class="state">Loading…</div>';
+  try{
+    const r = await fetch('/api/admin/telecom' + (live ? '?live=1' : ''), { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't load: ${esc(j.error||'unknown error')}</div>`; return; }
+    const tot = Object.entries(j.totals||{}).map(([k,v])=>`${esc(k.replace(/^cost_/,''))}: ${esc(v)}`).join(' · ');
+    const head = `<div class="muted" style="margin-bottom:10px">Since ${esc(String(j.month_start||'').slice(0,10))} — ${tot||'no platform costs logged'}${j.telnyx?.live?' · Telnyx checked live':''}${j.telnyx?.error?' · <span style="color:#ff7a6d">'+esc(j.telnyx.error)+'</span>':''}</div>`;
+    const rows = (j.tenants||[]).filter(t=>t.numbers.length||t.forwarding.length||t.ports.length||t.texting).map(t=>{
+      const nums = t.numbers.map(n=>`${esc(n.phone_number)} · ${esc(n.kind||'')} · ${esc(n.status||'')}${(n.drift||[]).length?' · <span style="color:#ff7a6d">'+esc(n.drift.join(', '))+'</span>':''}`).join('<br>') || '—';
+      const fwd = t.forwarding.map(f=>`${esc(f.salon_number)} · ${esc(f.status)}`).join('<br>') || '—';
+      const ports = t.ports.map(p=>`${esc(p.requested_phone_number||'')} · ${esc(p.status||'')}${p.telnyx_status?' ('+esc(p.telnyx_status)+')':''}${p.foc_date?' · FOC '+esc(String(p.foc_date).slice(0,10)):''}${(p.missing||[]).length?' · needs '+esc(p.missing.join(', ')):''}${p.last_error?' · <span style="color:#ff7a6d">'+esc(p.last_error)+'</span>':''}<br><button class="btn" style="margin-top:4px" onclick="telecomAction('retry_port','${esc(t.tenant.id)}',this)">Retry</button>`).join('<br>') || '—';
+      const tx = t.texting ? `${esc(t.texting.stage||'')} · brand ${esc(t.texting.brand_status||'—')} · campaign ${esc(t.texting.campaign_status||'—')}${t.texting.sole_prop?' · sole prop':''}${t.texting.last_error?' · <span style="color:#ff7a6d">'+esc(t.texting.last_error)+'</span>':''}<br><button class="btn" style="margin-top:4px" onclick="telecomAction('retry_campaign','${esc(t.tenant.id)}',this)">Retry</button>` : '—';
+      const cost = Object.entries(t.costs||{}).map(([k,v])=>`${esc(k.replace(/^cost_/,''))} ${esc(v)}`).join('<br>') || '—';
+      return `<tr><td><strong>${esc(t.tenant.name||'—')}</strong><br><span class="muted">${esc(t.tenant.owner_email||'')}</span><br><button class="btn" style="margin-top:4px" onclick="telecomAction('resync','${esc(t.tenant.id)}',this)">Resync</button></td><td>${nums}</td><td>${fwd}</td><td>${ports}</td><td>${tx}</td><td>${cost}</td></tr>`;
+    }).join('');
+    wrap.innerHTML = head + (rows ? `<div style="overflow-x:auto"><table><thead><tr><th>Salon</th><th>Numbers</th><th>Forwarding</th><th>Number move</th><th>Business texting</th><th>Costs (month)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="state">No salon lines yet.</div>');
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the telecom API.</div>'; }
+}
+async function telecomAction(action, tenantId, btn){
+  if(btn) btn.disabled = true;
+  try{
+    const r = await fetch('/api/admin/telecom', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ action, tenant_id: tenantId }) });
+    const j = await r.json().catch(()=>({}));
+    if(!j.ok) alert('Failed: ' + (j.error || r.status));
+    await loadTelecom(false);
+  }catch(e){ alert('Couldn\'t reach the telecom API.'); }
+  finally{ if(btn) btn.disabled = false; }
+}
+
+// ── Channels (Instagram / Messenger / WhatsApp) ───────────────────
+async function loadChannels(){
+  const wrap = document.getElementById('channelsState');
+  try{
+    const r = await fetch('/api/admin/channels', { headers:{ Authorization:'Bearer '+token } });
+    if(r.status === 401){ location.href = '/login'; return; }
+    if(r.status === 403){ wrap.innerHTML = '<div class="state">Operator access only.</div>'; return; }
+    const j = await r.json();
+    if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't load channels: ${esc(j.error||'unknown error')}</div>`; return; }
+    const ms = j.meta_setup || {};
+    const setup = `<div class="muted" style="margin-bottom:10px">Meta app ${ms.app_configured?'configured':'<strong>not configured</strong>'} · verify token ${ms.verify_token_set?'set':'<strong>missing</strong>'} · encryption key ${ms.encryption_key_set?'set':'<strong>missing</strong>'} · webhooks ${esc(ms.instagram_webhook||'')} , ${esc(ms.messenger_webhook||'')}</div>`;
+    const pend = (j.pending_whatsapp||[]).map(p=>`<div class="state" style="text-align:left"><strong>${esc(p.tenant?.name||'—')}</strong> asked for WhatsApp on ${esc(p.phone_number||'—')} (${esc(p.requested_at||'')})<br><span class="muted">${esc(p.portal_step||'')}</span></div>`).join('');
+    const rows = (j.tenants||[]).filter(t=>t.instagram.length||t.messenger.length||t.whatsapp.length||t.whatsapp_request||t.messenger_pending).map(t=>{
+      const ig = t.instagram.map(x=>`IG ${esc(x.name||x.account_id)} · ${esc(x.status)}${x.expires_at?' · exp '+esc(String(x.expires_at).slice(0,10)):''}${x.last_error?' · <span style="color:#ff7a6d">'+esc(x.last_error)+'</span>':''}`).join('<br>');
+      const fb = t.messenger.map(x=>`Page ${esc(x.name||'')} (${esc(x.page_id)}) · ${esc(x.status)}${x.subscribed?' · subscribed':''}${x.last_error?' · <span style="color:#ff7a6d">'+esc(x.last_error)+'</span>':''}`).join('<br>') + (t.messenger_pending?'<br>choosing: '+esc((t.messenger_pending.pages||[]).map(p=>p.name).join(', ')):'');
+      const wa = t.whatsapp.map(x=>`${esc(x.phone_number)} · WABA ${esc(x.waba_id||'—')} · ${esc(x.status)} · quality ${esc(x.quality_rating||'—')}<br>${(x.templates||[]).map(tp=>esc(tp.name)+': '+esc(tp.status)).join(' · ')}`).join('<br>') + (t.whatsapp_request?'<br>request: '+esc(t.whatsapp_request.status):'');
+      return `<tr><td><strong>${esc(t.tenant.name||'—')}</strong><br><span class="muted">${esc(t.tenant.phone_number||'')}</span></td><td>${ig||'—'}</td><td>${fb||'—'}</td><td>${wa||'—'}</td></tr>`;
+    }).join('');
+    wrap.innerHTML = setup + pend + (rows ? `<table style="margin-top:12px"><thead><tr><th>Salon</th><th>Instagram</th><th>Messenger</th><th>WhatsApp</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="state">No salon has connected a channel yet.</div>');
+  }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the channels API.</div>'; }
+}
+async function channelAction(action, btn){
+  if(btn){ btn.disabled = true; }
+  try{
+    const r = await fetch('/api/admin/channels', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ action }) });
+    const j = await r.json().catch(()=>({}));
+    if(!j.ok) alert('Failed: ' + (j.error || r.status));
+    await loadChannels();
+  }catch(e){ alert('Couldn\'t reach the channels API.'); }
+  finally{ if(btn) btn.disabled = false; }
+}
+
 function val(id){ return document.getElementById(id).value.trim(); }
 
 async function registerBrand(btn){
@@ -790,6 +874,8 @@ load();
 loadSync();
 loadAgents();
 loadCompliance();
+loadChannels();
+loadTelecom(false);
 loadLolaHealth();
 loadAutopilot();
 loadCare();

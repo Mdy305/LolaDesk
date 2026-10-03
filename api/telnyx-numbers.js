@@ -1,5 +1,5 @@
 import { db, updateTenantFields, logUsage } from './lib/db.js';
-import { getUserFromToken, bearer } from './lib/auth.js';
+import { getUserFromToken, bearer, isAdminEmail } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { getCanonicalVoiceConnectionId } from './lib/telnyx-provision.js';
 
@@ -134,8 +134,12 @@ export default async function handler(req, res){
       return res.status(400).json({ error:'unknown action' });
     }
 
-    // ── BUY (POST) ──
+    // ── BUY (POST) ── platform admins only (ADMIN_EMAILS). Salons get their number through
+    // Lola / POST /api/setup {action:'get_number'} — tenant-scoped, confirm-gated, cost-logged.
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
+    const buyer = await getUserFromToken(bearer(req)).catch(()=>null);
+    if(!buyer) return res.status(401).json({ ok:false, error:'Not signed in' });
+    if(!isAdminEmail(buyer.email)) return res.status(403).json({ ok:false, error:'Not authorized — ask Lola for a number instead.' });
     if(body.action === 'buy' && body.phone_number){
       const order = await orderNumber({ phone_number: body.phone_number });
       // Telnyx returns the ordered numbers; grab the id to provision

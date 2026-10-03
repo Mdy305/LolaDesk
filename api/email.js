@@ -50,8 +50,9 @@ export function createHandler({ send = SendEmail, db = null } = {}){
             .select('id')
             .eq('tenant_id', tenantId)
             .eq('email', email.toLowerCase());
-          if(!data || !data.length) return res.status(404).json({ ok:false, error:'No matching client' });
-          await c.from('clients').update({ opted_out:true }).eq('id', data[0].id);
+          // Same answer whether or not the address is on file: the link is public, so a
+          // "No matching client" reply told anyone whether an email is a client of that salon.
+          if(data && data.length) await c.from('clients').update({ opted_out:true }).eq('id', data[0].id).eq('tenant_id', tenantId);
           res.setHeader('Content-Type','text/html; charset=utf-8');
           return res.status(200).send('<h2>You\u2019re unsubscribed</h2><p>You\u2019ll stop receiving these emails. You can still book by phone or in the app.</p>');
         }catch(e){

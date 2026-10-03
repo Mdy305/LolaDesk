@@ -96,6 +96,14 @@ export function toolUrl(name) {
   // X-LolaDesk-Salon (Telnyx turns X- headers into dynamic variables), so web calls know the salon too.
   return `${appUrl()}/api/lola-tools?tool=${encodeURIComponent(norm(name))}&to={{telnyx_agent_target}}&from={{telnyx_end_user_target}}&salon={{loladesk_salon}}&call={{call_control_id}}&ch={{telnyx_conversation_channel}}&k=${toolKey()}`;
 }
+/** Same endpoint, signed: replaces any old k=, keeps every other parameter (incl. {{…}} placeholders). */
+function signKeep(url) {
+  const raw = String(url || '');
+  const [base, q = ''] = raw.split('?');
+  const parts = q.split('&').filter((x) => x && !/^k=/.test(x));
+  parts.push('k=' + toolKey());
+  return base + '?' + parts.join('&');
+}
 /** The salon-details webhook, signed (caller memory is only shared with a signed request). */
 export const variablesUrl = () => `${appUrl()}/api/agent-variables?k=${toolKey('variables')}`;
 function parse(u) { try { return new URL(String(u || '').replace(/\{\{[^}]*\}\}/g, 'x')); } catch (_) { return null; } }
@@ -107,6 +115,8 @@ export function diagnoseTool(tool) {
   const name = norm(w.name), u = parse(w.url);
   if (!SKILL_NAMES.has(name)) {
     if (!u || !ourHost(u.hostname) || !GOOD_PATHS.has(u.pathname)) return { name: w.name, url: w.url, problem: 'unknown_tool', fixable: false };
+    // One of our dedicated /api/lola/* endpoints: keep it, but it must carry the signature.
+    if (!toolKeyOk(u.searchParams.get('k'))) return { name: w.name, url: w.url, problem: 'unsigned_keep', fixable: true };
     return null;
   }
   if (!u) return { name: w.name, url: w.url, problem: 'no_url', fixable: true };
@@ -121,7 +131,7 @@ export function diagnoseTool(tool) {
     if (w.method && String(w.method).toUpperCase() !== 'POST') return { name: w.name, url: w.url, problem: 'method', fixable: true };
     return null;
   }
-  if (GOOD_PATHS.has(u.pathname)) return null;
+  if (GOOD_PATHS.has(u.pathname)) return toolKeyOk(u.searchParams.get('k')) ? null : { name: w.name, url: w.url, problem: 'unsigned_keep', fixable: true };
   return { name: w.name, url: w.url, problem: u.pathname.includes('insights') ? 'insights_url' : 'wrong_path', fixable: true };
 }
 
@@ -141,7 +151,7 @@ export async function wireAssistant({ heal = false } = {}) {
     if (!d) return t;
     if (!d.fixable) { unknown.push({ name: d.name, url: d.url }); return t; }
     issues.push(d);
-    const url = toolUrl(t.webhook.name);
+    const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(t.webhook.name);
     fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem });
     return { ...t, webhook: { ...t.webhook, url, method: 'POST' } };   // /api/lola-tools only answers POST
   });

@@ -50,7 +50,7 @@ async function listConversations(assistant) {
   const key = telnyxKey();
   if (!key || !assistant) return { configured: false, conversations: [] };
   try {
-    const r = await fetch(`${TELNYX}/ai/assistants/${encodeURIComponent(assistant)}/conversations?page[size]=10`, {
+    const r = await fetch(`${TELNYX}/ai/assistants/${encodeURIComponent(assistant)}/conversations?page[size]=50`, {
       headers: { Authorization: `Bearer ${key}` }
     });
     if (!r.ok) return { configured: true, conversations: [] };
@@ -59,12 +59,73 @@ async function listConversations(assistant) {
       id: c.id || null,
       status: ended(c) ? 'ended' : (c.status || 'in_progress'),
       startedAt: c.started_at || c.created_at || null,
-      lastMessageAt: c.last_message_at || c.updated_at || null
+      lastMessageAt: c.last_message_at || c.updated_at || null,
+      _meta: (c.metadata && typeof c.metadata === 'object') ? c.metadata : {}
     })).filter((c) => c.id);
     return { configured: true, conversations };
   } catch {
     return { configured: true, conversations: [] };
   }
+}
+
+/* ── TENANT SCOPE ────────────────────────────────────────────────────
+   ONE Lola assistant serves every salon, so the assistant's conversation
+   list holds EVERY salon's calls. Before, any signed-in owner saw them all
+   and could whisper into (steer) another salon's live call. A conversation
+   belongs to this salon only when its Telnyx metadata names one of this
+   salon's numbers (telnyx_agent_target …) or one of its own call ids
+   (call_control_id / call_session_id from this tenant's calls rows).
+   No proof → not shown, not steerable (fail closed). */
+async function tenantScope(c, tenant) {
+  const numbers = new Set([e164(tenant.phone_number || '')].filter(Boolean));
+  const ids = new Set();
+  try {
+    const { data } = await c.from('tenant_numbers').select('phone_number').eq('tenant_id', tenant.id).limit(50);
+    for (const r of (data || [])) { const n = e164(r.phone_number || ''); if (n) numbers.add(n); }
+  } catch { /* table may not exist yet */ }
+  try {
+    const { data } = await c.from('calls').select('telnyx_call_control_id,call_session_id').eq('tenant_id', tenant.id)
+      .order('created_at', { ascending: false }).limit(200);
+    for (const r of (data || [])) { if (r.telnyx_call_control_id) ids.add(String(r.telnyx_call_control_id)); if (r.call_session_id) ids.add(String(r.call_session_id)); }
+  } catch { /* best-effort */ }
+  try {
+    const { data } = await c.from('call_sessions').select('call_control_id').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(200);
+    for (const r of (data || [])) if (r.call_control_id) ids.add(String(r.call_control_id));
+  } catch { /* best-effort */ }
+  return { numbers, ids };
+}
+function ownsConversation(conv, scope) {
+  const vals = Object.values(conv?._meta || {}).filter((v) => typeof v === 'string' || typeof v === 'number').map(String);
+  return vals.some((v) => scope.ids.has(v) || (v.replace(/\D/g, '').length >= 8 && scope.numbers.has(e164(v))));
+}
+const publicConv = ({ _meta, ...rest }) => rest;
+
+/* This salon's conversations, proven by OUR ids: Telnyx's conversation list filters on any metadata
+   field (PostgREST style — see Telnyx "List conversations"), so ask directly for the ones whose
+   metadata names this salon's line or one of its own recent call ids. Merged with the assistant
+   list; every row still passes ownsConversation, so isolation holds whatever Telnyx returns. */
+async function scopedConversations(scope) {
+  const key = telnyxKey();
+  if (!key) return [];
+  const asks = [];
+  for (const n of [...scope.numbers].slice(0, 3)) asks.push(['telnyx_agent_target', n]);
+  for (const id of [...scope.ids].slice(0, 4)) asks.push(['call_control_id', id]);
+  const out = [];
+  await Promise.all(asks.map(async ([field, value]) => {
+    try {
+      const r = await fetch(`${TELNYX}/ai/conversations?metadata->>${field}=eq.${encodeURIComponent(value)}&order=last_message_at.desc&limit=10`, { headers: { Authorization: `Bearer ${key}` } });
+      if (!r.ok) return;
+      const j = await r.json().catch(() => ({}));
+      for (const c of (j?.data || [])) if (c && c.id) out.push({ id: c.id, status: ended(c) ? 'ended' : (c.status || 'in_progress'), startedAt: c.started_at || c.created_at || null, lastMessageAt: c.last_message_at || c.updated_at || null, _meta: (c.metadata && typeof c.metadata === 'object') ? c.metadata : {} });
+    } catch { /* best-effort */ }
+  }));
+  return out;
+}
+async function myConversations(assistant, scope) {
+  const [{ configured, conversations }, extra] = await Promise.all([listConversations(assistant), scopedConversations(scope)]);
+  const byId = new Map();
+  for (const x of [...conversations, ...extra]) if (ownsConversation(x, scope) && !byId.has(x.id)) byId.set(x.id, x);
+  return { configured, conversations: [...byId.values()] };
 }
 
 async function whisper(conversationId, text) {
@@ -177,10 +238,14 @@ export default async function handler(req, res) {
 
     // Resolve the live conversation: explicit id wins, else the newest
     // non-ended conversation of the tenant's assistant.
+    // Only THIS salon's conversations are steerable (see tenantScope).
     let conversationId = String(body.conversation_id || '').trim();
-    if (!conversationId) {
-      const { conversations } = await listConversations(assistantId());
-      const live = conversations.filter((x) => x.status !== 'ended');
+    const scope = await tenantScope(c, tenant);
+    const { conversations: mine } = await myConversations(assistantId(), scope);
+    if (conversationId) {
+      if (!mine.some((x) => x.id === conversationId)) return res.status(404).json({ error: 'conversation_not_found', ok: false });
+    } else {
+      const live = mine.filter((x) => x.status !== 'ended');
       if (!live.length) return res.status(409).json({ error: 'no_active_conversation', ok: false });
       live.sort((a, b) => String(b.lastMessageAt || b.startedAt || '').localeCompare(String(a.lastMessageAt || a.startedAt || '')));
       conversationId = live[0].id;
@@ -253,7 +318,10 @@ export default async function handler(req, res) {
     const activeCalls = activeCallsRaw.filter((x) => ACTIVE_STATUS.includes(x.status) && !closedIds.has(x.id));
 
     const assistant = assistantId();
-    const { configured, conversations } = await listConversations(assistant);
+    const scope = await tenantScope(c, tenant);
+    const { configured, conversations: allConversations } = await myConversations(assistant, scope);
+    // Never another salon's calls: only conversations proven to be this tenant's.
+    const conversations = allConversations.filter((x) => ownsConversation(x, scope)).map(publicConv);
     const live = conversations.filter((x) => x.status !== 'ended');
     const whisperTarget = live.length ? { conversationId: live[0].id } : null;
 

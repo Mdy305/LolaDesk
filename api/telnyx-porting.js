@@ -1,192 +1,60 @@
+/**
+ * /api/telnyx-porting — the signed-in salon's number transfer (legacy Settings / Numbers pages).
+ * Delegates to the one engine (api/lib/setup/telecom.js) so this path does the FULL documented
+ * Telnyx flow too (create → details → documents → confirm), stores the PIN and account number
+ * encrypted only, and gives a temporary number a real routing row wired to Lola.
+ *   GET  → { ok, orders: [...] }  this salon's transfers (no PINs / account numbers), synced first
+ *   POST { phone_number, current_carrier?, account_number?, account_pin?, entity_name?, ... ,
+ *          confirmed? } → { ok, say, needs?, needs_confirmation? }
+ */
 import { getUserFromToken, bearer } from './lib/auth.js';
-import {
-  createTenantPortRequest,
-  e164,
-  listTenantPortRequests,
-  updateTenantPortRequest,
-  updateTenantFields
-} from './lib/db.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
+import { db } from './lib/db.js';
+import { portStart, portStatus } from './lib/setup/telecom.js';
 
-const TELNYX = 'https://api.telnyx.com/v2';
-
-function authHeaders(){
-  return {
-    'Content-Type':'application/json',
-    'Authorization':`Bearer ${process.env.TELNYX_API_KEY}`
-  };
-}
-
-async function resolveAuthTenant(req){
-  const user = await getUserFromToken(bearer(req));
-  if(!user) return { error: 'not authenticated', status: 401 };
-  const tenant = await resolveTenantForUser(user);
-  if(!tenant) return { error: 'no tenant mapped to this account', status: 404 };
-  return { tenant, user };
-}
-
-async function findAndBuyTemporaryNumber(tenant, requestedNumber){
-  const match = String(requestedNumber || '').replace(/[^\d]/g, '');
-  const area = match.length >= 10 ? match.slice(match.length - 10, match.length - 7) : '';
-  const searchParams = new URLSearchParams();
-  searchParams.set('filter[country_code]', 'US');
-  searchParams.set('filter[phone_number_type]', 'local');
-  searchParams.set('filter[limit]', '1');
-  searchParams.set('filter[features][]', 'voice');
-  searchParams.append('filter[features][]', 'sms');
-  if(area) searchParams.set('filter[national_destination_code]', area);
-
-  const search = await fetch(`${TELNYX}/available_phone_numbers?${searchParams.toString()}`, { headers: authHeaders() });
-  const searchData = await search.json();
-  if(!search.ok) throw new Error(searchData?.errors?.[0]?.detail || 'failed to search temporary number');
-
-  const candidate = searchData?.data?.[0]?.phone_number;
-  if(!candidate) throw new Error('no temporary phone number available in this area');
-
-  const order = await fetch(`${TELNYX}/number_orders`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ phone_numbers: [{ phone_number: candidate }] })
-  });
-  const orderData = await order.json();
-  if(!order.ok) throw new Error(orderData?.errors?.[0]?.detail || 'failed to order temporary number');
-
-  const phoneNumberId = orderData?.data?.phone_numbers?.[0]?.id;
-  if(phoneNumberId && process.env.TELNYX_VOICE_APP_ID){
-    await fetch(`${TELNYX}/phone_numbers/${phoneNumberId}`, {
-      method: 'PATCH',
-      headers: authHeaders(),
-      body: JSON.stringify({ connection_id: process.env.TELNYX_VOICE_APP_ID })
-    });
-  }
-  if(phoneNumberId && (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID)){
-    await fetch(`${TELNYX}/phone_numbers/${phoneNumberId}/messaging`, {
-      method: 'PATCH',
-      headers: authHeaders(),
-      body: JSON.stringify({ messaging_profile_id: (process.env.TELNYX_MESSAGING_PROFILE || process.env.TELNYX_MESSAGING_PROFILE_ID) })
-    });
-  }
-
-  await updateTenantFields(tenant.id, { phone_number: candidate });
-  return candidate;
-}
-
-async function createPortOrder({ tenant, user, body }){
-  const requested = e164(body.requested_phone_number || body.phone_number || '');
-  if(!requested) return { error: 'requested_phone_number is required', status: 400 };
-
-  // Tolerate the legacy Settings form shape (carrier/account_number/pin) and
-  // auto-fill the authorized contact from the signed-in owner so "Port your
-  // existing number" actually submits instead of failing a 400.
-  const currentCarrier = body.current_carrier || body.carrier || null;
-  const accountPin = body.account_pin !== undefined && body.account_pin !== '' ? body.account_pin : (body.pin || null);
-  const authorizedName = String(body.authorized_contact_name || '').trim()
-    || String(user?.user_metadata?.full_name || user?.user_metadata?.name || '').trim() || '';
-  const authorizedEmail = String(body.authorized_contact_email || '').trim() || String(user?.email || '').trim();
-  if(!authorizedName || !authorizedEmail){
-    return { error: 'authorized_contact_name and authorized_contact_email are required — add your name in account settings or include them in the port request', status: 400 };
-  }
-
-  const payload = {
-    phone_numbers: [requested],
-    webhook_url: `${process.env.APP_URL || 'https://www.loladesk.com'}/api/webhooks/telnyx`,
-    customer_reference: `tenant:${tenant.id}`
-  };
-
-  const portCreate = await fetch(`${TELNYX}/porting_orders`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload)
-  });
-  const portData = await portCreate.json();
-  if(!portCreate.ok){
-    const detail = portData?.errors?.[0]?.detail || 'failed to create port order';
-    return { error: detail, status: portCreate.status || 502 };
-  }
-
-  let tempNumber = null;
-  if(body.use_temporary_number){
-    tempNumber = await findAndBuyTemporaryNumber(tenant, requested);
-  }
-
-  const row = await createTenantPortRequest(tenant.id, {
-    requested_phone_number: requested,
-    status: 'submitted',
-    current_carrier: currentCarrier,
-    account_number: body.account_number || null,
-    account_pin: accountPin,
-    billing_name: body.billing_name || null,
-    billing_address: body.billing_address || null,
-    authorized_contact_name: authorizedName,
-    authorized_contact_email: authorizedEmail,
-    telnyx_order_id: portData?.data?.id || null,
-    temporary_phone_number: tempNumber,
-    metadata: {
-      loa_uploaded: !!body.loa_uploaded,
-      recent_bill_uploaded: !!body.recent_bill_uploaded
-    }
-  });
-
-  return {
-    ok: true,
-    port_request: row,
-    telnyx_order: portData?.data || null,
-    temporary_phone_number: tempNumber
-  };
-}
-
-async function listPortOrders({ tenant }){
-  const localRows = await listTenantPortRequests(tenant.id, 25);
-  const byOrderId = new Map(localRows.filter(r => r.telnyx_order_id).map(r => [r.telnyx_order_id, r]));
-  if(byOrderId.size === 0) return { ok: true, orders: localRows };
-
-  const remote = await fetch(`${TELNYX}/porting_orders`, { headers: authHeaders() });
-  const remoteData = await remote.json();
-  if(remote.ok){
-    const remoteOrders = remoteData?.data || [];
-    await Promise.all(remoteOrders.map(async (o) => {
-      const local = byOrderId.get(o.id);
-      if(!local) return;
-      const nextStatus = String(o.status || local.status || '').toLowerCase();
-      const focDate = o.foc_date || o?.phone_numbers?.[0]?.foc_date || null;
-      if(nextStatus !== local.status || focDate !== local.foc_date){
-        await updateTenantPortRequest(local.id, { status: nextStatus, foc_date: focDate });
-      }
-    }));
-  }
-  const refreshed = await listTenantPortRequests(tenant.id, 25);
-  return { ok: true, orders: refreshed };
-}
+const PUBLIC = ['id', 'requested_phone_number', 'status', 'current_carrier', 'foc_date', 'temporary_phone_number', 'created_at', 'updated_at'];
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if(req.method === 'OPTIONS') return res.status(200).end();
-
-  if(!process.env.TELNYX_API_KEY){
-    return res.status(500).json({ error: 'Missing TELNYX_API_KEY env var' });
-  }
-
   try{
-    const auth = await resolveAuthTenant(req);
-    if(auth.error) return res.status(auth.status).json({ error: auth.error });
-    const { tenant, user } = auth;
+    const user = await getUserFromToken(bearer(req));
+    if(!user) return res.status(401).json({ ok:false, error: 'not authenticated' });
+    const tenant = await resolveTenantForUser(user);
+    if(!tenant) return res.status(404).json({ ok:false, error: 'no tenant mapped to this account' });
 
     if(req.method === 'GET'){
-      const out = await listPortOrders({ tenant });
-      return res.status(200).json(out);
+      await portStatus(tenant).catch(() => null);
+      const c = db();
+      const { data } = c ? await c.from('tenant_number_ports').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(25) : { data: [] };
+      const orders = (data || []).map((r) => ({ ...Object.fromEntries(PUBLIC.map((k) => [k, r[k] ?? null])), phone_numbers: [r.requested_phone_number].filter(Boolean) }));
+      return res.status(200).json({ ok: true, orders });
     }
 
     if(req.method === 'POST'){
-      const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const out = await createPortOrder({ tenant, user, body });
-      if(out.error) return res.status(out.status || 400).json({ error: out.error });
-      return res.status(200).json(out);
+      const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const details = {
+        phone_number: b.requested_phone_number || b.phone_number,
+        carrier: b.current_carrier || b.carrier,
+        account_number: b.account_number,
+        pin: b.account_pin !== undefined && b.account_pin !== '' ? b.account_pin : b.pin,
+        entity_name: b.entity_name || b.billing_name,
+        auth_person_name: b.auth_person_name || b.authorized_contact_name || user?.user_metadata?.full_name || user?.user_metadata?.name,
+        email: b.authorized_contact_email || user?.email,
+        street: b.street, city: b.city, state: b.state, zip: b.zip,
+        bill_url: b.bill_url, bill_base64: b.bill_base64, bill_filename: b.bill_filename, no_bill: b.no_bill === true ? true : undefined,
+        loa_url: b.loa_url, loa_base64: b.loa_base64, loa_filename: b.loa_filename,
+        temporary_number: b.use_temporary_number === true || b.temporary_number === true ? true : undefined,
+      };
+      Object.keys(details).forEach((k) => (details[k] === undefined || details[k] === null || details[k] === '') && delete details[k]);
+      const r = await portStart(tenant, details, { authorized: b.confirmed === true });
+      if(r.ok === false) return res.status(400).json({ ok: false, error: r.say, say: r.say });
+      return res.status(200).json({ ok: true, say: r.say, needs: r.needs || [], needs_confirmation: !!r.needs_confirmation, submitted: !!r.submitted });
     }
-
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ ok:false, error: 'Method Not Allowed' });
   }catch(e){
-    return res.status(500).json({ error: String(e?.message || e) });
+    return res.status(500).json({ ok:false, error: 'Something went wrong — try again, or ask Lola to move your number.' });
   }
 }

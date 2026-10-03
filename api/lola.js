@@ -29,14 +29,14 @@ export default async function handler(req, res){
     // Owner-scoped: dashboard voice control may only act on the authenticated
     // owner's own tenant. The client-supplied x-tenant-id is ignored — it
     // previously let anyone act on any salon just by passing a slug.
-    let tenant = null;
+    let tenant = null, user = null;
     try{
-      const user = await getUserFromToken(bearer(req));
+      user = await getUserFromToken(bearer(req));
       if(user) tenant = await resolveTenantForUser(user);
     }catch{}
     if (!tenant?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const out = await dashboardBrainReply({ tenant, body, req });
+    const out = await dashboardBrainReply({ tenant, body, req, user });
     return res.status(out.status).json(out.json);
   }catch(e){
     return res.status(500).json({ type:'error', error:{ type:'server_error', message: String(e) } });

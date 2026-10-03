@@ -530,6 +530,10 @@ function applyActions(actions, afterSpeech){
       try{ sessionStorage.setItem('lola.reopen', '1'); }catch(e){}
       setTimeout(()=>{ location.href = a.navigate; }, 1100);
     }
+    // Connecting Instagram / Facebook: their sign-in page, then back to Settings (popups are blocked after a reply).
+    if(a.open === 'oauth' && /^https:\/\/(www\.)?(facebook\.com|instagram\.com|api\.instagram\.com)\//.test(String(a.url || ''))){
+      setTimeout(()=>{ location.href = a.url; }, 1600);
+    }
     if(a.refresh){ try{ window.dispatchEvent(new CustomEvent('lola:refresh', { detail: a })); }catch(e){} }
     if(a.client_id && afterSpeech) location.href = '/client?id=' + encodeURIComponent(a.client_id);
   }

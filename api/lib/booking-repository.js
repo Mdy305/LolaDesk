@@ -22,7 +22,7 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
     if(!db2) return;
     const [{data:tenant},{data:client},{data:svc}] = await Promise.all([
       db2.from('tenants').select('name,phone_number').eq('id',tenantId).maybeSingle(),
-      db2.from('clients').select('name,phone').eq('id',clientId).maybeSingle(),
+      db2.from('clients').select('*').eq('id',clientId).maybeSingle(),
       db2.from('services').select('name').eq('id',serviceId).maybeSingle()
     ]);
     if(!client || !client.phone || !tenant || !tenant.phone_number) return { skipped: true, reason: 'missing_recipient' };
@@ -36,6 +36,22 @@ export async function sendConfirmationSMS({tenantId,clientId,serviceId,startTime
     const text = verb==='Cancelled'
       ? cancelText(tenant.name, when)
       : confirmText({ verb, salon: tenant.name, serviceName: svc && svc.name, when, code: confirmationCode, calendarUrl: cal });
+    // A client who uses WhatsApp with a WhatsApp-ready salon gets it there — free text
+    // inside 24h of their last WhatsApp message, otherwise the approved
+    // booking_confirmation template. Anything else (or a refusal) → SMS as always.
+    if(verb!=='Cancelled' && client.whatsapp_enabled){
+      try{
+        const { tenantWhatsAppReady, planWhatsApp } = await import('./whatsapp-setup.js');
+        if(await tenantWhatsAppReady(db2, tenantId)){
+          const first = String(client.name||'').trim().split(/\s+/)[0] || 'there';
+          const plan = await planWhatsApp(db2, { tenantId, clientId, templateName: 'booking_confirmation', params: [first, (svc && svc.name) || 'salon', tenant.name || 'the salon', when] });
+          if(plan){
+            const w = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId, type: 'WHATSAPP', ...(plan.template ? { template: plan.template } : {}) });
+            if(w && !w.skipped) return { sent: true, text, channel: 'whatsapp' };
+          }
+        }
+      }catch(_){ /* fall through to SMS */ }
+    }
     const r = await sendSMS({ from: tenant.phone_number, to: client.phone, text, tenantId });
     return { sent: true, text };
   }catch(e){ console.warn('[repo] SMS:', e.message); return { skipped: true, reason: String(e?.message||e) }; }

@@ -4,6 +4,7 @@ import { validateLLMOutput } from './lib/llm-validator.js';
 import { delegateToAgent } from './lib/router.js';
 import { normalizeAgentName, summarizeTopology } from './lib/agent-topology.js';
 import { chat } from './lib/llm.js';
+import { authenticatedTenant } from './lib/tenant-context.js';
 
 // Control plane endpoint:
 // 1) explicit routing mode (route_to + task)
@@ -14,7 +15,12 @@ export default async function handler(req, res){
   const prompt = body.prompt || null;
   const routeTo = body.route_to || body.routeTo || null;
   const task = body.task || null;
-  const tenant = body.tenant || {};
+  // The salon is the signed-in user's own — never a slug/id the browser names. Routing mode is a
+  // placeholder hand-off (no salon data) and stays open for the marketer page; the LLM planning
+  // mode spends AI on the platform's account and writes an audit row, so it needs a signed-in salon.
+  let signed = null;
+  try { signed = await authenticatedTenant(req); } catch (_) { signed = null; }
+  const tenant = signed ? { id: signed.id, slug: signed.slug, name: signed.name } : {};
 
   const c = db();
   if(!c) return res.status(500).json({ error: 'Supabase not configured' });
@@ -41,6 +47,7 @@ export default async function handler(req, res){
   if(!prompt){
     return res.status(400).json({ error: 'missing prompt (or pass route_to + task)' });
   }
+  if(!signed?.id) return res.status(401).json({ error: 'Not authenticated' });
 
   // Plan through the same Telnyx Kimi client used by every Lola channel.
   let llmRaw = null;

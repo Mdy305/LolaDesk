@@ -186,7 +186,9 @@ test('cancelled bookings are never reminded', async () => {
 
 test('sends WhatsApp when the salon has WhatsApp connected and the client opted in', async () => {
   const waClient = { ...CLIENT, whatsapp_enabled: true };
-  seed({ client: waClient, whatsappConnected: true });
+  // Free-text WhatsApp is only allowed inside 24h of the client's last WhatsApp message.
+  seed({ client: waClient, whatsappConnected: true, conversations: [{ id: 'cv-wa', tenant_id: T1, client_id: 'cl-1', channel: 'whatsapp' }] });
+  fake.seed('messages', [{ id: 'm1', conversation_id: 'cv-wa', tenant_id: T1, role: 'user', content: 'hi', created_at: isoHoursFromNow(-2) }]);
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
   assert.equal(result.due, 1);
@@ -198,6 +200,27 @@ test('sends WhatsApp when the salon has WhatsApp connected and the client opted 
   const rows = fake.all('booking_reminders');
   assert.equal(rows[0].channel, 'whatsapp', 'log records the whatsapp channel');
   assert.equal(rows[0].status, 'sent');
+});
+
+test('outside the 24h window a WhatsApp reminder uses the APPROVED template; none approved → SMS', async () => {
+  const waClient = { ...CLIENT, whatsapp_enabled: true };
+  seed({ client: waClient, whatsappConnected: true });
+  fake.seed('messages', []);
+  fake.seed('tenant_channels', [{ tenant_id: T1, channel: 'whatsapp', account_id: '+13055550100', status: 'active', meta: { waba_id: 'waba-1' } }]);
+  fake.seed('whatsapp_templates', [{ waba_id: 'waba-1', name: 'appointment_reminder', language: 'en_US', status: 'PENDING', telnyx_template_id: 'tpl-1' }]);
+  let [calls, send] = makeSpy();
+  await runReminders(new Date(), { send });
+  assert.equal(calls[0].type, 'SMS', 'template not approved yet → SMS');
+  seed({ client: waClient, whatsappConnected: true });
+  fake.seed('messages', []);
+  fake.seed('tenant_channels', [{ tenant_id: T1, channel: 'whatsapp', account_id: '+13055550100', status: 'active', meta: { waba_id: 'waba-1' } }]);
+  fake.seed('whatsapp_templates', [{ waba_id: 'waba-1', name: 'appointment_reminder', language: 'en_US', status: 'APPROVED', telnyx_template_id: 'tpl-1' }]);
+  [calls, send] = makeSpy();
+  const result = await runReminders(new Date(), { send });
+  assert.equal(result.whatsapp, 1);
+  assert.equal(calls[0].type, 'WHATSAPP');
+  assert.equal(calls[0].template.name, 'appointment_reminder');
+  assert.equal(calls[0].template.params[0], 'Maya');
 });
 
 test('falls back to SMS when the client has NOT opted into WhatsApp even if the salon has it', async () => {

@@ -205,7 +205,7 @@ export default async function handler(req, res){
 
   // audit trail: the owner line writes to the same memory substrate
   let conversation = null;
-  try{ conversation = await getOrStartConversation(tenant.id, { channel: 'operator', agent: 'jarvis' }); }catch{}
+  try{ conversation = await getOrStartConversation(tenant.id, { channel: 'operator', agent: 'jarvis', participant: 'owner' }); }catch{}
   async function audit(userText, replyText){
     try{
       if(!conversation?.id) return;

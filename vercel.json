@@ -36,6 +36,7 @@
     {"path":"/api/cron/deposits","schedule":"*/5 * * * *"},
     {"path":"/api/cron/rebooking","schedule":"0 * * * *"},
     {"path":"/api/cron/fill-plans","schedule":"7 * * * *"},
-    {"path":"/api/cron/booking-fees","schedule":"23 9 * * *"}
+    {"path":"/api/cron/booking-fees","schedule":"23 9 * * *"},
+    {"path":"/api/cron/telecom-sync","schedule":"*/30 * * * *"}
   ]
 }

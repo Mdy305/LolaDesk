@@ -29,7 +29,8 @@
  * Never throws at the caller; failures degrade to a graceful spoken line.
  */
 
-import { getTenantBySlug, getTenantByPhone } from './lib/db.js';
+import { getTenantBySlug } from './lib/db.js';
+import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { sendSMS } from './telnyx-sms.js';
 import { runBookingAction } from './lib/booking-brain.js';
 import {
@@ -48,7 +49,10 @@ const dayLabel = d => new Date(d).toLocaleDateString('en-US', { weekday: 'long',
 async function resolveTenant(body){
   if(body.tenant) return getTenantBySlug(body.tenant);
   const to = body.to || body.To || body.called_number || '';
-  return getTenantByPhone(to);
+  // Strict: the dialed number must resolve to exactly one salon — never the demo salon or a guess
+  // (getTenantByPhone fell back to the demo tenant on any miss).
+  if(!to) return null;
+  try{ const r = await resolveInboundTenant({ to }); return r.status === 'resolved' ? r.tenant : null; }catch{ return null; }
 }
 
 function rangeFromArgs(args){
@@ -207,6 +211,9 @@ export default async function handler(req, res){
     // tool + tenant ride in the URL query (set at provision time); the model
     // fills the rest into the JSON body. Merge, with body winning on overlap.
     const args = { ...(req.query || {}), ...body };
+    // The salon is fixed by the signed URL, never by what the model/caller puts in the body:
+    // a per-salon secret for salon A must not run owner commands on salon B ({"tenant":"b"}).
+    if(slug){ args.tenant = slug; delete args.to; delete args.To; delete args.called_number; }
     const tool = args.tool || args.function || args.skill;
 
     if(!tool || !OPERATOR_SKILLS[tool]){

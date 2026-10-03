@@ -17,6 +17,7 @@ import { appUrl } from './telnyx-client.js';
 import { encrypt, decrypt } from './crypto.js';
 import { getOrStartConversation, getConversationHistory, logMessage, logUsage, setClientMemory } from './db.js';
 import { answerClient } from './client-brain.js';
+import { holderOf, TAKEN_SAY } from './channel-store.js';
 
 const GRAPH = 'https://graph.instagram.com/v21.0';
 export const SCOPES = 'instagram_business_basic,instagram_business_manage_messages';
@@ -76,6 +77,9 @@ export async function connectInstagram(c, tenantId, code) {
 }
 
 async function saveChannel(c, row) {
+  // An Instagram account live for one salon can never be taken over by another salon.
+  const held = await holderOf(c, 'instagram', row.account_id);
+  if (held && held.tenant_id && String(held.tenant_id) !== String(row.tenant_id) && held.status === 'active') { const e = new Error(TAKEN_SAY); e.code = 'taken'; throw e; }
   const up = async () => { const { error } = await c.from('tenant_channels').upsert(row, { onConflict: 'channel,account_id' }); return error; };
   let e = await up();
   if (e) { try { const { ensureMigrations, resetMigrations } = await import('./migrate.js'); resetMigrations(); await ensureMigrations(); } catch (_) {} e = await up(); }
@@ -140,7 +144,7 @@ export async function handleInstagramEvent(c, event, { answer = answerClient, se
         } catch (_) {}
       }
       let conv = null, history = [];
-      try { conv = await getOrStartConversation(tenant.id, { clientId: who.client?.id, channel: 'instagram', agent: 'lola' }); if (conv?.id) history = (await getConversationHistory(conv.id, 10)) || []; } catch (_) {}
+      try { conv = await getOrStartConversation(tenant.id, { clientId: who.client?.id, participant: who.client?.id ? undefined : 'ig:' + m.sender.id, channel: 'instagram', agent: 'lola' }); if (conv?.id) history = (await getConversationHistory(conv.id, 10)) || []; } catch (_) {}
       const tz = (await c.from('booking_settings').select('timezone').eq('tenant_id', tenant.id).maybeSingle().then((r) => r.data?.timezone).catch(() => null)) || 'America/New_York';
       const ans = await answer({ tenant, client: who.client, channel: 'instagram', text, history: history.filter((h) => typeof h.content === 'string'), phone: who.phone, memoryKey: who.key, tz });
       try { await send(token, m.sender.id, ans.reply); } catch (e) { done.push({ error: String(e?.message || e) }); continue; }

@@ -204,6 +204,27 @@ export async function listOwnedNumbers(){
   }
 }
 
+
+/**
+ * Platform numbers no salon uses yet — the only ones a salon may pick for free
+ * (multi-tenant: a salon never sees another salon's number, nor the platform's
+ * customer-care line). Shared by /api/provision-number and the setup engine.
+ */
+export async function freePlatformNumbers(){
+  const owned = await listOwnedNumbers().catch(() => []);
+  if(!owned.length) return [];
+  const c = db(); if(!c) return [];
+  const [a, b] = await Promise.all([
+    c.from('tenant_numbers').select('phone_number,status').limit(5000),
+    c.from('tenants').select('phone_number').limit(5000),
+  ]);
+  const taken = new Set([...(a.data || []).filter(r => r.status !== 'released').map(r => r.phone_number), ...(b.data || []).map(r => r.phone_number)].filter(Boolean));
+  try{ const { data } = await c.from('platform_settings').select('value').eq('key', 'customer_care').maybeSingle(); if(data?.value?.number) taken.add(data.value.number); }catch(_){}
+  // A number still being ported in for a salon is spoken for too.
+  try{ const { data } = await c.from('tenant_number_ports').select('requested_phone_number,temporary_phone_number,status').limit(5000); (data || []).filter(r => !['cancelled','canceled'].includes(String(r.status || ''))).forEach(r => { if(r.requested_phone_number) taken.add(r.requested_phone_number); if(r.temporary_phone_number) taken.add(r.temporary_phone_number); }); }catch(_){}
+  return owned.filter(n => !taken.has(n.phone_number)).map(n => ({ phone_number: n.phone_number, id: n.id, status: n.status, sms_enabled: n.sms_enabled }));
+}
+
 /**
  * Attach an ALREADY-OWNED Telnyx number to a tenant — voice connection +
  * SMS profile + LolaBrain — and persist the routing row. No purchase, so no
@@ -291,7 +312,7 @@ export async function autoAssignOwnedNumber(tenant){
  * from an unapplied migration). Every write here checks its result and
  * throws a message naming the failing step — a 500 beats a silent lie.
  */
-async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId }){
+export async function persistProvisioning(tenant, { phoneNumber, phoneNumberId, texmlAppId }){
   const c = db();
   if(!c || !tenant?.id) return;
 
@@ -386,5 +407,5 @@ export default {
   linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
   getLolaBrainConnectionId, getLolaBrainConnectionIdSync, getCanonicalVoiceConnectionId,
   LOLA_BRAIN_TEXML_APP_ID,
-  listOwnedNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant
+  listOwnedNumbers, freePlatformNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant, persistProvisioning
 };
