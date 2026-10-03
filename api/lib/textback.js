@@ -14,12 +14,20 @@ import { getClientMemory, setClientMemory, e164 } from './db.js';
 export const SHORT_CALL_SEC = 12;
 const DAY = 864e5;
 
-export async function instantTextBack(c, { callControlId, callSessionId, durationSec }, { send, now = Date.now() } = {}) {
-  if (!c || (!callControlId && !callSessionId)) return { sent: false, reason: 'no_call' };
+export async function instantTextBack(c, { callControlId, callSessionId, durationSec, from: evFrom = null, to: evTo = null }, { send, now = Date.now() } = {}) {
+  if (!c || (!callControlId && !callSessionId && !(evFrom && evTo))) return { sent: false, reason: 'no_call' };
   let q = c.from('calls').select('id,tenant_id,from_number,to_number,direction,duration_seconds,created_at');
   if (callControlId) q = q.eq('telnyx_call_control_id', callControlId); else q = q.eq('call_session_id', callSessionId);
-  const { data } = await q.limit(1);
-  const call = data?.[0];
+  const { data } = (callControlId || callSessionId) ? await q.limit(1) : { data: [] };
+  let call = data?.[0];
+  // They hung up before Lola even loaded the salon (no calls row yet): the event itself says who called whom.
+  if (!call && evFrom && evTo) {
+    try {
+      const { resolveInboundTenant } = await import('./tenant-resolver.js');
+      const r = await resolveInboundTenant({ to: evTo, from: evFrom });
+      if (r?.status === 'resolved' && r.tenant?.id) call = { tenant_id: r.tenant.id, from_number: evFrom, to_number: evTo, direction: 'inbound', duration_seconds: durationSec, created_at: new Date(now).toISOString() };
+    } catch (_) {}
+  }
   if (!call) return { sent: false, reason: 'unknown_call' };
   const dur = durationSec != null ? Number(durationSec) : (call.duration_seconds != null ? Number(call.duration_seconds) : (now - new Date(call.created_at).getTime()) / 1000);
   if (String(call.direction || 'inbound') !== 'inbound') return { sent: false, reason: 'outbound' };

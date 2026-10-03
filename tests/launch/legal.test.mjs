@@ -59,7 +59,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (/\/ai\/assistants(\?|$)/.test(u)) { if (m === 'POST') { const a = { id: 'care-1', ...body, telephony_settings: { ...(body.telephony_settings || {}), default_texml_app_id: 'texml-care' } }; assistants.push(a); return J({ data: a }); } return J({ data: [assistant, ...assistants] }); }
   if (u.includes('/available_phone_numbers')) return J({ data: [{ phone_number: '+13055559999' }] });
   if (u.includes('/number_orders')) { orders.push(body); numbers.push({ id: 'pn-new', phone_number: '+13055559999' }); return J({ data: { id: 'o1' } }); }
-  const pm = u.match(/\/phone_numbers\/([\w-]+)\/(voice|messaging)/); if (pm) { patchedNums.push(pm[1] + ':' + pm[2] + ':' + JSON.stringify(body)); return J({ data: {} }); }
+  const pm = u.match(/\/phone_numbers\/([\w-]+)(?:\/(voice|messaging))?(?:\?|$)/); if (pm && init.method === 'PATCH') { patchedNums.push(pm[1] + ':' + (pm[2] || 'voice') + ':' + JSON.stringify(body)); return J({ data: {} }); }
   if (u.includes('/phone_numbers')) return J({ data: numbers, meta: { total_pages: 1 } });
   if (u.includes('/v2/messages')) { smsOut.push(body); return J({ data: { id: 'm' } }); }
   if (u.includes('chat/completions')) return J({ choices: [{ message: { content: 'Plans start at $99 a month with a 14-day free trial — loladesk.com/pricing.' } }] });

@@ -68,8 +68,9 @@ function stubTelnyx(){
     if (path === '/10dlc/brand/B2/externalVetting' && method === 'POST') {
       return json({ data: { brandId: 'B2', evpId: body.evpId, vettingClass: body.vettingClass, vettingStatus: 'IN_PROGRESS' } });
     }
-    if (path === '/10dlc/campaignBuilder' && method === 'GET') {
-      return json({ data: [{ campaignId: 'C1', brandId: 'B1', usecase: 'CUSTOMER_CARE', status: 'ACTIVE' }] });
+    // Documented list: GET /10dlc/campaign → { page, records, totalRecords } (campaignBuilder is the create endpoint)
+    if (path === '/10dlc/campaign' && method === 'GET') {
+      return json({ page: 1, totalRecords: 1, records: [{ campaignId: 'C1', brandId: 'B1', usecase: 'CUSTOMER_CARE', campaignStatus: 'ACTIVE' }] });
     }
     if (path === '/10dlc/campaignBuilder' && method === 'POST') {
       return json({ data: { campaignId: 'C2', brandId: body.brandId, usecase: body.usecase, status: 'SUBMITTED' } });

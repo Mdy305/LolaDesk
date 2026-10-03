@@ -29,9 +29,10 @@ function required(body, key) {
   return value;
 }
 
+const recordsOf = (j) => Array.isArray(j?.records) ? j.records : Array.isArray(j?.data?.records) ? j.data.records : Array.isArray(j?.data) ? j.data : Array.isArray(j) ? j : [];
 async function listBrands() {
   try {
-    const brands = telnyxData(await telnyxRequest('/10dlc/brand', { query: { 'page[size]': 100 }, timeoutMs: 10000 }));
+    const brands = recordsOf(await telnyxRequest('/10dlc/brand', { query: { recordsPerPage: 100, page: 1 }, timeoutMs: 10000 }));
     return (Array.isArray(brands) ? brands : []).map(b => ({
       id: b.brandId || b.id,
       name: b.displayName || b.brand || b.companyName || null,
@@ -46,12 +47,12 @@ async function listBrands() {
 
 async function listCampaigns() {
   try {
-    const campaigns = telnyxData(await telnyxRequest('/10dlc/campaignBuilder', { query: { 'page[size]': 100 }, timeoutMs: 10000 }));
+    const campaigns = recordsOf(await telnyxRequest('/10dlc/campaign', { query: { recordsPerPage: 100, page: 1 }, timeoutMs: 10000 }));
     return (Array.isArray(campaigns) ? campaigns : []).map(cp => ({
       id: cp.campaignId || cp.id,
       brand_id: cp.brandId || null,
       use_case: cp.usecase || null,
-      status: cp.status || 'unknown'
+      status: cp.campaignStatus || cp.status || 'unknown'
     }));
   } catch (e) {
     return { error: String(e?.message || e) };
@@ -111,7 +112,11 @@ async function createCampaign(body) {
     sample2: required(body, 'sample2'),
     messageFlow: required(body, 'message_flow'),
     helpMessage: required(body, 'help_message'),
-    optinKeywords: body.optin_keywords || 'START, YES, SUBSCRIBE',
+    optinKeywords: body.optin_keywords || 'START, UNSTOP',   // exactly what /api/telnyx-sms honours
+    // Carriers check these (Telnyx 10DLC guide): the salon collects opt-in, honours STOP and answers HELP.
+    subscriberOptin: true,
+    subscriberOptout: true,
+    subscriberHelp: true,
     optoutKeywords: body.optout_keywords || 'STOP, UNSUBSCRIBE, CANCEL, QUIT',
     helpKeywords: body.help_keywords || 'HELP, INFO',
     embeddedLink: body.embedded_link !== undefined ? Boolean(body.embedded_link) : true,

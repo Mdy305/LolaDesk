@@ -130,7 +130,7 @@ test('POST provisions: creates the care assistant, attaches an owned number, per
   assert.equal(row.value.number, '+18605799845');
   assert.equal(row.value.assistant_id, 'asst-care-1');
   // Attach calls happened.
-  assert.ok(state.patched.some(u => u.includes('/phone_numbers/pn-1/voice')));
+  assert.ok(state.patched.some(u => /\/phone_numbers\/pn-1(\?|$)/.test(u)));
   assert.ok(state.patched.some(u => u.includes('/phone_numbers/pn-1/messaging')));
 });
 

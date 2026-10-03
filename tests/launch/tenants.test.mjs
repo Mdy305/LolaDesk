@@ -14,8 +14,9 @@ globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   if (u.includes('/v2/messages')) { sent.push(JSON.parse(init.body)); return J({ data: { id: 'm' + sent.length } }); }
-  const pm = u.match(/\/phone_numbers\/(pn-[ab])\/(messaging|voice)/);
+  const pm = u.match(/\/phone_numbers\/(pn-[ab])(?:\/(messaging|voice))?(?:\?|$)/);
   if (pm && init.method === 'PATCH') {
+    pm[2] = pm[2] || 'voice';   // connection_id is set on PATCH /phone_numbers/{id}
     const b = JSON.parse(init.body); patched.push(pm[1] + ':' + pm[2]);
     const n = Object.values(live).find(x => x.id === pm[1]);
     if (pm[2] === 'messaging') n.messaging_profile_id = b.messaging_profile_id; else n.connection_id = b.connection_id;

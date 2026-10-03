@@ -406,7 +406,7 @@ function renderLolaWidget(agentId){
   if(!line){ box.textContent='Get your Lola phone number first (Phone below) — your website widget uses it to know it’s your salon.'; if(btn) btn.disabled=true; return; }
   const name=String((TENANT&&TENANT.name)||'').replace(/["<>&']/g,'');
   const headers=JSON.stringify([{name:'X-LolaDesk-Salon',value:line}]);
-  box.textContent='<telnyx-ai-agent agent-id="'+agentId+'" environment="production" call-caller-name="'+name+'" call-custom-headers=\''+headers+'\'></telnyx-ai-agent>\n<script async src="https://unpkg.com/@telnyx/ai-agent-widget@next"></'+'script>';
+  box.textContent='<telnyx-ai-agent agent-id="'+agentId+'" environment="production" call-caller-name="'+name+'" call-custom-headers=\''+headers+'\'></telnyx-ai-agent>\n<script async src="https://unpkg.com/@telnyx/ai-agent-widget@0.36.0"></'+'script>';
   if(btn) btn.disabled=false;
 }
 function copyWidget(){

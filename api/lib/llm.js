@@ -96,12 +96,14 @@ async function chatFast({ system, messages, maxTokens, temperature, tools, deadl
     if(left()<2500) break;
     let useTools=tools;
     let r=await callOnce({ ...step, oai, temperature, tools:useTools, timeoutMs:left() });
-    if(!r.ok && r.status===400 && useTools?.length && left()>2500){ useTools=null; r=await callOnce({ ...step, oai, temperature, tools:null, timeoutMs:left() }); }
+    let toolsDropped=false;
+    if(!r.ok && r.status===400 && useTools?.length && left()>2500){ useTools=null; toolsDropped=true; r=await callOnce({ ...step, oai, temperature, tools:null, timeoutMs:left() }); }
     console.info('[telnyx-ai]', { ok:r.ok, status:r.status||200, model:step.model, fast:true, ms:Date.now()-started, toolCalls:r.tool_calls?.length||0 });
-    if(r.ok && (r.text || r.tool_calls)) return { ok:true, text:r.text, tool_calls:r.tool_calls, provider:AI_PROVIDER, model:step.model, ms:Date.now()-started };
+    if(r.ok && (r.text || r.tool_calls)) return { ok:true, text:r.text, tool_calls:r.tool_calls, provider:AI_PROVIDER, model:step.model, ms:Date.now()-started, ...(toolsDropped ? { toolsDropped:true } : {}) };
     last=r.ok ? { error:'empty response' } : r;
     // The fast model isn't served (unknown model / not enabled): stop asking for 10 minutes.
-    if(!r.ok && step.model!==DEFAULT_TELNYX_MODEL && [400,403,404,422].includes(r.status)) fastDownUntil=Date.now()+10*60e3;
+    // Only when the error is about the MODEL — one bad request (too long, odd message order) must not bench it.
+    if(!r.ok && step.model!==DEFAULT_TELNYX_MODEL && [400,403,404,422].includes(r.status) && /model|not (found|available|enabled|supported)/i.test(String(r.error||''))) fastDownUntil=Date.now()+10*60e3;
   }
   return { ok:false, text:'', provider:AI_PROVIDER, model:FAST_MODEL(), error:'Telnyx inference failed: '+(last.error||'unknown error') };
 }
@@ -171,7 +173,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
       }
 
       const msg=data?.choices?.[0]?.message;
-      const text=cleanAnswer(msg?.content||msg?.reasoning||'');
+      const text=cleanAnswer(msg?.content||'');   // never speak the model's private reasoning
       const tool_calls=msg?.tool_calls||null;
       if(text||tool_calls){
         return { ok:true, text, tool_calls, provider:AI_PROVIDER, model:POWER_MODEL, attempt:i+1 };

@@ -21,6 +21,24 @@ import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, 
 import { moderateImage, analyzeHairPhoto } from './lib/lola-photo-analysis.js';
 
 
+// Raw body for the Ed25519 signature check (Telnyx signs the exact bytes).
+export const config = { api: { bodyParser: false } };
+
+/** First time we see this Telnyx event? (retries of a slow answer are dropped) */
+async function firstTime(id){
+  if(!id) return true;
+  try{
+    const c = db(); if(!c) return true;
+    const seen = await c.from('telnyx_events').select('id').eq('id', String(id)).maybeSingle().then((r) => r, () => ({ data: null }));
+    if(seen?.data?.id) return false;
+    const { error } = await c.from('telnyx_events').insert({ id: String(id), kind: 'sms' });
+    if(!error) return true;
+    if(String(error.code) === '23505' || /duplicate|unique/i.test(String(error.message))) return false;
+    import('./lib/migrate.js').then((m) => m.ensureMigrations()).catch(() => {});   // table missing: create it for next time
+    return true;
+  }catch(_){ return true; }
+}
+
 const STOP=['stop','stopall','unsubscribe','cancel','end','quit'];
 const START=['start','unstop'];   // not 'yes' — clients answer offers with yes
 const HELP=['help','info'];
@@ -70,6 +88,7 @@ export default async function handler(req,res){
   // Delivery receipts (message.sent / message.finalized …) are not texts to answer.
   if(raw?.data?.event_type && raw.data.event_type !== 'message.received') return res.status(200).json({ ok:true, ignored: raw.data.event_type });
   if(!body.from || !body.to) return res.status(200).json({ ok:true, ignored:'no sender' });
+  if(!(await firstTime(raw?.data?.payload?.id || raw?.data?.id))) return res.status(200).json({ ok:true, duplicate:true });
 
   const fromN=e164(body.from), toN=e164(body.to), text=body.text||'', type=body.type||'SMS';
   const isWhatsApp = String(type).toUpperCase() === 'WHATSAPP';

@@ -29,15 +29,20 @@ async function _sendSmsCore({
     } catch { /* opt-out check is best-effort; never block the send on it */ }
   }
 
-  const payload = { from, to };
+  // Telnyx requires E.164 (+13055550100) for both ends.
+  const fromE = e164(from), toE = e164(to);
+  if (!/^\+\d{7,15}$/.test(String(fromE || '')) || !/^\+\d{7,15}$/.test(String(toE || ''))) return { skipped: true, reason: 'bad_number' };
+  const payload = { from: fromE, to: toE };
   if (isWhatsApp) {
+    // Documented WhatsApp route: POST /messages/whatsapp with type WHATSAPP.
+    payload.type = 'WHATSAPP';
     payload.whatsapp_message = { type: 'text', text: { body: text } };
   } else {
     payload.text = text;
     if (profileId) payload.messaging_profile_id = profileId;
   }
 
-  const r = await fetch('https://api.telnyx.com/v2/messages', {
+  const r = await fetch(isWhatsApp ? 'https://api.telnyx.com/v2/messages/whatsapp' : 'https://api.telnyx.com/v2/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -45,7 +50,14 @@ async function _sendSmsCore({
     },
     body: JSON.stringify(payload),
   });
-  return r.json();
+  const j = await r.json().catch(() => ({}));
+  // A refused text (10DLC block, bad number, no balance) must never look sent.
+  if (!r.ok || (Array.isArray(j?.errors) && j.errors.length)) {
+    const reason = j?.errors?.[0]?.detail || j?.errors?.[0]?.title || `telnyx_${r.status}`;
+    console.warn('[sms] Telnyx refused the text:', reason);
+    return { skipped: true, failed: true, reason, errors: j?.errors || [] };
+  }
+  return j;
 }
 
 /**

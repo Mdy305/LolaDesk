@@ -580,21 +580,50 @@ export default async function handler(req, res){
     // The salon line and the caller can ride on the tool URL (?to={{telnyx_agent_target}}&from=…),
     // so every tool knows which salon it serves without the model having to say it.
     const real = (v) => v && !/\{\{/.test(String(v));
-    if(!body.to && real(req.query?.to)) body.to = String(req.query.to);
+    const { toolKeyOk } = await import('./lib/tool-key.js');
+    // Signed by LolaDesk's own assistant wiring (k=…). A wrong key is refused outright; a missing key
+    // (an assistant not yet re-signed by the heal) still gets the public skills, never the private ones.
+    const signed = toolKeyOk(req.query?.k);
+    if(req.query?.k && !signed) return res.status(401).json({ speak: "I'm having a quick technical moment — let me take your number and have someone call you right back." });
+    // Telnyx fills the salon line into the URL: it always wins over anything the model typed.
+    if(real(req.query?.to)) body.to = String(req.query.to);
     // A website call has no dialed number; the salon's widget names its line (X-LolaDesk-Salon → {{loladesk_salon}}).
     const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
     if(!isPhone(body.to) && real(req.query?.salon) && isPhone(req.query.salon)) body.to = String(req.query.salon);
-    if(!body.from && real(req.query?.from)) body.from = String(req.query.from);
+    const web = /web/i.test(String(req.query?.ch || ''));
+    // The caller's own line, as Telnyx saw it (never what the model or caller typed) — website visitors have none.
+    const callerId = signed && !web && real(req.query?.from) && isPhone(req.query.from) ? String(req.query.from) : null;
+    if(real(req.query?.from)) body.from = String(req.query.from);
     // Tool name may arrive as ?tool=… on the URL (Telnyx configures each
     // webhook tool with its own URL — pointing them all at this endpoint with
     // ?tool=<name> keeps one dispatched handler) OR in the body (function,
     // function_name, skill) for callers that send it that way.
     const tool = req.query?.tool || body.tool || body.function || body.function_name || body.skill;
     
+    // Private skills act on a client's own bookings and history: only for the verified caller line.
+    const PRIVATE = new Set(['cancel_appointment','reschedule_appointment','confirm_booking','recall_client','inject_memory']);
+    const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
+    if(PRIVATE.has(String(tool))){
+      if(!callerId){
+        if(tool === 'recall_client'){
+          // A website visitor gave a number: a warm first-name welcome, never their history (anyone can type a number).
+          let firstName = '';
+          try{ const t = await resolveTenant(body); const cl = t?.id && body.client_phone ? await getClientByPhone(t.id, body.client_phone) : null; firstName = String(cl?.first_name || '').trim(); }catch(_){}
+          if(firstName && !/^client$/i.test(firstName)) return res.status(200).json({ speak: `Hey ${firstName}, welcome back! What can I do for you today?`, known: true });
+          return res.status(200).json({ speak: "Thanks! I'll use that number for your booking. What can I do for you today?", known: false });
+        }
+        return res.status(200).json({ speak: "For your privacy I can only change a booking when you call from the number it's under. I can text that number a link to manage it — or help you with something else?", verified: false });
+      }
+      if(body.client_phone && digits(body.client_phone) !== digits(callerId)){
+        return res.status(200).json({ speak: "I can only look up or change bookings for the number you're calling from. Want me to help with that one?", verified: false });
+      }
+      body.client_phone = callerId;
+    }
+
     // Special Memory Injection Skill requested by Telnyx to start a call
     if (tool === 'inject_memory') {
       const tenant = await resolveTenant(body);
-      const clientPhone = body.from || body.client_phone;
+      const clientPhone = callerId;
       const memoryPrompt = await injectCallerMemory(tenant?.id, clientPhone);
       return res.status(200).json({ speak: "Memory loaded.", memory: memoryPrompt });
     }

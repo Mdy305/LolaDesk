@@ -1,5 +1,5 @@
 // /api/status: one public call that says what's live and exactly what to fix — never a secret.
-process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
+process.env.TELNYX_PUBLIC_KEY = 'pk-test'; process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
 delete process.env.CRON_SECRET; process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1'; process.env.ELEVENLABS_API_KEY = 'el-secret'; process.env.ELEVENLABS_VOICE_ID = 'lolaVoice';
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 let registered = []; let brainDown = false, earsDown = false;
@@ -7,20 +7,21 @@ globalThis.fetch = async (url) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   if (u.includes('api.elevenlabs.io/v1/user/subscription')) return J({ character_count: 10, character_limit: 100000 });
   if (u.includes('api.elevenlabs.io/v1/text-to-speech')) return new Response(new Uint8Array(4000), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
-  if (u.includes('/ai/assistants/assistant-1')) return J({ data: { id: 'assistant-1', greeting: '{{lola_greeting}}', voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.lolaVoice', api_key_ref: 'loladesk_elevenlabs_x' }, telephony_settings: { default_texml_app_id: 'app-1' } } });
+  if (u.includes('/ai/assistants/assistant-1')) return J({ data: { id: 'assistant-1', greeting: '{{lola_greeting}}', voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.lolaVoice', api_key_ref: 'loladesk_elevenlabs_x' }, telephony_settings: { default_texml_app_id: 'app-1', supports_unauthenticated_web_calls: true }, dynamic_variables_webhook_url: globalThis.__VARS_URL } });
   if (u.includes('/ai/assistants')) return J({ data: [{ id: 'assistant-1', voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.lolaVoice', api_key_ref: 'loladesk_elevenlabs_x' } }] });
   if (u.endsWith('/balance')) return J({ data: { balance: '12.50', available_credit: '12.50' } });
   if (u.includes('/chat/completions') && brainDown) return J({ errors: [{ detail: 'Inference is not enabled' }] }, 403);
   if (u.includes('/audio/transcriptions') && earsDown) return J({ errors: [{ detail: 'model not found' }] }, 404);
   if (u.includes('/chat/completions')) return J({ choices: [{ message: { role: 'assistant', content: 'ready' } }] });
   if (u.includes('/ai/audio/transcriptions')) return J({ text: '' });
-  if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }, { id: 'moonshotai/Kimi-K2.6' }] });
+  if (/\/ai\/(openai\/)?models/.test(u)) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }, { id: 'moonshotai/Kimi-K2.6' }] });
   if (u.includes('/phone_numbers')) return J({ data: [{ phone_number: '+13055550100' }, { phone_number: '+13055550101' }] });
   if (u.includes('/10dlc/phone_number_campaigns')) return J({ records: registered.map((p) => ({ phoneNumber: p })) });
   return J({ data: [] });
 };
 const { T } = await import('./fake-supabase.mjs');
 T.tenants = [{ id: 't' }];
+globalThis.__VARS_URL = 'https://www.loladesk.com/api/agent-variables?k=' + (await import(new URL('../../api/lib/tool-key.js', import.meta.url).href)).toolKey('variables');
 const { buildStatus } = await import(new URL('../../api/status.js', import.meta.url).href);
 let s = await buildStatus();
 ok(s.live.database && s.live.telnyx_key && s.live.telnyx_ai && s.live.fast_model, 'live probes: database, Telnyx key, Telnyx AI, fast model');

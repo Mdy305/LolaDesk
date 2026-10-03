@@ -21,23 +21,30 @@ export async function sendSMS({ from, to, text, tenantId, type } = {}) {
 }
 
 // Answer an inbound call, hand off to the AI Assistant for the salon.
-export async function answerCallWithAssistant(call_control_id, assistant_id) {
-  const r = await fetch(BASE + '/calls/' + call_control_id + '/actions/ai_assistant_start', {
+// Telnyx: inbound calls must be answered before other commands; ai_assistant_start takes
+// { assistant: { id } } (there is no top-level assistant_id). command_id makes a retried webhook harmless.
+export async function answerCallWithAssistant(call_control_id, assistant_id, { commandId = null } = {}) {
+  const enc = encodeURIComponent(call_control_id);
+  const ans = await fetch(BASE + '/calls/' + enc + '/actions/answer', {
+    method: 'POST', headers: auth(), body: JSON.stringify(commandId ? { command_id: commandId + ':answer' } : {})
+  });
+  if (!ans.ok && ans.status !== 422) { const j = await ans.json().catch(() => ({})); throw new Error(j?.errors?.[0]?.detail || 'Telnyx answer failed'); }  // 422 = already answered
+  const r = await fetch(BASE + '/calls/' + enc + '/actions/ai_assistant_start', {
     method: 'POST',
     headers: auth(),
-    body: JSON.stringify({ assistant_id })
+    body: JSON.stringify({ assistant: { id: assistant_id }, ...(commandId ? { command_id: commandId + ':ai' } : {}) })
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.errors?.[0]?.detail || 'Telnyx AI start failed');
   return j.data;
 }
 
-// Whisper a system message into an active AI Assistant call.
+// Whisper a system message into an active AI Assistant call (documented: ai_assistant_add_messages).
 export async function whisperToAssistant(call_control_id, message) {
-  const r = await fetch(BASE + '/calls/' + call_control_id + '/actions/ai_assistant_message', {
+  const r = await fetch(BASE + '/calls/' + encodeURIComponent(call_control_id) + '/actions/ai_assistant_add_messages', {
     method: 'POST',
     headers: auth(),
-    body: JSON.stringify({ message, role: 'system' })
+    body: JSON.stringify({ messages: [{ role: 'system', content: String(message || '') }] })
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j?.errors?.[0]?.detail || 'Whisper failed');
@@ -69,6 +76,7 @@ export function verifyTelnyxSig(headers, rawBody) {
     const ts  = headers['telnyx-timestamp']         || headers['Telnyx-Timestamp'];
     const pub = process.env.TELNYX_PUBLIC_KEY;  // Telnyx dashboard → public key for this endpoint
     if (!sig || !ts || !pub) return false;
+    if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;   // replayed / stale (Telnyx: 5-minute window)
     const payload = ts + '|' + rawBody;
     const key = telnyxPublicKey(pub);
     return crypto.verify(null, Buffer.from(payload), key, Buffer.from(sig, 'base64'));

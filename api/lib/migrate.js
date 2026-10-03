@@ -241,6 +241,16 @@ const MARKETING_INTELLIGENCE_DDL = `create table if not exists public.marketing_
 create index if not exists idx_marketing_intel_tenant on public.marketing_intelligence (tenant_id, created_at desc);
 alter table public.marketing_intelligence enable row level security;`;
 
+// telnyx_events — Telnyx retries a webhook that doesn't answer in 2s; one row per event id makes
+// every retry a no-op (a client never gets the same reply twice, a booking is never made twice).
+const TELNYX_EVENTS_DDL = `create table if not exists public.telnyx_events (
+  id text primary key,
+  kind text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_telnyx_events_created on public.telnyx_events (created_at);
+alter table public.telnyx_events enable row level security;`;
+
 // booking_outbox — durable write-through of LolaDesk bookings to the salon's own platform.
 const BOOKING_OUTBOX_DDL = `create table if not exists public.booking_outbox (
   id              uuid primary key default gen_random_uuid(),
@@ -356,6 +366,7 @@ async function runMigrations() {
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
+  await ensureTable(c, 'telnyx_events', TELNYX_EVENTS_DDL, applied);
   await ensureTable(c, 'lola_campaigns', LOLA_CAMPAIGNS_DDL, applied);
   await ensureTable(c, 'lola_campaign_recipients', LOLA_CAMPAIGN_RECIPIENTS_DDL, applied);
   await ensureTable(c, 'lola_fill_plans', LOLA_FILL_PLANS_DDL, applied);

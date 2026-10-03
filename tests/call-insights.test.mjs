@@ -287,8 +287,11 @@ test('agent-variables repeats the caller\u2019s last_call memory in the next cal
     created_at: new Date().toISOString()
   }]);
   const { default: av } = await import('../api/agent-variables.js');
+  const { toolKey } = await import('../api/lib/tool-key.js');
   const req = {
     method: 'POST',
+    // LolaDesk's own (signed) webhook URL: caller memory is only shared with it
+    url: '/api/agent-variables?k=' + toolKey('variables'),
     body: JSON.stringify({
       data: { payload: { to: '+14107848940', from: '+19294568227', call_control_id: 'v3:ctrl-mem' } }
     })

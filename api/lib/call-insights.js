@@ -25,7 +25,9 @@ export function parseInsightsEvent(body) {
     callControlId: payload.call_control_id || null,
     callSessionId: payload.call_session_id || null,
     callLegId: payload.call_leg_id || null,
-    durationSec: payload.duration_sec || null,
+    durationSec: payload.duration_sec ?? null,   // a 0-second hang-up is 0, not unknown
+    from: typeof payload.from === 'string' ? payload.from : (payload.from?.phone_number || null),
+    to: typeof payload.to === 'string' ? payload.to : (payload.to?.phone_number || null),
     results: Array.isArray(payload.results)
       ? payload.results.map(r => ({ insightId: r?.insight_id || null, result: r?.result ?? null }))
       : []

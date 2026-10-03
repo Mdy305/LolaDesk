@@ -9,6 +9,7 @@ import { buildTenantVariables } from './lib/tenant-variables.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { clientStory, welcomeBack } from './lib/client-brain.js';
 import { discloseGreeting } from './lib/legal.js';
+import { toolKeyOk } from './lib/tool-key.js';
 
 // Her first words on this call: a returning client is welcomed by name with their last visit;
 // everyone hears that the call may be recorded and that she's an AI.
@@ -23,6 +24,16 @@ function pickToNumber(b){
   return b?.data?.payload?.telnyx_agent_target || b?.telnyx_agent_target || b?.data?.payload?.to || b?.payload?.to || b?.to ||
     b?.data?.payload?.to_number || b?.telephony_data?.to || b?.call?.to ||
     (Array.isArray(b?.to) ? b.to[0]?.phone_number : null) || b?.To || '';
+}
+// A salon's website widget names its line in a custom header (X-LolaDesk-Salon). Telnyx passes call
+// headers to this webhook; accept every shape it uses so web calls get the salon's real facts.
+function pickWebSalon(b){
+  const p = b?.data?.payload || b || {};
+  const direct = p.loladesk_salon || p['x-loladesk-salon'] || p['X-LolaDesk-Salon'] || p.custom_headers?.['X-LolaDesk-Salon'] || p.custom_headers?.['x-loladesk-salon'];
+  if(direct) return String(direct);
+  const list = Array.isArray(p.custom_headers) ? p.custom_headers : Array.isArray(p.sip_headers) ? p.sip_headers : [];
+  const h = list.find((x) => /x-loladesk-salon/i.test(String(x?.name || '')));
+  return h ? String(h.value || '') : '';
 }
 function pickFromNumber(b){
   return b?.data?.payload?.telnyx_end_user_target || b?.telnyx_end_user_target || b?.data?.payload?.from || b?.payload?.from || b?.from ||
@@ -51,16 +62,22 @@ function callerMemory(client){
 }
 
 export default async function handler(req, res){
-  res.setHeader('Access-Control-Allow-Origin','*');
-  res.setHeader('Access-Control-Allow-Methods','POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
-  if(req.method === 'OPTIONS') return res.status(200).end();
+  // Server-to-server only (Telnyx): no browser CORS.
+  if(req.method === 'OPTIONS') return res.status(204).end();
 
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
-    const qTo = (()=>{ try{ return new URL(req.url,'http://x').searchParams.get('to'); }catch{ return null; } })();
-    const toNumber = qTo || pickToNumber(body);
+    const q = (()=>{ try{ return new URL(req.url,'http://x').searchParams; }catch{ return new URLSearchParams(); } })();
+    const qTo = q.get('to');
+    const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
+    let toNumber = qTo || pickToNumber(body);
+    if(!isPhone(toNumber) && isPhone(pickWebSalon(body))) toNumber = pickWebSalon(body);
     const fromNumber = pickFromNumber(body);
+    // Caller memory (name, last visit, notes) is private: only for LolaDesk's own signed request, and
+    // only for a real caller line (a website visitor has no verified number).
+    const signed = toolKeyOk(q.get('k') || req.query?.k, 'variables');
+    const web = /web/i.test(String(body?.data?.payload?.telnyx_conversation_channel || body?.telnyx_conversation_channel || ''));
+    const mayRemember = signed && !web && isPhone(fromNumber);
 
     // ── MULTI-TENANT ROUTING (the literal "before she speaks" gate) ──
     // Telnyx calls this webhook to fetch the AI assistant's system facts
@@ -75,7 +92,7 @@ export default async function handler(req, res){
     // arrives with only call ids — no dialed number — so record this
     // conversation's call_control_id → tenant mapping now, while the dialed
     // number is known. Best-effort: never let this break the 1s response.
-    if(tenant?.id){
+    const bookkeeping = (async () => { if(tenant?.id){
       const callControlId = body?.data?.payload?.call_control_id || body?.call_control_id || null;
       // The assistant event family carries the session ids under
       // data.payload.* (same shape as call.conversation.ended / the
@@ -107,7 +124,7 @@ export default async function handler(req, res){
               .select('id,status,call_session_id')
               .eq('telnyx_call_control_id', callControlId)
               .maybeSingle()
-              .catch(() => ({ data: null }));
+              .then((r) => r, () => ({ data: null }));   // the query builder has no .catch
             if(existing?.data?.id){
               // Same call reconnecting (Telnyx retries the variable fetch)
               // → bring the row back to live and backfill a session id if
@@ -131,7 +148,7 @@ export default async function handler(req, res){
           }
         }catch(e){ /* never block the variable fetch */ }
       }
-    }
+    } })();
 
     if(!tenant){
       return res.status(200).json({
@@ -151,13 +168,13 @@ export default async function handler(req, res){
     }
 
     // A forwarding test arriving (Lola's line called "from" itself or from the salon's number): mark it working.
-    try{ const { noteForwardedArrival } = await import('./lib/forwarding.js'); await noteForwardedArrival(db(), tenant, fromNumber, toNumber); }catch(_){}
+    const forwarded = (async () => { try{ const { noteForwardedArrival } = await import('./lib/forwarding.js'); await noteForwardedArrival(db(), tenant, fromNumber, toNumber); }catch(_){} })();
 
     let memory = { caller_known:'false', caller_name:'', caller_brief:'' };
     let story = null;
     try{
-      if(tenant?.id && fromNumber){
-        const client = await getClientByPhone(tenant.id, fromNumber);
+      if(tenant?.id && fromNumber && mayRemember){
+        const [client, mem] = await Promise.all([getClientByPhone(tenant.id, fromNumber), getClientMemory(tenant.id, fromNumber).catch(() => [])]);
         try{ story = client ? await clientStory(db(), tenant, client) : null; }catch(_){}
         // Resolve the stylist's NAME from preferred_staff_id (the canonical
         // schema has no preferred_stylist text column).
@@ -173,7 +190,6 @@ export default async function handler(req, res){
         // so the next call repeats what happened — "last call you booked a
         // balayage". Best-effort; a memory read failure never blocks the
         // 1s dynamic-variables response.
-        const mem = await getClientMemory(tenant.id, fromNumber);
         const lastCall = mem.find(m => m.key === 'last_call');
         if(lastCall?.value){
           const v = typeof lastCall.value === 'string' ? JSON.parse(lastCall.value) : lastCall.value;
@@ -200,6 +216,7 @@ export default async function handler(req, res){
     });
 
     dynamic_variables.lola_greeting = greetingFor(tenant.name, story);
+    await Promise.all([bookkeeping, forwarded]).catch(() => {});
     return res.status(200).json({ dynamic_variables });
   }catch(e){
     return res.status(200).json({

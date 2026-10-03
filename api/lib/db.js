@@ -258,6 +258,12 @@ export async function upsertClient(tenantId, { phone, name, email, whatsappEnabl
   let existing=null;
   if(phoneE){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('phone',phoneE).maybeSingle(); existing=data; }
   if(!existing&&email){ const {data}=await c.from('clients').select('id').eq('tenant_id',tenantId).eq('email',String(email).toLowerCase()).maybeSingle(); existing=data; }
+  // An existing client who texts without saying their name keeps their name (never overwritten by the
+  // "Client" placeholder), and a missing email never erases the one on file.
+  if(existing?.id){
+    if(!String(name||'').trim()){ delete row.first_name; delete row.last_name; }
+    if(!email) delete row.email;
+  }
   const query=existing?.id?c.from('clients').update(row).eq('id',existing.id).eq('tenant_id',tenantId):c.from('clients').insert(row);
   const {data,error}=await query.select().maybeSingle();
   if(error) throw error;

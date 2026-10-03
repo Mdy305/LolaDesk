@@ -90,7 +90,7 @@ async function provisionNumber({ phone_number_id }){
   // (the AI voice path), falling back to TELNYX_VOICE_APP_ID.
   const voiceAppId = await getCanonicalVoiceConnectionId();
   if(voiceAppId){
-    const r = await fetch(`${TELNYX}/phone_numbers/${phone_number_id}/voice`, {
+    const r = await fetch(`${TELNYX}/phone_numbers/${phone_number_id}`, {   // connection_id lives on the number itself (PATCH /phone_numbers/{id}), not on /voice
       method:'PATCH', headers: authHeaders(),
       body: JSON.stringify({ connection_id: voiceAppId })
     });

@@ -40,7 +40,9 @@ const t = (n) => assistant.tools.find(x => x.webhook && x.webhook.name === n);
 ok(r.healed && /\/api\/lola-tools\?tool=detect_upsell_opportunity&to=\{\{telnyx_agent_target\}\}/.test(t('detect_upsell_opportunity').webhook.url), 'upsell tool re-pointed to LolaDesk with the salon line on the URL');
 ok(t('detect_upsell_opportunity').webhook.description === 'pair add-ons' && t('detect_upsell_opportunity').webhook.body_parameters.properties.serviceId, 'everything else about the tool is kept');
 ok(/salon=\{\{loladesk_salon\}\}&call=\{\{call_control_id\}\}/.test(t('book_appointment').webhook.url) && t('LolaDesk_Voice_API').webhook.url === 'https://somewhere.example.com/hook' && t('check_availability').webhook.url.endsWith('/api/lola/check-availability') && assistant.tools.some(x => x.type === 'hangup'), 'good and unknown tools untouched');
-ok(assistant.dynamic_variables_webhook_url === 'https://www.loladesk.com/api/agent-variables', 'salon details webhook reconnected');
+ok(/^https:\/\/www\.loladesk\.com\/api\/agent-variables\?k=[\w-]{24}$/.test(assistant.dynamic_variables_webhook_url), 'salon details webhook reconnected (signed)');
+ok(assistant.telephony_settings?.supports_unauthenticated_web_calls === true && assistant.dynamic_variables_webhook_timeout_ms >= 2500, 'website calls allowed (Telnyx requires it for the widget) + room for the salon details');
+ok(assistant.tools.filter(x => x.webhook && /lola-tools/.test(x.webhook.url)).every(x => /&k=[\w-]{24}$/.test(x.webhook.url) && x.webhook.method === 'POST'), 'every LolaDesk tool is signed and POSTs');
 r = await wireAssistant({ heal: true });
 ok(r.ok && !r.miswired.length && patches.length === 1, 'second run: all good, nothing to change');
 

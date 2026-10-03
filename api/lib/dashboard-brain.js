@@ -363,6 +363,10 @@ export async function dashboardBrainReply({ tenant, body, req }){
     deadlineMs: Math.max(4000, left() - 7000),
     tools: [...TOOLS, ...OWNER_TOOLS]
   });
+  // Telnyx refused the tool list for this turn: her answer can't have DONE anything — never let it sound like it did.
+  if(result.ok && result.toolsDropped && !(result.tool_calls && result.tool_calls.length) && /\b(text|send|book|cancel|move|resched|call|remind|block|add|create)\w*/i.test(lastUserTextMsg || '')){
+    result = { ...result, text: "I couldn't run that just now — nothing was sent or changed. Say it again and I'll do it." };
+  }
 
   if(!result.ok){
     // The LLM being down or unconfigured must NEVER kill the front desk.
@@ -406,7 +410,7 @@ export async function dashboardBrainReply({ tenant, body, req }){
     messages.push({
       role: "assistant",
       content: null,
-      tool_calls: result.tool_calls
+      tool_calls: [toolCall]   // only the call we answer below — an unanswered tool_call id makes the next request a 400
     });
 
     let toolResultText = "";

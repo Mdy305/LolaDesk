@@ -655,7 +655,7 @@ addEventListener('DOMContentLoaded',function(){
   function mountAgent(id){
     if(!id||document.querySelector('telnyx-ai-agent'))return;
     var el=document.createElement('telnyx-ai-agent');el.setAttribute('agent-id',id);el.setAttribute('environment','production');document.body.appendChild(el);
-    var s=document.createElement('script');s.async=true;s.src='https://unpkg.com/@telnyx/ai-agent-widget@next';document.body.appendChild(s);
+    var s=document.createElement('script');s.async=true;s.src='https://unpkg.com/@telnyx/ai-agent-widget@0.36.0';document.body.appendChild(s);
   }
   var FALLBACK_AGENT='assistant-57f2d23e-48b1-4107-9811-c40b296f15b6';
   // the agent widget waits until the page is idle, so the first paint is instant
