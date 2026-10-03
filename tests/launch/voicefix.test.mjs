@@ -23,6 +23,8 @@ globalThis.fetch = async (url, init = {}) => {
   if (/\/phone_numbers\/n\d\/voice/.test(u)) { numberPatches.push(u); const n = phone.find((p) => u.includes('/' + p.id + '/')); n.connection_id = JSON.parse(init.body).connection_id; return J({ data: n }); }
   if (u.includes('/phone_numbers')) return J({ data: phone });
   if (u.endsWith('/balance')) return J({ data: { balance: '12.50', available_credit: '12.50' } });
+  if (u.includes('/chat/completions')) return J({ choices: [{ message: { role: 'assistant', content: 'ready' } }] });
+  if (u.includes('/ai/audio/transcriptions')) return J({ text: '' });
   if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
   if (u.includes('/10dlc/phone_number_campaigns')) return J({ records: phone.map((p) => ({ phoneNumber: p.phone_number })) });
   return J({ data: [] });

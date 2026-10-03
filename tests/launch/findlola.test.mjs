@@ -23,6 +23,8 @@ globalThis.fetch = async (url, init = {}) => {
   if (/\/calls\/[^/]+\/actions\/ai_assistant_start/.test(u)) { starts.push(JSON.parse(init.body).assistant_id); return J({ data: {} }); }
   if (u.includes('/text-to-speech/speech')) return new Response(new Uint8Array(3000), { status: 200, headers: { 'content-type': 'audio/mpeg' } });
   if (u.endsWith('/balance')) return J({ data: { balance: '9', available_credit: '9' } });
+  if (u.includes('/chat/completions')) return J({ choices: [{ message: { role: 'assistant', content: 'ready' } }] });
+  if (u.includes('/ai/audio/transcriptions')) return J({ text: '' });
   if (u.includes('/ai/models')) return J({ data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }] });
   if (u.includes('/10dlc/phone_number_campaigns')) return J({ records: phone.map((p) => ({ phoneNumber: p.phone_number })) });
   return J({ data: [] });

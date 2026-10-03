@@ -34,6 +34,7 @@ export async function transcribeAudio(buf, mime = 'audio/webm') {
     } catch (e) { last = String(e?.name === 'AbortError' ? 'timeout' : (e?.message || e)); }
     finally { clearTimeout(t); }
   }
+  if (workingModel && !/^(401|403)/.test(last)) { workingModel = null; return transcribeAudio(buf, mime); }   // the remembered model stopped answering: try them all again
   return { ok: false, error: 'stt_failed', detail: last };
 }
 

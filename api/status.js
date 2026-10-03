@@ -11,8 +11,16 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-dynvars';
+export const RELEASE = 'lola-ears';
 let lastHeal = 0;
+// 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
+function silentWav() {
+  const n = 9600, b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24); b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin(i / 7) * 30), 44 + i * 2);
+  return b;
+}
 const clip = (e) => String(e?.message || e || '').replace(/Bearer\s+\S+/g, '').slice(0, 140);
 let cache = null;
 
@@ -53,6 +61,15 @@ export async function buildStatus() {
     const ids = (models.j?.data || []).map((m) => m.id || m.name).filter(Boolean);
     live.telnyx_ai = models.ok && ids.length > 0;
     live.fast_model = ids.some((x) => /Llama-3\.3-70B/i.test(x));
+    // Her brain and her ears, for real: one tiny thought, one tiny transcription (the exact paths the app uses).
+    if (live.telnyx_key) {
+      const [brain, ears] = await Promise.all([
+        (async () => { try { const { chat } = await import('./lib/llm.js'); const r = await chat({ messages: [{ role: 'user', content: 'Reply with the single word: ready' }], maxTokens: 20, temperature: 0, deadlineMs: 12000 }); return r.ok && r.text ? { ok: true, model: r.model } : { ok: false, error: clip(r.error || 'empty answer') }; } catch (e) { return { ok: false, error: clip(e) }; } })(),
+        (async () => { try { const { transcribeAudio } = await import('./lola/hear.js'); const r = await transcribeAudio(silentWav(), 'audio/wav'); return r.ok ? { ok: true, model: r.model } : { ok: false, error: clip(r.detail || r.error) }; } catch (e) { return { ok: false, error: clip(e) }; } })(),
+      ]);
+      live.brain = brain.ok; if (brain.ok) live.brain_model = brain.model; else live.brain_error = brain.error;
+      live.hearing = ears.ok; if (ears.ok) live.hearing_model = ears.model; else live.hearing_error = ears.error;
+    }
     // Texting registration (10DLC) for every number on the account
     const nums = await tget('/phone_numbers?page[size]=100');
     const list = (nums.j?.data || []).map((n) => n.phone_number).filter(Boolean);
@@ -178,6 +195,8 @@ export async function buildStatus() {
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');
   else if (live.telnyx_key === false) fixes.push('Telnyx refuses the TELNYX_API_KEY in Vercel — create a new key in Telnyx → API Keys, paste it in Vercel, Redeploy.');
   if (live.telnyx_balance_ok === false) fixes.push('Your Telnyx balance is empty — calls, texts and Lola’s brain stop. Top up in Telnyx → Billing.');
+  if (live.brain === false) fixes.push(`Lola can’t think right now — Telnyx inference refused her (${live.brain_error}). Telnyx → AI → Inference: make sure it’s enabled and your balance is above $0; then say “Lola, run a check”.`);
+  if (live.hearing === false) fixes.push(`Lola can’t hear in the app — Telnyx speech-to-text refused her (${live.hearing_error}). Telnyx → AI: make sure speech-to-text is enabled for your account (set LOLA_STT_MODEL in Vercel if Telnyx names a different model).`);
   if (settings.TELNYX_API_KEY && live.telnyx_key && !live.telnyx_ai) fixes.push('Telnyx AI isn’t enabled on your account — Telnyx → AI → Inference: turn it on (Lola’s brain and hearing run there).');
   if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
