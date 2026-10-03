@@ -194,6 +194,53 @@ const TENANT_CHANNELS_DDL = `create table if not exists public.tenant_channels (
 create index if not exists idx_tenant_channels_tenant on public.tenant_channels (tenant_id);
 alter table public.tenant_channels enable row level security;`;
 
+// Lola's marketing engine — campaigns, recipients, the 30-day fill plan, saved analyses.
+// (Same as sql/lola-marketing.sql + sql/revenue-engine.sql, so salons never depend on a manual SQL run.)
+const LOLA_CAMPAIGNS_DDL = `create table if not exists public.lola_campaigns (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  name text not null, segment text not null, segment_days int, message text not null,
+  status text not null default 'draft' check (status in ('draft','sending','paused','sent','cancelled')),
+  created_by text, total int not null default 0,
+  created_at timestamptz not null default now(), started_at timestamptz, finished_at timestamptz
+);
+create index if not exists lola_campaigns_tenant_idx on public.lola_campaigns (tenant_id, created_at desc);
+create index if not exists lola_campaigns_status_idx on public.lola_campaigns (status);
+alter table public.lola_campaigns enable row level security;`;
+const LOLA_CAMPAIGN_RECIPIENTS_DDL = `create table if not exists public.lola_campaign_recipients (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references public.lola_campaigns(id) on delete cascade,
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  client_id uuid references public.clients(id) on delete set null,
+  phone text not null, first_name text,
+  status text not null default 'pending' check (status in ('pending','sent','failed','skipped')),
+  error text, sent_at timestamptz,
+  unique (campaign_id, phone)
+);
+create index if not exists lola_campaign_recipients_campaign_idx on public.lola_campaign_recipients (campaign_id, status);
+create index if not exists lola_campaign_recipients_tenant_idx on public.lola_campaign_recipients (tenant_id, status, sent_at);
+alter table public.lola_campaign_recipients enable row level security;`;
+const LOLA_FILL_PLANS_DDL = `create table if not exists public.lola_fill_plans (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  status text not null default 'proposed', autopilot boolean not null default false, reason text,
+  horizon_start date, horizon_end date,
+  forecast jsonb default '{}'::jsonb, strategy jsonb default '{}'::jsonb, items jsonb default '[]'::jsonb,
+  approved_at timestamptz, created_at timestamptz not null default now()
+);
+create index if not exists idx_fill_plans_tenant on public.lola_fill_plans (tenant_id, created_at desc);
+create index if not exists idx_fill_plans_status on public.lola_fill_plans (status);
+alter table public.lola_fill_plans enable row level security;`;
+const MARKETING_INTELLIGENCE_DDL = `create table if not exists public.marketing_intelligence (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  kind text not null, source_url text, title text, summary text,
+  data jsonb default '{}'::jsonb, performance jsonb default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_marketing_intel_tenant on public.marketing_intelligence (tenant_id, created_at desc);
+alter table public.marketing_intelligence enable row level security;`;
+
 // booking_outbox — durable write-through of LolaDesk bookings to the salon's own platform.
 const BOOKING_OUTBOX_DDL = `create table if not exists public.booking_outbox (
   id              uuid primary key default gen_random_uuid(),
@@ -309,6 +356,10 @@ async function runMigrations() {
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
+  await ensureTable(c, 'lola_campaigns', LOLA_CAMPAIGNS_DDL, applied);
+  await ensureTable(c, 'lola_campaign_recipients', LOLA_CAMPAIGN_RECIPIENTS_DDL, applied);
+  await ensureTable(c, 'lola_fill_plans', LOLA_FILL_PLANS_DDL, applied);
+  await ensureTable(c, 'marketing_intelligence', MARKETING_INTELLIGENCE_DDL, applied);
   // deposits — no-show protection loop (api/lib/deposits.js); self-heals when
   // the deposits cron or the booking seam cold-starts.
   await ensureTable(c, 'deposits', DEPOSITS_DDL, applied);

@@ -8,6 +8,8 @@ import { db } from '../lib/db.js';
 import { runFillPlans } from '../lib/fill-plan.js';
 
 export default async function handler(req, res) {
+  // The marketing tables heal themselves (no manual SQL run needed).
+  try { const { ensureMigrations } = await import('../lib/migrate.js'); await ensureMigrations(); } catch (_) {}
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ ok: false, error: 'GET/POST only' });
   if (!process.env.CRON_SECRET) return res.status(503).json({ ok: false, error: 'CRON_SECRET is not set' });
   if ((req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });

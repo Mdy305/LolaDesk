@@ -16,6 +16,7 @@ const REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_FAST_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
 export const FAST_MODEL = () => String(process.env.LOLA_FAST_MODEL || DEFAULT_FAST_MODEL).trim();
 const FAST_DEADLINE_MS = 15000;
+const LONG_DEADLINE_MS = 48000;
 let fastDownUntil = 0;           // set when Telnyx says the fast model isn't available
 
 export const AI_PROVIDER = 'telnyx';
@@ -32,8 +33,12 @@ export const TELNYX_CAPABILITIES = Object.freeze({
 export async function chat({ system='', messages=[], maxTokens=600, temperature=0.7, tools=null, fast, deadlineMs } = {}){
   const multimodal = (messages || []).some(m => m && m.content != null && typeof m.content !== 'string');
   const quick = fast ?? (!multimodal && Number(maxTokens || 600) <= 700);
-  if(quick && !multimodal) return chatFast({ system, messages, maxTokens, temperature, tools, deadlineMs });
-  return chatTelnyx({ system, messages, maxTokens, temperature, tools });
+  if(multimodal) return chatTelnyx({ system, messages, maxTokens, temperature, tools });
+  // Long-form writing (reading a website, the growth strategy, campaigns) used to go to Kimi alone:
+  // a reasoning model that can think past 30s per attempt, so with retries the request outlived
+  // Vercel's 60s limit and the owner saw nothing. Now it's written by the fast model inside one
+  // 48s budget, with Kimi as the fallback in whatever time is left.
+  return chatFast({ system, messages, maxTokens, temperature, tools, deadlineMs: deadlineMs || (quick ? FAST_DEADLINE_MS : LONG_DEADLINE_MS), long: !quick });
 }
 
 /** Strip any chain-of-thought a model leaks into its answer. */
@@ -77,12 +82,12 @@ async function callOnce({ model, oai, maxTokens, temperature, tools, timeoutMs }
   }finally{ clearTimeout(timer); }
 }
 
-async function chatFast({ system, messages, maxTokens, temperature, tools, deadlineMs }){
+async function chatFast({ system, messages, maxTokens, temperature, tools, deadlineMs, long = false }){
   if(!process.env.TELNYX_API_KEY) return { ok:false, text:'', provider:AI_PROVIDER, model:FAST_MODEL(), error:'Missing TELNYX_API_KEY' };
   const started=Date.now(), deadline=Math.max(3000, Number(deadlineMs) || FAST_DEADLINE_MS);
   const left=()=>deadline-(Date.now()-started);
   const oai=toOpenAI(system, messages);
-  const want=Math.max(200, Math.min(Number(maxTokens)||600, 1200));
+  const want=Math.max(200, Math.min(Number(maxTokens)||600, long ? 4000 : 1200));
   const plan=[];
   if(Date.now()>=fastDownUntil) plan.push({ model:FAST_MODEL(), maxTokens:want });
   plan.push({ model:DEFAULT_TELNYX_MODEL, maxTokens:Math.max(want, 2000) });   // Kimi thinks before it speaks

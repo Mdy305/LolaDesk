@@ -6,6 +6,40 @@
  */
 import { chat } from './lib/llm.js';
 
+// The salon's real numbers — open chair-hours by day, who is due back, who lapsed, the menu —
+// so the strategy is a plan to fill THESE chairs, not generic advice.
+async function salonFacts(req){
+  try{
+    const { getUserFromToken, bearer } = await import('./lib/auth.js');
+    const user = await getUserFromToken(bearer(req)).catch(() => null);
+    if(!user) return null;
+    const { resolveTenantForUser } = await import('./lib/tenant-access.js');
+    const tenant = await resolveTenantForUser(user);
+    if(!tenant?.id) return null;
+    const { db } = await import('./lib/db.js'); const c = db(); if(!c) return null;
+    const { forecast } = await import('./lib/fill-plan.js');
+    const { clientHistory, planSegments } = await import('./lib/client-history.js');
+    const [fc, hist, svc] = await Promise.all([
+      forecast(c, tenant).catch(() => null),
+      clientHistory(c, tenant.id).catch(() => null),
+      c.from('services').select('name,price,duration_minutes').eq('tenant_id', tenant.id).eq('is_active', true).limit(60).then(r => r.data || []).catch(() => []),
+    ]);
+    const seg = hist ? planSegments(hist) : null;
+    const days = (fc?.days || []).filter(d => d.capacity_h > 0).slice(0, 14).map(d => `${d.date} ${d.weekday || ''}: ${Math.max(0, Math.round((d.capacity_h - d.booked_h) * 10) / 10)}h open of ${Math.round(d.capacity_h)}h`).join('; ');
+    return {
+      tenant,
+      text: [
+        `Salon: ${tenant.name}${tenant.city ? ' in ' + tenant.city : ''}.`,
+        fc && fc.has_schedule ? `Next 30 days: ${Math.round((fc.util || 0) * 100)}% booked; ${Math.round(fc.hours_to_target)} chair-hours to reach 85%; about $${(fc.revenue_at_stake || 0).toLocaleString()} at stake; average ticket $${fc.avg_ticket || 0}.` : 'Working hours not set yet, so open chairs are unknown.',
+        fc?.slow_weekdays?.length ? `Slowest days: ${fc.slow_weekdays.map(w => `${w.weekday} (${Math.round(w.util * 100)}% booked)`).join(', ')}.` : '',
+        days ? `Open time, next 14 days: ${days}.` : '',
+        seg ? `Clients: ${seg.total} total, ${seg.textable} reachable by text. Due back in 30 days with nothing booked: ${seg.due.length}. Came once and never returned: ${seg.second_visit.length}. Not seen in 90+ days: ${seg.lapsed.length}. VIPs: ${seg.vip.length}.` : '',
+        svc.length ? `Menu: ${svc.slice(0, 25).map(s => `${s.name}${s.price ? ' $' + s.price : ''}${s.duration_minutes ? ' ' + s.duration_minutes + 'min' : ''}`).join(', ')}.` : '',
+      ].filter(Boolean).join('\n'),
+    };
+  }catch(_){ return null; }
+}
+
 /**
  * Parses labeled-section prose like:
  *   SUMMARY:
@@ -92,12 +126,12 @@ async function analyze(body){
   return { ok:true, url, title:site.title, provider:result.provider, text:raw, raw, ...parsed };
 }
 
-async function strategy(body){
+async function strategy(body, facts){
   const { analysis, salon, goals } = body;
-  const system = 'You are the Marketer for LolaDesk. Write a concrete, prioritized salon marketing strategy in clear plain text with these labeled sections on their own lines. Follow the exact line format shown for TOP PRIORITIES and CAMPAIGNS TO RUN so it can be parsed — use the pipe character | as the separator, one item per line:\n\nHEADLINE:\nPOSITIONING SHIFT:\nTOP PRIORITIES: (one per line: Title | Why it matters | First action to take)\nCAMPAIGNS TO RUN: (one per line: Name | Audience | Channel | Frequency | Expected result)\nWHAT NOT TO DO: (bullet list with -)\nNORTH STAR METRIC:\n\nBe sharp and specific. No preamble, start directly with HEADLINE:. Do not add extra pipes within a field.';
+  const system = 'You are Lola, VP of Marketing for this salon — the best salon growth strategist alive. Your one job: fill every empty chair in the next 30 days, at full price, without discounting the brand. Use the REAL numbers you are given (open hours by day, who is due back, who lapsed, the menu with prices) and name them: which days, which clients, which service, which message, which channel. Never invent discounts, reviews or numbers that are not in the facts. Write a concrete, prioritized plan in clear plain text with these labeled sections on their own lines. Follow the exact line format shown for TOP PRIORITIES and CAMPAIGNS TO RUN so it can be parsed — use the pipe character | as the separator, one item per line:\n\nHEADLINE:\nPOSITIONING SHIFT:\nTOP PRIORITIES: (one per line: Title | Why it matters | First action to take)\nCAMPAIGNS TO RUN: (one per line: Name | Audience | Channel | Frequency | Expected result)\nWHAT NOT TO DO: (bullet list with -)\nNORTH STAR METRIC:\n\nBe sharp and specific. No preamble, start directly with HEADLINE:. Do not add extra pipes within a field.';
   const salonText = typeof salon==='object' ? (salon.name||JSON.stringify(salon)) : String(salon||'a salon');
   const analysisText = analysis ? (typeof analysis==='object' ? JSON.stringify(analysis).slice(0,1200) : String(analysis).slice(0,1200)) : '';
-  const user = 'Build the strategy.\nSalon: '+salonText+'\nGoals: '+(goals||'Grow revenue, retain VIP clients, fill empty chairs')+(analysisText?'\nContext: '+analysisText:'');
+  const user = 'Build the strategy.\nSalon: '+(facts?.tenant?.name||salonText)+'\nGoals: '+(goals||'Fill every empty chair in the next 30 days, bring back clients who are due, grow the average ticket')+(facts?.text?'\nREAL FACTS (use them):\n'+facts.text:'')+(analysisText?'\nWebsite analysis: '+analysisText:'');
   let result;
   try{ result = await chat({ system, messages:[{role:'user',content:user}], maxTokens:1200, source:'strategy' }); }
   catch(e){ return { ok:false, error:String(e&&e.message||e) }; }
@@ -153,7 +187,7 @@ async function campaign(body){
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
   if(req.method === 'OPTIONS') return res.status(200).end();
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
@@ -163,7 +197,7 @@ export default async function handler(req, res){
       if(!url) return res.status(200).json({ ok:false, error:'url required' });
       return res.status(200).json(await analyze({ ...body, url }));
     }
-    if(action === 'strategy') return res.status(200).json(await strategy(body));
+    if(action === 'strategy'){ const facts = await salonFacts(req); return res.status(200).json({ ...(await strategy(body, facts)), grounded: !!facts?.text }); }
     if(action === 'campaign') return res.status(200).json(await campaign(body));
     return res.status(200).json({ ok:false, error:'unknown action' });
   }catch(e){ return res.status(200).json({ ok:false, error:'handler: '+String(e&&e.message||e) }); }

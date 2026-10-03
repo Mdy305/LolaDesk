@@ -187,11 +187,17 @@
           Build strategy
         </button>
       </div>
+      <div class="result-block" id="fillBox" style="border-color:rgba(204,255,0,.35)">
+        <div class="rb-label">Fill every chair</div>
+        <div class="rb-text" style="margin:6px 0 14px">Lola maps every open chair for the next 30 days, picks who to bring back for each slow day, writes the texts, and schedules them. Nothing is sent until you approve.</div>
+        <button class="url-btn" id="fillBtn" onclick="buildFill()">Build my 30-day fill plan</button>
+        <div id="fillOut" style="margin-top:16px"></div>
+      </div>
       <div id="strategyOut">
         <div class="empty-state">
           <div class="empty-state-icon">🎯</div>
-          <div style="font-size:14px;margin-bottom:4px">Run an analysis first, then build the strategy</div>
-          <div style="font-size:12px">Marketer uses the analysis above to write your plan.</div>
+          <div style="font-size:14px;margin-bottom:4px">Lola builds your strategy from your real calendar and clients</div>
+          <div style="font-size:12px">Add a goal above (optional) and press Build strategy. Analyze a URL first to add your website or a competitor.</div>
         </div>
       </div>
     </div>
@@ -360,17 +366,14 @@ function renderAnalysis(d){
 
 // ── STRATEGY ──
 async function runStrategy(){
-  if(!lastAnalysis){
-    document.getElementById('strategyOut').innerHTML = `<div class="result-block"><div class="rb-text" style="color:var(--text)">Run a URL analysis first so Marketer has something to build on.</div></div>`;
-    return;
-  }
+  // No analysis needed: Lola builds from your real calendar and clients (the analysis just adds context).
   const goals = document.getElementById('strategyGoals').value.trim();
   const btn = document.getElementById('strategyBtn'); btn.disabled = true;
   const out = document.getElementById('strategyOut');
   out.innerHTML = thinking('Building your strategy…');
   try{
     const r = await fetch('/api/marketer', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+gpToken()},
       body: JSON.stringify({
         action:'strategy',
         analysis: lastAnalysis,
@@ -384,6 +387,26 @@ async function runStrategy(){
     out.innerHTML = `<div class="result-block"><div class="rb-text" style="color:#ff5a4d">Error: ${e.message}</div></div>`;
   }
   btn.disabled = false;
+}
+
+// ── FILL EVERY CHAIR: the 30-day plan (built from real open chairs and real clients) ──
+async function buildFill(approveId){
+  const btn=document.getElementById('fillBtn'), out=document.getElementById('fillOut');
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  btn.disabled=true; out.innerHTML=thinking(approveId?'Turning the plan on…':'Lola is mapping your open chairs and your clients…');
+  try{
+    const r=await fetch('/api/marketing',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+gpToken()},body:JSON.stringify(approveId?{action:'plan_approve',id:approveId}:{action:'plan_build'})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.ok){out.innerHTML='<div class="rb-text" style="color:#ff5a4d">'+esc(d.error||'Lola couldn’t build the plan — sign in again and retry.')+'</div>';return;}
+    const p=d.plan||{}, s=p.strategy||{}, items=p.items||[];
+    if(approveId){out.innerHTML='<div class="rb-text" style="color:var(--pink2)">The plan is live. Each campaign goes out on its day, 10am–8pm, and skips anyone already booked. Manage it in <a href="/campaigns" style="text-decoration:underline">Campaigns</a>.</div>';return;}
+    out.innerHTML=`<div class="rb-title" style="font-size:18px;margin-bottom:8px">${esc(s.headline||'')}</div>
+      ${(s.levers||[]).length?'<ul style="margin:0 0 12px 18px;color:var(--text2);font-size:13px">'+s.levers.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul>':''}
+      ${items.map(it=>`<div style="padding:12px 0;border-top:0.5px solid var(--border)"><div style="font-size:14px;font-weight:600">${esc(it.send_on)} · ${esc(it.name)}</div><div style="font-size:12px;color:var(--text3);margin:2px 0 6px">${esc(it.audience_label)} · ${it.audience} clients${it.day_text?' · aimed at '+esc(it.day_text):''}${it.est_bookings?' · ~'+it.est_bookings+' bookings':''}${it.est_revenue?' · ~$'+Number(it.est_revenue).toLocaleString():''}</div><div style="font-size:13px;color:var(--text2)">“${esc(it.message)}”</div></div>`).join('')}
+      ${(s.acquisition||[]).length?'<div style="margin-top:12px;font-size:13px;color:var(--text2)"><b style="color:var(--text)">Also:</b> '+s.acquisition.map(a=>esc(a.text)).join(' · ')+'</div>':''}
+      <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="url-btn" onclick="buildFill('${esc(p.id)}')">Approve — run it</button><a class="url-btn" style="background:transparent;border:1px solid var(--border)" href="/campaigns">Edit in Campaigns</a></div>`;
+  }catch(e){out.innerHTML='<div class="rb-text" style="color:#ff5a4d">'+esc(e.message)+'</div>';}
+  finally{btn.disabled=false;}
 }
 
 function renderStrategy(d){

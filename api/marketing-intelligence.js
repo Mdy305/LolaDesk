@@ -8,6 +8,8 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 
 export default async function handler(req,res){
+  // The marketing tables heal themselves (no manual SQL run needed).
+  try { const { ensureMigrations } = await import('./lib/migrate.js'); await ensureMigrations(); } catch (_) {}
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization');
