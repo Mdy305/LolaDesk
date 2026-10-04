@@ -57,7 +57,7 @@ const call = (body, query = '') => new Promise((resolve) => {
 });
 const base = { CallSid: 'call-1', From: '+13055559999', To: '+13055550100', CallStatus: 'in-progress' };
 let r = await call({ ...base });
-ok(r.code === 200 && /<Play>https:\/\/fake\.supabase\.co\/storage\/v1\/object\/public\/voice-audio\/cached\/.+\.mp3<\/Play>/.test(r.xml) && /<Gather input="speech"/.test(r.xml), 'she answers in her own voice and listens');
+ok(r.code === 200 && /<Play>https:\/\/fake\.supabase\.co\/storage\/v1\/object\/public\/voice-audio\/cached\/.+\.mp3<\/Play>/.test(r.xml) && /<Gather input="dtmf speech"/.test(r.xml), 'she answers in her own voice and listens');
 ok(Object.keys(T.__buckets['voice-audio'].files).length >= 1, 'the greeting audio is stored once for every later caller');
 
 r = await call({ ...base, SpeechResult: 'Can I get a haircut tomorrow afternoon?' });
@@ -76,6 +76,14 @@ ok(/<Play>/.test(r.xml) && /<Gather/.test(r.xml) && r.code === 200, 'then answer
 ok(/phone call/i.test(asked.messages[0].content) && /HOW YOU SPEAK/.test(asked.messages[0].content), 'she knows it is a live phone call');
 ok(!/What service, day, and preferred time should I lock in/.test(JSON.stringify(T.messages)), 'no canned script answers a caller who already said what they want');
 ok(T.messages.some((m) => m.role === 'user' && /haircut tomorrow/i.test(m.content)) && T.messages.some((m) => m.role === 'assistant' && /two thirty/.test(m.content)), 'the conversation lands in the salon’s inbox');
+
+ok(/<Gather input="dtmf speech" finishOnKey="#"/.test(r.xml), 'Telnyx Gather listens for speech AND the keypad');
+llmScript = [{ content: 'Perfect — what time works for you?' }];
+r = await call({ ...base, Digits: '1' }, '?continue=');
+const k = await import(P + 'telnyx-voice.js');
+ok(k.keypadWords('1') === '(pressed 1 on the keypad) Yes.' && /My number is 3055550199/.test(k.keypadWords('3055550199#')) && /talk to someone/.test(k.keypadWords('0')), 'keys become words Lola understands (1 = yes, a typed number, 0 = the salon)');
+r = await call({ ...base, Digits: '1' });
+ok(/<Redirect method="POST">\/api\/telnyx-voice\?continue=/.test(r.xml) && Buffer.from(r.xml.match(/continue=([^<]+)</)[1], 'base64url').toString() === '(pressed 1 on the keypad) Yes.', 'pressing 1 mid-call is heard like saying “yes”');
 
 r = await call({ ...base, CallStatus: 'completed' });
 ok(r.code === 200 && /<Response\/>/.test(r.xml) && T.calls.length === 1, 'the call-finished callback is not mistaken for a new caller');

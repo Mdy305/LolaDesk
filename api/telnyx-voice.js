@@ -67,6 +67,7 @@ function extractVoicePayload(parsed){
     from: p.from || p.From || parsed?.From || parsed?.from || '',
     to: p.to || p.To || parsed?.To || parsed?.to || '',
     speechResult: p.speech_result || p.SpeechResult || parsed?.SpeechResult || parsed?.speech_result || parsed?.speech || '',
+    digits: String(p.digits || p.Digits || parsed?.Digits || parsed?.digits || '').replace(/[^0-9*#]/g, ''),
     callSid: p.call_leg_id || p.call_session_id || parsed?.CallSid || parsed?.call_sid || ''
   };
 }
@@ -96,6 +97,17 @@ function extractVoicePayload(parsed){
       (sendSMS checks the opt-out table) and each send is logged as
       a usage event for billing.
    ───────────────────────────────────────────────────────────── */
+export function keypadWords(d){
+  const digits = String(d || '').replace(/[^0-9*#]/g, '').replace(/#$/, '');
+  if(!digits) return '';
+  if(/^\d{10,11}$/.test(digits)) return `(typed on the keypad) My number is ${digits}.`;
+  if(digits === '1') return '(pressed 1 on the keypad) Yes.';
+  if(digits === '2') return '(pressed 2 on the keypad) No.';
+  if(digits === '0') return '(pressed 0 on the keypad) I\'d like to talk to someone at the salon.';
+  if(digits === '*') return '(pressed * on the keypad) Can you repeat that?';
+  return `(typed on the keypad) ${digits}`;
+}
+
 function buildHints(tenant){
   const services = [];
   try{
@@ -128,7 +140,7 @@ function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${speakBlock}
-  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto"${hintsAttr} action="/api/telnyx-voice" method="POST"/>
+  <Gather input="dtmf speech" finishOnKey="#" language="en-US" timeout="6" speechTimeout="auto"${hintsAttr} action="/api/telnyx-voice" method="POST"/>
   <Redirect method="POST">/api/telnyx-voice?silence=${silence + 1}</Redirect>
 </Response>`;
 }
@@ -308,6 +320,9 @@ export default async function handler(req, res){
   }catch{}
 
   let speech = String(payload.speechResult || '').trim();
+  // Keypad (Telnyx <Gather input="dtmf speech">): callers can press keys as well as talk —
+  // a phone number typed in, 1 for yes / 2 for no, 0 to reach the salon. Lola hears it as words.
+  if(!speech && payload.digits) speech = keypadWords(payload.digits);
   let reply = '';
   let actions = [];
 
@@ -384,6 +399,7 @@ export default async function handler(req, res){
 - Say numbers like a person: "three ninety-five", "two thirty tomorrow afternoon".
 - Never sound like a list or a menu: weave options into one flowing sentence.
 - When they ask for a person, take a message for the team (take_message) and say someone will call them back.
+- Callers can also use the keypad; their keys arrive as "(pressed …)" / "(typed on the keypad) …". If you asked a yes/no question you may say "or press 1 for yes" — once, not every turn.
 - Caller's mood right now: ${mood || 'neutral'}; what they seem to want: ${intent || 'unclear'}.`;
     try{
       const mmsResult = getInCallMmsResult(payload.callControlId);

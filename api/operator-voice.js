@@ -53,7 +53,8 @@ function extract(parsed){
   return {
     from: p.from || p.From || parsed?.From || '',
     to:   p.to   || p.To   || parsed?.To   || '',
-    speech: String(p.speech_result || p.SpeechResult || parsed?.SpeechResult || '').trim(),
+    // Telnyx <Gather input="dtmf speech">: the owner can say it or type it — a PIN typed on the keypad works too.
+    speech: (String(p.speech_result || p.SpeechResult || parsed?.SpeechResult || '').trim() || String(p.digits || p.Digits || parsed?.Digits || '').replace(/[^0-9]/g, '')),
     callId: p.call_leg_id || p.call_session_id || parsed?.CallSid || ''
   };
 }
@@ -130,7 +131,7 @@ function texml({ say, playUrl, state = null, hangup = false }){
   const speak = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangup) return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Hangup/>\n</Response>`;
   const action = '/api/operator-voice' + (state ? `?state=${packState(state)}` : '');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="speech" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="dtmf speech" finishOnKey="#" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;
 }
 
 export default async function handler(req, res){
