@@ -26,6 +26,26 @@ import { toolKey, toolKeyOk } from './tool-key.js';
 export const GREETING_VAR = '{{lola_greeting}}';
 export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
+export const BOOKING_MARK = '[LolaDesk booking]';
+export const BOOKING_RULES = `\n\n${BOOKING_MARK}\n- Before booking anyone, get their FIRST AND LAST name, their MOBILE number (on a phone call you already have it — just confirm it) and their EMAIL for the confirmation (they may skip the email). Read back the service, day, time, name and number, and get a yes.\n- Pass them to book_appointment as client_name (first and last), client_phone and client_email — or no_email: true if they skipped it.\n- Only say an appointment is booked when book_appointment answers booked: true. If it answers booked: false, do exactly what its speak and instruction say — never say "you're booked", "all set" or "confirmed" otherwise.\n- After a real booking, tell them the confirmation text is on its way (and the email, if they gave one).`;
+// What book_appointment must collect (merged into whatever the tool already declares in Telnyx).
+export const BOOKING_PARAMS = {
+  client_name: { type: 'string', description: "The client's FIRST AND LAST name" },
+  client_phone: { type: 'string', description: "The client's mobile number, for the confirmation text" },
+  client_email: { type: 'string', description: "The client's email, for the confirmation email" },
+  no_email: { type: 'boolean', description: 'true only if the client chose not to give an email' },
+};
+function withBookingParams(t) {
+  const w = t?.webhook;
+  if (!w || norm(w.name) !== 'book_appointment') return null;
+  const bp = (w.body_parameters && typeof w.body_parameters === 'object') ? w.body_parameters : { type: 'object', properties: {} };
+  const props = { ...(bp.properties || {}) };
+  const missing = Object.keys(BOOKING_PARAMS).filter((k) => !props[k] || (k === 'client_name' && !/last/i.test(String(props[k].description || ''))));
+  if (!missing.length) return null;
+  for (const k of missing) props[k] = BOOKING_PARAMS[k];
+  const required = [...new Set([...(Array.isArray(bp.required) ? bp.required : []), 'client_name', 'client_phone'])];
+  return { ...t, webhook: { ...w, body_parameters: { ...bp, type: 'object', properties: props, required } } };
+}
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
   'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message']);
@@ -208,11 +228,14 @@ export async function wireAssistant({ heal = false } = {}) {
   const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname) && toolKeyOk(dv.searchParams.get('k'), 'variables');
   // Tools every Lola must have (added once, never duplicated).
   const REQUIRED = [{ name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } }];
+  // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
+  const bookingParams = [];
+  for (let i = 0; i < next.length; i++) { const u = withBookingParams(next[i]); if (u) { next[i] = u; bookingParams.push(u.webhook.name); } }
   const have = new Set(next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')));
   const added = [];
   for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
   const patch = {};
-  if (fixed.length || added.length || duplicateTools.length) patch.tools = next;
+  if (fixed.length || added.length || duplicateTools.length || bookingParams.length) patch.tools = next;
   // A shared (attached) tool with the same name as one of hers blocks every update: detach that copy.
   const shared = await sharedToolCollisions(a, next).catch(() => null);
   if (shared) { patch.tool_ids = shared.tool_ids; duplicateTools.push(...shared.detached.map((n) => n + ' (shared copy)')); }
@@ -233,7 +256,11 @@ export async function wireAssistant({ heal = false } = {}) {
     patch.greeting = GREETING_VAR;
     patch.dynamic_variables = { ...(patch.dynamic_variables || dv0), lola_greeting: discloseGreeting(greetingDiscloses(fallbackGreeting) ? fallbackGreeting : (fallbackGreeting || '')) };
   }
-  if (!disclosure.rules && a.instructions) patch.instructions = String(a.instructions) + COMPLIANCE_RULES;
+  let instr = String(a.instructions || '');
+  if (!disclosure.rules && instr) instr += COMPLIANCE_RULES;
+  const bookingRules = instr.includes(BOOKING_MARK);
+  if (!bookingRules && instr) instr += BOOKING_RULES;
+  if (instr && instr !== String(a.instructions || '')) patch.instructions = instr;
   if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
   // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.
   if (!(Number(a.dynamic_variables_webhook_timeout_ms) >= 2500)) patch.dynamic_variables_webhook_timeout_ms = 3000;
@@ -277,6 +304,7 @@ export async function wireAssistant({ heal = false } = {}) {
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: duplicateTools,
+    booking: { rules: bookingRules || (healed && !error && !!patch.instructions), asks_full_details: !bookingParams.length || (healed && !error) },
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
     healed, error,

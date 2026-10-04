@@ -271,14 +271,56 @@ async function check_availability(tenant, body){
 }
 
 // ── SKILL: book an appointment ──
+// Who the booking is for — a real booking needs a real person: first AND last name, a mobile for the
+// confirmation text, and an email for the confirmation email (or a clear "skip"). A returning client's
+// details on file fill themselves in. Returns { name, phone, email, needs:[...] }.
+async function bookingIdentity(tenant, body){
+  let name = String(body.client_name || '').replace(/\s+/g, ' ').trim();
+  const phone = String(body.client_phone || body.from || '').trim();
+  let email = String(body.client_email || '').trim().toLowerCase();
+  if(tenant?.id && phone.replace(/\D/g, '').length >= 10){
+    try{
+      const known = await getClientByPhone(tenant.id, phone);
+      const knownName = [known?.first_name, known?.last_name].filter((x) => x && !/^client$/i.test(String(x))).join(' ').trim();
+      if(knownName.split(' ').length >= 2 && name.split(' ').length < 2) name = knownName;
+      if(!email && known?.email) email = String(known.email).toLowerCase();
+    }catch(_){}
+  }
+  const needs = [];
+  if(name.split(' ').filter(Boolean).length < 2) needs.push('first and last name');
+  if(phone.replace(/\D/g, '').length < 10 && !/^(instagram|messenger)$/i.test(String(body.channel || ''))) needs.push('mobile number');
+  const skipEmail = body.no_email === true || String(body.no_email || '').toLowerCase() === 'true';
+  const { EMAIL_RE } = await import('./lib/booking-email.js');
+  if(!EMAIL_RE.test(email) && !skipEmail) needs.push('email');
+  return { name, phone, email: EMAIL_RE.test(email) ? email : '', needs };
+}
+const sayNeeds = (needs) => needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
+
 async function book_appointment(tenant, body){
-  const { service, date, time, client_name, client_phone, stylist } = body;
+  const { service, date, time, stylist } = body;
+  // Conversations with clients (a phone call, the website) collect the full details first; bookings the
+  // salon makes itself (dashboard, Zapier, owner commands) don't need them.
+  const collect = body.collect_details === true;
+  const who = await bookingIdentity(tenant, body);
+  if(!collect){ who.needs = []; who.name = who.name || String(body.client_name || ''); }
+  if(who.needs.length){
+    // Nothing is booked until we know who it's for — and Lola must say so, never pretend.
+    const emailOnly = who.needs.length === 1 && who.needs[0] === 'email';
+    return {
+      booked: false, needs: who.needs,
+      speak: emailOnly
+        ? `Almost done — what's the best email for your confirmation? If you'd rather not, just say skip.`
+        : `Before I lock it in, I just need your ${sayNeeds(who.needs)}${who.needs.includes('email') ? ' (for the confirmation — you can skip the email)' : ''}.`,
+      instruction: 'NOT BOOKED YET. Ask for exactly these, read them back, then call book_appointment again with client_name (first and last), client_phone, and client_email — or no_email: true if they skip the email.'
+    };
+  }
+  const client_name = who.name, client_phone = who.phone, client_email = who.email;
   const s = findService(tenant, service);
   try{
     // upsert the client
     let client = null;
     if(tenant.id && client_phone){
-      client = await upsertClient(tenant.id, { phone: client_phone, name: client_name });
+      client = await upsertClient(tenant.id, { phone: client_phone, name: client_name, email: client_email || undefined });
     }
     const startsAt = await salonInstant(tenant, date, time);
     const durationMin = parseDurationMin(s?.durationMin ?? s?.duration, 60);
@@ -362,7 +404,7 @@ async function book_appointment(tenant, body){
     if(bk?.id){ try{ const { depositPlan } = await import('./lib/deposits.js'); plan = await depositPlan({ tenantId: tenant.id, booking: bk, clientId: client?.id }); }catch(_){} }
     else if(tenant.knowledge?.require_deposit) plan = { required: true, amount_cents: Math.round(Number(tenant.knowledge.deposit_amount || 50) * 100) };
     if(plan.required) speakStr += `I'm texting you a secure link for the $${(plan.amount_cents / 100).toFixed(plan.amount_cents % 100 ? 2 : 0)} deposit${plan.hold_minutes ? ` — the spot is held for ${plan.hold_minutes} minutes` : ''}. `;
-    else speakStr += `I'll text you a confirmation. `;
+    else speakStr += client_email ? `I'll text and email you a confirmation. ` : `I'll text you a confirmation. `;
     // A real add-on from the menu that fits right after, with the same stylist — offered once.
     let upsell = null;
     if(bk?.id && body.channel !== 'no_upsell'){
@@ -375,15 +417,23 @@ async function book_appointment(tenant, body){
     if(upsell) speakStr += `${staffName || 'Your stylist'} has time right after — want me to add a ${upsell.name} for $${upsell.price}? It's ${upsell.duration_minutes} minutes.`;
     else speakStr += `Anything else?`;
     if(upsell){ try{ await logUsage(tenant.id, 'upsell_offered', 1, { service: upsell.name, price: upsell.price }); }catch(_){} }
+    // The confirmation email (the text goes out with the booking itself).
+    let emailed = { sent: false, reason: 'no_email' };
+    if(bk?.id && client_email){
+      try{ const { sendBookingEmail } = await import('./lib/booking-email.js'); emailed = await sendBookingEmail({ tenant, to: client_email, name: client_name, service: s?.name || service, when: whenStr }); }catch(_){}
+    }
 
     return {
       speak: speakStr,
+      confirmation: { text_to: client_phone || null, email_to: emailed.sent ? client_email : null, email_error: emailed.sent ? null : (client_email ? emailed.reason : null) },
       booked: true, external: upstream?.ok ? 'queued' : false, deposit_required: !!plan.required,
       ...(upsell ? { upsell: { service: upsell.name, price: upsell.price, starts_at: upsell.starts_at, stylist: upsell.staff_name, how: `If they say yes, call book_appointment with service "${upsell.name}", the same client name and phone, stylist "${upsell.staff_name}", date ${new Date(upsell.starts_at).toLocaleDateString('en-CA', { timeZone: tzS })} and time ${fmtSalon(upsell.starts_at, tzS, 'time')}.` } } : {})
     };
   }catch(e){
+    console.error('[lola-tools] book_appointment failed:', String(e?.message || e).slice(0, 200));
+    try{ await capture_lead(tenant, { client_name, client_phone, service_requested: `${service || 'appointment'} ${date || ''} ${time || ''}`.trim() }); }catch(_){}
     return {
-      speak: `I've got your request for ${service||'that'}. Let me confirm it and text you right back — what's the best number?`,
+      speak: `I couldn't lock that in just now — it is NOT booked yet. I've passed your request to the salon and they'll text you to confirm.`,
       booked: false, needs_callback: true
     };
   }
@@ -641,9 +691,17 @@ export default async function handler(req, res){
       return res.status(200).json({ speak: "I can help with booking, pricing, or recommendations — what would you like?", available_tools: Object.keys(SKILLS) });
     }
     
+    if(tool === 'book_appointment'){ body.collect_details = true; body.channel = body.channel || (web ? 'web' : 'voice'); }
     const t0 = Date.now();
     const tenant = await resolveTenant(body);
     const tTenant = Date.now();
+    if(!tenant){
+      // No salon on this call (a website widget pasted without LolaDesk's salon line header, or an
+      // unrouted number): say so plainly — never let her pretend she booked anything.
+      console.warn('[lola-tools] no salon for', tool, web ? '(website call: the widget code is missing X-LolaDesk-Salon — copy it from Settings → Lola on your website)' : '(unrouted number)');
+      return res.status(200).json({ booked: false, ok: false, error: 'salon_unknown',
+        speak: "I can't reach the salon's calendar from here right now, so nothing is booked yet. Leave me your name and mobile and the salon will text you to confirm — or call us and I'll book you on the phone." });
+    }
     const clientPhone = body.client_phone || body.from;
     // Link this conversation to its salon (website calls have no dialed number): the
     // post-call insights webhook then lands the summary + transcript on that salon's Calls page.

@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-full';
+export const RELEASE = 'lola-real-booking';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -165,7 +165,13 @@ export async function buildStatus() {
       live.phone_tools_ok = unsignedTools === 0;
       live.salon_details_ok = varsSigned;
       live.website_calls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
-      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls;
+      // Booking honesty: she collects first + last name, mobile and email, and never says "booked" unless it is.
+      const { BOOKING_MARK } = await import('./lib/assistant-wiring.js');
+      const bookTool = (Array.isArray(a.tools) ? a.tools : []).find((t) => /^book_appointment$/i.test(String(t?.webhook?.name || '')));
+      const bookProps = bookTool?.webhook?.body_parameters?.properties || {};
+      live.booking_rules = String(a.instructions || '').includes(BOOKING_MARK) || !a.instructions;
+      live.booking_asks_details = !bookTool || !!(bookProps.client_email && bookProps.client_phone && bookProps.client_name);
+      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls || !live.booking_rules || !live.booking_asks_details;
       const rewire = found.source !== 'env' || wiringOff;   // a different assistant than Vercel's id, or wiring that drifted: re-wire
       // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
       const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
@@ -188,8 +194,10 @@ export async function buildStatus() {
             const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true });
             if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
             if (w.healed && !w.error && dups.length) { healed.push(`Removed ${dups.length} duplicate tool${dups.length > 1 ? 's' : ''} from Lola’s Telnyx assistant (${dups.slice(0, 4).join(', ')}) — Telnyx accepts changes to her again.`); delete live.duplicate_tools; }
+            if (w.healed && !w.error && (!live.booking_rules || !live.booking_asks_details)) { healed.push('Lola now asks every client for first and last name, mobile and email before booking — and only says “booked” when it really is.'); live.booking_rules = true; live.booking_asks_details = true; }
             if (w.healed && !w.error && wiringOff) {
-              healed.push(`Lola’s phone wiring secured: ${[unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean).join(', ')}.`);
+              const secured = [unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean);
+              if (secured.length) healed.push(`Lola’s phone wiring secured: ${secured.join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
@@ -280,6 +288,7 @@ export async function buildStatus() {
       live.signup = !!(r && r.ok);
     } else live.signup = false;
   } catch (_) { live.signup = false; }
+  if (!has('SENDGRID_API_KEY') && !(has('AWS_SES_REGION') && has('AWS_ACCESS_KEY_ID')) && !(has('MAILGUN_API_KEY') && has('MAILGUN_DOMAIN'))) fixes.push('Booking confirmation emails can’t go out yet (texts do) — add SENDGRID_API_KEY in Vercel (SendGrid → Settings → API Keys; verify the sender lola@loladesk.com, or set EMAIL_FROM to your verified address), then Redeploy.');
   if (live.signup === false) fixes.push('New salons can’t sign up: Supabase refuses the service key for accounts — Vercel: check SUPABASE_URL and SUPABASE_SERVICE_KEY (Supabase → Project Settings → API → service_role), then Redeploy.');
   if (!live.database) fixes.push('LolaDesk can’t reach its database — Vercel → Settings → Environment Variables: check SUPABASE_URL and SUPABASE_SERVICE_KEY, then Redeploy.');
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');

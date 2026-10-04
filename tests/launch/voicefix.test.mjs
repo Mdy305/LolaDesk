@@ -1,5 +1,6 @@
 // ONE voice, everywhere: the valet-girl Lola from ElevenLabs. Every phone assistant is switched to it
 process.env.LOLA_PHONE_MODE = 'assistant'; // these checks cover the Telnyx-assistant line (LolaDesk’s own line: phoneline.test)
+process.env.SENDGRID_API_KEY = 'sg-test'; // confirmation emails configured
 // (the ElevenLabs key linked in Telnyx automatically), the app never substitutes another voice,
 // and /api/status says exactly why she's quiet when she is.
 process.env.TELNYX_PUBLIC_KEY = 'pk-test'; process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';

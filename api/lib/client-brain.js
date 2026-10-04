@@ -92,7 +92,7 @@ export function welcomeBack(story, { salon = '', voice = false } = {}) {
 export const CLIENT_TOOLS = [
   { name: 'list_services', description: 'The salon menu with prices.', parameters: { type: 'object', properties: {} } },
   { name: 'check_availability', description: 'Open times for a service on a date (YYYY-MM-DD).', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string' } }, required: ['date'] } },
-  { name: 'book_appointment', description: 'Book the client. Only after they chose a service, date and time.', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, client_name: { type: 'string' }, stylist: { type: 'string' }, client_phone: { type: 'string', description: 'Only if the client gave a mobile number in this chat' } }, required: ['service', 'date', 'time'] } },
+  { name: 'book_appointment', description: 'Book the client. Only after they chose a service, date and time.', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, client_name: { type: 'string', description: 'First AND last name' }, stylist: { type: 'string' }, client_phone: { type: 'string', description: 'Only if the client gave a mobile number in this chat' }, client_email: { type: 'string', description: 'For the confirmation email' }, no_email: { type: 'boolean', description: 'true only if they chose not to give an email' } }, required: ['service', 'date', 'time', 'client_name'] } },
   { name: 'confirm_booking', description: 'Look up the client’s next appointment.', parameters: { type: 'object', properties: {} } },
   { name: 'reschedule_appointment', description: 'Move the client’s next appointment.', parameters: { type: 'object', properties: { new_date: { type: 'string', description: 'YYYY-MM-DD' }, new_time: { type: 'string' } }, required: ['new_date', 'new_time'] } },
   { name: 'cancel_appointment', description: 'Cancel the client’s next appointment, only after they clearly confirm.', parameters: { type: 'object', properties: {} } },
@@ -128,7 +128,8 @@ ${greet ? `OPEN WITH THIS WELCOME (in your own words, then answer what they aske
 YOU CAN REALLY DO THINGS — use the tools, never pretend:
 - To book: find the service, check_availability for the day, offer 2–3 real times, then book_appointment once they pick.
 - To move or cancel: reschedule_appointment / cancel_appointment (cancel only after they clearly confirm).
-- Never say a time is open or that something is booked/moved/cancelled unless a tool just told you so.
+- Before booking: their FIRST AND LAST name${phone ? '' : ', their mobile number'} and their email for the confirmation (they may skip it — then pass no_email: true). Read the details back and get a yes.
+- Never say a time is open or that something is booked/moved/cancelled unless a tool just told you so (book_appointment answers booked: true). If it answers booked: false, do what it says.
 ${phone ? '' : '- Before booking, ask for their mobile number so the salon can text the confirmation; pass it as client_phone.'}
 ${extra}`.trim();
 
@@ -154,7 +155,7 @@ ${extra}`.trim();
       if (!S[skill]) result = { speak: 'That tool isn’t available.' };
       else {
         const clientPhone = phone || args.client_phone || null;
-        const body = { ...args, client_phone: clientPhone, from: clientPhone, client_name: args.client_name || (story.first ? story.name : undefined), channel };
+        const body = { ...args, client_phone: clientPhone, from: clientPhone, client_name: args.client_name || (story.first ? story.name : undefined), channel, collect_details: channel === 'voice' || channel === 'web' };
         // Same gate as the phone (an expired trial can't take new bookings; cancels always work).
         try { const { executeSkill } = await import('./orchestrator.js'); result = await executeSkill(tenant, clientPhone, skill, body, S); }
         catch (e) { result = { speak: 'That didn’t go through — offer to have the salon follow up.', error: String(e?.message || e) }; }
