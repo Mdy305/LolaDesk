@@ -1,0 +1,11 @@
+{
+  "name": "loladesk-voice-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LolaDesk live voice relay: browser ⇄ Telnyx AI Assistant (runs on Railway)",
+  "main": "server.mjs",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": { "ws": "^8.21.0" }
+}

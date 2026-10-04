@@ -166,8 +166,67 @@ export function getLolaBrainConnectionIdSync(){
   return _brainAppId || LOLA_BRAIN_TEXML_APP_ID;
 }
 
+// ── Which line answers the salon's calls ─────────────────────────
+// 'loladesk' (default): LolaDesk's own call line — Telnyx sends each turn of the call to
+//   /api/telnyx-voice, where Lola thinks (Telnyx AI), books with her real tools and speaks in
+//   her ElevenLabs voice. This is the path that answered every call before the assistant move.
+// 'assistant': the Telnyx AI assistant (LolaBrain) answers on its own TeXML app.
+// LOLA_PHONE_MODE in Vercel wins; otherwise platform_settings.lola_phone_mode (admin switch).
+const MODES = new Set(['loladesk', 'assistant']);
+let _mode = null, _modeAt = 0;
+export async function phoneMode(){
+  const env = String(process.env.LOLA_PHONE_MODE || '').trim().toLowerCase();
+  if(MODES.has(env)) return env;
+  if(_mode && Date.now() - _modeAt < 60_000) return _mode;
+  let m = 'loladesk';
+  try{
+    const c = db();
+    if(c){
+      const { data } = await c.from('platform_settings').select('value').eq('key', 'lola_phone_mode').maybeSingle();
+      const v = String((data?.value && typeof data.value === 'object' ? data.value.mode : data?.value) || '').trim().toLowerCase();
+      if(MODES.has(v)) m = v;
+    }
+  }catch(_){}
+  _mode = m; _modeAt = Date.now();
+  return m;
+}
+export function _resetPhoneLineCache(){ _mode = null; _modeAt = 0; _ldApp = null; _ldAt = 0; }
+
+// LolaDesk's own call line: a TeXML app whose voice URL is this deployment's /api/telnyx-voice.
+// Found (the Vercel voice app when it is that line, else the app named LolaDesk), repaired when its
+// URL drifted to an old domain, or created — so nobody copies ids by hand.
+let _ldApp = null, _ldAt = 0;
+const voiceLineUrl = () => appUrl().replace(/\/+$/, '') + '/api/telnyx-voice';
+const isVoiceLine = (a) => /\/api\/telnyx-voice\/?(\?.*)?$/.test(String(a?.voice_url || a?.webhook_url || ''));
+async function pointAt(app){
+  const want = voiceLineUrl();
+  if(String(app.voice_url || app.webhook_url || '').replace(/\/+$/, '') === want) return app;
+  try{ await tFetch('/texml_applications/' + app.id, { method: 'PATCH', body: JSON.stringify({ friendly_name: app.friendly_name || 'LolaDesk', voice_url: want, voice_method: 'post' }) }); }
+  catch(e){ console.warn('[PROVISION] voice line URL:', e.message); }
+  return app;
+}
+export async function getLolaDeskVoiceAppId(){
+  if(_ldApp && Date.now() - _ldAt < 5 * 60_000) return _ldApp;
+  let app = null;
+  const envId = String(process.env.TELNYX_VOICE_APP_ID || '').trim();
+  if(envId){
+    const j = await tFetch('/texml_applications/' + encodeURIComponent(envId)).catch(() => null);
+    if(j?.data?.id && isVoiceLine(j.data)) app = await pointAt(j.data);
+  }
+  if(!app){
+    const a = await getOrCreateTexmlApp().catch((e) => { console.warn('[PROVISION] voice line:', e.message); return null; });
+    const got = a?.id ? a : a?.data;
+    if(got?.id) app = await pointAt(got);
+  }
+  if(!app?.id) return null;
+  _ldApp = app.id; _ldAt = Date.now();
+  return _ldApp;
+}
+export function getLolaDeskVoiceAppIdSync(){ return _ldApp; }
+
 export async function getCanonicalVoiceConnectionId(){
-  return (await getLolaBrainConnectionId()) || process.env.TELNYX_VOICE_APP_ID || null;
+  if((await phoneMode()) === 'assistant') return (await getLolaBrainConnectionId()) || process.env.TELNYX_VOICE_APP_ID || null;
+  return (await getLolaDeskVoiceAppId().catch(() => null)) || (await getLolaBrainConnectionId()) || process.env.TELNYX_VOICE_APP_ID || null;
 }
 
 /**
@@ -346,7 +405,8 @@ export async function linkLolaBrain(phoneNumberId){
   // assistant. (The old POST /ai/assistants/{id}/phone_numbers endpoint 404s
   // — it silently failed, leaving numbers off the assistant while the
   // connection looked healthy.)
-  const appId = await getLolaBrainConnectionId();
+  // On LolaDesk's own line (the default) the number points there instead — one place decides.
+  const appId = (await phoneMode()) === 'assistant' ? await getLolaBrainConnectionId() : await getCanonicalVoiceConnectionId();
   if(!appId) return false;
   // connection_id is a field of the number (PATCH /phone_numbers/{id}); /voice has no connection_id.
   try { await tFetch('/phone_numbers/' + phoneNumberId, { method: 'PATCH', body: JSON.stringify({ connection_id: appId }) }); return true; }
@@ -406,6 +466,7 @@ export default {
   tFetch, getAccountBalance, searchNumbers, getOrCreateTexmlApp, purchaseNumber,
   linkMessagingProfile, linkVoiceConnection, linkLolaBrain, setDynamicVariablesWebhook,
   getLolaBrainConnectionId, getLolaBrainConnectionIdSync, getCanonicalVoiceConnectionId,
+  phoneMode, getLolaDeskVoiceAppId, getLolaDeskVoiceAppIdSync,
   LOLA_BRAIN_TEXML_APP_ID,
   listOwnedNumbers, freePlatformNumbers, attachOwnedNumberForTenant, autoAssignOwnedNumber, provisionNumberForTenant, persistProvisioning
 };

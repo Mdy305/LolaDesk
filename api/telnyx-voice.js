@@ -20,7 +20,7 @@ import { missedCallTextbackText, smsGreeting } from './lib/lola-persona.js';
 import crypto from 'crypto';
 import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
-import { buildMCPToolsPrompt, executeMCPTool } from './lib/telnyx-mcp-integration.js';
+import { answerClient } from './lib/client-brain.js';
 import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
 
 function escapeXml(value=''){
@@ -111,7 +111,10 @@ function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter 
   // ONE LOLA, ONE VOICE — never a substitute. If Lola's canonical voice
   // can't be produced, fail loudly instead of speaking in a Polly voice.
   if(!playUrl){
-    throw new Error('[VOICE] Lola\'s canonical voice unavailable (ELEVENLABS_VOICE_ID missing or synthesis failed) — refusing a non-Lola fallback voice.');
+    // ONE voice: if hers can't be produced right now, never a robot voice — end the call cleanly
+    // (the caller gets a text from Lola instead; see voiceDown below).
+    console.error('[VOICE] Lola\'s voice unavailable (ElevenLabs or the voice-audio bucket) — ending the call cleanly.');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Hangup/>\n</Response>`;
   }
   const speakBlock = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangupAfter){
@@ -149,10 +152,59 @@ export default async function handler(req, res){
     }
   }
   const parsed = incoming.parsed;
+  // The call line's status callback lands here too: a finished call is not a new caller.
+  const callStatus = String(parsed?.CallStatus || parsed?.call_status || '').toLowerCase();
+  if(/^(completed|busy|failed|no-answer|canceled)$/.test(callStatus)){
+    res.setHeader('Content-Type', 'application/xml');
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?>\n<Response/>');
+  }
 
   const payload = extractVoicePayload(parsed);
   const toN = e164(payload.to);
   const fromN = e164(payload.from);
+
+  // ── Lola's voice on the phone: ElevenLabs, cached in Supabase Storage ──
+  // Synthesized once per line of text, uploaded to the public 'voice-audio' bucket and played by
+  // Telnyx from its CDN URL (works across every Vercel instance). The bucket is created if missing.
+  const VOICE_BUCKET = 'voice-audio';
+  const supabase = db();
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
+  let tenantForUsage = null;
+  async function upload(path, audio){
+    let { error } = await supabase.storage.from(VOICE_BUCKET).upload(path, audio, { contentType: 'audio/mpeg', upsert: true });
+    if(error && /not.?found|does not exist|bucket/i.test(String(error.message || error))){
+      await supabase.storage.createBucket(VOICE_BUCKET, { public: true }).catch(() => null);
+      ({ error } = await supabase.storage.from(VOICE_BUCKET).upload(path, audio, { contentType: 'audio/mpeg', upsert: true }));
+    }
+    return error;
+  }
+  async function speakCached(text){
+    if(!elevenLabsConfigured() || !supabase || !text) return '';
+    const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
+    const storagePath = `cached/${key}.mp3`;
+    try{
+      const { data: pubData } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+      if(pubData?.publicUrl){
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
+        try{
+          const r = await fetch(pubData.publicUrl, { method: 'HEAD', signal: controller.signal });
+          if(r.ok) return pubData.publicUrl;
+        }catch{}finally{ clearTimeout(timer); }
+      }
+    }catch{}
+    for(let attempt = 0; attempt < 2; attempt++){
+      try{
+        const audio = await synthesize(text);
+        const upErr = await upload(storagePath, audio);
+        if(upErr){ console.error('[VOICE] Supabase upload error:', upErr?.message || upErr); return ''; }
+        const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
+        if(tenantForUsage) await logUsage(tenantForUsage.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
+        return pubData2?.publicUrl || '';
+      }catch(e){ console.error('[VOICE] synth failed:', String(e.message||e).slice(0,120)); }
+    }
+    return '';
+  }
 
   // ── MULTI-TENANT ROUTING (before Lola's first syllable) ──
   // Strictly resolve the DIALED number to one tenant. Any miss, disabled
@@ -164,11 +216,12 @@ export default async function handler(req, res){
     const say = routing.status === 'disabled'
       ? 'This number is not active yet. Please try again later.'
       : 'Sorry, we cannot route this call yet. Please try again shortly.';
-    const xml = texmlSayAndGather({ say, hangupAfter: true });
+    const xml = texmlSayAndGather({ say, playUrl: await speakCached(say), hangupAfter: true });
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
   }
   const tenant = routing.tenant;
+  tenantForUsage = tenant;
 
   // ── OWNER VOICE COMMAND ("Jarvis, but better") ────────────────
   // If the CALLER is this salon's registered owner (tenants.operator_phone,
@@ -182,60 +235,6 @@ export default async function handler(req, res){
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Redirect method="POST">/api/operator-voice</Redirect>\n</Response>`;
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send(xml);
-  }
-
-  // Cached synthesis for repeated lines — greeting, re-prompt, goodbye,
-  // deterministic replies. First caller of the window pays ElevenLabs;
-  // everyone after gets instant answer at zero tts_chars cost.
-  // ── Supabase Storage-backed ElevenLabs TTS cache ──
-  // Audio is uploaded to the 'voice-audio' Supabase bucket and served
-  // via its public CDN URL. This works across all Vercel instances —
-  // no in-memory state, no cross-instance 404s.
-  const VOICE_BUCKET = 'voice-audio';
-  const supabase = db(); // reuse the shared Supabase client
-
-  // Lola's one canonical voice — same for every salon, every call (like
-  // Siri on Apple). Included in the cache key so the audio cache stays
-  // consistent across the platform.
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
-
-  async function speakCached(text){
-    if(!elevenLabsConfigured() || !supabase) return '';
-    // Cache key is the canonical voice + text only — no register, no
-    // settings, because Lola's voice is never modified per message.
-    const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
-    const storagePath = `cached/${key}.mp3`;
-
-    // Check if already cached in Supabase Storage (HEAD request)
-    try{
-      const { data: pubData } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
-      if(pubData?.publicUrl){
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3000);
-        try{
-          const r = await fetch(pubData.publicUrl, { method: 'HEAD', signal: controller.signal });
-          clearTimeout(timer);
-          if(r.ok) return pubData.publicUrl; // cache hit!
-        }catch{ clearTimeout(timer); }
-      }
-    }catch{}
-
-    // Cache miss — synthesize via ElevenLabs and upload to Supabase
-    try{
-      const audio = await synthesize(text);
-      const { error: upErr } = await supabase.storage.from(VOICE_BUCKET)
-        .upload(storagePath, audio, { contentType: 'audio/mpeg', upsert: true });
-      if(upErr){
-        console.error('[VOICE] Supabase upload error:', upErr?.message || upErr);
-        return '';
-      }
-      const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
-      await logUsage(tenant.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
-      return pubData2?.publicUrl || '';
-    }catch(e){
-      console.error('[VOICE] cached synth failed:', String(e.message||e).slice(0,100));
-      return '';
-    }
   }
 
   // ── Silence path: Gather timed out and <Redirect> brought us back ──
@@ -291,12 +290,17 @@ export default async function handler(req, res){
 
   let speech = String(payload.speechResult || '').trim();
   let reply = '';
+  let actions = [];
 
   const telnyxCallId = payload.callSid || payload.callControlId || '';
   if(continueText && !speech) speech = continueText; // second leg of the instant-ack flow
+  const firstName = client?.name && !/^client$/i.test(String(client.name)) ? String(client.name).split(' ')[0] : '';
   if(!speech){
-    const firstName = client?.name ? String(client.name).split(' ')[0] : '';
-    reply = smsGreeting(firstName, tenant.name) + ' How can I help you today?';
+    // Hello — with the disclosure every caller is owed (AI assistant, call may be recorded).
+    const salon = tenant.name || 'the salon';
+    reply = firstName
+      ? `Hi ${firstName}, welcome back to ${salon}! It's Lola, the salon's AI assistant — this call may be recorded. What can I do for you today?`
+      : `Thanks for calling ${salon}! This is Lola, the salon's AI assistant — this call may be recorded. How can I help you today?`;
     // The Calls page is where owners SEE Lola earning her keep — a call
     // row per answered call, filled in turn by turn below.
     try{
@@ -322,25 +326,12 @@ export default async function handler(req, res){
         }
       }catch{}
     }
-    reply = deterministicSkillReply({
-      tenant,
-      intent,
-      channel: 'voice',
-      clientName: client?.name ? String(client.name).split(' ')[0] : ''
-    });
 
     /* ── NO DEAD AIR, EVER ─────────────────────────────────────────
-       The single biggest machine "tell" is the 2–4s of silence while
-       the LLM thinks and the voice renders. Humans never go silent —
-       they say "mm, let me check…" within a heartbeat. So: if the
-       answer needs the LLM (no deterministic reply), we respond to
-       Telnyx IMMEDIATELY with a short cached acknowledgment and a
-       <Redirect> that carries the caller's words back to us; the
-       second leg does the real thinking WHILE the ack is playing.
-       Perceived response time: under half a second, every turn.
-       (Deterministic answers skip this — they're already instant.) */
-    const isContinuation = !!continueText;
-    if(!reply && !isContinuation){
+       Lola thinks (and books) while a short acknowledgment plays: Telnyx gets an instant
+       "one sec…" plus a <Redirect> carrying the caller's words; the second leg does the real
+       work with her tools. Perceived response time: under half a second, every turn. */
+    if(!continueText){
       const ACKS = [
         `Mm-hm, one sec…`,
         `Sure — let me check that for you…`,
@@ -348,98 +339,47 @@ export default async function handler(req, res){
         `Got it — one moment…`
       ];
       const ack = ACKS[(String(payload.callSid||fromN).split('').reduce((a,c)=>a+c.charCodeAt(0),0) + speech.length) % ACKS.length];
-      const state = Buffer.from(speech).toString('base64url');
       const ackUrl = await speakCached(ack);
-      // Lola only — if the ack can't be synthesized in her voice, fail loudly.
-      if(!ackUrl) throw new Error('[VOICE] Ack synthesis failed — refusing a non-Lola fallback voice.');
-      const ackBlock = `<Play>${escapeXml(ackUrl)}</Play>`;
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${ackBlock}\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
-      res.setHeader('Content-Type', 'application/xml');
-      return res.status(200).send(xml);
+      if(ackUrl){
+        const state = Buffer.from(speech).toString('base64url');
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  <Play>${escapeXml(ackUrl)}</Play>\n  <Redirect method="POST">/api/telnyx-voice?continue=${state}</Redirect>\n</Response>`;
+        res.setHeader('Content-Type', 'application/xml');
+        return res.status(200).send(xml);
+      }
+      // No ack audio: think right away instead.
     }
 
     let history = [];
     try{
       if(conversation?.id) history = await getConversationHistory(conversation.id, 10);
     }catch{}
-    if(!reply){
-      const messages = [...history, { role: 'user', content: speech }];
-      
-      // Build enhanced system prompt with advanced features
-      let systemPrompt = buildLolaSystemPrompt({
-        tenant,
-        channel: 'voice',
-        intent,
-        mood,
-        memoryBlock: buildClientMemoryBlock(clientProfile)
-      });
-      
-      // ── SPOKEN HUMANITY — how a person sounds, not a system ──
-      systemPrompt += `\nHOW YOU SPEAK (this is a live phone call):
-- Contractions always: "you're", "we've", "can't". One thought per sentence. Two sentences is usually perfect; three max.
-- Vary how you open — never start consecutive replies the same way. Tiny natural interjections ("Oh nice!", "Mm, good question") sparingly, only when they'd be genuine.
-- Use the caller's first name occasionally when you know it — once every few turns, never every turn.
-- Mirror their energy: excited caller gets lift, stressed caller gets calm and unhurried.
-- Refer back to what THEY said earlier in this call — it's what listening sounds like.
-- Say numbers like a person: "three ninety-five", "two thirty tomorrow afternoon".
-- Never sound like a list or a menu. If offering options, weave them into one flowing sentence.`;
 
-      // Add MCP tools availability to system prompt
-      systemPrompt += '\n' + buildMCPToolsPrompt();
-      
-      // Add MMS vision results if available
+    // ── HER BRAIN, WITH HER HANDS ─────────────────────────────────
+    // The same brain as texts, WhatsApp, Instagram and the website: Telnyx AI with Lola's real
+    // tools — check availability, book, confirm, reschedule, cancel, take a message — for THIS
+    // salon, for THIS caller (Telnyx's caller ID is the client's verified line).
+    let extra = `HOW YOU SPEAK (this is a live phone call):
+- Contractions always. One thought per sentence. Two sentences is usually perfect; three max.
+- Vary how you open; tiny natural interjections only when genuine. Use their first name now and then, never every turn.
+- Mirror their energy. Refer back to what they said earlier in this call.
+- Say numbers like a person: "three ninety-five", "two thirty tomorrow afternoon".
+- Never sound like a list or a menu: weave options into one flowing sentence.
+- When they ask for a person, take a message for the team (take_message) and say someone will call them back.
+- Caller's mood right now: ${mood || 'neutral'}; what they seem to want: ${intent || 'unclear'}.`;
+    try{
       const mmsResult = getInCallMmsResult(payload.callControlId);
-      if(mmsResult){
-        systemPrompt += '\n' + buildMmsVisionPromptBlock(mmsResult);
-      }
-      
-      try{
-        const ai = await chat({
-          system: systemPrompt,
-          messages,
-          maxTokens: 220,
-          temperature: 0.5,
-          source: 'voice'
-        });
-        
-       if(ai.ok && ai.text){
-         reply = ai.text.trim();
-          
-         // Check if LLM requested a tool invocation (MCP)
-         const toolMatch = reply.match(/\[TOOL:\s*(\w+)\s*\{([^}]*)\}\]/);
-         if(toolMatch){
-           const toolName = toolMatch[1];
-           try{
-             const params = JSON.parse('{' + toolMatch[2] + '}');
-             const toolResult = await executeMCPTool(toolName, params, tenant.id);
-              
-             // Refine reply with tool result
-             const refinedMessages = [
-               ...messages,
-               { role: 'assistant', content: reply },
-               { role: 'user', content: `Tool "${toolName}" returned: ${JSON.stringify(toolResult)}` }
-             ];
-              
-             const refined = await chat({
-               system: systemPrompt,
-               messages: refinedMessages,
-               maxTokens: 200,
-               temperature: 0.5,
-               source: 'voice'
-             });
-              
-             if(refined.ok && refined.text){
-               reply = refined.text.trim();
-             }
-           }catch(e){
-             console.error(`[MCP] Tool execution error: ${e.message}`);
-             // Fall back to original reply
-           }
-         }
-       }
-     }catch{}
-   }
-   if(!reply) reply = 'Got it. I can help with that. What day works best for you?';
+      if(mmsResult) extra += '\n' + buildMmsVisionPromptBlock(mmsResult);
+    }catch{}
+    try{
+      const out = await answerClient({
+        tenant, client, channel: 'voice', text: speech, history, phone: fromN || null,
+        memoryKey: fromN || null, tz: tenant.timezone || tenant.time_zone || 'America/New_York',
+        extra, budgetMs: 9000
+      });
+      reply = String(out?.reply || '').trim();
+      actions = out?.actions || [];
+    }catch(e){ console.error('[VOICE] brain:', String(e?.message || e).slice(0, 200)); }
+    if(!reply) reply = `Sorry, I didn't quite catch that — could you say it one more time?`;
 
     try{
       const quality = evaluateInteractionQuality({
@@ -459,48 +399,50 @@ export default async function handler(req, res){
     }catch{}
   }
 
+  // Bookkeeping runs while her voice renders (one round trip, not two).
+  const bookkeeping = (async () => {
   if(conversation?.id){
-    try{
-      if(speech){
-        await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: speech });
-      }
-      await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: reply });
-      await logUsage(tenant.id, 'voice_call', 1, { call_control_id: payload.callControlId || '', call_sid: payload.callSid || '' });
-      await logUsage(tenant.id, 'ai_token', 1, { source: 'voice' });
-      // keep the call record alive: rolling transcript + outcome upgrades
       try{
-        if(telnyxCallId && speech){
-          const call = await getCallByTelnyxId(tenant.id, telnyxCallId);
-          if(call){
-            const line = `Caller: ${speech}\nLola: ${reply}\n`;
-            // Canonical call contract: the rolling transcript rides in
-            // recording_url and the outcome in status (legacy transcript/
-            // outcome columns are generated aliases — never writable).
-            const base = String(call.recording_url || call.transcript || '');
-            const patch = { recording_url: base + line };
-            const booked = /\b(book(ed)?|confirmed|see you (on|at))\b/i.test(reply) && /\b(book|appointment|come in|schedule)\b/i.test(speech);
-            if(booked && call.status !== 'booked' && call.outcome !== 'booked') patch.status = 'booked';
-            await updateCallByTelnyxId(tenant.id, telnyxCallId, patch);
-          }
+        if(speech){
+          await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: speech });
         }
+        await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: reply });
+        await logUsage(tenant.id, 'voice_call', 1, { call_control_id: payload.callControlId || '', call_sid: payload.callSid || '' });
+        await logUsage(tenant.id, 'ai_token', 1, { source: 'voice' });
+        // keep the call record alive: rolling transcript + outcome upgrades
+        try{
+          if(telnyxCallId && speech){
+            const call = await getCallByTelnyxId(tenant.id, telnyxCallId);
+            if(call){
+              const line = `Caller: ${speech}\nLola: ${reply}\n`;
+              // Canonical call contract: the rolling transcript rides in
+              // recording_url and the outcome in status (legacy transcript/
+              // outcome columns are generated aliases — never writable).
+              const base = String(call.recording_url || call.transcript || '');
+              const patch = { recording_url: base + line };
+              const booked = actions.some((x) => x?.tool === 'book_appointment' && x?.result?.booked === true);
+              if(booked && call.status !== 'booked' && call.outcome !== 'booked') patch.status = 'booked';
+              await updateCallByTelnyxId(tenant.id, telnyxCallId, patch);
+            }
+          }
+        }catch{}
       }catch{}
-    }catch{}
-  }
+    }
+  })().catch(() => {});
 
-  // Synthesis via the keyed cache: the greeting, re-prompts, and
-  // deterministic skill replies repeat constantly across calls — they
-  // synthesize once per cache window and replay instantly (faster
-  // answer, zero repeated ElevenLabs spend). Unique LLM replies simply
-  // pass through the same path. No <Say> fallback — Lola's voice or nothing.
+  // clean for the mouth: no markdown, no newlines, spoken-length cap
+  reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
   if(!elevenLabsConfigured()){
     const missing = [];
     if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
     if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
     console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
   }
-  // clean for the mouth: no markdown, no newlines, spoken-length cap
-  reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
-  const playUrl = await speakCached(reply);
+  const [playUrl] = await Promise.all([speakCached(reply), bookkeeping]);
+  if(!playUrl && fromN){
+    // Her voice is down: the caller still gets Lola — by text, from the salon's own number.
+    try{ await sendSMS({ from: toN, to: fromN, text: `Hi, it's Lola at ${tenant.name || 'the salon'} — sorry, our line dropped. Text me here what you need and I'll take care of it right away.`, tenantId: tenant.id }); }catch(_){}
+  }
 
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });
   res.setHeader('Content-Type', 'application/xml');

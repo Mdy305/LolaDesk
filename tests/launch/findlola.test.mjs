@@ -1,4 +1,5 @@
 // "Telnyx can't find the assistant in TELNYX_LOLA_BRAIN_ID": LolaDesk finds Lola on the account itself,
+process.env.LOLA_PHONE_MODE = 'assistant'; // these checks cover the Telnyx-assistant line (LolaDesk’s own line: phoneline.test)
 // rewires her, points the salon numbers at her, answers every inbound call — and says what to set.
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';

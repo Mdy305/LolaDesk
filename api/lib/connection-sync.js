@@ -17,7 +17,7 @@
 
 import { listTenantNumberRoutes } from './db.js';
 import { telnyxData, telnyxRequest } from './telnyx-client.js';
-import { getLolaBrainConnectionIdSync } from './telnyx-provision.js';
+import { getLolaBrainConnectionIdSync, getLolaDeskVoiceAppIdSync } from './telnyx-provision.js';
 
 // Known-good connections: the working voice app + the LolaBrain assistant's
 // own TeXML app (the AI voice path every number now points at). Any
@@ -29,6 +29,8 @@ export function knownGoodConnectionIds() {
   if (process.env.TELNYX_VOICE_APP_ID) ids.add(process.env.TELNYX_VOICE_APP_ID);
   const brain = getLolaBrainConnectionIdSync();
   if (brain) ids.add(brain);
+  const line = getLolaDeskVoiceAppIdSync();   // LolaDesk's own call line (the default phone path)
+  if (line) ids.add(line);
   return ids;
 }
 

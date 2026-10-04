@@ -110,17 +110,19 @@ function todayIn(tz, now = Date.now()) {
  * One turn with a client. identity: { phone } for calls/texts, { key:'ig:<id>' } for Instagram, { key:'web:<id>' } for the site.
  * Returns { ok, reply, actions:[{tool, result}] }.
  */
-export async function answerClient({ tenant, client = null, channel = 'sms', text, history = [], phone = null, memoryKey = null, tz = 'America/New_York', extra = '', now = Date.now() }) {
+export async function answerClient({ tenant, client = null, channel = 'sms', text, history = [], phone = null, memoryKey = null, tz = 'America/New_York', extra = '', now = Date.now(), budgetMs = 0 }) {
+  const started = Date.now();
+  const left = () => (budgetMs ? budgetMs - (Date.now() - started) : 12000);
   const c = db();
   const story = await clientStory(c, tenant, client, { memoryKey, now });
   const fresh = !history.length;
   const d = todayIn(tz, now);
   const greet = fresh ? welcomeBack(story, { salon: tenant?.name }) : '';
-  const channelName = { sms: 'text message', whatsapp: 'WhatsApp', instagram: 'Instagram DM', messenger: 'Facebook Messenger', web: 'website chat' }[channel] || channel;
+  const channelName = { sms: 'text message', whatsapp: 'WhatsApp', instagram: 'Instagram DM', messenger: 'Facebook Messenger', web: 'website chat', voice: 'phone call' }[channel] || channel;
   const system = buildLolaSystemPrompt({ tenant, channel, memoryBlock: buildClientMemoryBlock(story.profile) }) + `
 
 TODAY: ${d ? `${d.weekday} ${d.year}-${d.month}-${d.day}` : new Date(now).toDateString()} (salon time zone ${tz}).
-YOU ARE ANSWERING BY ${channelName.toUpperCase()}: 1–3 short sentences, plain text, no lists, no markdown.
+YOU ARE ANSWERING BY ${channelName.toUpperCase()}: 1–3 short sentences, plain text, no lists, no markdown.${channel === 'voice' ? ' Your words are spoken aloud: no emojis, no links, say times and prices the way a person says them.' : ''}
 WHO THIS IS: ${story.brief || (phone ? 'A new client (texting from their phone).' : 'A new client — you don’t have their phone number yet.')}
 ${greet ? `OPEN WITH THIS WELCOME (in your own words, then answer what they asked): "${greet}"` : ''}
 YOU CAN REALLY DO THINGS — use the tools, never pretend:
@@ -134,7 +136,8 @@ ${extra}`.trim();
   const S = await skills();
   const actions = [];
   for (let round = 0; round < 4; round++) {
-    const r = await chat({ system, messages: msgs, tools: CLIENT_TOOLS, maxTokens: 300, temperature: 0.5, fast: true, deadlineMs: 12000 }).catch(() => null);
+    if (left() < 3000) break;   // a live call can't wait: answer with what the tools already said
+    const r = await chat({ system, messages: msgs, tools: CLIENT_TOOLS, maxTokens: 300, temperature: 0.5, fast: true, deadlineMs: Math.min(12000, left()) }).catch(() => null);
     if (!r || !r.ok) break;
     const calls = Array.isArray(r.tool_calls) ? r.tool_calls : [];
     if (!calls.length) {
