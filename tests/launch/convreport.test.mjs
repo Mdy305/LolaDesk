@@ -36,7 +36,8 @@ globalThis.fetch = async (url, init = {}) => {
 };
 const { T } = await import('./fake-supabase.mjs');
 const TID = '55555555-5555-4555-8555-555555555555';
-T.tenants = [{ id: TID, name: 'MMA Salon', slug: 'mma', owner_email: 'owner@mmasalon.com', phone_number: '+13055550100', knowledge: { transcript_email: 'desk@mmasalon.com' } }];
+T.tenants = [{ id: TID, name: 'MMA Salon', slug: 'mma', owner_email: 'owner@mmasalon.com', phone_number: '+13055550100', knowledge: 'Free-text notes about the salon.' }];
+T.booking_settings = [{ tenant_id: TID, metadata: { transcript_email: 'desk@mmasalon.com' } }];
 T.tenant_numbers = [{ tenant_id: TID, phone_number: '+13055550100', status: 'active' }];
 T.calls = []; T.call_sessions = []; T.clients = []; T.conversations = []; T.messages = []; T.usage_events = []; T.client_memories = []; T.client_memory = [];
 const P = new URL('../../api/', import.meta.url).href;
@@ -56,11 +57,11 @@ ok(!T.calls.some((x) => x.insight_id === 'conv:c-live') && !T.calls.some((x) => 
 r = await run();
 ok(r.saved === 0 && mails.length === 2 && T.calls.filter((x) => x.insight_id === 'conv:c-web').length === 1, 'run again → nothing twice (no duplicate row, no second email)');
 
-T.tenants[0].knowledge = { transcript_emails: false };
+T.booking_settings[0].metadata = { transcript_emails: false };
 convs[1].last_message_at = old;
 r = await run();
 ok(r.saved === 1 && mails.length === 2, 'emails switched off in Settings → still on the screen, no email');
-T.tenants[0].knowledge = {};
+T.booking_settings[0].metadata = {};
 
 // LolaDesk's own phone line: when the call ends, the same report.
 const voice = (await import(P + 'telnyx-voice.js')).default;

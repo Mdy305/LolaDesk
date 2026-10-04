@@ -90,8 +90,12 @@ export async function saveConversation(c, { tenantId, turns = [], summary = '', 
 }
 
 /** Where a salon's transcripts go: the owner's email, plus an optional extra address from Settings. */
-export function transcriptRecipients(tenant) {
-  const k = (tenant?.knowledge && typeof tenant.knowledge === 'object') ? tenant.knowledge : {};
+// Settings → Messaging stores these in booking_settings.metadata (transcript_emails, transcript_email).
+export async function transcriptPrefs(c, tenantId) {
+  try { const { data } = await c.from('booking_settings').select('metadata').eq('tenant_id', tenantId).maybeSingle(); const md = data?.metadata; return (md && typeof md === 'object') ? md : {}; } catch (_) { return {}; }
+}
+export function transcriptRecipients(tenant, prefs = {}) {
+  const k = { ...((tenant?.knowledge && typeof tenant.knowledge === 'object') ? tenant.knowledge : {}), ...(prefs || {}) };
   const list = [tenant?.owner_email, k.transcript_email, tenant?.email].map((x) => String(x || '').trim().toLowerCase()).filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(x));
   if (k.transcript_emails === false) return [];
   return [...new Set(list)].slice(0, 3);
@@ -113,8 +117,8 @@ ${summary ? `<p style="margin:0 0 16px;padding:12px 14px;background:#f5f5f2;bord
   return { subject, html, text };
 }
 
-export async function emailConversation(tenant, details, { timeoutMs = 6000 } = {}) {
-  const to = transcriptRecipients(tenant);
+export async function emailConversation(tenant, details, { timeoutMs = 6000, c = db() } = {}) {
+  const to = transcriptRecipients(tenant, c ? await transcriptPrefs(c, tenant.id) : {});
   if (!to.length) return { sent: 0, reason: 'no_recipient' };
   const { subject, html, text } = renderTranscriptEmail(tenant, details);
   const { SendEmail } = await import('./lola-integrations.js');
@@ -136,7 +140,7 @@ export async function reportConversation(c, tenant, details) {
   const saved = await saveConversation(c, { tenantId: tenant.id, ...details });
   if (saved.skipped || saved.error) return { ...saved, emailed: 0 };
   const who = details.who || (details.fromNumber && details.channel !== 'web' ? details.fromNumber : '');
-  const mail = await emailConversation(tenant, { ...details, who, callId: saved.callId });
+  const mail = await emailConversation(tenant, { ...details, who, callId: saved.callId }, { c });
   return { ...saved, emailed: mail.sent, email_reason: mail.reason };
 }
 

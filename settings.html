@@ -330,6 +330,22 @@
     <div class="toggle-row"><div><div class="tl">Cal.com (White-Label)</div><div class="ts">Booking mesh · Platform or API-key mode</div></div><button class="btn-g" id="c-cal_platform" onclick="requestCal()">Configure</button></div>
   </div>
 
+  <div class="card" id="blvdCard">
+    <h3>Boulevard — Lola books straight into it</h3>
+    <div class="desc">Lola checks your real Boulevard availability, books the appointment in Boulevard, and reads it back to verify before she tells the client it’s booked. It also appears in LolaDesk and on the client’s card.<br><br>
+      1 · <b>Business ID</b>: Boulevard → Settings → Calendar Integrations — it’s the long ID inside your private calendar link.<br>
+      2 · <b>API key</b>: create an app at <a href="https://developers.joinblvd.com" target="_blank" rel="noopener">developers.joinblvd.com</a>, then install it in Boulevard → Settings → Apps &amp; Integrations.<br>
+      Tip: if Boulevard requires a card to book online, Lola texts the client your booking link for that last step — turn the card requirement off in Boulevard for fully hands-free booking.</div>
+    <div id="blvdState" class="ts" style="margin:6px 0 10px"></div>
+    <div class="grid2">
+      <div class="fld"><label>Business ID</label><input id="blvdBiz" placeholder="312bf55a-b6c5-48f2-…" autocomplete="off"/></div>
+      <div class="fld"><label>API key</label><input id="blvdKey" type="password" placeholder="Your Boulevard app’s API key" autocomplete="off"/></div>
+    </div>
+    <div class="fld" id="blvdLocWrap" style="display:none"><label>Location</label><select id="blvdLoc" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)"></select></div>
+    <div class="btn-row"><button class="btn-p" id="blvdBtn" onclick="blvdConnect()">Connect Boulevard</button><button class="btn-g" id="blvdOff" style="display:none" onclick="blvdDisconnect()">Disconnect</button></div>
+    <div class="msg" id="blvdMsg"></div>
+  </div>
+
   <div class="card" id="icalCard">
     <h3>Any booking system — by calendar link</h3>
     <div class="desc">Keep the system you use. In Vagaro, Boulevard, Fresha, Mindbody, GlossGenius, Google or Apple, copy the private “subscribe” / iCal link (one for the salon, or one per stylist) and paste it here. Lola sees those appointments within minutes and never books over them.</div>
@@ -485,6 +501,32 @@ async function fbToggle(){
   }catch(e){ msg('fbMsg','Couldn’t reach LolaDesk. Try again.',false); }
   finally{ b.disabled=false; }
 }
+// Boulevard, live: Lola books + verifies in Boulevard
+async function blvdLoad(){
+  try{
+    const r=await fetch('/api/boulevard',{headers:H()}); const d=await r.json(); if(!d.ok) return;
+    const st=document.getElementById('blvdState'); if(!st) return;
+    st.innerHTML=d.connected?('✓ Connected'+(d.location?' — '+esc(d.location):'')+' · Business ID '+esc(d.business_id)):'Not connected yet.';
+    document.getElementById('blvdOff').style.display=d.connected?'':'none';
+    document.getElementById('blvdBtn').textContent=d.connected?'Update connection':'Connect Boulevard';
+  }catch(e){}
+}
+async function blvdConnect(){
+  const business_id=document.getElementById('blvdBiz').value.trim(), api_key=document.getElementById('blvdKey').value.trim();
+  const locSel=document.getElementById('blvdLoc'), location_id=(document.getElementById('blvdLocWrap').style.display!=='none'&&locSel.value)?locSel.value:undefined;
+  const b=document.getElementById('blvdBtn'); b.disabled=true; const t=b.textContent; b.textContent='Checking with Boulevard…';
+  try{
+    const r=await fetch('/api/boulevard',{method:'POST',headers:H(),body:JSON.stringify({business_id,api_key,location_id})}); const d=await r.json();
+    if(!d.ok){ msg('blvdMsg',d.error||'Boulevard didn’t accept that.',false); return; }
+    if(d.choose){ locSel.innerHTML=d.choose.map(l=>'<option value="'+esc(l.id)+'">'+esc(l.name+(l.city?' — '+l.city:''))+'</option>').join(''); document.getElementById('blvdLocWrap').style.display=''; msg('blvdMsg','Pick the location Lola books for, then press Connect again.',true); return; }
+    document.getElementById('blvdKey').value=''; document.getElementById('blvdLocWrap').style.display='none'; msg('blvdMsg',d.say,true); blvdLoad();
+  }catch(e){ msg('blvdMsg','Couldn’t reach LolaDesk. Try again.',false); }
+  finally{ b.disabled=false; b.textContent=t; }
+}
+async function blvdDisconnect(){
+  if(!confirm('Disconnect Boulevard? Lola will book in LolaDesk’s calendar instead.')) return;
+  try{ const r=await fetch('/api/boulevard',{method:'DELETE',headers:H()}); const d=await r.json(); msg('blvdMsg',d.say||'Disconnected.',true); blvdLoad(); }catch(e){}
+}
 // Any booking system by its calendar link (read-only busy time)
 async function icalLoad(){
   try{
@@ -560,7 +602,7 @@ async function load(){
     renderLolaWidget(d.lola_agent_id);
     igLoad();
     fbLoad();
-    icalLoad();
+    icalLoad(); blvdLoad();
     zapLoad();
     bookingModeLoad();
 
@@ -608,6 +650,7 @@ async function load(){
     setSw('swStaffChoice',s.allow_staff_choice!==false);
     setSw('swReqPhone',s.require_phone!==false);
     setSw('swConfirm',s.confirmation_sms!==false);
+    { const md=(s.metadata&&typeof s.metadata==='object')?s.metadata:{}; setSw('swTranscripts',md.transcript_emails!==false); const te=document.getElementById('sTranscriptEmail'); if(te) te.value=md.transcript_email||''; }
     setSw('swRemind',s.reminder_sms!==false);
     setSw('swRadar',s.radar_sms!==false);
     const dep=(s.metadata&&s.metadata.deposits)||null;
@@ -626,7 +669,7 @@ async function load(){
   // real per-salon state from the tenants row.
   setSw('swMissed',TENANT.missed_call_textback!==false);
   setSw('swReview',TENANT.review_requests!==false);
-  { const k=(TENANT.knowledge&&typeof TENANT.knowledge==='object')?TENANT.knowledge:{}; setSw('swTranscripts',k.transcript_emails!==false); const te=document.getElementById('sTranscriptEmail'); if(te) te.value=k.transcript_email||''; }
+
   setSw('swAutopilot',TENANT.autopilot_enabled!==false);
   try{
     if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);
@@ -806,17 +849,15 @@ async function saveVoice(){
 async function saveMessaging(){
   msg('msgMsg','Saving...',true);
   try{
-    const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
-      confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind'),radar_sms:on('swRadar')})});
-    const s=await r.json();
-    const k0=(TENANT&&TENANT.knowledge&&typeof TENANT.knowledge==='object')?TENANT.knowledge:{};
     const te=String((document.getElementById('sTranscriptEmail')||{}).value||'').trim();
     if(te&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(te)) throw new Error('That extra email address doesn\u2019t look right.');
-    const knowledge={...k0,transcript_emails:on('swTranscripts'),transcript_email:te||null};
+    const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
+      confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind'),radar_sms:on('swRadar'),
+      metadata:{transcript_emails:on('swTranscripts'),transcript_email:te||null}})});
+    const s=await r.json();
     const rs=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
-      missed_call_textback:on('swMissed'),review_requests:on('swReview'),knowledge})});
+      missed_call_textback:on('swMissed'),review_requests:on('swReview')})});
     const rd=await rs.json();
-    if(rd&&rd.ok&&TENANT) TENANT.knowledge=knowledge;
     if((!r.ok||!s.ok))throw new Error('Booking message settings failed to save.');
     if(rd.ignored&&rd.ignored.length){
       msg('msgMsg',"Saved confirmations & reminders. Missed-call and review toggles aren't wired yet: "+rd.ignored.join(', '),false);
