@@ -5,15 +5,18 @@ process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-dv1'; process.env.APP_URL = 'https
 let assistant = { id: 'assistant-dv1', name: 'Lola', greeting: '{{lola_greeting}}', dynamic_variables_webhook_url: 'https://www.loladesk.com/api/agent-variables',
   dynamic_variables: { booking_url: null, lola_greeting: 'Hi, this is Lola, a virtual assistant. This call may be recorded.', price: 12.5, extra: { a: 1 } }, tools: [] };
 const sent = []; let refuseTelephony = false;
+const SHARED = { 'tool-up': 'detect_upsell_opportunity', 'tool-esc': 'escalate', 'tool-other': 'send_survey' };
 const bad = (dv) => Object.values(dv || {}).some((v) => v == null || typeof v === 'object' || (typeof v === 'number' && !Number.isInteger(v)));
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
+  const tm = u.match(/\/ai\/tools\/([\w-]+)$/);
+  if (tm) return J({ data: { id: tm[1], display_name: SHARED[tm[1]], type: 'webhook', tool_definition: { webhook: { name: SHARED[tm[1]], url: 'https://elsewhere.example.com' } } } });
   if (u.includes('/ai/assistants/assistant-dv1')) {
     if (init.method === 'PATCH' || init.method === 'POST') {
       const b = JSON.parse(init.body); sent.push(b);
       if (refuseTelephony && b.telephony_settings) return J({ errors: [{ detail: 'telephony_settings: unknown field' }] }, 422);
-      const names = (merged0) => (merged0.tools || []).map((t) => t?.webhook?.name).filter(Boolean);
+      const names = (merged0) => [...(merged0.tools || []).map((t) => t?.webhook?.name), ...(merged0.tool_ids || []).map((id) => SHARED[id])].filter(Boolean);
       const m0 = { ...assistant, ...b }; const nm = names(m0);
       if (new Set(nm).size !== nm.length) return J({ errors: [{ detail: 'Webhook tools names must be unique, the following are not unique: ' + [...new Set(nm.filter((x, i) => nm.indexOf(x) !== i))].join(', ') }] }, 422);
       const merged = { ...assistant, ...b };
@@ -66,5 +69,13 @@ assistant.tools = [dupTool('https://a.example.com'), dupTool('https://www.lolade
 sent.length = 0;
 await updateAssistant('assistant-dv1', { voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.v2', api_key_ref: 's' } });
 ok(assistant.voice_settings.voice.endsWith('.v2') && assistant.tools.length === 1, 'a voice switch blocked by duplicate tools is retried with them deduped and lands');
+// The live case: her inline tools collide with SHARED tools attached by id (tool_ids).
+assistant = { ...assistant, tools: [{ type: 'webhook', webhook: { name: 'detect_upsell_opportunity', url: 'https://www.loladesk.com/api/lola-tools?tool=detect_upsell_opportunity' } }, { type: 'webhook', webhook: { name: 'escalate', url: 'https://www.loladesk.com/api/lola-tools?tool=escalate' } }], tool_ids: ['tool-up', 'tool-esc', 'tool-other'], dynamic_variables: { company_name: null } };
+r = await wireAssistant({ heal: true });
+ok(!r.error && JSON.stringify(assistant.tool_ids) === JSON.stringify(['tool-other']) && assistant.tools.length >= 2, 'shared copies with the same names are detached (never deleted), her own tools kept: ' + JSON.stringify(r.duplicate_tools));
+ok(assistant.dynamic_variables.company_name === 'our salon', 'and the empty defaults cleaned in the same accepted update');
+assistant.tool_ids = ['tool-up', 'tool-other'];
+await updateAssistant('assistant-dv1', { voice_settings: { voice: 'ElevenLabs.eleven_multilingual_v2.v3', api_key_ref: 's' } });
+ok(assistant.voice_settings.voice.endsWith('.v3') && JSON.stringify(assistant.tool_ids) === JSON.stringify(['tool-other']), 'a blocked voice switch detaches the colliding shared tool and lands');
 console.log(fails ? `\n${fails} FAILED` : '\nall dynvars checks passed');
 process.exit(fails ? 1 : 0);

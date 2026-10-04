@@ -41,6 +41,31 @@ const dupTools = (e) => /tool.{0,40}(must be unique|not unique)|names must be un
 const toolName = (t) => norm(t?.webhook?.name || t?.function?.name || t?.name || '');
 
 /**
+ * Shared tools (attached by id, tool_ids) count too: Telnyx refuses an update when an inline tool and an
+ * attached shared tool share a name. Keep the inline one (LolaDesk wires and signs it) and detach the
+ * shared copy — detach only, the shared tool itself is never deleted. Returns null when nothing collides.
+ */
+export async function sharedToolCollisions(assistant, inlineTools) {
+  const ids = Array.isArray(assistant?.tool_ids) ? assistant.tool_ids.filter(Boolean) : [];
+  if (!ids.length) return null;
+  const inline = new Set((Array.isArray(inlineTools) ? inlineTools : []).map(toolName).filter(Boolean));
+  const named = await Promise.all(ids.map(async (id) => {
+    try {
+      const t = telnyxData(await telnyxRequest('/ai/tools/' + encodeURIComponent(id), { timeoutMs: 8000 })) || {};
+      const d = t.tool_definition || t;
+      return { id, name: norm(d?.webhook?.name || d?.function?.name || t.display_name || '') };
+    } catch (_) { return { id, name: '' }; }
+  }));
+  const seen = new Set(), keep = [], detached = [];
+  for (const x of named) {
+    if (x.name && (inline.has(x.name) || seen.has(x.name))) { detached.push(x.name); continue; }
+    if (x.name) seen.add(x.name);
+    keep.push(x.id);
+  }
+  return detached.length ? { tool_ids: keep, detached } : null;
+}
+
+/**
  * Telnyx refuses ANY update while two tools share a name ("Webhook tools names must be unique").
  * Keep one tool per name: the one already wired to LolaDesk correctly, else one on our host, else the
  * first. Tools without a name (hangup, transfer…) are always kept.
@@ -75,7 +100,8 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
     const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
-    return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}) });
+    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools).catch(() => null) : null;
+    return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) });
   }
 }
 
@@ -187,6 +213,9 @@ export async function wireAssistant({ heal = false } = {}) {
   for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
   const patch = {};
   if (fixed.length || added.length || duplicateTools.length) patch.tools = next;
+  // A shared (attached) tool with the same name as one of hers blocks every update: detach that copy.
+  const shared = await sharedToolCollisions(a, next).catch(() => null);
+  if (shared) { patch.tool_ids = shared.tool_ids; duplicateTools.push(...shared.detached.map((n) => n + ' (shared copy)')); }
   // Her first words come from the call itself ({{lola_greeting}}: "Hey Sarah, welcome back…" for a
   // returning client), with the recording + AI notice; the default (no webhook answer) discloses too.
   // Telnyx refuses the WHOLE assistant update if any stored default is null/object

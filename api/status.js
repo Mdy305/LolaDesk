@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-wired';
+export const RELEASE = 'lola-wired2';
 let lastHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
 function silentWav() {
@@ -136,8 +136,9 @@ export async function buildStatus() {
       const { diagnoseTool, toolUrl } = await import('./lib/assistant-wiring.js');
       const { toolKeyOk } = await import('./lib/tool-key.js');
       const unsignedTools = (Array.isArray(a.tools) ? a.tools : []).filter((t) => { const d = diagnoseTool(t); return d && d.fixable; }).length;
-      const { dedupeTools } = await import('./lib/assistant-wiring.js');
+      const { dedupeTools, sharedToolCollisions } = await import('./lib/assistant-wiring.js');
       const dups = dedupeTools(a.tools).removed;
+      try { const sh = await sharedToolCollisions(a, a.tools); if (sh) dups.push(...sh.detached.map((n) => n + ' (shared copy)')); } catch (_) {}
       if (dups.length) live.duplicate_tools = dups;
       let varsSigned = false; try { varsSigned = toolKeyOk(new URL(String(a.dynamic_variables_webhook_url || '')).searchParams.get('k'), 'variables'); } catch (_) {}
       live.phone_tools_ok = unsignedTools === 0;
@@ -171,7 +172,11 @@ export async function buildStatus() {
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
-            if (w.error) live.wiring_error = clip(w.error);
+            if (w.error) {
+              live.wiring_error = clip(w.error);
+              // Still refused for duplicate names: show exactly what Telnyx holds, so it can be fixed in one look.
+              if (/unique/i.test(String(w.error))) live.tools_inventory = { inline: (Array.isArray(a.tools) ? a.tools : []).map((t) => t?.webhook?.name || t?.function?.name || t?.type).filter(Boolean), shared_ids: Array.isArray(a.tool_ids) ? a.tool_ids : [] };
+            }
           } catch (_) {}
         }
         if (live.salon_numbers_ringing_lola < live.salon_numbers) {
