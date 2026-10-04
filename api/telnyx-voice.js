@@ -155,6 +155,25 @@ export default async function handler(req, res){
   // The call line's status callback lands here too: a finished call is not a new caller.
   const callStatus = String(parsed?.CallStatus || parsed?.call_status || '').toLowerCase();
   if(/^(completed|busy|failed|no-answer|canceled)$/.test(callStatus)){
+    // The call is over: its transcript + summary land on the Calls screen and in the salon's email.
+    if(callStatus === 'completed'){
+      try{
+        const sid = String(parsed?.CallSid || parsed?.call_sid || '');
+        const routed = await resolveInboundTenant({ to: e164(parsed?.To || parsed?.to || '') });
+        const c = db();
+        if(sid && routed?.status === 'resolved' && routed.tenant && c){
+          const call = await getCallByTelnyxId(routed.tenant.id, sid);
+          const { parseLines, summarize, reportConversation } = await import('./lib/conversation-report.js');
+          const turns = parseLines(call?.recording_url || '');
+          if(call && turns.length){
+            const booked = call.status === 'booked' || call.outcome === 'booked';
+            const summary = await summarize(turns, { salon: routed.tenant.name, booked });
+            await reportConversation(c, routed.tenant, { turns, summary, booked, key: 'texml:' + sid, channel: 'phone', callControlId: sid,
+              fromNumber: call.from_number || parsed?.From || null, toNumber: call.to_number || parsed?.To || null, durationSeconds: Number(parsed?.CallDuration || 0) || null });
+          }
+        }
+      }catch(e){ console.warn('[VOICE] call report:', String(e?.message || e).slice(0, 160)); }
+    }
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?>\n<Response/>');
   }

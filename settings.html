@@ -196,6 +196,8 @@
     <div class="toggle-row"><div><div class="tl">2-hour heads-up</div><div class="ts">A radar nudge on appointment day</div></div><div class="sw on" id="swRadar" onclick="tog(this)"></div></div>
     <div class="toggle-row"><div><div class="tl">Missed call text-back</div><div class="ts">Auto-text if a call goes unanswered</div></div><div class="sw on" id="swMissed" onclick="tog(this)"></div></div>
     <div class="toggle-row"><div><div class="tl">Review requests</div><div class="ts">Ask happy clients for a review after their visit</div></div><div class="sw" id="swReview" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Email me every conversation</div><div class="ts">Each call and website chat with Lola — summary and full transcript — also appears on your Calls screen</div></div><div class="sw on" id="swTranscripts" onclick="tog(this)"></div></div>
+    <div class="fld"><label>Also send them to (optional)</label><input id="sTranscriptEmail" type="email" placeholder="front-desk@yoursalon.com" autocomplete="email"></div>
     <div class="btn-row"><button class="btn-p" onclick="saveMessaging()">Save messaging</button></div>
     <div class="msg" id="msgMsg"></div>
   </div>
@@ -624,6 +626,7 @@ async function load(){
   // real per-salon state from the tenants row.
   setSw('swMissed',TENANT.missed_call_textback!==false);
   setSw('swReview',TENANT.review_requests!==false);
+  { const k=(TENANT.knowledge&&typeof TENANT.knowledge==='object')?TENANT.knowledge:{}; setSw('swTranscripts',k.transcript_emails!==false); const te=document.getElementById('sTranscriptEmail'); if(te) te.value=k.transcript_email||''; }
   setSw('swAutopilot',TENANT.autopilot_enabled!==false);
   try{
     if(TENANT.yelp_review_url) setVal('yelpReviewUrl',TENANT.yelp_review_url);
@@ -806,9 +809,14 @@ async function saveMessaging(){
     const r=await fetch('/api/booking-settings',{method:'POST',headers:H(),body:JSON.stringify({
       confirmation_sms:on('swConfirm'),reminder_sms:on('swRemind'),radar_sms:on('swRadar')})});
     const s=await r.json();
+    const k0=(TENANT&&TENANT.knowledge&&typeof TENANT.knowledge==='object')?TENANT.knowledge:{};
+    const te=String((document.getElementById('sTranscriptEmail')||{}).value||'').trim();
+    if(te&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(te)) throw new Error('That extra email address doesn\u2019t look right.');
+    const knowledge={...k0,transcript_emails:on('swTranscripts'),transcript_email:te||null};
     const rs=await fetch('/api/settings',{method:'POST',headers:H(),body:JSON.stringify({
-      missed_call_textback:on('swMissed'),review_requests:on('swReview')})});
+      missed_call_textback:on('swMissed'),review_requests:on('swReview'),knowledge})});
     const rd=await rs.json();
+    if(rd&&rd.ok&&TENANT) TENANT.knowledge=knowledge;
     if((!r.ok||!s.ok))throw new Error('Booking message settings failed to save.');
     if(rd.ignored&&rd.ignored.length){
       msg('msgMsg',"Saved confirmations & reminders. Missed-call and review toggles aren't wired yet: "+rd.ignored.join(', '),false);
