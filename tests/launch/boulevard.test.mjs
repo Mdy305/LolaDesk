@@ -59,7 +59,7 @@ const tenant = T.tenants[0];
 
 // ── Availability is Boulevard's own ──
 r = await SKILLS.check_availability(tenant, { service: 'haircut', date: day, time: '2pm' });
-ok(r.source === 'boulevard' && r.exact && /Yes — 2 PM .* works for Women's Haircut & Style/.test(r.speak), 'asked 2pm, Boulevard has it → yes: ' + r.speak);
+ok(r.source === 'boulevard_client' && r.exact && /Yes — 2 PM .* works for Women's Haircut & Style/.test(r.speak), 'asked 2pm, Boulevard has it → yes: ' + r.speak);
 r = await SKILLS.check_availability(tenant, { service: 'haircut', date: day, time: '3pm' });
 ok(!r.exact && /3pm is taken — the closest I have .* 2:30 PM/.test(r.speak.replace(/ /g, ' ')), 'asked 3pm, not open in Boulevard → the closest real times: ' + r.speak);
 r = await SKILLS.check_availability(tenant, { service: 'balayage with Ana', date: day, stylist: 'Ana' });
@@ -72,10 +72,10 @@ const call = (body) => new Promise((resolve) => { const res = { setHeader() {}, 
 r = await call({ service: 'haircut', date: day, time: '2:30pm', client_name: 'Jerome' });
 ok(r.booked === false && !B.calls.includes('K'), 'no last name / mobile / email yet → nothing sent to Boulevard');
 r = await call({ service: 'haircut', date: day, time: '2:30pm', client_name: 'Jerome Martin', client_phone: '305-555-0199', client_email: 'jerome@example.com', stylist: 'Ana' });
-ok(r.booked === true && r.verified === true && r.provider === 'boulevard' && r.appointment_id === 'appt-777', 'booked IN Boulevard and read back to verify: ' + r.speak);
+ok(r.booked === true && r.verified === true && r.provider === 'boulevard_client' && r.appointment_id === 'appt-777', 'booked IN Boulevard and read back to verify: ' + r.speak);
 ok(B.updates.at(-1).clientInformation.firstName === 'Jerome' && B.updates.at(-1).clientInformation.lastName === 'Martin' && B.updates.at(-1).clientInformation.email === 'jerome@example.com' && /305/.test(B.updates.at(-1).clientInformation.phoneNumber), 'Boulevard gets first name, last name, mobile and email');
 const mirror = T.bookings.find((b) => b.external_id === 'appt-777');
-ok(mirror && mirror.external_provider === 'boulevard' && mirror.start_time === at('14:30') && T.clients.some((c) => c.last_name === 'Martin'), 'and it appears in LolaDesk (calendar + client card), linked to the Boulevard appointment');
+ok(mirror && mirror.external_provider === 'boulevard_client' && mirror.start_time === at('14:30') && T.clients.some((c) => c.last_name === 'Martin'), 'and it appears in LolaDesk (calendar + client card), linked to the Boulevard appointment');
 ok(/confirmed in our book/.test(r.speak) && / with Ana/.test(r.speak), 'she says it the way it is: ' + r.speak);
 
 // Taken between the question and the booking.

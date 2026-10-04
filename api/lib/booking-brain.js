@@ -35,7 +35,7 @@ import { offerFreedSlot } from './booking-reminders.js';
 // target, not a booking source of truth, so committing there would duplicate.
 // cal_platform is a first-class write target when the owner selects it as
 // booking_provider — the Cal.com mesh node takes the appointment.
-const BOOKING_PROVIDERS = ['square', 'vagaro', 'mindbody', 'fresha', 'booksy', 'cal_platform'];
+const BOOKING_PROVIDERS = ['boulevard_client', 'square', 'vagaro', 'mindbody', 'fresha', 'booksy', 'cal_platform'];
 
 // Normalize the owner's booking_provider choice ("cal" -> "cal_platform").
 async function preferredBookingProvider(tenantId){

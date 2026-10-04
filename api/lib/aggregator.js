@@ -9,8 +9,9 @@ import * as booksy     from './connectors/booksy.js';
 import * as gmb        from './connectors/google-gmb.js';
 import * as cal        from './connectors/cal-platform.js';
 import * as ical       from './connectors/ical.js';
+import * as boulevardLive from './connectors/boulevard-client.js';
 
-const CONNECTORS = { square, boulevard, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb, cal_platform: cal, ical };
+const CONNECTORS = { square, boulevard, boulevard_client: boulevardLive, vagaro, mindbody, fresha, booksy, shopify, google_calendar: gcal, google_gmb: gmb, cal_platform: cal, ical };
 
 export function getConnector(provider){
   const c = CONNECTORS[provider];
@@ -19,7 +20,7 @@ export function getConnector(provider){
 }
 export function listProviders(){
   // Calendar links are added by pasting a URL (Settings → Booking platforms), not by an OAuth button.
-  return Object.keys(CONNECTORS).filter(p => p !== 'ical').map(p => ({ id:p, name:CONNECTORS[p].META?.name||p, description:CONNECTORS[p].META?.description||'', status:CONNECTORS[p].META?.status||'available', docs:CONNECTORS[p].META?.docs||null }));
+  return Object.keys(CONNECTORS).filter(p => p !== 'ical' && p !== 'boulevard_client').map(p => ({ id:p, name:CONNECTORS[p].META?.name||p, description:CONNECTORS[p].META?.description||'', status:CONNECTORS[p].META?.status||'available', docs:CONNECTORS[p].META?.docs||null }));
 }
 export async function listAllAppointments(tenantIntegrations, range){
   const all = [];
@@ -32,7 +33,7 @@ export async function listAllAppointments(tenantIntegrations, range){
 // Providers the mesh can WRITE appointments to. cal_platform joins the
 // traditional salon systems as a first-class write target — when a tenant
 // selects it as booking_provider, writes route to Cal.com.
-const WRITE_PROVIDERS = ['square','boulevard','vagaro','mindbody','fresha','booksy','cal_platform'];
+const WRITE_PROVIDERS = ['boulevard_client','square','boulevard','vagaro','mindbody','fresha','booksy','cal_platform'];
 export async function writeAppointment(tenantIntegrations, appointment, { provider } = {}){
   let target = provider ? tenantIntegrations.find(i => i.provider === provider) : null;
   // Explicit provider that isn't connected falls back to any write-eligible

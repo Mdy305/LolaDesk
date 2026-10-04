@@ -216,3 +216,41 @@ export async function verifyConnection({ apiKey, businessId, env = 'live' }) {
   if (!locs.length) throw new BoulevardError('Boulevard answered, but this business has no locations open for online booking', 'no_locations');
   return { creds, locations: locs.map((l) => ({ id: l.id, name: l.name || l.businessName, tz: l.tz || null, city: l.address?.city || null })) };
 }
+
+// ═══ The standard LolaDesk connector contract (lib/aggregator.js) ═══════════════════════════════
+// Every booking system plugs into Lola the same way; a "live" connector also answers availability
+// and books + verifies synchronously (lib/live-booking.js). Boulevard connects with keys, not OAuth.
+export const META = { name: 'Boulevard', description: 'Live: real availability, booked and verified in Boulevard.', status: 'available', live: true, connect: 'keys', docs: 'https://developers.joinblvd.com' };
+export function credsFromIntegration(integration) {
+  const m = integration?.metadata || {};
+  if (!integration?.access_token || !m.business_id) return null;
+  return { apiKey: integration.access_token, businessId: m.business_id, locationId: m.location_id || null, tz: m.tz || null, env: m.env === 'sandbox' ? 'sandbox' : 'live' };
+}
+export function getAuthUrl() { throw new Error('Boulevard connects with your Business ID and app API key (Settings → Boulevard).'); }
+export async function exchangeCode() { return { ok: false, error: 'Boulevard connects with keys' }; }
+export async function refreshToken() { return null; }
+export async function listAppointments() { return []; }        // availability is read live, never from a copy
+export async function listClients() { return []; }
+
+/** { service, date:'YYYY-MM-DD', wantAt, stylist, tz } → normalized live availability. */
+export async function liveAvailability(integration, args) {
+  const creds = credsFromIntegration(integration);
+  if (!creds) throw new BoulevardError('Boulevard isn’t connected', 'not_connected');
+  return checkBoulevard(creds, { ...args, tz: args.tz || creds.tz });
+}
+/**
+ * Generic payload (lib/booking-brain.js shape + live fields): { starts_at, date, service, stylist, timezone,
+ * client:{ first_name, last_name, name, phone, email }, notes } → { id, verified, starts_at, ends_at, service, staff }.
+ * Throws with .code = 'conflict' (and .offers) when the time is gone, 'card_required', 'service_not_found'.
+ */
+export async function createAppointment(integration, p) {
+  const creds = credsFromIntegration(integration);
+  if (!creds) throw new BoulevardError('Boulevard isn’t connected', 'not_connected');
+  const tz = p.timezone || creds.tz || 'America/New_York';
+  const date = p.date || new Date(p.starts_at).toLocaleDateString('en-CA', { timeZone: tz });
+  const name = String(p.client?.name || p.client_name || '').trim().split(/\s+/);
+  const r = await bookBoulevard(creds, { service: p.service || '', date, wantAt: p.starts_at, stylist: p.stylist || null, tz,
+    client: { firstName: p.client?.first_name || name[0] || 'Client', lastName: p.client?.last_name || name.slice(1).join(' '), phone: p.client?.phone || p.client_phone || null, email: p.client?.email || null }, notes: p.notes });
+  if (!r.ok) { const e = new BoulevardError(r.message || r.error, r.error === 'taken' ? 'conflict' : r.error); e.offers = r.offers || []; e.menu = r.menu || []; throw e; }
+  return { id: r.appointmentId, external_id: r.appointmentId, verified: r.verified, starts_at: r.startAt, ends_at: r.endAt, service: r.service, staff: r.staffName, state: r.state };
+}

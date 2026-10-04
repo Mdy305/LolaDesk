@@ -320,9 +320,9 @@
 <div class="pane" data-pane="5">
   <div class="card">
     <h3>Booking platforms</h3>
-    <div class="desc">Sync appointments both ways with your existing system.</div>
+    <div class="desc">Whatever system you use, Lola works the same way: she checks real availability, books, verifies the booking and confirms it to the client — and every booking shows up here in LolaDesk. Connect yours:</div>
     <div class="toggle-row"><div><div class="tl">Square Appointments</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-square" onclick="connect('square')">Connect</button></div>
-    <div class="toggle-row"><div><div class="tl">Boulevard</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-boulevard" onclick="connect('boulevard')">Connect</button></div>
+    <div class="toggle-row"><div><div class="tl">Boulevard</div><div class="ts" id="blvdRowState">Live booking · connect with your Business ID</div></div><button class="btn-g" id="c-boulevard" onclick="openBlvd()">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Vagaro</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-vagaro" onclick="connect('vagaro')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Mindbody</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-mindbody" onclick="connect('mindbody')">Connect</button></div>
     <div class="toggle-row"><div><div class="tl">Fresha</div><div class="ts">Two-way sync</div></div><button class="btn-g" id="c-fresha" onclick="connect('fresha')">Connect</button></div>
@@ -330,9 +330,9 @@
     <div class="toggle-row"><div><div class="tl">Cal.com (White-Label)</div><div class="ts">Booking mesh · Platform or API-key mode</div></div><button class="btn-g" id="c-cal_platform" onclick="requestCal()">Configure</button></div>
   </div>
 
-  <div class="card" id="blvdCard">
-    <h3>Boulevard — Lola books straight into it</h3>
-    <div class="desc">Lola checks your real Boulevard availability, books the appointment in Boulevard, and reads it back to verify before she tells the client it’s booked. It also appears in LolaDesk and on the client’s card.<br><br>
+  <div class="card" id="blvdCard" style="display:none">
+    <h3>Connect Boulevard</h3>
+    <div class="desc">Two things from Boulevard and Lola does the rest:<br><br>
       1 · <b>Business ID</b>: Boulevard → Settings → Calendar Integrations — it’s the long ID inside your private calendar link.<br>
       2 · <b>API key</b>: create an app at <a href="https://developers.joinblvd.com" target="_blank" rel="noopener">developers.joinblvd.com</a>, then install it in Boulevard → Settings → Apps &amp; Integrations.<br>
       Tip: if Boulevard requires a card to book online, Lola texts the client your booking link for that last step — turn the card requirement off in Boulevard for fully hands-free booking.</div>
@@ -502,6 +502,7 @@ async function fbToggle(){
   finally{ b.disabled=false; }
 }
 // Boulevard, live: Lola books + verifies in Boulevard
+function openBlvd(){ const c=document.getElementById('blvdCard'); if(!c) return; c.style.display=''; c.scrollIntoView({behavior:'smooth',block:'start'}); setTimeout(()=>{ const i=document.getElementById('blvdBiz'); if(i) i.focus(); },400); }
 async function blvdLoad(){
   try{
     const r=await fetch('/api/boulevard',{headers:H()}); const d=await r.json(); if(!d.ok) return;
@@ -509,6 +510,10 @@ async function blvdLoad(){
     st.innerHTML=d.connected?('✓ Connected'+(d.location?' — '+esc(d.location):'')+' · Business ID '+esc(d.business_id)):'Not connected yet.';
     document.getElementById('blvdOff').style.display=d.connected?'':'none';
     document.getElementById('blvdBtn').textContent=d.connected?'Update connection':'Connect Boulevard';
+    const rs=document.getElementById('blvdRowState'), rb=document.getElementById('c-boulevard');
+    if(rs) rs.textContent=d.connected?('Connected · live booking'+(d.location?' · '+d.location:'')):'Live booking · connect with your Business ID';
+    if(rb) rb.textContent=d.connected?'Manage':'Connect';
+    if(d.connected) document.getElementById('blvdCard').style.display='';
   }catch(e){}
 }
 async function blvdConnect(){

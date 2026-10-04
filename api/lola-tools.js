@@ -241,10 +241,10 @@ function speakOffers(r, { service, askedTime, askedDay, stylist, tz }){
   return `${day[0].toUpperCase() + day.slice(1)} I can do ${orList(times)}${service ? ` for ${service}` : ''}. Which one do you want?`;
 }
 
-// ── Boulevard, live: when the salon connected Boulevard (Settings → Boulevard), Boulevard is the
-// source of truth — Lola reads its real open times and books + verifies there (lib/connectors/boulevard-client.js).
-async function boulevardFor(tenant){
-  try{ const { boulevardCreds } = await import('./lib/connectors/boulevard-client.js'); return await boulevardCreds(tenant.id); }catch(_){ return null; }
+// ── The salon's live booking system (Boulevard today; any connector with META.live): availability is
+// asked of that system and bookings are made + verified there — lib/live-booking.js. Same Lola, same words.
+async function liveFor(tenant){
+  try{ const { liveProviderFor } = await import('./lib/live-booking.js'); return await liveProviderFor(tenant.id); }catch(_){ return null; }
 }
 function dateKeyIn(date, tz){
   if(/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return String(date);
@@ -253,79 +253,87 @@ function dateKeyIn(date, tz){
   return new Date(t).toLocaleDateString('en-CA', { timeZone: tz || 'America/New_York' });
 }
 const spokenTime = (iso, tz) => fmtSalon(iso, tz, 'time').replace(/:00(?=\s?[AP]M)/, '');
+function pickTimes(times, wantAt = null, n = 3){
+  const list = [...(times || [])];
+  if(wantAt) return list.sort((x, y) => Math.abs(Date.parse(x.startTime) - Date.parse(wantAt)) - Math.abs(Date.parse(y.startTime) - Date.parse(wantAt))).slice(0, n).sort((x, y) => Date.parse(x.startTime) - Date.parse(y.startTime));
+  if(list.length > n){ const step = list.length / n; return Array.from({ length: n }, (_, i) => list[Math.floor(i * step)]); }
+  return list;
+}
 async function passToSalon(tenant, who, body){
   try{ await capture_lead(tenant, { client_name: who?.name || body.client_name, client_phone: who?.phone || body.client_phone, service_requested: `${body.service || 'appointment'} ${body.date || ''} ${body.time || ''}`.trim() }); }catch(_){}
 }
-async function check_availability_blvd(tenant, creds, body){
+async function check_availability_live(tenant, lp, body){
   const { service, date, time, stylist } = body || {};
-  const tz = creds.tz || await salonTz(tenant.id);
+  const tz = lp.integration?.metadata?.tz || await salonTz(tenant.id);
   const day = dateKeyIn(date, tz) || new Date().toLocaleDateString('en-CA', { timeZone: tz });
   const wantAt = time ? await salonInstant(tenant, day, time) : null;
-  const { checkBoulevard, pickOffers } = await import('./lib/connectors/boulevard-client.js');
-  const r = await checkBoulevard(creds, { service: service || '', date: day, wantAt, stylist, tz });
-  if(!r.ok && r.error === 'service_not_found') return { speak: `Which service would you like? We have ${orList((r.menu || []).slice(0, 5))}.`, slots: [], source: 'boulevard', needs_service: true };
+  const { liveCheck } = await import('./lib/live-booking.js');
+  const r = await liveCheck(lp, { service: service || '', date: day, wantAt, stylist, tz });
+  if(!r.ok && r.error === 'service_not_found') return { speak: `Which service would you like? We have ${orList((r.menu || []).slice(0, 5))}.`, slots: [], needs_service: true, source: lp.provider };
   const who = r.staffName ? ` with ${r.staffName}` : '';
   const note = r.staffMissing ? `${stylist} isn't showing for that one, but ` : '';
-  if(r.exact) return { speak: `${note}Yes — ${spokenTime(r.exact.startTime, tz)} ${dayWord(r.exact.startTime, tz)} works for ${r.service}${who}. Shall I book it?`, slots: [r.exact.startTime], exact: true, service: r.service, source: 'boulevard' };
-  if(r.times.length){
-    const offers = pickOffers(r.times, wantAt);
+  if(r.exact) return { speak: `${note}Yes — ${spokenTime(r.exact.startTime, tz)} ${dayWord(r.exact.startTime, tz)} works for ${r.service}${who}. Shall I book it?`, slots: [r.exact.startTime], exact: true, service: r.service, source: lp.provider };
+  if(r.times?.length){
+    const offers = pickTimes(r.times, wantAt);
     const said = orList(offers.map((t) => spokenTime(t.startTime, tz)));
-    return { speak: `${note}${wantAt ? `${String(time).trim()} is taken — the closest I have ${dayWord(offers[0].startTime, tz)} is` : `${dayWord(offers[0].startTime, tz)} I have`} ${said} for ${r.service}${who}. Which works?`, slots: offers.map((t) => t.startTime), service: r.service, source: 'boulevard' };
+    return { speak: `${note}${wantAt ? `${String(time).trim()} is taken — the closest I have ${dayWord(offers[0].startTime, tz)} is` : `${dayWord(offers[0].startTime, tz)} I have`} ${said} for ${r.service}${who}. Which works?`, slots: offers.map((t) => t.startTime), service: r.service, source: lp.provider };
   }
-  if(r.nextDate && r.nextTimes.length){
-    const offers = pickOffers(r.nextTimes, null);
-    return { speak: `${note}That day is fully booked — the next openings are ${dayWord(offers[0].startTime, tz)}: ${orList(offers.map((t) => spokenTime(t.startTime, tz)))}. Which works?`, slots: offers.map((t) => t.startTime), service: r.service, rolled_days: 1, source: 'boulevard' };
+  if(r.nextDate && r.nextTimes?.length){
+    const offers = pickTimes(r.nextTimes, null);
+    return { speak: `${note}That day is fully booked — the next openings are ${dayWord(offers[0].startTime, tz)}: ${orList(offers.map((t) => spokenTime(t.startTime, tz)))}. Which works?`, slots: offers.map((t) => t.startTime), service: r.service, rolled_days: 1, source: lp.provider };
   }
-  return { speak: `I don't see any openings for ${r.service} in the next few weeks. Want me to have the salon text you when something opens?`, slots: [], service: r.service, source: 'boulevard' };
+  return { speak: `I don't see any openings for ${r.service} in the next few weeks. Want me to have the salon text you when something opens?`, slots: [], service: r.service, source: lp.provider };
 }
-async function book_appointment_blvd(tenant, creds, body, who){
+async function book_appointment_live(tenant, lp, body, who){
   const { service, date, time, stylist } = body;
-  const tz = creds.tz || await salonTz(tenant.id);
+  const tz = lp.integration?.metadata?.tz || await salonTz(tenant.id);
   const day = dateKeyIn(date, tz);
   const wantAt = day && time ? await salonInstant(tenant, day, time) : null;
   if(!wantAt) return { booked: false, needs_time: true, speak: `What day and time would you like for ${service || 'your appointment'}?` };
   const [firstName, ...rest] = who.name.split(' ');
-  const { bookBoulevard } = await import('./lib/connectors/boulevard-client.js');
-  const r = await bookBoulevard(creds, { service: service || '', date: day, wantAt, stylist, tz, client: { firstName, lastName: rest.join(' '), phone: who.phone || null, email: who.email || null } });
+  const { liveBook } = await import('./lib/live-booking.js');
+  const r = await liveBook(lp, { starts_at: wantAt, date: day, service: service || '', stylist: stylist || null, timezone: tz, notes: 'Booked by Lola (LolaDesk)',
+    client: { first_name: firstName, last_name: rest.join(' '), name: who.name, phone: who.phone || null, email: who.email || null } });
   if(!r.ok){
     if(r.error === 'service_not_found') return { booked: false, speak: `Which service should I book? We have ${orList((r.menu || []).slice(0, 5))}.` };
     if(r.error === 'taken'){
-      const said = orList((r.offers || []).map((t) => spokenTime(t.startTime, tz)));
-      return { booked: false, conflict: true, slots: (r.offers || []).map((t) => t.startTime), speak: said ? `That time was just taken in our book — I can do ${said} instead. Which works?` : `That day just filled up. Want me to look at the next day?` };
+      const said = orList((r.offers || []).map((t) => spokenTime(t.startTime || t, tz)));
+      return { booked: false, conflict: true, slots: (r.offers || []).map((t) => t.startTime || t), speak: said ? `That time was just taken in our book — I can do ${said} instead. Which works?` : `That day just filled up. Want me to look at the next day?` };
     }
     if(r.error === 'card_required'){
-      // Boulevard wants a card on file to hold the time — Lola can't take card numbers by voice: she texts the salon's own Boulevard page.
+      // The salon's system wants a card on file — Lola never takes card numbers by voice: she texts the salon's own booking page.
       const url = String(tenant.booking_url || '').trim();
       let texted = false;
-      if(url && who.phone){ try{ const { bookViaLink } = await import('./lib/link-booking.js'); const l = await bookViaLink(tenant, { ...body, client_name: who.name, client_phone: who.phone }, { url, startsAt: wantAt, service: { name: r.service || service } }); texted = /texted you/i.test(String(l?.speak || '')); }catch(_){} }
+      if(url && who.phone){ try{ const { bookViaLink } = await import('./lib/link-booking.js'); const l = await bookViaLink(tenant, { ...body, client_name: who.name, client_phone: who.phone }, { url, startsAt: wantAt, service: { name: service } }); texted = /texted you/i.test(String(l?.speak || '')); }catch(_){} }
       if(!texted) await passToSalon(tenant, who, body);
-      return { booked: false, card_required: true, speak: texted ? `The salon needs a card on file to hold ${spokenTime(wantAt, tz)} — I just texted you the booking link with everything filled in; it takes about thirty seconds. It's not booked until you tap confirm.` : `The salon needs a card on file to hold that time, so it's not booked yet — I'll have the salon text you the link to finish.` };
+      return { booked: false, card_required: true, speak: texted ? `The salon needs a card on file to hold ${spokenTime(wantAt, tz)} — I just texted you the booking link with everything filled in; it takes about thirty seconds. It's not booked until you tap confirm.` : `The salon needs a card on file to hold that time, so it's not booked yet — I've passed it to the salon and they'll text you the link to finish.` };
     }
     await passToSalon(tenant, who, body);
-    return { booked: false, error: r.error, speak: `Boulevard didn't confirm that booking, so it's NOT booked yet. I've passed your request to the salon and they'll text you.`, detail: r.message };
+    return { booked: false, error: r.error, speak: `I couldn't get that confirmed in our booking system just now, so it's NOT booked yet. I've passed your request to the salon and they'll text you.`, detail: r.message };
   }
-  // Booked AND read back from Boulevard: mirror it into LolaDesk (calendar, client card, confirmation text).
+  // Booked AND verified in the salon's system: mirror it into LolaDesk (calendar, client card, confirmation text).
   let client = null;
   try{ client = await upsertClient(tenant.id, { phone: who.phone, name: who.name, email: who.email || undefined }); }catch(_){}
   let mirrored = null;
   try{
     const { createCanonicalBooking } = await import('./lib/booking-repository.js');
     let serviceId = null; try{ const { data } = await db().from('services').select('id,name').eq('tenant_id', tenant.id).ilike('name', r.service).maybeSingle(); serviceId = data?.id || null; }catch(_){}
-    mirrored = await createCanonicalBooking({ tenantId: tenant.id, clientId: client?.id || null, serviceId, startTime: r.startAt, endTime: r.endAt || new Date(Date.parse(r.startAt) + 60 * 60e3).toISOString(), status: 'confirmed', notes: `Booked in Boulevard by Lola (appointment ${r.appointmentId})`, source: 'lola', externalId: r.appointmentId, externalSource: 'boulevard', sendConfirmation: !!client });
-  }catch(e){ console.warn('[lola-tools] boulevard mirror:', String(e?.message || e).slice(0, 140)); }
-  try{ await logUsage(tenant.id, 'booking', 1, { service: r.service, provider: 'boulevard' }); }catch(_){}
+    mirrored = await createCanonicalBooking({ tenantId: tenant.id, clientId: client?.id || null, serviceId, startTime: r.startAt, endTime: r.endAt || new Date(Date.parse(r.startAt) + 60 * 60e3).toISOString(), status: 'confirmed', notes: `Booked by Lola in ${lp.name} (${r.id})`, source: 'lola', externalId: r.id, externalSource: lp.provider, sendConfirmation: !!client });
+  }catch(e){ console.warn('[lola-tools] live mirror:', String(e?.message || e).slice(0, 140)); }
+  try{ await logUsage(tenant.id, 'booking', 1, { service: r.service, provider: lp.provider }); }catch(_){}
+  let emailed = false;
+  if(who.email){ try{ const { sendBookingEmail } = await import('./lib/booking-email.js'); emailed = (await sendBookingEmail({ tenant, to: who.email, name: who.name, service: r.service, when: fmtSalon(r.startAt, tz, 'long') })).sent; }catch(_){} }
   const when = fmtSalon(r.startAt, tz, 'long').replace(/:00(?= [AP]M)/, '');
   return {
-    booked: true, verified: r.verified, provider: 'boulevard', appointment_id: r.appointmentId, booking_id: mirrored?.id || null,
-    speak: `You're all set, ${who.name.split(' ')[0]} — ${r.service} ${when}${r.staffName ? ` with ${r.staffName}` : ''}. It's confirmed in our book, and you'll get a confirmation by text${who.email ? ' and email' : ''}. Anything else?`,
-    confirmation: { text_to: who.phone || null, email_to: who.email || null, by: 'boulevard' }
+    booked: true, verified: r.verified, provider: lp.provider, appointment_id: r.id, booking_id: mirrored?.id || null,
+    speak: `You're all set, ${who.name.split(' ')[0]} — ${r.service} ${when}${r.staffName ? ` with ${r.staffName}` : ''}. It's confirmed in our book, and I'll text you a confirmation${who.email ? ' and email it to you' : ''}. Anything else?`,
+    confirmation: { text_to: who.phone || null, email_to: emailed ? who.email : null }
   };
 }
-
 async function check_availability(tenant, body){
-  // The salon's live Boulevard book, when connected.
-  try{ const blvd = await boulevardFor(tenant); if(blvd) return await check_availability_blvd(tenant, blvd, body); }
-  catch(e){ console.warn('[lola-tools] boulevard availability:', String(e?.message || e).slice(0, 160)); }
+  // The salon's live booking system, when it has one (otherwise LolaDesk's calendar, which sees every connected system).
+  try{ const lp = await liveFor(tenant); if(lp) return await check_availability_live(tenant, lp, body); }
+  catch(e){ console.warn('[lola-tools] live availability:', String(e?.message || e).slice(0, 160)); }
   const { service, date, time, stylist } = body || {};
   const tz = await salonTz(tenant.id);
   try{
@@ -400,15 +408,15 @@ async function book_appointment(tenant, body){
     };
   }
   const client_name = who.name, client_phone = who.phone, client_email = who.email;
-  // The salon's live Boulevard book, when connected: book there, verify, then mirror into LolaDesk.
+  // The salon's live booking system, when it has one: book there, verify, then mirror into LolaDesk.
   {
-    const blvd = await boulevardFor(tenant);
-    if(blvd){
-      try{ return await book_appointment_blvd(tenant, blvd, body, { name: client_name || 'Client', phone: client_phone, email: client_email }); }
+    const lp = await liveFor(tenant);
+    if(lp){
+      try{ return await book_appointment_live(tenant, lp, body, { name: client_name || 'Client', phone: client_phone, email: client_email }); }
       catch(e){
-        console.warn('[lola-tools] boulevard booking:', String(e?.message || e).slice(0, 160));
+        console.warn('[lola-tools] live booking:', String(e?.message || e).slice(0, 160));
         await passToSalon(tenant, { name: client_name, phone: client_phone }, body);
-        return { booked: false, error: 'boulevard_unreachable', speak: `I couldn't reach our booking system just now, so it's NOT booked yet. I've passed your request to the salon and they'll text you to confirm.` };
+        return { booked: false, error: 'booking_system_unreachable', speak: `I couldn't reach our booking system just now, so it's NOT booked yet. I've passed your request to the salon and they'll text you to confirm.` };
       }
     }
   }
