@@ -118,7 +118,7 @@
       await new Promise((resolve, reject) => {
         state.ws.onopen = () => resolve();
         state.ws.onerror = () => reject(new Error('Could not reach Lola relay'));
-        setTimeout(() => reject(new Error('Voice relay connect timeout')), 400);
+        setTimeout(() => reject(new Error('Voice relay connect timeout')), 6000);   // a cold relay needs a few seconds
       });
 
       state.ws.binaryType = 'arraybuffer';

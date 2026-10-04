@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-wired2';
+export const RELEASE = 'lola-live-voice';
 let lastHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
 function silentWav() {
@@ -103,6 +103,19 @@ export async function buildStatus() {
         if (!live.voice_app) live.voice_app_error = 'empty audio';
       } catch (e) { live.voice_app = false; live.voice_app_error = clip(e); }
     } else live.voice_app = false;
+  }
+  // Live conversation in the app (the Railway relay): reachable, configured, same secret.
+  const relayUrl = String(process.env.LOLA_VOICE_RELAY_URL || '').trim();
+  if (relayUrl) {
+    live.voice_relay_secret = has('LOLA_VOICE_SECRET');
+    try {
+      const h = relayUrl.replace(/^ws/i, 'http').replace(/\/api\/voice-relay\/?$/, '').replace(/\/+$/, '') + '/health';
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 6000);
+      const r = await fetch(h, { signal: ac.signal }).finally(() => clearTimeout(tm));
+      const j = await r.json().catch(() => ({}));
+      live.voice_relay = r.ok && j.ok === true;
+      if (!live.voice_relay) live.voice_relay_error = j.ok === false ? `relay is missing ${['telnyx_key', 'secret', 'assistant'].filter((k) => j[k] === false).join(', ') || 'settings'}` : `HTTP ${r.status}`;
+    } catch (e) { live.voice_relay = false; live.voice_relay_error = clip(e?.name === 'AbortError' ? 'no answer in 6s' : e); }
   }
   // On the phone: every assistant speaks with her voice; the greeting is set; the salon numbers ring her.
   if (settings.TELNYX_API_KEY) {
@@ -242,6 +255,8 @@ export async function buildStatus() {
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
+  if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
+  if (relayUrl && live.voice_relay_secret === false) fixes.push('Add LOLA_VOICE_SECRET in Vercel — the SAME long word as on the Railway relay — then Redeploy. Until then the app uses her direct voice.');
   fixes.push(...vfix);
   return { ok: fixes.length === 0, release: RELEASE, settings, live, healed, fixes, checked_at: new Date().toISOString() };
 }

@@ -44,7 +44,14 @@ export default async function handler(req, res) {
   if (!RELAY_URL) {
     return res.status(503).json({ error: 'Live voice relay not hosted — Lola uses her direct voice path.', code: 'relay_not_available' });
   }
-  if (!ASSISTANT_ID) {
+  // The relay checks this signature: without the shared secret (same value in Vercel and on the
+  // relay host) every connection would be refused — fall back to Lola's direct voice instead.
+  if (!String(process.env.LOLA_VOICE_SECRET || '').trim()) {
+    return res.status(503).json({ error: 'Live voice relay needs LOLA_VOICE_SECRET (same value in Vercel and on the relay).', code: 'relay_secret_missing' });
+  }
+  let assistantId = ASSISTANT_ID;
+  if (!assistantId) { try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); assistantId = (await resolveAssistant()).id || null; } catch (_) {} }
+  if (!assistantId) {
     return res.status(503).json({
       error: 'TELNYX_ASSISTANT_ID not configured. Create the Lola AI Assistant '
         + 'in the Telnyx Portal and set its id — voice cannot start until then.',
@@ -72,7 +79,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       session_token,
-      assistant_id: ASSISTANT_ID,
+      assistant_id: assistantId,
       expires_at: Date.now() + 5 * 60 * 1000,
       relay_url: RELAY_URL,
       dynamic_variables,
