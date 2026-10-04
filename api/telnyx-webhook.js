@@ -40,14 +40,16 @@ export default async function handler(req, res) {
         const to = p.to;
         const tenant = await tenantForNumber(c, to);
         if (!tenant) break;
-        // The salon's own assistant, else the platform Lola — a call is never left ringing into silence.
-        let aid = tenant.telnyx_assistant_id;
-        if (!aid) { try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); aid = (await resolveAssistant()).id; } catch (_) {} }
+        // ONE brain: LolaBrain answers every salon (the salon is known from the number called).
+        // A salon's old per-salon assistant is only a fallback if LolaBrain can't be found.
+        let aid = null;
+        try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); aid = (await resolveAssistant()).id || null; } catch (_) {}
+        if (!aid) aid = tenant.telnyx_assistant_id || null;
         if (!aid) break;
         const cmd = payload?.data?.id || null;
         try { await answerCallWithAssistant(p.call_control_id, aid, { commandId: cmd }); }
         catch (e) {
-          if (aid === tenant.telnyx_assistant_id) { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); const alt = (await resolveAssistant()).id; if (alt && alt !== aid) await answerCallWithAssistant(p.call_control_id, alt, { commandId: cmd && cmd + ':alt' }); else throw e; } else throw e;
+          throw e;
         }
         await c.from('calls').insert({
           tenant_id: tenant.id,

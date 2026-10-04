@@ -167,10 +167,10 @@ export function getLolaBrainConnectionIdSync(){
 }
 
 // ── Which line answers the salon's calls ─────────────────────────
-// 'loladesk' (default): LolaDesk's own call line — Telnyx sends each turn of the call to
+// 'assistant' (default): LolaBrain — the ONE Telnyx AI assistant — answers every salon's calls on its own TeXML app.
+// 'loladesk' (optional): LolaDesk's own call line — Telnyx sends each turn of the call to
 //   /api/telnyx-voice, where Lola thinks (Telnyx AI), books with her real tools and speaks in
 //   her ElevenLabs voice. This is the path that answered every call before the assistant move.
-// 'assistant': the Telnyx AI assistant (LolaBrain) answers on its own TeXML app.
 // LOLA_PHONE_MODE in Vercel wins; otherwise platform_settings.lola_phone_mode (admin switch).
 const MODES = new Set(['loladesk', 'assistant']);
 let _mode = null, _modeAt = 0;
@@ -178,7 +178,7 @@ export async function phoneMode(){
   const env = String(process.env.LOLA_PHONE_MODE || '').trim().toLowerCase();
   if(MODES.has(env)) return env;
   if(_mode && Date.now() - _modeAt < 60_000) return _mode;
-  let m = 'loladesk';
+  let m = 'assistant';
   try{
     const c = db();
     if(c){

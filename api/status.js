@@ -11,7 +11,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-keypad';
+export const RELEASE = 'lola-one-brain';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -140,6 +140,33 @@ export async function buildStatus() {
       live.phone_assistants_in_lola_voice = voices.lola;
       live.phone_greeting = !!String(a.greeting || '').trim();
       const brainApp = a.telephony_settings?.default_texml_app_id || null;
+      // LolaBrain's own call app must point at LolaBrain (Telnyx's assistant URL). A Voice URL typed over by hand
+      // ("LolaBrain") makes every call fail: repair it from the URL pattern of the account's other assistant apps.
+      if (brainApp) {
+        try {
+          const got = (await tget('/texml_applications/' + encodeURIComponent(brainApp))).j?.data;
+          const app = got && !Array.isArray(got) && got.id ? got : null;
+          if (!app) throw new Error('call app not readable');
+          const vu = String(app?.voice_url || '');
+          live.lolabrain_call_app = /^https:\/\//.test(vu) && vu.includes(a.id.replace(/^assistant-/, ''));
+          if (app && !live.lolabrain_call_app) {
+            const list = (await tget('/texml_applications?page[size]=50')).j?.data || [];
+            let pattern = null;
+            for (const x of list) {
+              const m = /(assistant-[0-9a-f-]{36})/i.exec(String(x.friendly_name || x.application_name || ''));
+              const u = String(x.voice_url || '');
+              if (m && x.id !== brainApp && /^https:\/\//.test(u) && u.includes(m[1])) { pattern = u.split(m[1]).join('{ID}'); break; }
+              if (m && x.id !== brainApp && /^https:\/\//.test(u) && u.includes(m[1].replace(/^assistant-/, ''))) { pattern = u.split(m[1].replace(/^assistant-/, '')).join('{RAW}'); break; }
+            }
+            if (pattern) {
+              const fixed = pattern.replace('{ID}', a.id).replace('{RAW}', a.id.replace(/^assistant-/, ''));
+              const { telnyxRequest } = await import('./lib/telnyx-client.js');
+              try { await telnyxRequest('/texml_applications/' + encodeURIComponent(brainApp), { method: 'PATCH', body: { voice_url: fixed, voice_method: app.voice_method || 'post' }, timeoutMs: 8000 }); live.lolabrain_call_app = true; healed.push('LolaBrain’s call app pointed back at LolaBrain (its Voice URL had been changed) — calls reach her again.'); }
+              catch (e) { live.lolabrain_call_app_error = clip(e); }
+            }
+          }
+        } catch (_) {}
+      }
       const good = new Set([brainApp, process.env.TELNYX_VOICE_APP_ID].filter(Boolean));
       const salon = new Set();
       try { const c = db(); const [{ data: tn }, { data: tt }] = await Promise.all([c.from('tenant_numbers').select('phone_number,status').limit(1000), c.from('tenants').select('phone_number').limit(1000)]);
@@ -272,6 +299,7 @@ export async function buildStatus() {
   if (live.assistant && live.assistant_source === 'discovered') healed.unshift(`Lola’s phone assistant found on your Telnyx account: “${live.assistant_name || 'Lola'}” (${live.assistant_id}) — LolaDesk now uses it everywhere. To make it permanent: Vercel → TELNYX_LOLA_BRAIN_ID = ${live.assistant_id} → Redeploy.`);
   else if (live.assistant && live.assistant_source === 'env_fixed') healed.unshift(`The assistant id in Vercel was missing “assistant-” — using ${live.assistant_id}.`);
   if (live.phone_assistants > live.phone_assistants_in_lola_voice && !optedOut && live.voice_key && live.voice_id) vfix.push(`${live.phone_assistants - live.phone_assistants_in_lola_voice} of ${live.phone_assistants} phone assistants still use a different voice${live.phone_voice_error ? ' (Telnyx said: ' + live.phone_voice_error + ')' : ''}. Telnyx → AI → Assistants → each one → Voice: ElevenLabs, Lola’s voice → Save.`);
+  if (live.lolabrain_call_app === false) vfix.push(`LolaBrain’s call app doesn’t point at LolaBrain, so calls can’t reach her${live.lolabrain_call_app_error ? ' (Telnyx said: ' + live.lolabrain_call_app_error + ')' : ''} — Telnyx → Voice → Programmable Voice → TeXML Applications → the row named ai-assistant-${String(live.assistant_id || process.env.TELNYX_LOLA_BRAIN_ID || '').replace(/^assistant-/, '')} → Voice URL: copy the URL format from another ai-assistant row and put LolaBrain’s id in it → Save.`);
   if (live.phone_greeting === false) vfix.push('Lola’s assistant has no greeting, so callers hear silence first — Telnyx → AI → Assistants → Lola → Greeting: {{lola_greeting}} → Save.');
   if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(phoneMode === 'assistant'
     ? `${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`

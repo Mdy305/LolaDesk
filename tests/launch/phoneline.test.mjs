@@ -3,7 +3,7 @@
 // books with her skills and speaks in her ElevenLabs voice (cached in Supabase Storage).
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'tk';
 process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-lola'; process.env.TELNYX_VOICE_APP_ID = 'cc-app'; process.env.ELEVENLABS_API_KEY = 'el'; process.env.ELEVENLABS_VOICE_ID = 'lolaVoice';
-process.env.APP_URL = 'https://www.loladesk.com'; delete process.env.LOLA_PHONE_MODE; delete process.env.VOICE_PROVIDER; delete process.env.TELNYX_PUBLIC_KEY;
+process.env.APP_URL = 'https://www.loladesk.com'; process.env.LOLA_PHONE_MODE = 'loladesk'; /* LolaDesk's own line is optional (LolaBrain is the default) */ delete process.env.VOICE_PROVIDER; delete process.env.TELNYX_PUBLIC_KEY;
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 
 const texml = [{ id: 'old-line', friendly_name: 'LolaDesk', voice_url: 'https://lola-desk-one.vercel.app/api/telnyx-voice' }];
@@ -36,7 +36,7 @@ T.calls = []; T.clients = []; T.conversations = []; T.messages = []; T.usage_eve
 const P = new URL('../../api/', import.meta.url).href;
 const pv = await import(P + 'lib/telnyx-provision.js');
 
-ok(await pv.phoneMode() === 'loladesk', 'by default salon calls are answered on LolaDesk’s own line');
+ok(await pv.phoneMode() === 'loladesk', 'when chosen, salon calls are answered on LolaDesk’s own line');
 const line = await pv.getCanonicalVoiceConnectionId();
 ok(line === 'old-line', 'the existing “LolaDesk” call line is reused (the Call Control app in Vercel is never mistaken for it)');
 ok(texmlPatches.some((b) => b.voice_url === 'https://www.loladesk.com/api/telnyx-voice'), 'and pointed back at this deployment when it drifted to an old domain');
@@ -100,8 +100,10 @@ ok(r.code === 200 && /<Hangup\/>/.test(r.xml) && !/<Say/.test(r.xml), 'voice dow
 globalThis.fetch = realFetch;
 
 // The admin switch: the Telnyx assistant line.
-T.platform_settings.push({ key: 'lola_phone_mode', value: { mode: 'assistant' } }); pv._resetPhoneLineCache();
+delete process.env.LOLA_PHONE_MODE; T.platform_settings.push({ key: 'lola_phone_mode', value: { mode: 'assistant' } }); pv._resetPhoneLineCache();
 ok(await pv.phoneMode() === 'assistant' && await pv.getCanonicalVoiceConnectionId() === 'assistant-app', 'the admin can switch every salon to the Telnyx assistant line');
 process.env.LOLA_PHONE_MODE = 'loladesk';
 ok(await pv.phoneMode() === 'loladesk', 'LOLA_PHONE_MODE in Vercel wins over the admin switch');
+delete process.env.LOLA_PHONE_MODE; T.platform_settings.length = 0; pv._resetPhoneLineCache();
+ok(await pv.phoneMode() === 'assistant', 'by default LolaBrain answers every salon’s calls');
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);
