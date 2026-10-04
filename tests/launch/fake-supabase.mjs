@@ -61,12 +61,26 @@ class Q {
     return pick(out);
   }
 }
+// Storage, in memory: buckets in T.__buckets ({ name: { public, files: {path: bytes} } }).
+function fakeStorage() {
+  const B = () => (T.__buckets || (T.__buckets = {}));
+  const url = (b, p) => `https://fake.supabase.co/storage/v1/object/public/${b}/${p}`;
+  return {
+    getBucket: async (name) => B()[name] ? { data: { name, public: B()[name].public }, error: null } : { data: null, error: { message: 'Bucket not found' } },
+    createBucket: async (name, o = {}) => { B()[name] = { public: !!o.public, files: {} }; return { data: { name }, error: null }; },
+    updateBucket: async (name, o = {}) => { if (!B()[name]) return { data: null, error: { message: 'Bucket not found' } }; B()[name].public = !!o.public; return { data: {}, error: null }; },
+    from: (b) => ({
+      upload: async (p, bytes) => { if (!B()[b]) return { data: null, error: { message: 'Bucket not found' } }; B()[b].files[p] = bytes; return { data: { path: p }, error: null }; },
+      getPublicUrl: (p) => ({ data: { publicUrl: url(b, p) } }),
+    }),
+  };
+}
 export function createClient() {
   return { from: (t) => new Q(t), rpc: async () => ({ data: null, error: { message: 'no rpc' } }),
     auth: { getUser: async (token) => {                 // tests may map token → user via globalThis.__authUsers
       const u = (globalThis.__authUsers || {})[token];
       return u ? { data: { user: u }, error: null } : { data: { user: null }, error: { message: 'no auth' } };
     }, admin: {} },
-    storage: { from: () => ({}) }, channel: () => ({ on() { return this; }, subscribe() { return this; } }) };
+    storage: fakeStorage(), channel: () => ({ on() { return this; }, subscribe() { return this; } }) };
 }
 export default { createClient };

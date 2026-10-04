@@ -87,10 +87,32 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const live = String(req.query?.live ?? '1') !== '0';
-      return res.status(200).json({ ok: true, ...(await registry(c, { live })) });
+      const { phoneMode } = await import('../lib/telnyx-provision.js');
+      return res.status(200).json({ ok: true, ...(await registry(c, { live })), phone_mode: await phoneMode().catch(() => 'loladesk'), phone_mode_locked: !!String(process.env.LOLA_PHONE_MODE || '').trim() });
     }
     const b = body(req);
     const action = String(b.action || '');
+    // Platform switch: which line answers every salon's calls (LolaDesk's own, or the Telnyx assistant).
+    if (action === 'phone_mode') {
+      const mode = String(b.mode || '').toLowerCase();
+      if (!['loladesk', 'assistant'].includes(mode)) return res.status(400).json({ ok: false, error: 'mode must be loladesk or assistant' });
+      const { error } = await c.from('platform_settings').upsert({ key: 'lola_phone_mode', value: { mode }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (error) return res.status(500).json({ ok: false, error: error.message });
+      const pv = await import('../lib/telnyx-provision.js');
+      pv._resetPhoneLineCache();
+      // Move every salon number onto the chosen line now.
+      const target = await pv.getCanonicalVoiceConnectionId().catch(() => null);
+      let moved = 0, failed = 0;
+      if (target) {
+        const { data: rows } = await c.from('tenant_numbers').select('phone_number,status').limit(1000);
+        const want = new Set((rows || []).filter((r) => r.phone_number && r.status !== 'released').map((r) => r.phone_number));
+        const owned = await pv.listOwnedNumbers().catch(() => []);
+        for (const n of owned.filter((x) => want.has(x.phone_number) && x.connection_id !== target)) {
+          try { await pv.tFetch('/phone_numbers/' + n.id, { method: 'PATCH', body: JSON.stringify({ connection_id: target }) }); moved++; } catch (_) { failed++; }
+        }
+      }
+      return res.status(200).json({ ok: true, action, phone_mode: mode, connection_id: target, moved, failed, locked_by_env: !!String(process.env.LOLA_PHONE_MODE || '').trim() });
+    }
     const tenantId = String(b.tenant_id || '');
     if (!tenantId) return res.status(400).json({ ok: false, error: 'tenant_id required' });
     const { data: tenant } = await c.from('tenants').select('*').eq('id', tenantId).maybeSingle();

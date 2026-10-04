@@ -736,7 +736,9 @@ async function loadTelecom(live){
     const j = await r.json();
     if(!j.ok){ wrap.innerHTML = `<div class="state">Couldn't load: ${esc(j.error||'unknown error')}</div>`; return; }
     const tot = Object.entries(j.totals||{}).map(([k,v])=>`${esc(k.replace(/^cost_/,''))}: ${esc(v)}`).join(' · ');
-    const head = `<div class="muted" style="margin-bottom:10px">Since ${esc(String(j.month_start||'').slice(0,10))} — ${tot||'no platform costs logged'}${j.telnyx?.live?' · Telnyx checked live':''}${j.telnyx?.error?' · <span style="color:#ff7a6d">'+esc(j.telnyx.error)+'</span>':''}</div>`;
+    const pm = j.phone_mode === 'assistant' ? 'assistant' : 'loladesk';
+    const line = `<div class="muted" style="margin-bottom:8px">Calls answered by: <strong>${pm==='assistant'?'Telnyx AI assistant':'LolaDesk’s own line (Lola’s brain, tools &amp; voice)'}</strong>${j.phone_mode_locked?' · set by LOLA_PHONE_MODE in Vercel':` · <button class="btn" onclick="setPhoneMode('${pm==='assistant'?'loladesk':'assistant'}',this)">Switch to ${pm==='assistant'?'LolaDesk’s own line':'Telnyx assistant'}</button>`}</div>`;
+    const head = line + `<div class="muted" style="margin-bottom:10px">Since ${esc(String(j.month_start||'').slice(0,10))} — ${tot||'no platform costs logged'}${j.telnyx?.live?' · Telnyx checked live':''}${j.telnyx?.error?' · <span style="color:#ff7a6d">'+esc(j.telnyx.error)+'</span>':''}</div>`;
     const rows = (j.tenants||[]).filter(t=>t.numbers.length||t.forwarding.length||t.ports.length||t.texting).map(t=>{
       const nums = t.numbers.map(n=>`${esc(n.phone_number)} · ${esc(n.kind||'')} · ${esc(n.status||'')}${(n.drift||[]).length?' · <span style="color:#ff7a6d">'+esc(n.drift.join(', '))+'</span>':''}`).join('<br>') || '—';
       const fwd = t.forwarding.map(f=>`${esc(f.salon_number)} · ${esc(f.status)}`).join('<br>') || '—';
@@ -747,6 +749,17 @@ async function loadTelecom(live){
     }).join('');
     wrap.innerHTML = head + (rows ? `<div style="overflow-x:auto"><table><thead><tr><th>Salon</th><th>Numbers</th><th>Forwarding</th><th>Number move</th><th>Business texting</th><th>Costs (month)</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="state">No salon lines yet.</div>');
   }catch(e){ wrap.innerHTML = '<div class="state">Couldn\'t reach the telecom API.</div>'; }
+}
+async function setPhoneMode(mode, btn){
+  if(!confirm('Move every salon number to ' + (mode==='assistant' ? 'the Telnyx AI assistant' : 'LolaDesk’s own line') + '?')) return;
+  if(btn) btn.disabled = true;
+  try{
+    const r = await fetch('/api/admin/telecom', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+token }, body: JSON.stringify({ action:'phone_mode', mode }) });
+    const j = await r.json().catch(()=>({}));
+    if(!j.ok) alert('Failed: ' + (j.error || r.status)); else alert(`Done — ${j.moved} number${j.moved===1?'':'s'} moved${j.failed?', '+j.failed+' failed':''}.`);
+    await loadTelecom(true);
+  }catch(e){ alert('Couldn\'t reach the telecom API.'); }
+  finally{ if(btn) btn.disabled = false; }
 }
 async function telecomAction(action, tenantId, btn){
   if(btn) btn.disabled = true;

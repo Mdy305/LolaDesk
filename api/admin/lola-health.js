@@ -32,7 +32,7 @@
 import { bearer, getUserFromToken, isAdminEmail } from '../lib/auth.js';
 import { listTenantNumberRoutes } from '../lib/db.js';
 import { telnyxData, telnyxRequest } from '../lib/telnyx-client.js';
-import { getLolaBrainConnectionIdSync } from '../lib/telnyx-provision.js';
+import { getLolaBrainConnectionIdSync, getLolaDeskVoiceAppIdSync } from '../lib/telnyx-provision.js';
 
 // A connection id we KNOW Telnyx rejects for origination — supposedly the
 // account's 'upgrade' mapping, but live probing proved it is dead. Any
@@ -50,6 +50,8 @@ function knownGoodConnectionIds() {
   if (process.env.TELNYX_VOICE_APP_ID) ids.add(process.env.TELNYX_VOICE_APP_ID);
   const brain = getLolaBrainConnectionIdSync();
   if (brain) ids.add(brain);
+  const line = getLolaDeskVoiceAppIdSync();   // LolaDesk's own call line (the default phone path)
+  if (line) ids.add(line);
   return ids;
 }
 

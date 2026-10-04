@@ -11,8 +11,9 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-live-voice';
+export const RELEASE = 'lola-full';
 let lastHeal = 0;
+let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
 function silentWav() {
   const n = 9600, b = Buffer.alloc(44 + n * 2);
@@ -117,6 +118,11 @@ export async function buildStatus() {
       if (!live.voice_relay) live.voice_relay_error = j.ok === false ? `relay is missing ${['telnyx_key', 'secret', 'assistant'].filter((k) => j[k] === false).join(', ') || 'settings'}` : `HTTP ${r.status}`;
     } catch (e) { live.voice_relay = false; live.voice_relay_error = clip(e?.name === 'AbortError' ? 'no answer in 6s' : e); }
   }
+  // Which line answers salon calls: LolaDesk's own (default — Lola's brain, tools and ElevenLabs voice
+  // run in LolaDesk) or the Telnyx AI assistant. Numbers are checked and healed against that line.
+  let phoneMode = 'loladesk';
+  try { const pv = await import('./lib/telnyx-provision.js'); phoneMode = await pv.phoneMode(); } catch (_) {}
+  live.phone_line = phoneMode === 'assistant' ? 'telnyx_assistant' : 'loladesk';
   // On the phone: every assistant speaks with her voice; the greeting is set; the salon numbers ring her.
   if (settings.TELNYX_API_KEY) {
     // Which assistant IS Lola: the Vercel id if Telnyx knows it, otherwise found on the account.
@@ -141,8 +147,10 @@ export async function buildStatus() {
         for (const r of tt || []) if (r.phone_number) salon.add(r.phone_number); } catch (_) {}
       const nums = await tget('/phone_numbers?page[size]=250');
       const onAcct = (nums.j?.data || []).filter((n) => salon.has(n.phone_number));
-      live.salon_numbers = onAcct.length;
-      live.salon_numbers_ringing_lola = onAcct.filter((n) => good.has(n.connection_id)).length;
+      if (phoneMode === 'assistant') {
+        live.salon_numbers = onAcct.length;
+        live.salon_numbers_ringing_lola = onAcct.filter((n) => good.has(n.connection_id)).length;
+      }
       // Self-repair, at most every 10 minutes per server.
       const voiceOff = voices.possible && voices.lola < voices.total;
       // Her wiring as Telnyx documents it: signed tools, signed salon-details webhook, website calls allowed.
@@ -163,7 +171,7 @@ export async function buildStatus() {
       const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
       const dvBad = Object.keys(dvRaw).filter((k) => { const v = dvRaw[k]; return v == null || typeof v === 'object' || (typeof v === 'number' && !Number.isInteger(v)); });
       if (dvBad.length) live.assistant_bad_values = dvBad;
-      const needs = rewire || dvBad.length > 0 || voiceOff || !live.phone_greeting || live.salon_numbers_ringing_lola < live.salon_numbers;
+      const needs = rewire || dvBad.length > 0 || voiceOff || !live.phone_greeting || (phoneMode === 'assistant' && live.salon_numbers_ringing_lola < live.salon_numbers);
       if (needs && Date.now() - lastHeal > 10 * 60e3) {
         lastHeal = Date.now();
         if (dvBad.length) {
@@ -192,7 +200,7 @@ export async function buildStatus() {
             }
           } catch (_) {}
         }
-        if (live.salon_numbers_ringing_lola < live.salon_numbers) {
+        if (phoneMode === 'assistant' && live.salon_numbers_ringing_lola < live.salon_numbers) {
           // Point every salon number that doesn't reach Lola (no connection, or a dead/other one) at her phone app.
           let n = 0;
           if (brainApp) {
@@ -209,6 +217,40 @@ export async function buildStatus() {
       }
     }
   }
+  // LolaDesk's own call line (default): the line exists and points here, the voice cache works,
+  // and every salon number rings it — repaired by itself at most every 10 minutes.
+  if (settings.TELNYX_API_KEY && phoneMode === 'loladesk' && live.telnyx_key !== false) {
+    try {
+      const pv = await import('./lib/telnyx-provision.js');
+      const lineApp = await pv.getLolaDeskVoiceAppId().catch(() => null);
+      live.phone_line_ready = !!lineApp;
+      const salon = new Set();
+      try { const c = db(); const [{ data: tn }, { data: tt }] = await Promise.all([c.from('tenant_numbers').select('phone_number,status').limit(1000), c.from('tenants').select('phone_number').limit(1000)]);
+        for (const r of tn || []) if (r.phone_number && r.status !== 'released') salon.add(r.phone_number);
+        for (const r of tt || []) if (r.phone_number) salon.add(r.phone_number); } catch (_) {}
+      const nums = await tget('/phone_numbers?page[size]=250');
+      const onAcct = (nums.j?.data || []).filter((n) => salon.has(n.phone_number));
+      live.salon_numbers = onAcct.length;
+      live.salon_numbers_ringing_lola = lineApp ? onAcct.filter((n) => n.connection_id === lineApp).length : 0;
+      // Her phone voice is cached in Supabase Storage ('voice-audio', public): make sure the bucket is there.
+      try {
+        const c = db();
+        const { data: bucket } = await c.storage.getBucket('voice-audio');
+        if (!bucket) { const { error } = await c.storage.createBucket('voice-audio', { public: true }); live.phone_voice_cache = !error; if (!error) healed.push('Lola’s phone-voice storage created.'); }
+        else { live.phone_voice_cache = true; if (bucket.public === false) { const { error } = await c.storage.updateBucket('voice-audio', { public: true }); if (!error) healed.push('Lola’s phone-voice storage made playable for calls.'); else live.phone_voice_cache = false; } }
+      } catch (_) { live.phone_voice_cache = false; }
+      if (lineApp && live.salon_numbers_ringing_lola < live.salon_numbers && Date.now() - lastLineHeal > 10 * 60e3) {
+        lastLineHeal = Date.now();
+        let n = 0;
+        const { telnyxRequest } = await import('./lib/telnyx-client.js');
+        for (const num of onAcct.filter((x) => x.connection_id !== lineApp && x.id)) {
+          try { const r = await telnyxRequest(`/phone_numbers/${encodeURIComponent(num.id)}`, { method: 'PATCH', body: { connection_id: lineApp }, timeoutMs: 8000 }); const got = r?.data?.connection_id ?? r?.connection_id; if (!got || got === lineApp) n++; }
+          catch (e) { live.numbers_heal_error = clip(e); }
+        }
+        if (n) { healed.push(`${n} salon number${n > 1 ? 's now ring' : ' now rings'} Lola on LolaDesk’s own line (her brain, her tools, her voice).`); live.salon_numbers_ringing_lola = Math.min(live.salon_numbers, live.salon_numbers_ringing_lola + n); }
+      }
+    } catch (e) { live.phone_line_ready = false; live.phone_line_error = clip(e); }
+  }
   if (!optedOut) {
     if (!live.voice_key) vfix.push('Add ELEVENLABS_API_KEY in Vercel (ElevenLabs → Profile → API key), then Redeploy — it carries Lola’s own voice to the app and the phone.');
     if (!live.voice_id) vfix.push('Add ELEVENLABS_VOICE_ID in Vercel = the id of Lola’s voice (ElevenLabs → Voices → Lola → ID), then Redeploy.');
@@ -223,7 +265,11 @@ export async function buildStatus() {
   else if (live.assistant && live.assistant_source === 'env_fixed') healed.unshift(`The assistant id in Vercel was missing “assistant-” — using ${live.assistant_id}.`);
   if (live.phone_assistants > live.phone_assistants_in_lola_voice && !optedOut && live.voice_key && live.voice_id) vfix.push(`${live.phone_assistants - live.phone_assistants_in_lola_voice} of ${live.phone_assistants} phone assistants still use a different voice${live.phone_voice_error ? ' (Telnyx said: ' + live.phone_voice_error + ')' : ''}. Telnyx → AI → Assistants → each one → Voice: ElevenLabs, Lola’s voice → Save.`);
   if (live.phone_greeting === false) vfix.push('Lola’s assistant has no greeting, so callers hear silence first — Telnyx → AI → Assistants → Lola → Greeting: {{lola_greeting}} → Save.');
-  if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(`${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`);
+  if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(phoneMode === 'assistant'
+    ? `${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`
+    : `${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola yet${live.numbers_heal_error ? ' (Telnyx said: ' + live.numbers_heal_error + ')' : ''} — open this page again in 10 minutes; LolaDesk moves them itself. If it stays: Telnyx → Numbers → each number → Voice: connection = “LolaDesk” → Save.`);
+  if (phoneMode === 'loladesk' && live.phone_line_ready === false) vfix.push(`LolaDesk couldn’t open its own call line on Telnyx${live.phone_line_error ? ' (' + live.phone_line_error + ')' : ''} — Telnyx → Voice → Programmable Voice → TeXML Applications: create one named “LolaDesk” with voice URL ${String(process.env.APP_URL || 'https://www.loladesk.com').replace(/\/+$/, '')}/api/telnyx-voice (POST), then open this page again.`);
+  if (phoneMode === 'loladesk' && live.phone_voice_cache === false) vfix.push('Lola’s phone voice can’t be stored for calls — Supabase → Storage → New bucket “voice-audio”, Public: on → Save.');
   // Can a new salon sign up right now? (the Auth admin API that creates accounts answers)
   try {
     const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, ''), key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
