@@ -255,8 +255,12 @@
   <div class="card" id="lolaWidgetCard">
     <h3>Lola on your website</h3>
     <div class="desc">Visitors tap Lola on your site and talk or chat with her — the same Lola who answers your phone, with your menu and your calendar. Paste this once before <code>&lt;/body&gt;</code> on your website (Wix, Squarespace, Shopify, WordPress: “custom code”).</div>
-    <div class="copy-box" style="align-items:flex-start"><pre id="lolaWidgetCode" style="margin:0;flex:1;white-space:pre-wrap;font:inherit">Loading…</pre><button id="lolaWidgetCopy" onclick="copyWidget()">Copy</button></div>
+    <div class="copy-box" style="align-items:flex-start"><pre id="lolaSnippet" style="margin:0;flex:1;white-space:pre-wrap;word-break:break-all;font:inherit">Loading…</pre><button id="lolaSnippetCopy" onclick="copySnippet()">Copy</button></div>
+    <div class="ts" style="margin-top:8px">One line, forever: LolaDesk keeps Lola’s voice, your salon line and every update behind it — you never paste again.</div>
     <div class="msg" id="lolaWidgetMsg"></div>
+    <details style="margin-top:12px"><summary class="ts" style="cursor:pointer">Advanced: raw Telnyx widget code</summary>
+      <div class="copy-box" style="align-items:flex-start;margin-top:8px"><pre id="lolaWidgetCode" style="margin:0;flex:1;white-space:pre-wrap;font:inherit">Loading…</pre><button id="lolaWidgetCopy" onclick="copyWidget()">Copy</button></div>
+    </details>
   </div>
 
   <div class="card" id="igCard">
@@ -436,6 +440,15 @@ function renderLolaWidget(agentId){
   box.textContent='<telnyx-ai-agent agent-id="'+agentId+'" environment="production" call-caller-name="'+name+'" call-custom-headers=\''+headers+'\'></telnyx-ai-agent>\n<script async src="https://unpkg.com/@telnyx/ai-agent-widget@0.36.0"></'+'script>';
   if(btn) btn.disabled=false;
 }
+async function loadSnippet(){
+  const box=document.getElementById('lolaSnippet'), btn=document.getElementById('lolaSnippetCopy'); if(!box) return;
+  try{ const r=await fetch('/api/widget-embed',{headers:H()}); const d=await r.json(); if(d.ok&&d.snippet){ box.textContent=d.snippet; if(btn) btn.disabled=false; return; } }catch(e){}
+  box.textContent='Couldn’t load your website code — refresh the page.'; if(btn) btn.disabled=true;
+}
+function copySnippet(){
+  const t=(document.getElementById('lolaSnippet')||{}).textContent||'';
+  try{navigator.clipboard.writeText(t);msg('lolaWidgetMsg','Copied. Paste it once in your website’s custom code (Squarespace: Settings → Advanced → Code Injection → Footer) — replace any older Lola or Telnyx code.',true);}catch(e){msg('lolaWidgetMsg','Select the code and copy it.',false);}
+}
 function copyWidget(){
   const t=(document.getElementById('lolaWidgetCode')||{}).textContent||'';
   try{navigator.clipboard.writeText(t);msg('lolaWidgetMsg','Copied. Paste it on your website and Lola appears there.',true);}catch(e){msg('lolaWidgetMsg','Select the code and copy it.',false);}
@@ -604,7 +617,7 @@ async function load(){
       document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
     }
     renderBookingLink();
-    renderLolaWidget(d.lola_agent_id);
+    renderLolaWidget(d.lola_agent_id); loadSnippet();
     igLoad();
     fbLoad();
     icalLoad(); blvdLoad();

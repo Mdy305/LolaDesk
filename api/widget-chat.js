@@ -105,7 +105,16 @@ export default async function handler(req, res){
 
   /* ── public config for the launcher ── */
   if(req.method === 'GET'){
-    return res.status(200).json({ ok:true, name: tenant.name,
+    // Voice: LolaBrain (the one Telnyx assistant), told which salon this is by its Lola line —
+    // the website never has to carry an assistant id or a phone number itself.
+    let voice = null;
+    try{
+      const { resolveAssistant } = await import('./lib/assistant-wiring.js');
+      const a = await resolveAssistant();
+      const line = String(tenant.phone_number || '').trim();
+      if(a?.id && line) voice = { agent_id: a.id, line, widget: '0.36.0' };
+    }catch{}
+    return res.status(200).json({ ok:true, name: tenant.name, voice,
       greeting: `Hi! I'm Lola, ${tenant.name}'s assistant 💗 Ask me anything — or let's get you booked in.`,
       booking_url: bookingUrlFor(tenant) });
   }
@@ -134,15 +143,17 @@ export default async function handler(req, res){
     }
   }catch{}
 
-  /* ── the brain: deterministic skill → LLM → grounded fallback ── */
+  /* ── the brain: the same Lola as the phone — real availability, real booking (full name, mobile,
+     email), verified, in whatever booking system the salon uses (lib/client-brain → lola-tools) ── */
   const intent = detectLolaIntent(message);
-  let reply = deterministicSkillReply({ tenant, intent, channel: 'web', clientName: profile?.name || '' }) || '';
-  // A skill handled it, but booking intents on the web channel must still
-  // hand off to a working booking page (salon URL or LolaDesk hosted page).
-  if(reply && intent === 'booking_new' && !/(http|book right here)/i.test(reply)){
-    const url = bookingUrlFor(tenant);
-    if(url) reply += ` You can book right here: ${url}`;
-  }
+  let reply = '';
+  try{
+    const { answerClient } = await import('./lib/client-brain.js');
+    const out = await answerClient({ tenant, client, channel: 'web', text: message, history, phone: null, memoryKey: 'web:' + visitorId,
+      tz: tenant.timezone || tenant.time_zone || 'America/New_York', budgetMs: 25000 });
+    // Her brain unreachable → the grounded answer below (it always links a working booking page).
+    reply = out?.ok ? String(out.reply || '').trim() : '';
+  }catch(e){ console.warn('[widget-chat] brain:', String(e?.message || e).slice(0, 160)); }
   if(!reply){
     const memoryBlock = buildClientMemoryBlock(profile) || '';
     const system = buildLolaSystemPrompt({ tenant, channel: 'web', intent, memoryBlock })
