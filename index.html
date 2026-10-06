@@ -622,7 +622,7 @@ function upsample(raw, mw, mh, w, h){
 function maskOf(res, k, w, h){ const m = res.confidenceMasks[k]; return upsample(m.getAsFloat32Array(), m.width, m.height, w, h); }
 async function preparePhoto(src){
   const img = await loadImg(src);
-  const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const k = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));   // high definition
   const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, w, h);
@@ -709,7 +709,9 @@ function hairStats(P){
     lab[i*3] = v[0]; lab[i*3+1] = v[1]; lab[i*3+2] = v[2];
     if (P.mask[i] > .7) { c++; sL += v[0]; sa += v[1]; sb += v[2]; sLL += v[0]*v[0]; } }
   c = c || 1; const mL = sL/c;
-  return (P.hs = { lab, mL, ma: sa/c, mb: sb/c, sL: Math.sqrt(Math.max(1, sLL/c - mL*mL)) });
+  let top = P.h, bottom = 0;
+  for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x += 4) if (P.mask[y*P.w + x] > .5) { if (y < top) top = y; if (y > bottom) bottom = y; break; }
+  return (P.hs = { lab, mL, ma: sa/c, mb: sb/c, sL: Math.sqrt(Math.max(1, sLL/c - mL*mL)), top, bottom: Math.max(bottom, top + 1) });
 }
 async function paintTry(target){
   const cv = target || document.getElementById('tryCanvas'); if (!cv || !PHOTO) return;
@@ -721,15 +723,20 @@ async function paintTry(target){
   const O = hairStats(PHOTO), LAB = O.lab;
   // Color transfer in Lab, the way a colorist thinks: keep her hair's own light and shadow (L),
   // move it to the shade's depth, and take the shade's tone at every depth. Strands, waves, shine stay hers.
-  let k = T.sL / O.sL; k = k < .55 ? .55 : k > 1.5 ? 1.5 : k;
+  const f = Math.min(1, Math.max(.3, T.mL / 55));                       // deep shades stay deep: less lift, tighter shine
+  let k = T.sL / O.sL; const kmin = .5 + .25 * f; k = k < kmin ? kmin : k > 1.5 ? 1.5 : k;
+  const top = O.top, span = Math.max(1, O.bottom - O.top);
   const out = new ImageData(new Uint8ClampedArray(orig.data), w, h); const o = out.data, d = orig.data;
   for (let i = 0; i < w*h; i++) {
     const m = mask[i]; if (m < .04) continue;
     const Lo = LAB[i*3], ao = LAB[i*3+1], bo = LAB[i*3+2];
     let Ln = T.mL + (Lo - O.mL) * k;
+    const yy = (i / w | 0); Ln += ((yy - top) / span - .45) * 7 * f;          // dimension: deeper at the root, lighter at the ends
+    const hi = Lo - O.mL - O.sL; if (hi > 0) Ln += hi * (.2 + .25 * f);              // gloss: her highlights shine brighter
+    Ln += (Y[i] - Ymid[i]) * (18 + 20 * f);                                           // definition: every strand, crisp
     if (Ln > 92) Ln = 92 + (Ln - 92) * .35; if (Ln < 4) Ln = 4 - (4 - Ln) * .2; if (Ln < 1) Ln = 1;   // soft roll-off, no clipping
     const tn = tintAt(T, Ln);
-    let an = tn[0] + (ao - O.ma) * .3, bn = tn[1] + (bo - O.mb) * .3;
+    let an = tn[0] * 1.12 + (ao - O.ma) * .3, bn = tn[1] * 1.12 + (bo - O.mb) * .3;   // richer, salon-fresh tone
     const cmax = 3 + Ln * .75, cc = Math.hypot(an, bn);       // deep shadows carry little color, like real hair
     if (cc > cmax) { an *= cmax / cc; bn *= cmax / cc; }
     const rgb = fromLab(Ln, an, bn), R = rgb[0], G = rgb[1], B = rgb[2];
