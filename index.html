@@ -37,11 +37,7 @@ h1,h2{text-wrap:balance}
 /* ---------- the studio sheet ---------- */
 .studio{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center}
 .studio-scrim{position:absolute;inset:0;background:var(--scrim);animation:fade .3s both}
-/* A white page; the studio rises onto it. */
-.studio-scrim{background:#fff}
-.bare{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#fff}
-.bare .wordmark{font-size:13px;font-weight:600;letter-spacing:.32em}
-.sheet{position:relative;width:420px;height:min(880px,calc(100% - 48px));border-radius:32px;background:var(--paper);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.04);animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+.sheet{position:relative;width:420px;height:min(880px,calc(100% - 48px));border-radius:32px;background:var(--paper);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.3);animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
 @media (max-width:520px){.sheet{width:100%;height:100%;border-radius:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 14px 8px 24px;flex:none}
 .topbar.on-photo{position:absolute;top:0;left:0;right:0;z-index:3;color:#fff;padding-top:calc(14px + env(safe-area-inset-top,0px))}
@@ -229,10 +225,20 @@ canvas.fill{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
 </style>
 
-<main class="bare" id="studio">
+<header class="site-nav">
   <div class="wordmark">MMA SALON</div>
-  <button class="pill" type="button" data-open>See it on me</button>
+  <nav aria-label="Site"><a href="https://www.mmasalon.com/balayage-miami" target="_top">Color</a><a href="https://www.mmasalon.com/hair-extensions-miami" target="_top">Extensions</a><a href="https://www.mmasalon.com/book" target="_top">Book</a></nav>
+</header>
+<main class="site" id="studio">
+  <div>
+    <div class="eyebrow">Luxury hair extensions &#xb7; Miami Beach</div>
+    <h1>Longer. Fuller. Invisible.</h1>
+    <p>Seamless hair, matched to your color and placed by hand. See it on your selfie before you sit.</p>
+    <button class="pill" type="button" data-open>See it on me</button>
+  </div>
+  <div class="site-photo"><img src="img/hero.jpg" alt="Model wearing MMA extensions"></div>
 </main>
+<button class="launcher" type="button" data-open aria-label="Open MMA Studio"><img src="img/hero.jpg" alt="">See it on me</button>
 
 <div class="studio" id="studioRoot" hidden>
   <div class="studio-scrim" data-close></div>
