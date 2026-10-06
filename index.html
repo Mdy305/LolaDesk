@@ -1,0 +1,845 @@
+<title>MMA Studio Live</title>
+<style>
+/* Layout: the client's site behind, MMA Studio as a full-screen sheet on phones and a centered phone-sized sheet on desktop. Single light look by design. */
+:root{
+  --paper:#ffffff; --ink:#1d1d1f; --ink-2:#6e6e73; --ink-3:#86868b;
+  --line:#ebe9e6; --line-2:#d2d2d7; --surface:#f6f5f3; --bubble:#f1efec;
+  --scrim:rgba(20,18,16,.5);
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;font-size:16px}
+button,input{font-family:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+h1,h2{text-wrap:balance}
+
+/* ---------- the site (mock of mmasalon.com) ---------- */
+.demo-bar{background:var(--ink);color:#fff;font-size:12px;text-align:center;padding:9px 16px;letter-spacing:.01em}
+.site-nav{display:flex;justify-content:space-between;align-items:center;padding:22px clamp(16px,5vw,56px);border-bottom:1px solid var(--line)}
+.wordmark{font-size:13px;font-weight:600;letter-spacing:.28em}
+.site-nav nav{display:flex;gap:28px;font-size:14px;color:var(--ink-2)}
+.site-nav nav a{color:inherit;text-decoration:none}
+.site{max-width:1200px;margin:0 auto;padding:clamp(40px,8vw,96px) clamp(16px,5vw,56px) 120px;display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(28px,5vw,72px);align-items:center}
+.site h1{margin:14px 0 18px;font-size:clamp(40px,6vw,72px);font-weight:500;letter-spacing:-.045em;line-height:1}
+.site p{margin:0 0 30px;max-width:30em;font-size:18px;line-height:1.5;color:var(--ink-2)}
+.site-photo{position:relative;border-radius:28px;overflow:hidden;aspect-ratio:4/5;max-width:100%;background:var(--surface)}
+.site-photo img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;display:block}
+.pill{display:inline-flex;align-items:center;gap:10px;height:56px;padding:0 28px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-size:17px;font-weight:600;letter-spacing:-.01em;transition:transform .15s}
+.pill:active{transform:scale(.97)}
+.launcher{position:fixed;left:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:5;display:flex;align-items:center;gap:10px;height:52px;padding:0 20px 0 6px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-size:15px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.launcher img{width:40px;height:40px;border-radius:50%;object-fit:cover;object-position:50% 20%}
+@media (max-width:760px){.site{grid-template-columns:1fr}.site-nav nav{display:none}}
+
+/* ---------- the studio sheet ---------- */
+.studio{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center}
+.studio-scrim{position:absolute;inset:0;background:var(--scrim);animation:fade .3s both}
+.sheet{position:relative;width:420px;height:min(880px,calc(100% - 48px));border-radius:32px;background:var(--paper);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.3);animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+@media (max-width:520px){.sheet{width:100%;height:100%;border-radius:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 14px 8px 24px;flex:none}
+.topbar.on-photo{position:absolute;top:0;left:0;right:0;z-index:3;color:#fff;padding-top:calc(14px + env(safe-area-inset-top,0px))}
+@media (min-width:521px){.topbar.on-photo{padding-top:14px}}
+.bars{display:flex;gap:4px;align-items:center}
+.bars span{height:3px;border-radius:2px;background:var(--line-2);width:12px;transition:width .35s,background .35s}
+.bars span.on{background:var(--ink)}.bars span.cur{width:22px}
+.iconbtn{width:44px;height:44px;border:0;border-radius:50%;background:transparent;display:flex;align-items:center;justify-content:center;color:inherit}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column;animation:enter .5s cubic-bezier(.2,.8,.2,1) both}
+.scroll{flex:1;min-height:0;overflow-y:auto}
+.foot{flex:none;display:flex;gap:10px;align-items:center;padding:12px 24px 24px}
+.cta{flex:1;height:56px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-size:17px;font-weight:600;letter-spacing:-.01em;transition:transform .15s,background .2s,color .2s}
+.cta:active{transform:scale(.98)}
+.cta:disabled{background:#e8e8ed;color:#a1a1a6;cursor:default;transform:none}
+.cta.light{background:#fff;color:var(--ink)}
+.back{height:56px;padding:0 14px 0 0;border:0;background:transparent;font-size:16px;font-weight:500}
+.pad{padding:28px 24px 8px}
+.h2{margin:10px 0 0;font-size:34px;font-weight:500;line-height:1.04;letter-spacing:-.04em}
+.lede{margin:12px 0 0;font-size:15px;line-height:1.5;color:var(--ink-2)}
+.link{border:0;background:transparent;padding:0;font-size:14px;font-weight:500;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:4px}
+
+/* rows (method, fullness) */
+.rows{display:flex;flex-direction:column;margin-top:14px}
+.row{display:flex;align-items:center;gap:16px;width:100%;padding:24px 0;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;transition:opacity .2s}
+.row .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.row .n{font-size:21px;font-weight:500;letter-spacing:-.025em}
+.row .m{font-size:12px;color:var(--ink-3);margin-left:8px;font-weight:400;letter-spacing:0}
+.row .d{font-size:14px;line-height:1.45;color:var(--ink-2)}
+.row .p{font-size:16px;white-space:nowrap}
+.radio{flex:none;width:22px;height:22px;border-radius:50%;border:1px solid #c7c7cc;transition:border .25s}
+.row[aria-pressed="true"] .radio{border:7px solid var(--ink)}
+
+/* lead (full-bleed hero) */
+.hero{position:absolute;inset:0;z-index:0}
+.hero img{width:100%;height:100%;object-fit:cover;object-position:50% 28%;display:block;animation:kb 18s ease-in-out infinite alternate}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,0) 14%,rgba(0,0,0,0) 26%,rgba(0,0,0,.5) 44%,rgba(0,0,0,.86) 100%)}
+.lead{position:relative;z-index:1;margin-top:auto;padding:0 24px 28px;color:#fff;display:flex;flex-direction:column;gap:18px}
+.lead h1{margin:8px 0 0;font-size:42px;font-weight:500;line-height:1.02;letter-spacing:-.045em}
+.lead p{margin:0;font-size:16px;line-height:1.45;color:rgba(255,255,255,.86)}
+.field{display:flex;flex-direction:column;gap:4px}
+.field span{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.8)}
+.field input{border:0;border-bottom:1px solid rgba(255,255,255,.5);padding:8px 0 10px;font-size:18px;color:#fff;background:transparent;outline:none;border-radius:0}
+.field input::placeholder{color:rgba(255,255,255,.5)}
+.field input:focus{border-bottom-color:#fff}
+.err{font-size:13px;color:#ffd7cf;min-height:0}
+.lead .fine{margin:0;font-size:11px;line-height:1.5;color:rgba(255,255,255,.75)}
+.lead .cta{flex:none}
+.err:empty{display:none}
+
+/* shade */
+.shade-hero{position:relative;height:270px;flex:none;background:var(--ink);overflow:hidden}
+.shade-hero img{width:100%;height:100%;object-fit:cover;display:block;animation:grow .45s cubic-bezier(.2,.8,.2,1) both}
+.shade-hero .m{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:72px;font-weight:600;letter-spacing:-.04em}
+.chip{position:absolute;top:14px;left:24px;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.92);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+.tabs{display:flex;justify-content:space-between;margin:24px 24px 0;border-bottom:1px solid var(--line)}
+.tab{border:0;background:transparent;padding:9px 0;font-size:14px;font-weight:500;color:var(--ink-3);transition:color .2s,box-shadow .2s}
+.tab[aria-pressed="true"]{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:20px 24px 4px}
+.tile{position:relative;aspect-ratio:1/1;max-width:100%;padding:0;border:0;border-radius:8px;background:#fff;box-shadow:0 0 0 1px var(--line);transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
+.tile img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
+.tile .mono{width:100%;height:100%;border-radius:8px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600}
+.tile[aria-pressed="true"]{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink);transform:scale(1.04)}
+.tile .ai{position:absolute;top:-7px;right:-7px;height:16px;padding:0 5px;border-radius:8px;background:var(--ink);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center}
+
+/* length */
+.inches{display:flex;justify-content:space-between;align-items:flex-end;margin-top:34px}
+.inches b{font-size:64px;font-weight:300;letter-spacing:-.05em;line-height:.9}
+.inches span{font-size:15px;font-weight:500;letter-spacing:-.01em;color:var(--ink);padding-bottom:8px;text-align:right}
+input[type=range]{width:100%;margin:18px 0 6px;accent-color:var(--ink)}
+.ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3)}
+
+/* try-on */
+.frame{position:relative;flex:1;min-height:0;margin:0 12px;border-radius:28px;overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center}
+.frame img.fill{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.frame .oval{width:58%;aspect-ratio:3/4;border-radius:50%;border:1.5px dashed #c7c7cc}
+.frame.dark{background:#111}
+.frame .shade-dot{position:absolute;left:18px;bottom:18px;display:flex;align-items:center;gap:10px;color:#fff;font-size:14px;font-weight:500}
+.frame .shade-dot img{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #fff}
+.seg{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;padding:3px;border-radius:999px;background:rgba(0,0,0,.35);z-index:2}
+.seg button{height:32px;padding:0 16px;border:0;border-radius:999px;background:transparent;color:#fff;font-size:13px;font-weight:500}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);font-weight:600}
+.spinner{width:56px;height:56px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:spin .9s linear infinite}
+.file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.matches{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.match{display:flex;flex-direction:column;gap:8px;padding:0;border:0;background:transparent;text-align:left}
+.match img{width:100%;aspect-ratio:1/1;max-width:100%;object-fit:cover;border-radius:10px;box-shadow:0 0 0 1px var(--line);transition:box-shadow .2s}
+.match[aria-pressed="true"] img{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink)}
+.match span{display:flex;flex-direction:column;gap:1px;min-width:0}
+.match b{font-size:13px;font-weight:600}
+.match small{font-size:11px;color:var(--ink-3)}
+.incl{margin-top:20px;border-top:1px solid var(--line)}
+.incl div{display:flex;flex-direction:column;gap:4px;padding:16px 0;border-bottom:1px solid var(--line)}
+.incl b{font-size:16px;font-weight:600;letter-spacing:-.01em}
+.incl span{font-size:14px;line-height:1.45;color:var(--ink-2)}
+.scarce{margin:30px 0 10px;padding:18px 20px;border-radius:18px;background:var(--ink);color:#fff;display:flex;flex-direction:column;gap:8px}
+.scarce .eyebrow{color:rgba(255,255,255,.7)}
+.scarce p{margin:0;font-size:15px;line-height:1.45}
+.status{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45;color:var(--ink)}
+.status span{flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px;background:#b07a2a}
+.status.ok span{background:#2f7d4f}
+.rail2{display:flex;gap:10px;overflow-x:auto;padding:16px 24px 8px;scrollbar-width:none}
+.rail2::-webkit-scrollbar{display:none}
+.rail2 button{position:relative;flex:none;width:52px;height:52px;padding:0;border:0;border-radius:12px;background:#fff;box-shadow:0 0 0 1px var(--line);transition:box-shadow .2s,transform .2s}
+.rail2 button img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+.rail2 button[aria-pressed="true"]{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink);transform:scale(1.05)}
+.rail2 i{position:absolute;top:-6px;right:-6px;height:16px;padding:0 5px;border-radius:8px;background:var(--ink);color:#fff;font-size:9px;font-style:normal;font-weight:700;display:flex;align-items:center}
+.lenfig{position:relative;flex:none}
+.lenfig img{display:block;width:100%;height:auto}
+.mark{position:absolute;left:43%;right:20px;transform:translateY(-50%);display:flex;align-items:center;gap:12px;padding:8px 0;border:0;background:transparent;color:#fff;opacity:.5;text-shadow:0 1px 8px rgba(0,0,0,.45);transition:opacity .3s}
+.mark .ln{position:relative;flex:1;height:1px;background:currentColor;box-shadow:0 0 6px rgba(0,0,0,.35)}
+.mark .ln::before{content:"";position:absolute;left:-4px;top:-3px;width:7px;height:7px;border-radius:50%;background:currentColor}
+.mark .lb{min-width:44px;text-align:right;font-size:14px;font-weight:400;letter-spacing:-.01em;transition:font-size .3s}
+.mark.on{opacity:1}
+.mark.on .lb{font-size:22px;font-weight:500}
+.rail{display:flex;gap:10px;overflow-x:auto;padding:6px 24px 4px;scrollbar-width:none;flex:none}
+.rail::-webkit-scrollbar{display:none}
+.rail button{flex:none;width:42px;height:42px;border-radius:50%;padding:0;border:0;overflow:hidden;background:#fff;box-shadow:0 0 0 1px var(--line);transition:box-shadow .2s,transform .2s}
+.rail button img{width:100%;height:100%;object-fit:cover;display:block}
+.rail button[aria-pressed="true"]{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink);transform:scale(1.06)}
+canvas.fill{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.demo-note{position:absolute;right:14px;bottom:18px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.8)}
+
+/* reserve */
+.look{display:flex;gap:14px;align-items:center}
+.look img,.look .mono{width:64px;height:64px;border-radius:14px;object-fit:cover;flex:none;background:var(--ink)}
+.summary{margin-top:28px;border-radius:18px;background:var(--surface);padding:2px 18px}
+.summary div{display:flex;justify-content:space-between;gap:16px;padding:13px 0;font-size:15px;border-bottom:1px solid var(--line)}
+.summary div:last-child{border-bottom:0;font-weight:600}
+.summary span:first-child{color:var(--ink-2)}
+.summary span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.check{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--surface);transition:background .2s,color .2s}
+.row[aria-pressed="true"] .check{background:var(--ink);color:#fff}
+.ticks-list{display:flex;flex-direction:column;gap:10px;margin-top:24px;font-size:14px;line-height:1.4}
+.ticks-list div{display:flex;gap:10px}
+.small{font-size:11px;line-height:1.5;color:var(--ink-3);margin-top:22px}
+
+/* pay sheet */
+.paywrap{position:absolute;inset:0;z-index:6}
+.paywrap .scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);animation:fade .3s both}
+.pay{position:absolute;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));border-radius:30px;background:#fff;padding:22px 22px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 40px rgba(0,0,0,.18);animation:up .45s cubic-bezier(.2,.8,.2,1) both}
+.pay .line{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+.pay .line span:first-child{color:var(--ink-2)}
+.pay .total{display:flex;justify-content:space-between;font-size:22px;font-weight:600;letter-spacing:-.02em;padding-top:4px}
+.paybtn{height:54px;border:0;border-radius:14px;background:#000;color:#fff;font-size:17px;font-weight:600}
+.state{height:54px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px}
+
+/* confirmation, booking, thanks */
+.timeline{list-style:none;margin:36px 0 0;padding:0}
+.timeline li{display:flex;gap:16px}
+.timeline .rail{display:flex;flex-direction:column;align-items:center}
+.timeline .dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--ink);margin-top:4px}
+.timeline .dot.done{background:var(--ink)}
+.timeline .bar{flex:1;width:1px;background:var(--line-2);margin:6px 0}
+.timeline .txt{padding-bottom:24px;display:flex;flex-direction:column;gap:3px}
+.timeline .txt b{font-size:16px;font-weight:500}
+.receipt{margin-top:28px;padding:18px;border-radius:18px;background:var(--surface);display:flex;gap:14px;align-items:center}
+.receipt img,.receipt .mono{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;background:var(--ink)}
+.days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}
+.day{height:72px;border:1px solid var(--line-2);border-radius:14px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .2s,color .2s}
+.day small{font-size:12px;color:var(--ink-2)}
+.day b{font-size:20px;font-weight:500}
+.day[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.day[aria-pressed="true"] small{color:rgba(255,255,255,.75)}
+.times{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+.time{height:48px;border:1px solid var(--line-2);border-radius:12px;background:#fff;font-size:15px}
+.time[aria-pressed="true"]{border:1.5px solid var(--ink);font-weight:600}
+.meddy{display:flex;gap:14px;align-items:center;margin-top:26px;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.avatar{width:48px;height:48px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;flex:none}
+.appt{margin-top:32px;border-radius:20px;background:var(--surface);padding:22px;display:flex;gap:20px}
+.appt .date{display:flex;flex-direction:column;align-items:center;justify-content:center;width:64px;flex:none;border-right:1px solid #e3e0dc;padding-right:18px}
+.appt .date b{font-size:36px;font-weight:400;letter-spacing:-.04em;line-height:1.05}
+.prep div{padding:16px 0;border-bottom:1px solid var(--line);font-size:15px;line-height:1.45}
+.bubble{margin-top:26px;display:flex;gap:10px;align-items:flex-end}
+.bubble .l{width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex:none}
+.bubble .b{background:var(--bubble);border-radius:20px 20px 20px 6px;padding:12px 15px;font-size:15px;line-height:1.42}
+
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translateY(40px) scale(.98)}}
+@keyframes enter{from{opacity:0;transform:translateY(14px)}}
+@keyframes up{from{transform:translateY(100%)}}
+@keyframes grow{from{opacity:.4;transform:scale(1.06)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes kb{from{transform:scale(1)}to{transform:scale(1.06) translateY(-1%)}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08);opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
+</style>
+
+<div class="demo-bar">Preview of MMA Studio on mmasalon.com. Demo mode: nothing is charged or sent.</div>
+<header class="site-nav">
+  <div class="wordmark">MMA SALON</div>
+  <nav aria-label="Site"><a href="#studio">Color</a><a href="#studio">Extensions</a><a href="#studio">Book</a></nav>
+</header>
+<main class="site" id="studio">
+  <div>
+    <div class="eyebrow">Luxury hair extensions &#xb7; Miami Beach</div>
+    <h1>Longer. Fuller. Invisible.</h1>
+    <p>Seamless hair, matched to your color and placed by hand. See it on your selfie before you sit.</p>
+    <button class="pill" type="button" data-open>See it on me</button>
+  </div>
+  <div class="site-photo"><img src="img/hero.jpg" alt="Model wearing MMA extensions"></div>
+</main>
+<button class="launcher" type="button" data-open aria-label="Open MMA Studio"><img src="img/hero.jpg" alt="">See it on me</button>
+
+<div class="studio" id="studioRoot" hidden>
+  <div class="studio-scrim" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="MMA Studio" id="sheet"></div>
+</div>
+
+<script>
+const SHADES = [{"code": "18/613", "fam": "blonde", "name": "Ash Lumi\u00e8re", "story": "Cool mushroom ash woven with pale baby-blonde ribbons. The blonde Miami asks for by name: soft, expensive, never brassy.", "img": "img/ash-lumiere.jpg", "sourced": false, "custom": false}, {"code": "P16/22", "fam": "blonde", "name": "Honey Riviera", "story": "Golden honey light poured over a soft medium blonde. Warm like late sun on the Riviera, and it glows on bronzed skin.", "img": "img/honey-riviera.jpg", "sourced": false, "custom": false}, {"code": "SABLE", "fam": "blonde", "name": "Sable", "story": "Warm sand blonde, beige and golden at once, like South Beach at 5 p.m. Natural, sun-born, and easy on every skin tone.", "img": "img/sable.jpg", "sourced": true, "custom": false}, {"code": "LIN", "fam": "blonde", "name": "Lin", "story": "Linen blonde: soft beige threaded with bright white ribbons. Airy, effortless, made for Miami light.", "img": "img/lin.jpg", "sourced": true, "custom": false}, {"code": "ROSE", "fam": "blonde", "name": "Ros\u00e9", "story": "Strawberry blonde with a blush of rose gold, like the last glass of ros\u00e9 at sunset. Soft, pretty, and gorgeous on warm skin.", "img": "img/rose.jpg", "sourced": true, "custom": false}, {"code": "PECHE", "fam": "red", "name": "P\u00eache", "story": "Pale strawberry blonde with a peach glow, like a Riviera sunset. Warm, romantic, quietly daring.", "img": "img/peche.jpg", "sourced": true, "custom": false}, {"code": "613", "fam": "blonde", "name": "Soleil", "story": "Pure, bright, sunny blonde. The base Meddy tones to your exact shade. Bold for the woman who wants to be seen.", "img": "img/soleil.jpg", "sourced": false, "custom": false}, {"code": "60", "fam": "blonde", "name": "Platine", "story": "Icy porcelain platinum. No brass, no yellow, only light. The most daring blonde we make, and the most photographed.", "img": "img/platine.jpg", "sourced": false, "custom": false}, {"code": "NACRE", "fam": "blonde", "name": "Nacre", "story": "Icy pearl platinum with a silver sheen, like the inside of a shell. The cleanest, coolest blonde we carry.", "img": "img/nacre.jpg", "sourced": true, "custom": false}, {"code": "CREME", "fam": "blonde", "name": "Cr\u00e8me", "story": "Vanilla cream blonde lit with bright white ribbons. Soft, luminous, and kind to every skin tone.", "img": "img/creme.jpg", "sourced": true, "custom": false}, {"code": "ARGENT", "fam": "blonde", "name": "Argent", "story": "Pure silver with a whisper of lilac. Cool, luminous, and runway-ready, for the client who wants to own the room.", "img": "img/argent.jpg", "sourced": true, "custom": false}, {"code": "OPAL", "fam": "blonde", "name": "Opal", "story": "Pale beige blonde shimmering with soft lavender, like the inside of a shell. Rooted for an effortless grow-out.", "img": "img/opal.jpg", "sourced": true, "custom": false}, {"code": "SILVER", "fam": "blonde", "name": "Silver Smoke", "story": "A soft grey root melting into lavender-kissed silver. Cool, modern, a little rebellious. Made for after dark.", "img": "img/silver-smoke.jpg", "sourced": true, "custom": false}, {"code": "P6/60", "fam": "brownblonde", "name": "Champagne Brunette", "story": "Light brown woven with platinum, the way a French balayage catches light. Our most-loved blend, and the one AI picks most.", "img": "img/champagne-brunette.jpg", "sourced": false, "custom": false}, {"code": "GREIGE", "fam": "brownblonde", "name": "Greige", "story": "Taupe and platinum woven together, half beige, half grey. The quiet-luxury blonde of the moment.", "img": "img/greige.jpg", "sourced": true, "custom": false}, {"code": "CENDRE", "fam": "brownblonde", "name": "Cendr\u00e9", "story": "Light ash brown with a cool, smoky glow, between blonde and brunette. The low-maintenance color that never turns brassy.", "img": "img/cendre.jpg", "sourced": true, "custom": false}, {"code": "MUSHROOM", "fam": "brownblonde", "name": "Mushroom Lumi\u00e8re", "story": "Cool ash brown threaded with fine pale-blonde ribbons. Quiet luxury in a shade: understated, smoky, impossibly chic.", "img": "img/mushroom.jpg", "sourced": true, "custom": false}, {"code": "1B/4/14", "fam": "brownblonde", "name": "Smoked Ash", "story": "Off-black at the root sweeping into cool ash blonde. A grown-out balayage that looks intentional from every angle.", "img": "img/smoked-ash.jpg", "sourced": false, "custom": false}, {"code": "2/6/2", "fam": "brown", "name": "Espresso Melt", "story": "Darkest brown with a medium-brown glow through the lengths. Rich, glossy, and deep. Brunette at its most polished.", "img": "img/espresso-melt.jpg", "sourced": false, "custom": false}, {"code": "P4/27", "fam": "brown", "name": "Spiced Chestnut", "story": "Rich chestnut shot through with copper-caramel ribbons. Warm as cinnamon, and gorgeous in candlelight.", "img": "img/spiced-chestnut.jpg", "sourced": false, "custom": false}, {"code": "NOISETTE", "fam": "brown", "name": "Noisette", "story": "Hazelnut brown with fine ash-blonde ribbons. Soft dimension that grows out without a line.", "img": "img/noisette.jpg", "sourced": true, "custom": false}, {"code": "MOKA", "fam": "brown", "name": "Moka Fum\u00e9", "story": "Deep espresso shot through with smoky ash highlights. Dark, cool, and quietly expensive.", "img": "img/moka.jpg", "sourced": true, "custom": false}, {"code": "99J", "fam": "red", "name": "Cherry Noir", "story": "Deep velvet wine with black-cherry depth. A grown-up red that reads black indoors and burgundy in the sun.", "img": "img/cherry-noir.jpg", "sourced": false, "custom": false}, {"code": "PETALE", "fam": "red", "name": "P\u00e9tale", "story": "Soft pastel pink, like a peony petal in morning light. Romantic, playful, and unforgettable on a pale blonde base.", "img": "img/petale.jpg", "sourced": true, "custom": false}, {"code": "330", "fam": "red", "name": "Copper", "story": "Bright natural copper with a warm auburn glow. Freckle-friendly, fearless, and impossible to ignore.", "img": "img/copper.jpg", "sourced": false, "custom": false}, {"code": "1", "fam": "black", "name": "Jet", "story": "True jet black with a mirror shine. Bold, glossy, and dramatic, the black that catches every light in the room.", "img": "img/jet.jpg", "sourced": false, "custom": false}, {"code": "1B", "fam": "black", "name": "Noir", "story": "Soft off-black with a cool, liquid sheen. The most natural black, so seamless no one sees where you end and it begins.", "img": "img/noir.jpg", "sourced": false, "custom": false}, {"code": "1B/3/27", "fam": "black", "name": "Caramel Noir", "story": "Off-black melting into warm caramel ends. Dark and sultry at the top, sun-kissed where it moves.", "img": "img/caramel-noir.jpg", "sourced": false, "custom": false}, {"code": "MEDDY", "fam": "custom", "name": "Sur Mesure by Meddy", "story": "Meddy blends two or three shades to match your color exactly. One of one, the way he does it for his private clients.", "img": "", "sourced": false, "custom": true}];
+const FAMS = [['blonde','Blonde'],['brownblonde','Brown/Blonde'],['brown','Brown'],['red','Red'],['black','Black']];
+const METHODS = [
+  {id:'itips', name:'I-Tips', wear:'Stays 4 to 6 months', d:'Strand by strand, bonded with keratin. Moves exactly like your own. Best for fine hair.'},
+  {id:'tape', name:'Tape-In', wear:'Stays 6 to 8 weeks', d:'Featherlight panels that lie flat. The fastest install, and reusable at every move-up. Best for thin hair.'},
+  {id:'weft', name:'Weft', wear:'Stays 6 to 8 weeks', d:'Hand-sewn rows, no glue, no heat. The most volume. Best for thick hair.'}
+];
+const LENGTHS = [
+  {id:'natural', name:'Natural', inch:12, g:'100 g', d:'Subtle volume and weightlessness. Pure elegance.', price:1500},
+  {id:'full', name:'Full', inch:18, g:'100 g', d:'From root to end, balanced perfection. The definitive choice.', price:2500},
+  {id:'iconic', name:'Iconic', inch:24, g:'100 g', d:'Uncompromising volume, length and presence. Red-carpet ready, every single day.', price:3500}
+];
+const SUGGESTED = 'P6/60';
+const DEPOSIT = 500;
+const COLOR_FEE = 500;
+/* Boulevard: one service per length, each with its $500 deposit. The site's Boulevard booking script provides window.blvd. */
+const BLVD_LOCATION = '935c3ebf-67bc-4b9b-8a8a-8c4c4ffc47f5';
+const BLVD_SERVICE = {
+  natural: '/cart/menu/EXTENSIONS/s_49fc508e-d73d-4421-a90e-cb32be1b9233',   // Natural 12\u2033
+  full:    '/cart/menu/EXTENSIONS/s_51b7ae17-d628-4470-a8b5-75592579f8f8',   // Full 18\u2033
+  iconic:  '/cart/menu/EXTENSIONS/s_fa87c96f-f3cf-4b7c-b6a3-d52c59955751'    // Iconic 24\u2033
+};
+const BLVD_COLOR = '/cart/menu/EXTENSIONS/s_631be5aa-b56e-4f23-a87c-d2aefffa6bae';   // Color customization +$500, same day as the install
+const BLVD_WIDGET = 'https://www.joinblvd.com/b/mmasalon/widget';   // MMA Salon's own Boulevard booking page
+function openBoulevard(){
+  const path = colorChange() ? BLVD_COLOR : BLVD_SERVICE[S.len];
+  if (!path) return false;
+  if (window.blvd && typeof window.blvd.openBookingWidget === 'function') {   // Boulevard's script on the page: its own sheet
+    close(); window.blvd.openBookingWidget({ urlParams: { locationId: BLVD_LOCATION, path, visitType: 'SELF_VISIT' } }); return true;
+  }
+  // Otherwise Boulevard's booking page opens in a sheet over the studio: deposit and install time, then back to her look.
+  const url = `${BLVD_WIDGET}#${path}?locationId=${BLVD_LOCATION}&visitType=SELF_VISIT`;
+  const w = document.createElement('div');
+  w.style.cssText = 'position:fixed;inset:0;z-index:2147483600;background:#fff;display:flex;flex-direction:column;animation:fade .3s both';
+  w.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;border-bottom:1px solid #e8e8ed;font:600 15px -apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;color:#1d1d1f">
+      <span style="flex:1">Secure your placement</span>
+      <a href="${url}" target="_blank" rel="noopener" style="font-weight:400;font-size:13px;color:#6e6e73">Open in new tab</a>
+      <button type="button" aria-label="Back to your look" style="width:32px;height:32px;border:0;border-radius:50%;background:#f5f5f7;font-size:20px;line-height:1;cursor:pointer">&times;</button></div>
+    <iframe src="${url}" title="Reserve with MMA Salon" allow="payment" style="flex:1;width:100%;border:0"></iframe>`;
+  const done = () => { w.remove(); S.pay = 'closed'; render(); };
+  w.querySelector('button').addEventListener('click', done);
+  document.body.appendChild(w);
+  return true;
+}   // a shade other than her AI match = Color customization, same day as the install
+const LEN_POS = {12:33.8, 18:52.8, 24:69.5};   // where each length falls on the length photo (% of its height)
+const LEN_NOTE = {12:'The Classic Silhouette', 18:'Dramatically Fluid', 24:'The Masterpiece Length'};   // where each length falls on the length photo (% of its height)
+/* LolaDesk: every lead, order and install booking goes to the Lola inbox and texts the salon. */
+const STUDIO_API = 'https://www.loladesk.com/api/studio';
+const SALON_LINE = '+13057034132';   // the salon's Lola line in LolaDesk
+const STEP_OF = {method:1, selfie:2, shade:3, look:4, length:5, reserve:6};
+const S = {screen:'lead', name:'', phone:'', method:'', shade:SUGGESTED, fam:'brownblonde', len:'full', inches:18,
+  selfie:'', analyzing:false, match:null, reading:null, compare:'after', cam:'', camErr:false, pay:'closed', day:1, time:1, err:'', artist:'Meddy'};
+
+const $ = s => document.querySelector(s);
+const sheet = $('#sheet'), root = $('#studioRoot');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '$' + n.toLocaleString('en-US');
+const shade = () => SHADES.find(h => h.code === S.shade);
+const len = () => LENGTHS.find(l => l.id === S.len);
+const method = () => METHODS.find(m => m.id === S.method);
+const methodName = () => S.method === 'meddy' ? 'Chosen by your artist' : (method() ? method().name : '');
+const codeOf = h => (h.custom || h.sourced) ? '' : h.code;
+const imgOf = h => h.img || SHADES.find(x => x.code === SUGGESTED).img;
+const colorChange = () => !!(S.match && !shade().custom && S.shade !== S.match[0].code);
+const totalPrice = () => len().price + (colorChange() ? COLOR_FEE : 0);
+const first = () => (S.name.trim().split(/\s+/)[0] || 'there');
+
+/* real dates: hair arrives in 2 days, installs open the following week (Tue to Sat) */
+const DAY = 864e5;
+const today = new Date(); today.setHours(0,0,0,0);
+const arrive = new Date(+today + 2*DAY);
+const weekStart = new Date(+arrive - ((arrive.getDay()+6)%7)*DAY);           // Monday of arrival week
+const installDays = [1,2,3,4,5].map(i => new Date(+weekStart + (7+i)*DAY));     // next Tue..Sat
+const TIMES = [['9:00 AM','11:00 AM'],['11:30 AM','1:30 PM'],['2:30 PM','4:30 PM']];
+const fmt = (d, o) => d.toLocaleDateString('en-US', o);
+const ord = n => n + (n%10===1&&n!==11?'st':n%10===2&&n!==12?'nd':n%10===3&&n!==13?'rd':'th');
+
+function go(screen, extra){ if (S.cam) { stopCamera(); S.cam = ''; } Object.assign(S, {screen, err:''}, extra||{}); render(); sheet.querySelector('.scroll')?.scrollTo(0,0); }
+
+function topbar(onPhoto){
+  const step = STEP_OF[S.screen];
+  const bars = step ? `<div class="bars" aria-label="Step ${step} of 6">${[1,2,3,4,5,6].map(i=>`<span class="${i<=step?'on':''} ${i===step?'cur':''}"></span>`).join('')}</div>` : '';
+  return `<div class="topbar ${onPhoto?'on-photo':''}"><div class="wordmark">MMA SALON</div><div style="display:flex;align-items:center;gap:14px">${bars}<button class="iconbtn" type="button" data-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div></div>`;
+}
+const check = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:1px"><path d="M20 6 9 17l-5-5"/></svg>';
+const thumb = (h, cls) => h.custom ? `<span class="mono ${cls||''}" style="display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600">M</span>` : `<img src="${h.img}" alt="">`;
+
+const VIEWS = {
+  lead(){
+    return `<div class="hero"><img src="img/hero.jpg" alt="Model wearing MMA extensions"></div>${topbar(true)}
+    <div class="screen" style="position:relative;z-index:1"><form class="lead" id="leadForm" novalidate>
+      <div><div class="eyebrow" style="color:rgba(255,255,255,.9)">Luxury hair extensions</div><h1>Longer. Fuller.<br>Invisible.</h1></div>
+      <p>Seamless hair, matched to your color and placed by hand in Miami Beach. See it on your selfie first.</p>
+      <label class="field"><span>First name</span><input id="f-name" name="name" autocomplete="given-name" placeholder="Camille" value="${esc(S.name)}"></label>
+      <label class="field"><span>Mobile, to text you your look</span><input id="f-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(305) 555-0123" value="${esc(S.phone)}"></label>
+      <div class="err" role="alert">${esc(S.err)}</div>
+      <button class="cta light" type="submit">See it on me</button>
+      <p class="fine">Your look and your appointment by text. Nothing else, ever. By continuing you agree to texts from MMA Salon. Msg and data rates may apply. Reply STOP to opt out.</p>
+    </form></div>`;
+  },
+  method(){
+    return `${topbar()}<div class="screen"><div class="scroll"><div class="pad">
+      <div class="eyebrow">01 \u00b7 The method</div>
+      <h2 class="h2">Hello ${esc(first())}.<br>How do you wear it?</h2>
+      <p class="lede">All three are 100% human hair, and invisible once your MMA artist places them. The difference is how long they stay and how they feel.</p>
+      <div class="rows">${METHODS.map(m=>`<button class="row" type="button" data-method="${m.id}" aria-pressed="${S.method===m.id}"><span class="t"><span class="n">${m.name}<span class="m">${m.wear}</span></span><span class="d">${m.d}</span></span><span class="radio"></span></button>`).join('')}</div>
+      <div style="padding:26px 0 8px"><button class="link" type="button" data-method="meddy">Not sure? Your artist chooses for your hair</button></div>
+    </div></div><div class="foot"><button class="cta" type="button" data-go="selfie" ${S.method?'':'disabled'}>Continue</button></div></div>`;
+  },
+  shade(){
+    const h = shade();
+    const list = SHADES.filter(x => x.fam === S.fam).concat(SHADES.filter(x => x.custom));
+    return `${topbar()}<div class="screen"><div class="scroll">
+      <div class="shade-hero" aria-live="polite">${h.custom?'<div class="m">M</div>':`<img src="${h.img}" alt="${esc(h.name)} hair extensions" key="${h.code}">`}${S.match && h.code===S.match[0].code?'<span class="chip">Your AI match</span>':''}</div>
+      <div style="padding:26px 24px 0;display:flex;flex-direction:column;gap:8px;min-height:120px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="eyebrow">03 \u00b7 Your shade${codeOf(h)?' \u00b7 N\u00b0 '+h.code:''}</span></div>
+        <span style="font-size:26px;font-weight:500;letter-spacing:-.03em;line-height:1.1">${esc(h.name)}</span>
+        <span style="font-size:14px;color:var(--ink-2);line-height:1.45">${esc(h.story)}</span>
+        ${S.match && h.code===S.match[0].code?`<div class="status ok" style="margin-top:6px"><span></span>Your perfect match. No color change.</div>`:colorChange()?`<div class="status" style="margin-top:6px"><span></span>A new color: Color customization, +${money(COLOR_FEE)}, same day as your install.</div>`:''}
+      </div>
+      ${S.match?`<div style="margin:26px 24px 0;padding:18px 0 4px;border-top:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><span class="eyebrow">Matched to your hair</span>${S.reading?`<span style="font-size:12px;color:var(--ink-2)">Your hair today: Level ${S.reading.level} \u00b7 ${S.reading.tone}</span>`:''}</div>
+        <div class="matches">${S.match.map((m,i)=>`<button class="match" type="button" data-shade="${m.code}" aria-pressed="${S.shade===m.code}"><img src="${m.img}" alt=""><span><b>${esc(m.name)}</b><small>${i===0?'Perfect match':'+'+money(COLOR_FEE)+' color'}</small></span></button>`).join('')}</div></div>`:''}
+      <div class="tabs" role="group" aria-label="Shade family">${FAMS.map(f=>`<button class="tab" type="button" data-fam="${f[0]}" aria-pressed="${S.fam===f[0]}">${f[1]}</button>`).join('')}</div>
+      <div class="grid" role="group" aria-label="Shades">${list.map(x=>`<button class="tile" type="button" data-shade="${x.code}" aria-pressed="${S.shade===x.code}" aria-label="${esc(x.name)}${codeOf(x)?', number '+x.code:''}">${x.custom?'<span class="mono">M</span>':`<img src="${x.img}" alt="">`}${S.match && x.code===S.match[0].code?'<span class="ai">AI</span>':''}</button>`).join('')}</div>
+      <p style="margin:18px 24px 8px;font-size:13px;line-height:1.5;color:var(--ink-2)">Nothing is ordered until your MMA artist confirms your shade from your photo. Rather see it in person? <a class="link" href="https://www.mmasalon.com/book" target="_blank" rel="noopener" style="font-size:13px;color:var(--ink)">Book a shade match</a>, $50, credited to your install.</p>
+    </div><div class="foot"><button class="back" type="button" data-go="selfie">Back</button><button class="cta" type="button" data-go="look">See it on me</button></div></div>`;
+  },
+  length(){
+    const note = LEN_NOTE[S.inches];
+    return `${topbar()}<div class="screen"><div class="scroll">
+      <div class="lenfig"><img src="img/length.jpg" alt="Long straight hair on a model, with lengths marked from 24 to 30 inches">
+        ${LENGTHS.map(l=>l.inch).map(n=>`<button type="button" class="mark ${S.inches===n?'on':''}" data-inch="${n}" style="top:${LEN_POS[n]}%" aria-label="${n} inches" aria-pressed="${S.inches===n}"><span class="ln"></span><span class="lb">${n}\u2033</span></button>`).join('')}
+      </div>
+      <div class="pad" style="padding-top:24px">
+        <div class="eyebrow">05 \u00b7 Your length</div>
+        <div class="inches" style="margin-top:14px"><b>${S.inches}\u2033</b><span>${note}</span></div>
+        <div class="eyebrow" style="margin-top:40px">Your signature length</div>
+        <div style="margin-top:10px;font-size:26px;font-weight:500;letter-spacing:-.035em;line-height:1.12">Created for you.<br>Indistinguishable from you.</div>
+        <div style="margin-top:8px;font-size:15px;color:var(--ink-2)">One price. Complete.</div>
+        <div class="incl">
+          <div><b>The Canvas</b><span>100% pure human hair, custom-toned and perfected to mirror your exact light before it ever touches your skin.</span></div>
+          <div><b>The Placement</b><span>Artisanal positioning by your MM\u039b master, engineered for your density, your parting and your movement.</span></div>
+          <div><b>The Melt</b><span>A master blend and precision cut that dissolves the boundary. Nobody will ever know where you end and it begins.</span></div>
+        </div>
+        <div class="eyebrow" style="margin-top:32px">Choose your length</div>
+        <div class="rows" style="margin-top:2px">${LENGTHS.map(l=>`<button class="row" type="button" data-len="${l.id}" aria-pressed="${S.len===l.id}"><span class="t"><span class="n">${l.name}<span class="m">${l.inch}\u2033 \u00b7 ${l.g}</span></span><span class="d">${l.d}</span></span><span class="p">${money(l.price)}</span><span class="radio"></span></button>`).join('')}</div>
+        <p style="margin:14px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)">Every set is a full 100 g of hair. The price follows the length.</p>
+        <div class="scarce">
+          <span class="eyebrow">Installation window \u00b7 ${fmt(installDays[0],{month:'short',day:'numeric'})} \u2013 ${fmt(installDays[4],{month:'short',day:'numeric'})}</span>
+          <p>Your custom hair arrives at the studio in 48 hours. Each artist curates only a select few installations per cycle.</p>
+          <p style="font-weight:600">Secure your placement today.</p>
+        </div>
+      </div>
+    </div><div class="foot"><button class="back" type="button" data-go="look">Back</button><button class="cta" type="button" data-go="reserve">Secure Your Installation</button></div></div>`;
+  },
+  selfie(){
+    if (S.analyzing) return `${topbar()}<div class="screen" style="align-items:center;justify-content:center;gap:22px;text-align:center;padding:24px"><div class="spinner"></div><div><div style="font-size:22px;font-weight:600;letter-spacing:-.02em">Reading your color</div><div style="margin-top:6px;font-size:14px;color:var(--ink-3)">Your level, your tone and your perfect match</div></div></div>`;
+    if (S.cam === 'live') return `${topbar()}<div class="screen" style="gap:16px">
+      <div class="frame dark" style="margin-top:8px"><video id="cam" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)"></video><div class="oval" style="position:relative;border-color:rgba(255,255,255,.8);border-style:solid"></div><div style="position:absolute;bottom:18px;left:0;right:0;text-align:center;font-size:13px;color:rgba(255,255,255,.9)">Center your face. Hair down.</div></div>
+      <div class="foot" style="justify-content:space-between"><button class="back" type="button" data-camstop>Cancel</button><button type="button" data-shutter aria-label="Take the photo" style="width:72px;height:72px;border-radius:50%;border:3px solid var(--ink);background:#fff;padding:4px"><span style="display:block;width:100%;height:100%;border-radius:50%;background:var(--ink)"></span></button><span style="width:64px"></span></div></div>`;
+    return `${topbar()}<div class="screen" style="gap:20px"><div class="pad" style="padding-bottom:0"><div class="eyebrow">02 \u00b7 Your match</div><h2 class="h2">One selfie.<br>Your perfect match.</h2><p class="lede">We read your natural level and tone like a colorist, then match your hair exactly. Your photo never leaves your phone.</p></div>
+      <div class="frame"><div class="oval"></div><div style="position:absolute;bottom:20px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-3)">${S.camErr?'Camera unavailable here. Choose a photo instead.':'Daylight. Hair down. Look at the camera.'}</div></div>
+      <div class="foot" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;gap:10px;align-items:center"><button class="back" type="button" data-go="method">Back</button><button class="cta" type="button" data-camera>Take my selfie</button></div>
+        <input class="file" id="f-selfie" type="file" accept="image/*" capture="user">
+        <div style="display:flex;justify-content:center;gap:18px"><label class="link" for="f-selfie" style="padding:8px;cursor:pointer;font-size:13px">Choose a photo</label><button class="link" type="button" data-sample style="padding:8px;font-size:13px">Try it on a sample</button></div>
+      </div></div>`;
+  },
+  look(){
+    const h = shade(), before = S.compare === 'before', cc = colorChange(), isMatch = S.match && h.code === S.match[0].code;
+    const rail = SHADES.filter(x=>!x.custom);
+    return `${topbar()}<div class="screen" style="padding-bottom:0"><div class="scroll">
+        <div class="frame dark" style="flex:none;height:min(58vh,470px);margin:6px 12px 0"><canvas id="tryCanvas" class="fill" role="img" aria-label="${before?'Your photo':'Your photo in '+esc(h.name)}"></canvas>
+          <div class="seg" role="group" aria-label="Compare"><button type="button" data-compare="before" aria-pressed="${before}">Before</button><button type="button" data-compare="after" aria-pressed="${!before}">After</button></div>
+          ${S.engine==='off'?'<span class="demo-note">Preview unavailable on this device</span>':''}
+        </div>
+        <div style="padding:20px 24px 0;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span style="font-size:24px;font-weight:500;letter-spacing:-.03em">${esc(h.name)}</span>${codeOf(h)?`<span class="eyebrow">N\u00b0 ${h.code}</span>`:''}</div>
+          ${isMatch?`<div class="status ok"><span></span>Your perfect match. No color change.</div>`:cc?`<div class="status"><span></span>A new color: Color customization, +${money(COLOR_FEE)}, done the same day as your install.</div>`:''}
+        </div>
+        <div class="rail2" role="group" aria-label="Try another shade">${rail.map(x=>`<button type="button" data-tryshade="${x.code}" aria-pressed="${S.shade===x.code}" aria-label="${esc(x.name)}${S.match&&x.code===S.match[0].code?', your perfect match':''}"><img src="${x.img}" alt="">${S.match&&x.code===S.match[0].code?'<i>AI</i>':''}</button>`).join('')}</div>
+      </div>
+      <div class="foot"><button class="back" type="button" data-go="shade">Back</button><button class="cta" type="button" data-go="length">I love it</button></div></div>`;
+  },
+  reserve(){
+    const h = shade(), l = len(), bal = totalPrice() - DEPOSIT;
+    const rows = [['Method', methodName() || 'Chosen by your artist'], ['Shade', h.name + (codeOf(h)?' \u00b7 #'+h.code:'')], ['Length', `${S.inches}\u2033 \u00b7 ${l.name} \u00b7 ${l.g}`], ['Extensions, installed', money(l.price)]];
+    if (colorChange()) rows.push(['Color customization, same day', money(COLOR_FEE)]);
+    rows.push(['Balance at your install', money(bal)]);
+    rows.push(['Deposit today', money(DEPOSIT)]);
+    return `${topbar()}<div class="screen"><div class="scroll"><div class="pad">
+      <div class="look">${thumb(h)}<div><div class="eyebrow">06 \u00b7 Reserve</div><div style="font-size:26px;font-weight:500;letter-spacing:-.03em;line-height:1.15">${esc(h.name)}</div><div style="font-size:14px;color:var(--ink-2)">${S.inches}\u2033 \u00b7 ${l.name} \u00b7 ${esc(methodName()||'Chosen by your artist')}</div></div></div>
+      <div class="summary">${rows.map(r=>`<div><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('')}</div>
+      <div class="eyebrow" style="margin-top:30px">How your ${money(DEPOSIT)} works</div>
+      <div class="ticks-list" style="margin-top:12px">
+        <div>${check}<span><b style="font-weight:600">It orders your hair today,</b> in your shade and length, for you alone.</span></div>
+        <div>${check}<span><b style="font-weight:600">It holds your install</b> with your artist, the week after your hair arrives.</span></div>
+        <div>${check}<span><b style="font-weight:600">It counts toward your total.</b> You pay the ${money(bal)} balance at your install.</span></div>
+      </div>
+      ${colorChange()?`<div class="status" style="margin-top:18px"><span></span>You chose a shade other than your perfect match, so your artist customizes the color the same day as your install.</div>`:(S.match?`<div class="status ok" style="margin-top:18px"><span></span>${esc(h.name)} is your perfect match. No color change needed.</div>`:'')}
+      <p class="small">Your hair is ordered for you the moment you reserve, so the deposit is non-refundable once ordered.</p>
+    </div></div><div class="foot"><button class="back" type="button" data-go="length">Back</button><button class="cta" type="button" data-pay="open">Reserve with ${money(DEPOSIT)}</button></div>
+    ${S.pay!=='closed'?`<div class="paywrap"><div class="scrim" data-pay="close"></div><div class="pay" role="dialog" aria-label="Pay deposit">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:17px;font-weight:600">MMA Salon</span><button class="iconbtn" type="button" data-pay="close" aria-label="Close" style="width:32px;height:32px;background:var(--surface);color:var(--ink-2)">\u00d7</button></div>
+      <div><div class="line"><span>Card</span><span>Demo card \u2022\u2022\u2022\u2022 4242</span></div><div class="line"><span>Deposit</span><span>${esc(h.name)} \u00b7 ${S.inches}\u2033</span></div><div class="line"><span>Credited to your total</span><span>${money(bal)} at install</span></div></div>
+      <div class="total"><span>Pay MMA Salon</span><span>${money(DEPOSIT)}</span></div>
+      ${S.pay==='open'?'<button class="paybtn" type="button" data-pay="go">Confirm deposit</button>':S.pay==='busy'?'<div class="state" style="color:var(--ink-2)"><span class="spinner" style="width:20px;height:20px"></span>Processing</div>':'<div class="state" style="font-weight:600"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:pop .5s both"><circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.6 2.6L16 9.5"/></svg>Done</div>'}
+    </div></div>`:''}</div>`;
+  },
+  deposit(){
+    const h = shade(), l = len();
+    return `${topbar()}<div class="screen"><div class="scroll"><div class="pad" style="padding-top:36px">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation:pop .6s both"><circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.6 2.6L16 9.5"/></svg>
+      <h2 class="h2" style="font-size:40px;margin-top:14px">Your hair<br>is ordered.</h2>
+      <p class="lede" style="font-size:16px">Your ${money(DEPOSIT)} is in and credited to your total. Your MMA artist checks your photo and confirms your shade today. Choose your install time now, while next week is open.</p>
+      <ol class="timeline">
+        <li><div class="rail"><span class="dot done"></span><span class="bar"></span></div><div class="txt"><span class="eyebrow">Today</span><b>Deposit received. Hair ordered.</b></div></li>
+        <li><div class="rail"><span class="dot"></span><span class="bar"></span></div><div class="txt"><span class="eyebrow">${fmt(arrive,{weekday:'short',month:'short',day:'numeric'})}</span><b>Arrives at the salon</b></div></li>
+        <li><div class="rail"><span class="dot"></span></div><div class="txt" style="padding-bottom:0"><span class="eyebrow">Your install</span><b>The week of ${fmt(installDays[0],{month:'short',day:'numeric'})}, with your artist</b></div></li>
+      </ol>
+      <div class="receipt">${thumb(h)}<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500">${esc(h.name)}</div><div style="font-size:13px;color:var(--ink-2)">${esc(methodName()||'Chosen by your artist')} \u00b7 ${S.inches}\u2033 \u00b7 ${l.name}</div></div><div style="text-align:right"><div style="font-size:15px;font-weight:500">${money(DEPOSIT)} paid</div><div style="font-size:12px;color:var(--ink-2)">${money(totalPrice()-DEPOSIT)} at install</div></div></div>
+    </div></div><div class="foot"><button class="cta" type="button" data-go="book">Choose my install time</button></div></div>`;
+  },
+  book(){
+    const d = installDays[S.day], t = TIMES[S.time];
+    return `${topbar()}<div class="screen"><div class="scroll"><div class="pad">
+      <div class="eyebrow">Your install \u00b7 about 2 hours</div><h2 class="h2">Choose your artist<br>and your time.</h2>
+      <div class="rows" style="margin-top:18px">${[['Meddy','Founder and master colorist'],['MMA artist','The next available artist at MMA']].map(a=>`<button class="row" type="button" data-artist="${a[0]}" aria-pressed="${S.artist===a[0]}" style="padding:18px 0"><span class="avatar" style="width:40px;height:40px;font-size:15px">${a[0]==='Meddy'?'M':'A'}</span><span class="t"><span class="n" style="font-size:18px">${a[0]}</span><span class="d" style="font-size:13px">${a[1]}</span></span><span class="radio"></span></button>`).join('')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:28px"><span class="eyebrow">${fmt(installDays[0],{month:'long'})}</span><span style="font-size:13px;color:var(--ink-2)">Install week \u00b7 ${fmt(installDays[0],{month:'short',day:'numeric'})}</span></div>
+      <div class="days" role="group" aria-label="Day">${installDays.map((x,i)=>`<button class="day" type="button" data-day="${i}" aria-pressed="${S.day===i}"><small>${fmt(x,{weekday:'short'})}</small><b>${x.getDate()}</b></button>`).join('')}</div>
+      <div class="eyebrow" style="margin-top:30px">${fmt(d,{weekday:'long'})}</div>
+      <div class="times" role="group" aria-label="Time">${TIMES.map((x,i)=>`<button class="time" type="button" data-time="${i}" aria-pressed="${S.time===i}">${x[0]}</button>`).join('')}</div>
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:var(--ink-2)">Each artist takes only a few installs a day, so every head gets full attention. 1500 Alton Rd, Miami Beach. Lola texts you a reminder the evening before.</p>
+    </div></div><div class="foot" style="flex-direction:column;align-items:stretch;gap:14px"><div style="display:flex;justify-content:space-between;font-size:15px"><span style="color:var(--ink-2)">${fmt(d,{weekday:'short',month:'short',day:'numeric'})}</span><span style="font-weight:500">${t[0]} to ${t[1]}</span></div><button class="cta" type="button" data-book style="flex:none">Confirm my install</button></div></div>`;
+  },
+  thanks(){
+    const d = installDays[S.day], t = TIMES[S.time], h = shade();
+    return `${topbar()}<div class="screen"><div class="scroll"><div class="pad" style="padding-top:36px">
+      <h2 class="h2" style="font-size:44px;line-height:1">Merci, ${esc(first())}.</h2>
+      <p style="margin:12px 0 0;font-size:20px;letter-spacing:-.02em;color:var(--ink-2)">See you ${fmt(d,{weekday:'long'})} the ${ord(d.getDate())}.</p>
+      <div class="appt"><div class="date"><span class="eyebrow">${fmt(d,{weekday:'short'})}</span><b>${d.getDate()}</b><span class="eyebrow">${fmt(d,{month:'short'})}</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px;justify-content:center"><span style="font-size:17px;font-weight:500">${t[0]} to ${t[1]}</span><span style="font-size:14px;color:var(--ink-2)">Install with ${esc(S.artist)}</span><span style="font-size:14px;color:var(--ink-2)">1500 Alton Rd, 2nd Floor<br>Miami Beach</span><span style="font-size:14px;user-select:all">(786) 449-7058</span></div></div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px"><button type="button" class="time" style="border-radius:999px">Add to calendar</button><a class="time" style="border-radius:999px;display:flex;align-items:center;justify-content:center;text-decoration:none;color:var(--ink)" href="https://maps.apple.com/?q=1500+Alton+Rd+Miami+Beach" target="_blank" rel="noopener">Directions</a></div>
+      <div class="eyebrow" style="margin-top:36px">Before you come</div>
+      <div class="prep"><div>Wash your hair the night before, no conditioner at the roots, so the bonds hold.</div><div>Come with dry hair and no product.</div><div>Plan for about two hours. Coffee is on us.</div><div>Bring the balance, ${money(totalPrice()-DEPOSIT)}. Your deposit is already credited.</div></div>
+      <div class="bubble"><span class="l">L</span><div class="b"><div style="font-size:11px;font-weight:600;color:var(--ink-3);margin-bottom:4px">Lola</div>Bonjour ${esc(first())}! Your ${esc(h.name)} arrives ${fmt(arrive,{weekday:'long'})}. I'll text you the evening before your install.</div></div>
+    </div></div><div class="foot"><button class="cta" type="button" data-close>Done</button></div></div>`;
+  }
+};
+
+function render(){ sheet.innerHTML = VIEWS[S.screen](); if (S.cam === 'live' && CAM) { const v = document.getElementById('cam'); if (v) v.srcObject = CAM; } if (S.screen==='look') { paintTry(); const r = sheet.querySelector('.rail2'), b = r && r.querySelector('[aria-pressed="true"]'); if (b) r.scrollLeft = b.offsetLeft - r.clientWidth/2 + b.clientWidth/2; } }
+
+function open(){ root.hidden = false; document.body.style.overflow = 'hidden'; render(); setTimeout(()=>(sheet.querySelector('input') || sheet.querySelector('.cta'))?.focus({preventScroll:true}), 350); }
+function close(){ stopCamera(); S.cam = ''; root.hidden = true; document.body.style.overflow = ''; }
+// Embedded on mmasalon.com: the client closing the studio closes the overlay on the salon's page too.
+function userClose(){ close(); if (window.parent !== window) window.parent.postMessage('mma-studio:close', '*'); }
+document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', open));
+window.addEventListener('message', e => { if (e.data === 'mma-studio:open' && root.hidden) open(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !root.hidden) { if (S.pay==='open') { S.pay='closed'; render(); } else userClose(); } });
+
+root.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-close],[data-pay]'); if (!t) return;
+  const ds = t.dataset;
+  if ('close' in ds) return userClose();
+  if (ds.go) return go(ds.go);
+  if (ds.method) { S.method = ds.method; if (ds.method==='meddy') return go('selfie'); return render(); }
+  if (ds.fam) { S.fam = ds.fam; return render(); }
+  if (ds.shade) { S.shade = ds.shade; return render(); }
+  if (ds.len) { S.len = ds.len; S.inches = len().inch; return render(); }
+  if (ds.compare) { S.compare = ds.compare; return render(); }
+  if (ds.tryshade) { S.shade = ds.tryshade; const f = FAMS.find(f=>f[0]===shade().fam); if (f) S.fam = f[0]; S.compare = 'after'; return render(); }
+  if ('camera' in ds) return startCamera();
+  if ('camstop' in ds) { stopCamera(); S.cam = ''; return render(); }
+  if ('shutter' in ds) return shoot();
+  if (ds.day) { S.day = +ds.day; return render(); }
+  if (ds.inch) { S.inches = +ds.inch; S.len = LENGTHS.find(l => l.inch === S.inches).id; return render(); }
+  if (ds.artist) { S.artist = ds.artist; return render(); }
+  if (ds.time) { S.time = +ds.time; return render(); }
+  if ('sample' in ds) return makeLook('');
+  if ('book' in ds) {
+    const d = installDays[S.day], tm = TIMES[S.time], [hm, ap] = tm[0].split(' '); let [hh, mm] = hm.split(':').map(Number);
+    if (ap === 'PM' && hh !== 12) hh += 12;
+    const at = new Date(d); at.setHours(hh, mm, 0, 0);
+    sendStudio('booking', { install: { startsAt: at.toISOString(), artist: S.artist, label: `${fmt(d,{weekday:'short',month:'short',day:'numeric'})}, ${tm[0]}` } });
+    return go('thanks');
+  }
+  if ('restart' in ds) return go('method', {pay:'closed', compare:'after'});
+  if (ds.pay === 'open') {
+    t.disabled = true; t.textContent = 'One moment\u2026';
+    saveForReturn();
+    return studioPhotos().then(photos => Promise.race([sendStudio('order', photos ? { photos } : null), new Promise(r => setTimeout(() => r(null), 8000))])).then(r => {
+      if (openBoulevard()) return;                                       // Boulevard: $500 deposit and install time in one step
+      if (r && r.checkoutUrl) { location.href = r.checkoutUrl; return; }   // Stripe Checkout: Apple Pay, cards
+      S.pay = 'open'; render();                                          // demo: in-page sheet
+    });
+  }
+  if (ds.pay === 'close') { if (S.pay==='open') { S.pay='closed'; render(); } return; }
+  if (ds.pay === 'go') { S.pay = 'busy'; render(); setTimeout(()=>{ S.pay='done'; render(); }, 1300); setTimeout(()=>go('deposit',{pay:'closed'}), 2300); }
+});
+root.addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('#f-name').value.trim(), phone = $('#f-phone').value.trim();
+  S.name = name; S.phone = phone;
+  if (!name) { S.err = 'Add your first name.'; return render(); }
+  if (phone.replace(/\D/g,'').length < 10) { S.err = 'Add a 10-digit mobile number so we can text your look.'; return render(); }
+  getSeg().catch(()=>{});   // start loading the try-on model while they choose
+  sendStudio('lead');
+  go('method');
+});
+root.addEventListener('input', e => {
+  if (e.target.id === 'f-inches') { S.inches = +e.target.value; const b = sheet.querySelector('.inches'); if (b) { b.querySelector('b').textContent = S.inches+'\u2033'; b.querySelector('span').textContent = LEN_NOTE[S.inches]; }
+    sheet.querySelectorAll('.mark').forEach(m => { const on = +m.dataset.inch === S.inches; m.classList.toggle('on', on); m.setAttribute('aria-pressed', on); }); }
+});
+root.addEventListener('change', e => {
+  if (e.target.id === 'f-selfie' && e.target.files[0]) {
+    const r = new FileReader(); r.onload = () => makeLook(r.result); r.readAsDataURL(e.target.files[0]);
+  }
+});
+/* ---------- AI try-on: hair segmentation in the browser + shade transfer ---------- */
+let segP = null;
+const b64bytes = s => Uint8Array.from(atob(s.trim()), c => c.charCodeAt(0));
+function getSeg(){
+  if (!segP) segP = (async () => {
+    const base = new URL('./vision/', location.href).href;
+    const v = await import(base + 'vision_bundle.mjs');
+    const files = await v.FilesetResolver.forVisionTasks(base + 'wasm');
+    const opts = buf => ({ baseOptions: { modelAssetBuffer: buf, delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: false, outputConfidenceMasks: true });
+    const hairBuf = b64bytes(await (await fetch(base + 'hair_segmenter.b64.txt')).text());
+    const hair = await v.ImageSegmenter.createFromOptions(files, opts(hairBuf));
+    let multi = null;   // hair, face skin, body skin and clothes: tells true hair from skin of the same tone
+    try {
+      const parts = await Promise.all(['multiclass-1.b64.txt','multiclass-2.b64.txt'].map(async f => (await fetch(base + f)).text()));
+      multi = await v.ImageSegmenter.createFromOptions(files, opts(b64bytes(parts.join(''))));
+    } catch (e) { console.warn('multiclass model unavailable', e); }
+    return { hair, multi };
+  })();
+  return segP;
+}
+const loadImg = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
+let PHOTO = null;             // {w,h,orig:ImageData,mask:Float32Array,cdf:Float32Array}
+const LUTS = {};
+/* box filter via integral image (radius r) */
+function boxBlur(src, w, h, r){
+  const I = new Float64Array((w+1)*(h+1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y*w+x]; I[(y+1)*(w+1)+x+1] = I[y*(w+1)+x+1] + row; } }
+  const out = new Float32Array(w*h);
+  for (let y = 0; y < h; y++) { const y0 = Math.max(0, y-r), y1 = Math.min(h, y+r+1);
+    for (let x = 0; x < w; x++) { const x0 = Math.max(0, x-r), x1 = Math.min(w, x+r+1);
+      out[y*w+x] = (I[y1*(w+1)+x1] - I[y0*(w+1)+x1] - I[y1*(w+1)+x0] + I[y0*(w+1)+x0]) / ((y1-y0)*(x1-x0)); } }
+  return out;
+}
+/* guided filter: snaps the coarse hair mask to the real strand edges of the photo */
+function guided(I, p, w, h, r, eps){
+  const n = w*h, Ip = new Float32Array(n), II = new Float32Array(n);
+  for (let i = 0; i < n; i++) { Ip[i] = I[i]*p[i]; II[i] = I[i]*I[i]; }
+  const mI = boxBlur(I,w,h,r), mp = boxBlur(p,w,h,r), mIp = boxBlur(Ip,w,h,r), mII = boxBlur(II,w,h,r);
+  const a = new Float32Array(n), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = mII[i] - mI[i]*mI[i], c = mIp[i] - mI[i]*mp[i]; a[i] = c / (v + eps); b[i] = mp[i] - a[i]*mI[i]; }
+  const ma = boxBlur(a,w,h,r), mb = boxBlur(b,w,h,r), q = new Float32Array(n);
+  for (let i = 0; i < n; i++) q[i] = Math.min(1, Math.max(0, ma[i]*I[i] + mb[i]));
+  return q;
+}
+function upsample(raw, mw, mh, w, h){
+  const out = new Float32Array(w*h);
+  for (let y = 0; y < h; y++) { const fy = Math.min(mh-1.001, Math.max(0, (y+.5)*mh/h - .5)), y0 = fy|0, ty = fy - y0;
+    for (let x = 0; x < w; x++) { const fx = Math.min(mw-1.001, Math.max(0, (x+.5)*mw/w - .5)), x0 = fx|0, tx = fx - x0;
+      const i0 = y0*mw + x0; out[y*w+x] = (raw[i0]*(1-tx) + raw[i0+1]*tx)*(1-ty) + (raw[i0+mw]*(1-tx) + raw[i0+mw+1]*tx)*ty; } }
+  return out;
+}
+function maskOf(res, k, w, h){ const m = res.confidenceMasks[k]; return upsample(m.getAsFloat32Array(), m.width, m.height, w, h); }
+async function preparePhoto(src){
+  const img = await loadImg(src);
+  const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, w, h);
+  const orig = g.getImageData(0, 0, w, h); const d = orig.data, n = w*h;
+  const seg = await getSeg();
+  const rh = seg.hair.segment(c); let mask = maskOf(rh, rh.confidenceMasks.length - 1, w, h); rh.close && rh.close();
+  let prot = null, skinCb = 0, skinCr = 0;
+  if (seg.multi) {
+    const rm = seg.multi.segment(c);
+    const mcHair = maskOf(rm, 1, w, h), body = maskOf(rm, 2, w, h), face = maskOf(rm, 3, w, h), cloth = maskOf(rm, 4, w, h);
+    rm.close && rm.close();
+    prot = new Float32Array(n); let sn = 0;
+    for (let i = 0; i < n; i++) {
+      prot[i] = Math.min(1, body[i] + face[i] + cloth[i]);
+      mask[i] = Math.max(mask[i], mcHair[i] * .85) * (1 - prot[i] * .95);      // fill missed strands, remove skin and clothes
+      if (face[i] > .8) { const R = d[i*4], G = d[i*4+1], B = d[i*4+2]; skinCr += 128 + .5*R - .4187*G - .0813*B; skinCb += 128 - .1687*R - .3313*G + .5*B; sn++; }
+    }
+    if (sn) { skinCb /= sn; skinCr /= sn; }
+  }
+  // edge refinement guided by the photo itself
+  const Y = new Float32Array(n);
+  for (let i = 0; i < n; i++) Y[i] = (d[i*4]*.299 + d[i*4+1]*.587 + d[i*4+2]*.114) / 255;
+  const r = Math.max(4, Math.round(Math.max(w,h) / 220));
+  mask = guided(Y, mask, w, h, r, 0.0012);
+  { const grown = boxBlur(mask, w, h, Math.max(2, r>>1)); for (let i = 0; i < n; i++) mask[i] = Math.max(mask[i], Math.min(1, grown[i]*1.12)); }   // close small gaps between strands
+  // strand texture: fine detail of the original luminance, kept under the new color
+  const Ymid = boxBlur(Y, w, h, Math.max(6, r*2));   // the hair's coarse light; strands and shine ride on top of it
+  // luminance distribution of the hair as a CDF
+  const hist = new Float32Array(256); let tot = 0;
+  for (let i = 0; i < n; i++) { const m = mask[i]; if (m > .5) { hist[Math.min(255, (Ymid[i]*255)|0)] += m; tot += m; } }
+  const cdf = new Float32Array(256); let acc = 0; for (let i = 0; i < 256; i++) { acc += hist[i]; cdf[i] = tot ? acc / tot : i / 255; }
+  return { w, h, orig, mask, cdf, Y, Ymid, prot, skinCb, skinCr, hairShare: tot / n };
+}
+async function shadeLut(h){
+  if (LUTS[h.code]) return LUTS[h.code];
+  const img = await loadImg(h.img); const n = 160;
+  const c = document.createElement('canvas'); c.width = n; c.height = n;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, n, n);
+  const d = g.getImageData(0, 0, n, n).data; const px = [];
+  for (let i = 0; i < n*n; i++) px.push([d[i*4], d[i*4+1], d[i*4+2], d[i*4]*.299 + d[i*4+1]*.587 + d[i*4+2]*.114]);
+  px.sort((a, b) => a[3] - b[3]);
+  const lut = new Uint8ClampedArray(256*3);
+  for (let q = 0; q < 256; q++) {              // average color of each luminance quantile
+    const a = Math.floor(q/256*px.length), b = Math.max(a+1, Math.floor((q+1)/256*px.length)); let r=0,gg=0,bb=0;
+    for (let j = a; j < b; j++) { r += px[j][0]; gg += px[j][1]; bb += px[j][2]; }
+    const k = b - a; lut[q*3] = r/k; lut[q*3+1] = gg/k; lut[q*3+2] = bb/k;
+  }
+  return (LUTS[h.code] = lut);
+}
+async function paintTry(target){
+  const cv = target || document.getElementById('tryCanvas'); if (!cv || !PHOTO) return;
+  const { w, h, orig, mask, cdf, Y, Ymid } = PHOTO; cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  if ((!target && S.compare === 'before') || shade().custom || !Ymid) { g.putImageData(orig, 0, 0); return; }
+  const lut = await shadeLut(shade());
+  if (!target && document.getElementById('tryCanvas') !== cv) return;   // a newer render replaced it
+  const lumL = new Float32Array(256); for (let q = 0; q < 256; q++) lumL[q] = lut[q*3]*.299 + lut[q*3+1]*.587 + lut[q*3+2]*.114 + 1;
+  const out = new ImageData(new Uint8ClampedArray(orig.data), w, h); const o = out.data, d = orig.data;
+  for (let i = 0; i < w*h; i++) {
+    const m = mask[i]; if (m < .04) continue;
+    // 1. the shade's own color at this depth of the hair (coarse light and shadow, mapped by rank)
+    const q = Math.min(255, Math.max(0, Math.round(cdf[Math.min(255, (Ymid[i]*255)|0)]*255)));
+    // 2. every strand, wave, shine and shadow of the original, carried over as a ratio
+    let ratio = (Y[i]*255 + 6) / (Ymid[i]*255 + 6); ratio = ratio < .35 ? .35 : ratio > 1.9 ? 1.9 : ratio;
+    let R = lut[q*3]*ratio, G = lut[q*3+1]*ratio, B = lut[q*3+2]*ratio;
+    if (ratio > 1.15) { const s = Math.min(.4, (ratio - 1.15) * .6); R += (255-R)*s; G += (255-G)*s; B += (255-B)*s; }   // real sheen on highlights
+    const t2 = Math.min(1, Math.max(0, (m - .08) / .5)); let a = t2*t2*(3 - 2*t2);
+    if (m < .72) {                                   // protect skin at the edges, using this person's own skin tone
+      const r0 = d[i*4], g0 = d[i*4+1], b0 = d[i*4+2], Yc = .299*r0 + .587*g0 + .114*b0, Cr = 128 + .5*r0 - .4187*g0 - .0813*b0, Cb = 128 - .1687*r0 - .3313*g0 + .5*b0;
+      const skinLike = PHOTO.prot ? (Math.hypot(Cb - PHOTO.skinCb, Cr - PHOTO.skinCr) < 11 && PHOTO.prot[i] > .15) : (Yc > 70 && Cr > 138 && Cr < 175 && Cb > 85 && Cb < 125);
+      if (skinLike) a *= .35 + .65 * Math.max(0, (m - .45) / .27);
+    }
+    o[i*4]   = d[i*4]   * (1-a) + R * a;
+    o[i*4+1] = d[i*4+1] * (1-a) + G * a;
+    o[i*4+2] = d[i*4+2] * (1-a) + B * a;
+  }
+  g.putImageData(out, 0, 0);
+}
+/* ---------- LolaDesk: lead, order and booking reach the salon ---------- */
+function studioPayload(event, extra){
+  const h = shade();
+  return Object.assign({ salon: SALON_LINE, event, name: S.name, phone: S.phone,
+    look: { method: S.method, shade: h.name, code: codeOf(h), inches: S.inches, fullness: S.len, colorChange: colorChange(),
+      match: S.reading && S.match ? `Level ${S.reading.level} \u00b7 ${S.reading.tone} \u2192 ${S.match[0].name}` : '' } }, extra || {});
+}
+async function sendStudio(event, extra){
+  try {
+    const body = JSON.stringify(studioPayload(event, extra));
+    const r = await fetch(STUDIO_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: body.length < 60000 });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }      // offline or demo: the flow continues
+}
+/* ---------- the color reference the artist receives with the order ---------- */
+const jpeg = (cv, q) => cv.toDataURL('image/jpeg', q || .82);
+function fitCanvas(src, maxSide){
+  const k = Math.min(1, maxSide / Math.max(src.width, src.height)), c = document.createElement('canvas');
+  c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c;
+}
+function cover(g, img, x, y, w, h){          // draw like object-fit: cover, weighted to the top (the hair)
+  const k = Math.max(w / img.width, h / img.height), sw = w / k, sh = h / k;
+  g.drawImage(img, (img.width - sw) / 2, Math.max(0, (img.height - sh) * .3), sw, sh, x, y, w, h);
+}
+async function studioPhotos(){
+  if (!PHOTO) return null;
+  try {
+    const before = document.createElement('canvas'); before.width = PHOTO.w; before.height = PHOTO.h;
+    before.getContext('2d').putImageData(PHOTO.orig, 0, 0);
+    const after = document.createElement('canvas'); await paintTry(after);
+    const h = shade(), l = len(), cc = colorChange(), W = 1080, H = 1590, P = 64;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+    const F = (wt, px) => `${wt} ${px}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.textBaseline = 'alphabetic';
+    g.fillStyle = '#86868b'; g.font = F(600, 22); g.fillText('MMA STUDIO  \u00b7  COLOR REFERENCE', P, 92);
+    g.textAlign = 'right'; g.fillText(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), W - P, 92); g.textAlign = 'left';
+    g.fillStyle = '#1d1d1f'; g.font = F(600, 58); g.fillText(S.name || 'Client', P, 168);
+    g.fillStyle = '#6e6e73'; g.font = F(400, 30); const d = String(S.phone || '').replace(/\D/g, '').slice(-10); g.fillText(d.length === 10 ? `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}` : (S.phone || ''), P, 214);
+    const iw = (W - P*2 - 24) / 2, ih = 640, iy = 254;
+    cover(g, before, P, iy, iw, ih); cover(g, after, P + iw + 24, iy, iw, ih);
+    g.fillStyle = '#1d1d1f'; g.font = F(600, 24);
+    g.fillText('Her hair today', P, iy + ih + 44); g.fillText('Try-on  \u00b7  ' + h.name, P + iw + 24, iy + ih + 44);
+    let y = iy + ih + 100;
+    if (!h.custom) { try { cover(g, await loadImg(h.img), P, y, 180, 180); } catch (e) {} }
+    const tx = P + 210;
+    g.fillStyle = '#86868b'; g.font = F(600, 20); g.fillText('SHADE ORDERED', tx, y + 26);
+    g.fillStyle = '#1d1d1f'; g.font = F(600, 44); g.fillText(h.name + (codeOf(h) ? '  #' + h.code : ''), tx, y + 80);
+    g.fillStyle = '#6e6e73'; g.font = F(400, 26);
+    if (S.reading && S.match) g.fillText(`AI read: Level ${S.reading.level} \u00b7 ${S.reading.tone}  \u2192  match ${S.match[0].name}`, tx, y + 124);
+    g.fillStyle = cc ? '#b25000' : '#1d7a3a'; g.font = F(600, 26);
+    g.fillText(cc ? `Color customization +${money(COLOR_FEE)} \u00b7 same day as install` : 'Perfect match \u00b7 no color service', tx, y + 168);
+    y += 240; g.fillStyle = '#e8e8ed'; g.fillRect(P, y, W - P*2, 2); y += 60;
+    const rows = [['Method', methodName() || 'Chosen by your artist'], ['Length', `${S.inches}\u2033 \u00b7 ${l.name} \u00b7 ${l.g}`],
+      ['Total', money(totalPrice())], ['Deposit', money(DEPOSIT)], ['Balance at install', money(totalPrice() - DEPOSIT)]];
+    for (const [k, v] of rows) { g.fillStyle = '#6e6e73'; g.font = F(400, 28); g.fillText(k, P, y); g.fillStyle = '#1d1d1f'; g.font = F(600, 28); g.textAlign = 'right'; g.fillText(v, W - P, y); g.textAlign = 'left'; y += 50; }
+    return { card: jpeg(c, .8), before: jpeg(fitCanvas(before, 1280), .85), after: jpeg(fitCanvas(after, 1280), .85) };
+  } catch (e) { console.warn('color reference', e); return null; }
+}
+function saveForReturn(){ try { sessionStorage.setItem('mmaStudio', JSON.stringify({ name:S.name, phone:S.phone, method:S.method, shade:S.shade, fam:S.fam, len:S.len, inches:S.inches, artist:S.artist })); } catch (e) {} }
+function restoreAfterPayment(){
+  let q = ''; try { q = new URLSearchParams(location.search).get('studio') || ''; } catch (e) {}
+  if (q !== 'paid') return false;
+  try { Object.assign(S, JSON.parse(sessionStorage.getItem('mmaStudio') || '{}')); } catch (e) {}
+  S.screen = 'deposit'; return true;
+}
+/* ---------- reading the client's color and matching shades ---------- */
+function toLab(r, g, b){
+  const f = c => { c /= 255; return c <= .04045 ? c/12.92 : Math.pow((c+.055)/1.055, 2.4); };
+  const R = f(r), G = f(g), B = f(b);
+  const X = (R*.4124 + G*.3576 + B*.1805)/.95047, Y = R*.2126 + G*.7152 + B*.0722, Z = (R*.0193 + G*.1192 + B*.9505)/1.08883;
+  const h = t => t > .008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+  return [116*h(Y) - 16, 500*(h(X) - h(Y)), 200*(h(Y) - h(Z))];
+}
+const trimmedMean = px => { px.sort((a, b) => a[0] - b[0]); const s = px.slice(Math.floor(px.length*.15), Math.ceil(px.length*.85)); return [0,1,2].map(k => s.reduce((t, p) => t + p[k], 0) / s.length); };
+function hairLab(P){                     // the hair's color, ignoring the brightest shine and the darkest shadow
+  const px = [], d = P.orig.data;
+  for (let i = 0; i < P.w*P.h; i += 3) if (P.mask[i] > .75) px.push(toLab(d[i*4], d[i*4+1], d[i*4+2]));
+  return px.length < 200 ? null : trimmedMean(px);
+}
+const SHADE_LAB = {};
+async function shadeLab(h){
+  if (SHADE_LAB[h.code]) return SHADE_LAB[h.code];
+  const img = await loadImg(h.img), n = 48, c = document.createElement('canvas'); c.width = n; c.height = n;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, n, n); const d = g.getImageData(0, 0, n, n).data, px = [];
+  for (let i = 0; i < n*n; i++) px.push(toLab(d[i*4], d[i*4+1], d[i*4+2]));
+  return (SHADE_LAB[h.code] = trimmedMean(px));
+}
+function reading(lab){                   // colorist language: level 1 (black) to 10 (lightest blonde), and tone
+  const level = Math.max(1, Math.min(10, Math.round((lab[0] - 12) / 7) + 1));
+  const chroma = Math.hypot(lab[1], lab[2]);
+  const tone = chroma < 9 ? 'ash' : (lab[1] > 14 && lab[1] > lab[2]*.6) ? (lab[0] < 45 ? 'auburn' : 'copper') : lab[2] > 18 ? 'golden' : 'neutral';
+  return { level, tone };
+}
+async function matchShades(P){
+  const lab = hairLab(P); if (!lab) return null;
+  const scored = [];
+  for (const h of SHADES) { if (h.custom) continue; const s = await shadeLab(h);
+    scored.push({ h, dE: Math.hypot((s[0]-lab[0])*1.2, s[1]-lab[1], s[2]-lab[2]), dL: s[0] - lab[0] }); }
+  scored.sort((a, b) => a.dE - b.dE);
+  const closest = scored[0];
+  const softer = scored.find(x => x !== closest && Math.abs(x.dL) < 9 && x.h.fam !== closest.h.fam) || scored[1];
+  const brighter = scored.filter(x => x.dL > 8 && x.dL < 26 && x !== closest && x !== softer).sort((a, b) => a.dE - b.dE)[0] || scored.find(x => x !== closest && x !== softer);
+  return { list: [closest, softer, brighter].map(x => x.h), reading: reading(lab) };
+}
+let CAM = null;
+function stopCamera(){ try { CAM && CAM.getTracks().forEach(t => t.stop()); } catch (e) {} CAM = null; }
+function startCamera(){
+  const pol = document.permissionsPolicy || document.featurePolicy;
+  const allowed = !pol || !pol.allowsFeature || pol.allowsFeature('camera');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !allowed) { document.getElementById('f-selfie').click(); return; }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false })
+    .then(st => { CAM = st; S.cam = 'live'; S.camErr = false; render(); const v = document.getElementById('cam'); if (v) v.srcObject = st; })
+    .catch(() => { S.camErr = true; render(); });
+}
+function shoot(){
+  const v = document.getElementById('cam'); if (!v || !v.videoWidth) return;
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  const g = c.getContext('2d'); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
+  const url = c.toDataURL('image/jpeg', .92); stopCamera(); S.cam = ''; makeLook(url);
+}
+async function makeLook(selfie){
+  S.selfie = selfie; S.compare = 'after'; S.analyzing = true; render();
+  const started = Date.now();
+  try { PHOTO = await preparePhoto(selfie || 'img/sample.jpg'); S.engine = PHOTO.hairShare > .01 ? 'on' : 'nohair'; }
+  catch (e) { console.warn('try-on engine', e); S.engine = 'off'; PHOTO = await preparePhoto0(selfie || 'img/sample.jpg'); }
+  let m = null; try { if (S.engine === 'on') m = await matchShades(PHOTO); } catch (e) { console.warn('match', e); }
+  await new Promise(r => setTimeout(r, Math.max(0, 1800 - (Date.now() - started))));
+  S.analyzing = false;
+  if (m) { S.match = m.list; S.reading = m.reading; S.shade = m.list[0].code; S.fam = m.list[0].fam; }
+  go('shade');
+}
+async function preparePhoto0(src){            // fallback: photo without a hair mask
+  const img = await loadImg(src); const k = Math.min(1, 1100 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth*k), h = Math.round(img.naturalHeight*k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
+  return { w, h, orig: g.getImageData(0, 0, w, h), mask: new Float32Array(w*h), cdf: new Float32Array(256), Y: null, Ymid: null };
+}
+
+
+/* open straight away so the first view shows the studio (or the confirmation after paying) */
+restoreAfterPayment();
+open();
+</script>
