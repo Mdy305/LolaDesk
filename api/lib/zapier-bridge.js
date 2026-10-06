@@ -17,9 +17,12 @@ import { zonedLocalToUtc } from './timezone.js';
 
 const seal = (t) => { try { return encrypt(t); } catch (_) { return 'plain:' + t; } };
 const unseal = (t) => { const s = String(t || ''); if (s.startsWith('plain:')) return s.slice(6); try { return decrypt(s); } catch (_) { return null; } };
-const keyBase = () => String(process.env.SUPABASE_SERVICE_KEY || process.env.TELNYX_API_KEY || 'loladesk') + ':zap-hook';
+// Same derivation as before whenever SUPABASE_SERVICE_KEY / TELNYX_API_KEY is set (pasted Zap URLs keep working);
+// no hard-coded last resort: without a server key there is no valid hook key at all.
+const keyRoot = () => String(process.env.SUPABASE_SERVICE_KEY || process.env.TELNYX_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const keyBase = () => keyRoot() + ':zap-hook';
 
-export function hookKey(tenantId) { return crypto.createHmac('sha256', keyBase()).update(String(tenantId)).digest('hex').slice(0, 32); }
+export function hookKey(tenantId) { if (!keyRoot()) return ''; return crypto.createHmac('sha256', keyBase()).update(String(tenantId)).digest('hex').slice(0, 32); }
 export function inboundUrl(tenantId) { return `${appUrl()}/api/hooks/booking?t=${encodeURIComponent(tenantId)}&k=${hookKey(tenantId)}`; }
 /** Where the salon's Zap posts back the time block it created (same per-salon key). */
 export function callbackUrl(tenantId, bookingId) { return `${appUrl()}/api/zap-callback?t=${encodeURIComponent(tenantId)}&k=${hookKey(tenantId)}${bookingId ? `&b=${encodeURIComponent(bookingId)}` : ''}`; }
@@ -45,6 +48,7 @@ export async function externalBookingId(c, tenantId, booking) {
 }
 export function checkKey(tenantId, k) {
   const want = hookKey(tenantId), got = String(k || '');
+  if (!want) return false;
   return got.length === want.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
 }
 export function validZapUrl(u) {

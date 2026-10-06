@@ -239,6 +239,11 @@ test('client delete succeeds and removes the row when nothing blocks it', async 
 // ── recurring series (real identity: series_id + cadences) ───────────
 // Count Telnyx SMS sends by stubbing fetch on /v2/messages.
 
+// Salon-local helpers (no booking_settings row → the salon runs on America/New_York).
+const wallNY = (ms) => new Date(ms).toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
+const dayNY = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+const daysApartNY = (a, b) => Math.round((Date.parse(dayNY(b)) - Date.parse(dayNY(a))) / 86400000);
+
 function seriesEnv(slug, uid, svcId, staffId, extra = {}) {
   fake.seed('tenants', [{ id: uid.replace('u', 't'), slug, phone_number: '+1555' + slug.length + '0000', name: slug + ' Salon' }]);
   fake.seed('tenant_users', [{ user_id: uid, tenant_id: uid.replace('u', 't'), role: 'owner' }]);
@@ -290,8 +295,11 @@ test('repeat weekly generates occurrences with shared series_id, pos/total, and 
     assert.ok(rows.every(r => r.series_total === 4), 'series_total on every row');
     assert.ok(rows.every(r => r.series_rule === 'weekly'), 'series_rule on every row');
     const times = rows.map(r => new Date(r.start_time).getTime()).sort((a, b) => a - b);
+    // Same salon wall-clock time, 7 calendar days apart — across DST too
+    // (Nov 1 2026: 7×24h in UTC used to land every later visit an hour off).
     for (let i = 1; i < times.length; i++) {
-      assert.equal(times[i] - times[i - 1], 7 * 86400000, 'occurrences exactly 7 days apart');
+      assert.equal(wallNY(times[i]), wallNY(times[i - 1]), 'same salon-local time every week');
+      assert.equal(daysApartNY(times[i - 1], times[i]), 7, 'occurrences 7 calendar days apart');
     }
     assert.ok(rows.every(r => Number(r.total_amount) === 70), 'every occurrence priced');
     assert.ok(rows.every(r => r.confirmation_code), 'every occurrence gets a confirmation code');
@@ -320,8 +328,9 @@ test('biweekly cadence spaces occurrences 14 days apart', async () => {
     assert.equal(rows.length, 3);
     assert.ok(rows.every(r => r.series_rule === 'biweekly'));
     const times = rows.map(r => new Date(r.start_time).getTime()).sort((a, b) => a - b);
-    assert.equal(times[1] - times[0], 14 * 86400000, '14-day gap');
-    assert.equal(times[2] - times[1], 14 * 86400000, '14-day gap');
+    assert.equal(daysApartNY(times[0], times[1]), 14, '14-day gap');
+    assert.equal(daysApartNY(times[1], times[2]), 14, '14-day gap');
+    assert.ok(wallNY(times[0]) === wallNY(times[1]) && wallNY(times[1]) === wallNY(times[2]), 'same salon-local time (DST-safe)');
     assert.equal(sms.count, 1);
   } finally { sms.restore(); }
 });
@@ -397,7 +406,7 @@ test('series reschedule scoped "following" moves the whole series cleanly and re
   assert.equal(new Date(r3.start_time).getTime() - new Date(r2.start_time).getTime(), 7 * 86400000, 'cadence preserved');
 });
 
-test('series reschedule "following" re-checks every shifted occurrence and rejects on a later collision (partial apply)', async () => {
+test('series reschedule "following" re-checks every shifted occurrence and rejects on a later collision — nothing moves', async () => {
   const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
   const mk = (pos) => ({
     id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',
@@ -422,17 +431,17 @@ test('series reschedule "following" re-checks every shifted occurrence and rejec
   await handler(req, res);
   assert.equal(out.code, 409, 'collision must be 409 — got: ' + JSON.stringify(out.body).slice(0, 300));
   assert.equal(out.body.conflict, true);
-  assert.equal(out.body.moved_count, 0, 'rbk-2 moved (target), 0 later occurrences before the clash');
+  assert.equal(out.body.moved_count, 0, 'validated before any write — nothing moved');
   assert.equal(out.body.failed_at_occurrence, 3, 'names the colliding occurrence position');
   assert.match(out.body.error, /already booked/, 'error says what is in the way');
   const rows = fake.all('bookings');
-  assert.equal(new Date(rows.find(r => r.id === 'rbk-2').start_time).getTime(), newStart.getTime(), 'target persisted (partial-apply contract)');
+  assert.equal(new Date(rows.find(r => r.id === 'rbk-2').start_time).getTime(), new Date(mk(2).start_time).getTime(), 'target NOT moved (no half-moved series)');
   assert.equal(new Date(rows.find(r => r.id === 'rbk-3').start_time).getTime(), new Date(mk(3).start_time).getTime(), 'colliding occurrence NOT moved');
   assert.equal(new Date(rows.find(r => r.id === 'rbk-4').start_time).getTime(), new Date(mk(4).start_time).getTime(), 'later occurrence NOT moved');
   assert.equal(new Date(rows.find(r => r.id === 'rival-1').start_time).getTime(), new Date(rival.start_time).getTime(), 'rival untouched');
 });
 
-test('series reschedule "following" stops at blocked time with partial apply', async () => {
+test('series reschedule "following" stops at blocked time — nothing moves', async () => {
   const t = new Date(Date.now() + 14 * 86400000); t.setUTCHours(15, 0, 0, 0);
   const mk = (pos) => ({
     id: 'rbk-' + pos, tenant_id: 't8', client_id: 'cl8', service_id: 'sv-8', staff_id: 'st-8',

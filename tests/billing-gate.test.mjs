@@ -82,10 +82,20 @@ test('null trial_ends_at (legacy tenant) is allowed — never blocks existing te
   assert.equal(billingGate({ id: 't1' }).blocked, false);
 });
 
-test('suspended and canceled and past_due all block', () => {
+test('suspended and canceled and past_due (after the 7-day retry grace) all block', () => {
   assert.equal(billingGate({ id: 't1', billing_status: 'suspended' }).blocked, true);
   assert.equal(billingGate({ id: 't1', subscription_status: 'canceled' }).blocked, true);
-  assert.equal(billingGate({ id: 't1', subscription_status: 'past_due' }).blocked, true);
+  const eightDaysAgo = new Date(Date.now() - 8 * 86400000).toISOString();
+  assert.equal(billingGate({ id: 't1', subscription_status: 'past_due', past_due_since: eightDaysAgo }).blocked, true);
+});
+
+test('one failed payment does not block while Stripe retries (7-day grace)', () => {
+  const yesterday = new Date(Date.now() - 86400000).toISOString();
+  assert.equal(billingGate({ id: 't1', subscription_status: 'past_due', past_due_since: yesterday }).blocked, false);
+});
+
+test('admin-activated salon (billing_status active) is never blocked', () => {
+  assert.equal(billingGate({ id: 't1', billing_status: 'active', subscription_status: 'trial', trial_ends_at: past }).blocked, false);
 });
 
 test('bookingGateResponse picks owner vs caller message by channel', () => {

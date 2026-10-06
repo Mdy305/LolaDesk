@@ -13,9 +13,11 @@ import { gateNewBooking, turnedAway, CALLER_LINE } from '../lib/billing-enforce.
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-  // Public skill (anyone may ask for openings / book): refused only in legacy strict mode
-  // (LOLA_TOOL_SECRET set and neither that header nor the signed k=… present).
-  if (toolAuth(req) === 'refused') return res.status(401).json({ error: 'unauthorized' });
+  // A booking WRITE: only LolaDesk's own Telnyx wiring may call this — the signed k=… on the tool URL
+  // (api/lib/assistant-wiring.js re-signs it) or the legacy x-lola-tool-secret header. Anyone else
+  // could book (or spam) a salon's calendar with any phone number. Public visitors book through
+  // /api/public-booking, which has its own limits.
+  if (toolAuth(req) !== 'signed') return res.status(401).json({ error: 'unauthorized' });
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const { to_number, from_number, service_id, staff_id, start_iso, client_name } = body;
@@ -56,6 +58,7 @@ export default async function handler(req, res) {
     return res.json({ ok: true, booking_id: booking.id, when, service: held.slot.service_name, stylist: held.slot.staff_name,
       message: `Booked with ${held.slot.staff_name} on ${when}. I'm texting the confirmation now.` });
   } catch (e) {
-    return res.status(500).json({ error: String(e?.message || e) });
+    console.error('[lola/book-appointment]', e?.message || e);
+    return res.status(500).json({ error: 'booking_failed' });
   }
 }

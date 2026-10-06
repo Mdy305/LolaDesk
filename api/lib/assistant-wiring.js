@@ -181,6 +181,9 @@ function ourHost(h) { const a = parse(appUrl()); return !!a && (h === a.hostname
 export function diagnoseTool(tool) {
   const w = tool && tool.webhook; if (!w) return null;
   const name = norm(w.name), u = parse(w.url);
+  // /api/lola/book-appointment books straight into LolaDesk's table — it skips the salon's live booking
+  // system (Boulevard…), the client-detail checks and the honest booked:false answers. Re-point it.
+  if (u && ourHost(u.hostname) && u.pathname === '/api/lola/book-appointment') return { name: w.name, url: w.url, problem: 'skips_live_booking', fixable: true, tool: 'book_appointment' };
   if (!SKILL_NAMES.has(name)) {
     if (!u || !ourHost(u.hostname) || !GOOD_PATHS.has(u.pathname)) return { name: w.name, url: w.url, problem: 'unknown_tool', fixable: false };
     // One of our dedicated /api/lola/* endpoints: keep it, but it must carry the signature.
@@ -220,8 +223,14 @@ export async function wireAssistant({ heal = false } = {}) {
     if (!d) return t;
     if (!d.fixable) { unknown.push({ name: d.name, url: d.url }); return t; }
     issues.push(d);
-    const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(t.webhook.name);
+    const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(d.tool || t.webhook.name);
     fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem });
+    if (d.problem === 'skips_live_booking') {
+      // The old endpoint took service_id/start_iso; book_appointment takes the service, day and time as said.
+      const bp = (t.webhook.body_parameters && typeof t.webhook.body_parameters === 'object') ? t.webhook.body_parameters : {};
+      const props = { service: { type: 'string', description: 'The service, as on the menu' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, stylist: { type: 'string', description: 'Only if they asked for someone' }, ...BOOKING_PARAMS };
+      return { ...t, webhook: { ...t.webhook, url, method: 'POST', body_parameters: { ...bp, type: 'object', properties: props, required: ['service', 'date', 'time', 'client_name', 'client_phone'] } } };
+    }
     return { ...t, webhook: { ...t.webhook, url, method: 'POST' } };   // /api/lola-tools only answers POST
   });
   const dv = parse(a.dynamic_variables_webhook_url);

@@ -17,6 +17,7 @@
  * Never overwrites what the owner set by hand. Real columns only.
  */
 import { chat } from './llm.js';
+import { safeFetch } from './safe-fetch.js';
 import { safePublicUrl } from './onboarding-engine.js';
 import { ensureBookingBaseline } from './booking-seed.js';
 import { readMaps } from './google-places.js';
@@ -41,7 +42,7 @@ export function htmlToText(html) {
 
 async function fetchText(url, ms = 7000) {
   try {
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LolaDesk/1.0; +https://loladesk.com)' }, redirect: 'follow', signal: AbortSignal.timeout(ms) });
+    const r = await safeFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LolaDesk/1.0; +https://loladesk.com)' }, timeoutMs: ms, maxBytes: 3 * 1024 * 1024 });
     if (!r.ok || !/html|text/i.test(r.headers.get('content-type') || 'text/html')) return null;
     const html = (await r.text()).slice(0, 400000);
     return { html, url: r.url || url };

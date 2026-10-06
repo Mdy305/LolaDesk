@@ -33,20 +33,12 @@ import { answerOwner, briefingLine } from './lib/owner-brain.js';
 import { getConversationHistory, db } from './lib/db.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 import crypto from 'crypto';
+import { readWebhookBody, checkTelnyxSignature } from './lib/webhook-body.js';
 
 function escapeXml(v=''){ return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
 
-async function readBody(req){
-  if(req.body && typeof req.body === 'object') return req.body;
-  return new Promise(resolve => {
-    let raw=''; req.on('data',c=>raw+=c); req.on('end',()=>{
-      const ct = String(req.headers['content-type']||'').toLowerCase();
-      if(ct.includes('json')){ try{ return resolve(JSON.parse(raw)); }catch{ return resolve({}); } }
-      if(ct.includes('urlencoded')){ const o={}; for(const [k,v] of new URLSearchParams(raw)) o[k]=v; return resolve(o); }
-      resolve({});
-    }); req.on('error',()=>resolve({}));
-  });
-}
+// Telnyx signs the exact bytes of every TeXML request: read them raw and verify (TELNYX_PUBLIC_KEY).
+export const config = { api: { bodyParser: false } };
 
 function extract(parsed){
   const p = parsed?.data?.payload || parsed || {};
@@ -139,7 +131,11 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const parsed = await readBody(req);
+  const incoming = await readWebhookBody(req);
+  // The owner line changes the book and texts clients: a forged request must never reach it.
+  const verified = checkTelnyxSignature(req, incoming, { texml: true });
+  if(!verified.ok) return res.status(403).json({ error: `invalid telnyx signature: ${verified.reason}` });
+  const parsed = incoming.parsed;
   const { from, to, speech, callId } = extract(parsed);
   const url = new URL(req.url, 'http://x');
   const silence = url.searchParams.get('silence') === '1';

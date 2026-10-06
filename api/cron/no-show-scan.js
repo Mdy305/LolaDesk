@@ -1,116 +1,88 @@
-// GET /api/cron/no-show-scan
-// Vercel cron target. Scans bookings past their delay window and either
-// marks them no_show or charges the no-show fee (if policy allows).
-// Auth: header `x-vercel-cron: 1` OR `?secret=$CRON_SECRET`.
+// GET /api/cron/no-show-scan  (every 15 minutes)
+// The salon's no-show fee, collected kindly and only when it's real.
+//
+// Lola NEVER decides someone was a no-show: a visit that simply wasn't checked
+// out is not a no-show. Only a booking the salon marked "no-show" (status
+// no_show) is considered. If the salon's policy (Settings → Booking rules /
+// Banking → Policies — one source: booking_settings.metadata.deposits) has the
+// no-show fee ON with "charge automatically", the client gets ONE text with a
+// secure Stripe link for the fee (paid to the salon's connected account).
+// Idempotent: a payments row per booking (sub_kind no_show_fee) means done.
+// Auth: `Authorization: Bearer $CRON_SECRET` only (Vercel Cron sends it).
 import { db } from '../lib/db.js';
-import { previewPolicy } from '../lib/policies.js';
-import { stripeFor, connectAccount } from '../lib/stripe.js';
+import { cronAuthorized } from '../lib/cron-auth.js';
+import { readSalonPolicies } from '../lib/salon-policies.js';
 
-function isAuthorized(req) {
-  if (req.headers?.['x-vercel-cron']) return true;
-  const secret = req.query?.secret || req.headers?.['x-cron-secret'];
-  return secret && secret === process.env.CRON_SECRET;
+const LOOKBACK_DAYS = 3;
+
+export function noShowFeeCents(policy, servicePrice, depositPaid = 0) {
+  const p = policy || {};
+  if (!p.enabled) return 0;
+  const price = Number(servicePrice || 0);
+  let dollars;
+  if (p.type === 'full') dollars = price - Number(depositPaid || 0);
+  else if (p.type === 'percent') dollars = price * Number(p.amount || 0) / 100;
+  else dollars = Number(p.amount || 0);
+  return Math.max(0, Math.round(dollars * 100));
 }
 
 export default async function handler(req, res) {
-  if (!isAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
-
+  if (!cronAuthorized(req)) return res.status(401).json({ ok: false, error: 'unauthorized' });
   const c = db();
-  const scannedAt = new Date();
-
+  if (!c) return res.status(503).json({ ok: false, error: 'database not configured' });
+  const results = [];
   try {
-    // Load all tenants with no-show policy enabled.
-    const { data: policies } = await c.from('billing_policies')
-      .select('tenant_id, no_show, auto_charge')
-      .filter('no_show->enabled', 'eq', 'true');
+    const since = new Date(Date.now() - LOOKBACK_DAYS * 864e5).toISOString();
+    const { data: marked } = await c.from('bookings')
+      .select('id,tenant_id,client_id,service_id,start_time,total_amount,status')
+      .in('status', ['no_show', 'no-show']).gte('start_time', since).limit(500);
+    const byTenant = {};
+    for (const b of marked || []) (byTenant[b.tenant_id] ||= []).push(b);
 
-    const results = [];
+    for (const [tenantId, list] of Object.entries(byTenant)) {
+      let pol;
+      try { pol = await readSalonPolicies(c, tenantId); } catch (_) { continue; }
+      if (!pol?.no_show?.enabled || !pol?.auto_charge?.no_show_fee) continue;
+      const { data: tenant } = await c.from('tenants').select('id,name,phone_number').eq('id', tenantId).maybeSingle();
+      if (!tenant?.phone_number) continue;
 
-    for (const p of (policies || [])) {
-      const delayMin = Number(p.no_show?.delay_minutes || 30);
-      const cutoff = new Date(Date.now() - delayMin * 60 * 1000).toISOString();
-
-      // Find bookings that are past their start + delay and still open.
-      const { data: candidates } = await c.from('bookings')
-        .select('id, tenant_id, client_id, service_id, start_time, total_amount, outcome')
-        .eq('tenant_id', p.tenant_id)
-        .lt('start_time', cutoff)
-        .in('outcome', ['confirmed', 'pending', 'pending_payment']);
-
-      for (const b of (candidates || [])) {
-        // Mark no-show first.
-        await c.from('bookings').update({ outcome: 'no_show' }).eq('id', b.id);
-
-        // Bump client counter.
-        if (b.client_id) {
-          await c.rpc('increment_no_show', { p_client_id: b.client_id }).catch(() => {});
-        }
-
-        // Charge fee if auto-charge enabled.
-        if (!p.auto_charge?.no_show_fee) {
-          results.push({ booking_id: b.id, action: 'marked_no_show' });
-          continue;
-        }
-
-        // Load service for override calc.
-        const { data: service } = await c.from('services')
-          .select('price, deposit_override_type, deposit_override_amount')
-          .eq('id', b.service_id).maybeSingle();
-
-        const preview = previewPolicy({
-          policy: { no_show: p.no_show },
-          service: {
-            price_cents: Math.round(Number(service?.price || b.total_amount || 0) * 100)
+      for (const b of list) {
+        const { data: done } = await c.from('payments').select('id').eq('booking_id', b.id).eq('sub_kind', 'no_show_fee').limit(1);
+        if (done && done.length) continue;
+        const { data: client } = b.client_id ? await c.from('clients').select('id,name,phone,no_show_count').eq('id', b.client_id).maybeSingle() : { data: null };
+        if (!client?.phone) { results.push({ booking_id: b.id, action: 'skipped', reason: 'no_client_phone' }); continue; }
+        if (pol.no_show.waive_first_offense) {
+          const { data: prior } = await c.from('bookings').select('id').eq('tenant_id', tenantId).eq('client_id', client.id).in('status', ['no_show', 'no-show']).lt('start_time', b.start_time).limit(1);
+          if (!prior || !prior.length) {
+            await c.from('payments').insert({ tenant_id: tenantId, kind: 'charge', sub_kind: 'no_show_fee', status: 'waived', amount: 0, currency: 'usd', client_id: client.id, booking_id: b.id }).then(() => {}, () => {});
+            results.push({ booking_id: b.id, action: 'waived_first_offense' });
+            continue;
           }
-        });
-        const feeCents = preview.no_show_cents || 0;
-        if (feeCents === 0) {
-          results.push({ booking_id: b.id, action: 'marked_no_show', reason: 'zero_fee' });
-          continue;
         }
-
-        // Attempt charge via saved payment method (requires prior deposit intent).
-        const account = await connectAccount(b.tenant_id);
-        if (!account?.charges_enabled) {
-          results.push({ booking_id: b.id, action: 'marked_no_show', reason: 'stripe_not_connected' });
-          continue;
-        }
-
-        const stripe = stripeFor(b.tenant_id, account.stripe_account_id);
+        const { data: svc } = b.service_id ? await c.from('services').select('name,price').eq('id', b.service_id).maybeSingle() : { data: null };
+        const { data: dep } = await c.from('deposits').select('amount,status').eq('booking_id', b.id).maybeSingle();
+        const cents = noShowFeeCents(pol.no_show, svc?.price ?? b.total_amount, ['paid', 'kept'].includes(dep?.status) ? dep.amount : 0);
+        if (!cents) { results.push({ booking_id: b.id, action: 'skipped', reason: 'zero_fee' }); continue; }
+        // Claim first (pending row) so two overlapping runs never text twice.
+        const { data: claim, error: claimErr } = await c.from('payments').insert({ tenant_id: tenantId, kind: 'charge', sub_kind: 'no_show_fee', status: 'pending', amount: cents, currency: 'usd', client_id: client.id, booking_id: b.id }).select('id').maybeSingle();
+        if (claimErr || !claim?.id) { results.push({ booking_id: b.id, action: 'skipped', reason: 'claim_failed' }); continue; }
         try {
-          const intent = await stripe.createPaymentIntent({
-            amount: feeCents,
-            currency: 'usd',
-            metadata: {
-              booking_id: b.id,
-              client_id: b.client_id || '',
-              tenant_id: b.tenant_id,
-              kind: 'no_show_fee'
-            },
-            description: 'No-show fee',
-            confirm: true,
-            off_session: true
-          });
-          await c.from('payments').insert({
-            tenant_id: b.tenant_id,
-            stripe_id: intent.id,
-            kind: 'charge',
-            sub_kind: 'no_show_fee',
-            status: intent.status === 'succeeded' ? 'succeeded' : 'pending',
-            amount: feeCents,
-            currency: 'usd',
-            client_id: b.client_id,
-            booking_id: b.id,
-            at_risk: intent.status !== 'succeeded'
-          });
-          results.push({ booking_id: b.id, action: 'charged', fee_cents: feeCents, status: intent.status });
-        } catch (err) {
-          results.push({ booking_id: b.id, action: 'charge_failed', error: String(err?.message || err) });
+          if (!process.env.STRIPE_SECRET_KEY) throw new Error('stripe_not_configured');
+          const { createPaymentLink } = await import('../lib/stripe.js');
+          const link = await createPaymentLink({ amountCents: cents, description: `Missed appointment fee — ${tenant.name || 'the salon'}`, tenantId, metadata: { booking_id: String(b.id), kind: 'no_show_fee' } });
+          await c.from('payments').update({ stripe_id: link.id }).eq('id', claim.id);
+          const { sendSMS } = await import('../lib/sms.js');
+          const first = String(client.name || '').split(' ')[0] || 'there';
+          await sendSMS({ from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
+            text: `Hi ${first}, we missed you at ${tenant.name || 'the salon'}. Per our booking policy there's a $${(cents / 100).toFixed(2)} missed-appointment fee — you can pay it securely here: ${link.url}  Reply here to rebook anytime. Reply STOP to opt out.` });
+          results.push({ booking_id: b.id, action: 'fee_link_sent', fee_cents: cents });
+        } catch (e) {
+          await c.from('payments').update({ status: 'failed', at_risk: true }).eq('id', claim.id).then(() => {}, () => {});
+          results.push({ booking_id: b.id, action: 'failed', error: String(e?.message || e).slice(0, 160) });
         }
       }
     }
-
-    return res.json({ ok: true, scanned_at: scannedAt.toISOString(), processed: results.length, results });
+    return res.json({ ok: true, processed: results.length, results });
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

@@ -39,8 +39,18 @@ export async function writeAppointment(tenantIntegrations, appointment, { provid
   // Explicit provider that isn't connected falls back to any write-eligible
   // provider rather than failing the booking (tenant pref is honored when it
   // exists and is connected).
-  if(!target) target = tenantIntegrations.find(i => WRITE_PROVIDERS.includes(i.provider)) || tenantIntegrations[0];
+  // Never "any connected integration": a calendar feed or Shopify can't take an appointment.
+  if(!target) target = tenantIntegrations.find(i => WRITE_PROVIDERS.includes(i.provider));
   if(!target) throw new Error('No booking provider connected');
   const c = getConnector(target.provider);
   return c.createAppointment(target, appointment);
+}
+
+// Cancels / moves upstream (booking-outbox 'cancel' | 'update'). Connectors
+// without an API for it throw an "unsupported: …" error the outbox records.
+export async function changeAppointment(integration, op, args){
+  const c = getConnector(integration.provider);
+  const fn = op === 'cancel' ? c.cancelAppointment : c.updateAppointment;
+  if(typeof fn !== 'function') throw new Error(`unsupported: ${integration.provider} ${op} is not available through its API`);
+  return fn(integration, args);
 }

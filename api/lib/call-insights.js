@@ -14,6 +14,8 @@
  * (same event id) is skipped instead of double-applied.
  */
 
+import { findCallRow, upsertCallRow } from './call-row.js';
+
 // ── parse ───────────────────────────────────────────────────────────────────
 export function parseInsightsEvent(body) {
   const data = body?.data || {};
@@ -64,6 +66,19 @@ export function classifyResults(results) {
 }
 
 // ── persist ─────────────────────────────────────────────────────────────────
+/** The transcript as the Calls screen reads it (recording_url carries "Caller:/Lola:" lines). */
+export function transcriptText(transcript) {
+  if (transcript == null) return null;
+  if (typeof transcript === 'string') return transcript.trim() || null;
+  if (!Array.isArray(transcript)) return null;
+  const who = (r) => /^(assistant|agent|lola|ai|bot)$/i.test(String(r || '')) ? 'Lola' : 'Caller';
+  const lines = transcript
+    .map((t) => (t && typeof t === 'object') ? `${who(t.role)}: ${String(t.content ?? t.text ?? '').replace(/\s+/g, ' ').trim()}` : String(t || '').trim())
+    .filter((l) => l && !/^(Lola|Caller):\s*$/.test(l));
+  return lines.length ? lines.join('\n') + '\n' : null;
+}
+const q1 = (p) => Promise.resolve(p).then((r) => r, () => ({ data: null }));   // supabase builders have no .catch
+
 export async function persistCallInsights(client, parsed, classified) {
   if (!client) return { mode: 'ignored', reason: 'no database' };
   const { callControlId, callSessionId, callLegId, eventId, occurredAt } = parsed;
@@ -71,7 +86,7 @@ export async function persistCallInsights(client, parsed, classified) {
 
   // Exactly-once: same event id delivered again (Telnyx retry) → already applied.
   if (eventId) {
-    const dup = await client.from('calls').select('id').eq('insight_id', eventId).maybeSingle().catch(() => ({ data: null }));
+    const dup = await q1(client.from('calls').select('id').eq('insight_id', eventId).maybeSingle());
     if (dup?.data?.id) return { mode: 'duplicate', callId: dup.data.id };
   }
 
@@ -79,10 +94,10 @@ export async function persistCallInsights(client, parsed, classified) {
   // calls row that already carries the id.
   let tenantId = null, fromNumber = null, toNumber = null;
   if (callControlId) {
-    const sess = await client.from('call_sessions')
+    const sess = await q1(client.from('call_sessions')
       .select('tenant_id,from_number,to_number')
       .eq('call_control_id', callControlId)
-      .maybeSingle().catch(() => ({ data: null }));
+      .maybeSingle());
     if (sess?.data?.tenant_id) {
       tenantId = sess.data.tenant_id;
       fromNumber = sess.data.from_number || null;
@@ -90,56 +105,43 @@ export async function persistCallInsights(client, parsed, classified) {
     }
   }
 
+  // ONE row per call: ALWAYS look for the row this call already has (the live row agent-variables
+  // or the voice line wrote) — inside the session's salon when it is known.
   let existing = null;
-  if (!tenantId) {
-    try {
-      const q = client.from('calls').select('id,tenant_id,from_number,to_number');
-      if (callControlId && callSessionId) q.or(`telnyx_call_control_id.eq.${callControlId},call_session_id.eq.${callSessionId}`);
-      else if (callControlId) q.eq('telnyx_call_control_id', callControlId);
-      else q.eq('call_session_id', callSessionId);
-      const row = await q.limit(1).maybeSingle();
-      if (row?.data?.id) {
-        existing = row.data;
-        tenantId = row.data.tenant_id;
-        if (!fromNumber) fromNumber = row.data.from_number || null;
-        if (!toNumber) toNumber = row.data.to_number || null;
-      }
-    } catch { /* fall through to ignored */ }
+  try {
+    existing = await findCallRow(client, { tenantId, callControlId, callSessionId, select: 'id,tenant_id,from_number,to_number,status,recording_url' });
+  } catch { existing = null; }
+  if (existing && !tenantId) tenantId = existing.tenant_id;
+  if (existing) {
+    if (!fromNumber) fromNumber = existing.from_number || null;
+    if (!toNumber) toNumber = existing.to_number || null;
   }
   if (!tenantId) return { mode: 'ignored', reason: 'no tenant resolvable' };
 
+  // Canonical columns only (outcome/transcript are generated from status/recording_url).
   const patch = {};
   if (classified.summary != null) patch.summary = classified.summary;
-  if (classified.outcome != null) patch.outcome = classified.outcome;
-  if (classified.transcript != null) patch.transcript = classified.transcript;
+  const outcome = classified.outcome != null ? String(classified.outcome).trim().toLowerCase().slice(0, 40) : (classified.booked === true ? 'booked' : null);
+  const text = transcriptText(classified.transcript);
+  if (text && !String(existing?.recording_url || '').trim()) patch.recording_url = text;
   if (classified.durationSeconds != null) patch.duration_seconds = classified.durationSeconds;
   if (callSessionId) patch.call_session_id = callSessionId;
   if (callLegId) patch.call_leg_id = callLegId;
   if (eventId) patch.insight_id = eventId;
   patch.insight_at = occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString();
+  // The insights event fires at conversation end — a live row must be closed too, or the Lola Live
+  // panel would stream it forever. A row the voice line already marked booked stays booked.
+  const LIVE = ['ringing', 'in_progress', 'processing', 'dialing', 'connected', 'answered'];
+  if (existing && existing.status === 'booked') { /* the voice line saw the booking happen: keep it */ }
+  else if (outcome) patch.status = outcome;
+  else if (!existing || !existing.status || LIVE.includes(String(existing.status))) patch.status = 'completed';
 
-  // The insights event fires at conversation end — an existing live row
-  // must be closed too, or the Lola Live panel would stream it forever.
-  if (existing?.id && !patch.status) patch.status = 'completed';
-
-  let callId = null;
+  let callId = null, mode = 'created';
   try {
-    if (existing?.id) {
-      const { error } = await client.from('calls').update(patch).eq('id', existing.id);
-      if (error) return { mode: 'error', error: String(error.message || error) };
-      callId = existing.id;
-    } else {
-      const { data, error } = await client.from('calls').insert({
-        tenant_id: tenantId,
-        from_number: fromNumber,
-        to_number: toNumber,
-        direction: 'inbound',
-        status: 'completed',
-        ...patch
-      }).select().maybeSingle();
-      if (error) return { mode: 'error', error: String(error.message || error) };
-      callId = data?.id || null;
-    }
+    const r = await upsertCallRow(client, { tenantId, callControlId, callSessionId, patch,
+      insert: { from_number: fromNumber, to_number: toNumber, direction: 'inbound', status: 'completed' } });
+    if (r.mode === 'error') return { mode: 'error', error: r.error };
+    callId = r.id; mode = r.mode;
   } catch (e) {
     return { mode: 'error', error: String(e && e.message || e) };
   }
@@ -166,14 +168,14 @@ export async function persistCallInsights(client, parsed, classified) {
           at: new Date().toISOString()
         }
       };
-      await client.from('client_memories').upsert(memory, { onConflict: 'tenant_id,client_phone,key' })
-        .select().maybeSingle();
+      await q1(client.from('client_memories').upsert(memory, { onConflict: 'tenant_id,client_phone,key' })
+        .select().maybeSingle());
     } catch (e) {
       /* memory write is best-effort — never fail the webhook */
     }
   }
 
-  return { mode: existing?.id ? 'updated' : 'created', callId };
+  return { mode, callId };
 }
 
 // ── end ─────────────────────────────────────────────────────────────────

@@ -13,14 +13,17 @@
  */
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 
-const DEFAULT_SECRET = 'lola-voice-dev-only';
-
+// No built-in default: a well-known fallback would let anyone mint a voice session for any
+// salon. Without LOLA_VOICE_SECRET, tokens can't be issued (voice-session.js answers 503
+// relay_secret_missing) and nothing verifies.
 export function secret() {
-  return process.env.LOLA_VOICE_SECRET || DEFAULT_SECRET;
+  return String(process.env.LOLA_VOICE_SECRET || '').trim();
 }
+export function hasVoiceSecret() { return !!secret(); }
 
 export function issueVoiceToken({ userId, tenantId, ttlMs = 5 * 60 * 1000, now = Date.now() }) {
   if (!userId || !tenantId) throw new Error('userId and tenantId are required');
+  if (!secret()) throw new Error('LOLA_VOICE_SECRET is not configured');
   const expiresAt = now + ttlMs;
   const nonce = randomBytes(8).toString('hex');
   const base = [userId, tenantId, expiresAt, nonce].join('.');
@@ -32,7 +35,7 @@ export function issueVoiceToken({ userId, tenantId, ttlMs = 5 * 60 * 1000, now =
  * Verify a token. Returns { userId, tenantId } or null (expired/tampered/malformed).
  */
 export function verifyVoiceToken(token, { now = Date.now() } = {}) {
-  if (!token) return null;
+  if (!token || !secret()) return null;
   const parts = String(token).split('.');
   if (parts.length !== 5) return null;
   const [userId, tenantId, expiresAt, nonce, sig] = parts;

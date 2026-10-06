@@ -25,6 +25,11 @@ ok(r.ok && r.voice && r.voice.agent_id === 'assistant-57f2d23e-48b1-4107-9811-c4
 r = await run({ method: 'GET', url: `/api/widget-chat?slug=mma&key=wrong` });
 ok(r.status === 401, 'another salon’s key never opens this Lola');
 
+{ const saved = process.env.WIDGET_EMBED_SECRET; delete process.env.WIDGET_EMBED_SECRET; delete process.env.OPERATOR_TOOLS_SECRET;
+  const legacy = (await import('node:crypto')).createHmac('sha256', 'dev-only-secret-change-me').update('widget|mma').digest('hex').slice(0, 32);
+  const rr = await run({ method: 'GET', url: `/api/widget-chat?slug=mma&key=${legacy}` });
+  ok(rr.ok && rr.voice, 'a widget already pasted on a salon site (older key) keeps working');
+  process.env.WIDGET_EMBED_SECRET = saved; }
 script = [{ content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'list_services', arguments: '{}' } }] }, { content: 'We have a Cut for $80 — want me to find you a time?' }];
 r = await run({ method: 'POST', body: { slug: 'mma', key, visitor_id: 'v1', message: 'what do you offer?' } });
 ok(r.ok && /Cut for \$80/.test(r.reply), 'chat answers with the real menu: ' + r.reply);

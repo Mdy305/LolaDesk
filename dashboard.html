@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>LolaDesk — Your Front Desk Teammate</title>
+<title>Home · LolaDesk</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="lola-live-conversation.css"/>
 <meta name="description" content="LolaDesk becomes part of your team, welcomes every client, supports bookings, follows up leads, and helps grow revenue."/>
@@ -925,9 +925,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         <input id="cmdInput" placeholder="Ask Lola anything…"/>
       </div>
       <div class="cmd-chips">
-        <button class="cmd-chip" onclick="askLola('Book Sarah for balayage and include one high-margin add-on suggestion.')">Book Sarah</button>
-        <button class="cmd-chip" onclick="askLola('Draft callback messages for clients overdue 12 weeks.')">Overdue clients</button>
-        <button class="cmd-chip" onclick="askLola('Show the top highest-spending blonde clients and who to contact next.')">Top blonde clients</button>
+        <!-- Neutral until the salon's own data fills them in (top client, top service) — see fillCmdChips(). -->
+        <button class="cmd-chip" data-chip="today" onclick="askLola(this.dataset.ask||'Catch me up on today.')">Catch me up</button>
+        <button class="cmd-chip" data-chip="overdue" onclick="askLola(this.dataset.ask||'Which clients are overdue for a visit, and what should I send them?')">Overdue clients</button>
+        <button class="cmd-chip" data-chip="top" onclick="askLola(this.dataset.ask||'Who are my best clients right now, and who should I reach out to next?')">Top clients</button>
       </div>
       <button class="cmd-send" onclick="sendCmd()" aria-label="Send">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -1162,7 +1163,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
         <span class="setup-action-body">Dial <strong>${escHtml(fmtPhoneUS(setup.phoneNumber))}</strong> from your phone and hear her answer as your front desk.</span></span>
       </a>`);
     }else{
-      moves.push(`<a class="setup-action" href="/numbers">
+      moves.push(`<a class="setup-action" href="/settings#phone">
         <span class="setup-step">1</span>
         <span><span class="setup-action-title">Give Lola a number</span>
         <span class="setup-action-body">Pick a local number, or forward the one your clients already call.</span></span>
@@ -1555,15 +1556,54 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     }
   });
 
-  const dashboardResults = await Promise.allSettled([
-    renderSchedule(),
-    renderAway(),
-    renderDeskCenter()
-  ]);
+  // Home is Lola: the schedule / insights / revenue column, the away panel and
+  // the desk queue are hidden by the layout above. Only fetch and draw a panel
+  // the owner can actually see (each one used to load calls/inbox/bookings on
+  // every visit for nothing).
+  const shown = (id)=>{
+    const el = document.getElementById(id); if(!el) return false;
+    if(id === "awayPanel"){ // shows itself only when there is news: ask whether the layout would let it
+      const prev = el.style.display; el.style.display = "block";
+      const can = el.getClientRects().length > 0; el.style.display = prev; return can;
+    }
+    return el.getClientRects().length > 0;
+  };
+  const visiblePanels = ()=>[
+    shown("scheduleList") && renderSchedule,
+    shown("awayPanel") && renderAway,
+    shown("deskQueue") && renderDeskCenter
+  ].filter(Boolean);
+  const dashboardResults = await Promise.allSettled(visiblePanels().map(fn=>fn()));
   dashboardResults.filter(x=>x.status==='rejected').forEach(x=>console.warn('[dashboard] section unavailable',x.reason));
-  renderInsights();
-  renderResonance();
-  drawCharts();
+  if(shown("insightsList")) renderInsights();
+  if(shown("revChart")) drawCharts();
+
+  // The ask-chips under "Ask Lola anything": built from this salon's own data
+  // (its best client, its top service) — neutral wording until that loads, and
+  // only fetched when the chips are actually on screen.
+  (function fillCmdChips(){
+    const box = document.querySelector(".cmd-chips");
+    if(!box || !box.getClientRects().length || !window.LolaData) return;
+    const go = async ()=>{
+      try{
+        const [cl, rev] = await Promise.all([LolaData.load("clients").catch(()=>null), LolaData.load("revenue").catch(()=>null)]);
+        const clients = (cl && Array.isArray(cl.clients)) ? cl.clients.filter(c=>c && c.name && c.name !== "Unknown") : [];
+        const best = clients.slice().sort((a,b)=>(Number(b.ltv)||0)-(Number(a.ltv)||0))[0];
+        const topService = rev && Array.isArray(rev.services) && rev.services[0] && rev.services[0].name;
+        const first = best ? String(best.name).split(/\s+/)[0] : "";
+        const chipTop = box.querySelector('[data-chip="top"]'), chipToday = box.querySelector('[data-chip="today"]');
+        if(first && chipTop){
+          chipTop.textContent = "Book " + first;
+          chipTop.dataset.ask = "Book " + best.name + (best.lastService ? " for their usual " + best.lastService : "") + " — find the best open time.";
+        }
+        if(topService && chipToday){
+          chipToday.textContent = "Fill " + topService;
+          chipToday.dataset.ask = "Who should I invite for " + topService + " this week, and what should I send them?";
+        }
+      }catch(e){}
+    };
+    (window.requestIdleCallback || ((f)=>setTimeout(f, 1500)))(go);
+  })();
 
   // app.js has its own demo-data fallback renderers for scheduleList/insightsList
   // (used on pages with no real data wired yet) — this flag tells it real data
@@ -1573,9 +1613,9 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   // Exposed so lola-live-poll.js can refresh visible panels when new
   // bookings/calls/messages come in, without a full page reload.
   window.lolaRefreshPanels = function(){
-    renderSchedule();
-    renderAway();
-    renderInsights();
+    if(shown("scheduleList")) renderSchedule();
+    if(shown("awayPanel")) renderAway();
+    if(shown("insightsList")) renderInsights();
   };
 
   const appScript = document.createElement("script");

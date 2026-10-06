@@ -1,26 +1,33 @@
-// POST /api/telnyx-webhook — receives every Telnyx event for calls and SMS.
-// Verifies the Ed25519 signature, then routes based on event_type.
-// This is the SKELETON: individual event branches are stubs that log and
-// return 200. Fill them in as your flows go live.
-import { verifyTelnyxSig, sendSMS, answerCallWithAssistant, tenantForNumber } from './lib/telnyx.js';
+// POST /api/telnyx-webhook — Telnyx Call Control + messaging events (one URL for both).
+// Verifies the Ed25519 signature, then routes on event_type:
+//   call.initiated (incoming)  → answered by LolaBrain (numbers on a Call Control app use this path)
+//   call.* lifecycle           → the call's ONE calls row (shared with agent-variables + insights)
+//   message.received           → the live texting pipeline (/api/telnyx-sms): Lola answers it
+// It used to save inbound texts and never answer them (a TODO), insert a second calls row per
+// call, and refuse every event with 401 whenever TELNYX_PUBLIC_KEY was unset (even in preview).
+import { verifyTelnyxSig, answerCallWithAssistant, tenantForNumber } from './lib/telnyx.js';
+import { readRawBody } from './lib/telnyx-webhook-verify.js';
+import { upsertCallRow } from './lib/call-row.js';
 import { db } from './lib/db.js';
 
-// Vercel gives us raw body via req.body when the content-type is JSON,
-// but for signature verification we need the RAW payload string. Force
-// this handler to accept raw body via config.
+// Signatures cover the exact bytes: read them raw.
 export const config = { api: { bodyParser: false } };
 
-async function readRawBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  return Buffer.concat(chunks).toString('utf8');
+/** A res-shaped collector so the texting pipeline can run inside this request. */
+function collector() {
+  const out = { statusCode: 200, body: null, headers: {} };
+  out.setHeader = (k, v) => { out.headers[k] = v; return out; };
+  out.status = (c) => { out.statusCode = c; return out; };
+  out.json = (o) => { out.body = o; return out; };
+  out.send = (o) => { out.body = o; return out; };
+  out.end = () => out;
+  return out;
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   const raw = await readRawBody(req);
-  // Signature check
-  if (!verifyTelnyxSig(req.headers, raw)) {
+  if (!verifyTelnyxSig(req.headers || {}, raw)) {
     return res.status(401).json({ ok: false, error: 'invalid_signature' });
   }
   let payload;
@@ -37,8 +44,7 @@ export default async function handler(req, res) {
         // Inbound call. Resolve tenant by the "to" (their Lola number)
         // and answer the call with their Telnyx AI Assistant.
         if (p.direction && p.direction !== 'incoming') break;   // calls LolaDesk dials are driven by their own flows
-        const to = p.to;
-        const tenant = await tenantForNumber(c, to);
+        const tenant = c ? await tenantForNumber(c, p.to) : null;
         if (!tenant) break;
         // ONE brain: LolaBrain answers every salon (the salon is known from the number called).
         // A salon's old per-salon assistant is only a fallback if LolaBrain can't be found.
@@ -46,75 +52,40 @@ export default async function handler(req, res) {
         try { const { resolveAssistant } = await import('./lib/assistant-wiring.js'); aid = (await resolveAssistant()).id || null; } catch (_) {}
         if (!aid) aid = tenant.telnyx_assistant_id || null;
         if (!aid) break;
-        const cmd = payload?.data?.id || null;
-        try { await answerCallWithAssistant(p.call_control_id, aid, { commandId: cmd }); }
-        catch (e) {
-          throw e;
-        }
-        await c.from('calls').insert({
-          tenant_id: tenant.id,
-          telnyx_call_control_id: p.call_control_id,
-          from_number: p.from,
-          to_number: p.to,
-          direction: 'inbound',
-          status: 'in_progress'
-        }).then((r) => r, () => null);
+        await answerCallWithAssistant(p.call_control_id, aid, { commandId: payload?.data?.id || null });
+        // The same row agent-variables / insights update (never a second row for one call).
+        await upsertCallRow(c, { tenantId: tenant.id, callControlId: p.call_control_id || null, callSessionId: p.call_session_id || null,
+          patch: { status: 'in_progress' },
+          insert: { from_number: p.from || null, to_number: p.to || null, direction: 'inbound' } });
         break;
       }
       case 'call.answered': {
-        await c.from('calls').update({ status: 'in_progress' })
-          .eq('telnyx_call_control_id', p.call_control_id);
+        if (c && p.call_control_id) await c.from('calls').update({ status: 'in_progress' }).eq('telnyx_call_control_id', p.call_control_id).then((r) => r, () => null);
         break;
       }
-      case 'call.hangup': {
-        await c.from('calls').update({ status: 'completed' }).eq('telnyx_call_control_id', p.call_control_id);
-        break;
-      }
+      case 'call.hangup':
       case 'call.conversation.ended':           // Telnyx's documented event name
       case 'ai_assistant.conversation_ended': {
         // The transcript + summary land through the insights webhook (call.conversation_insights.generated);
         // here the call is simply closed. (transcript/outcome are generated columns — never written.)
-        await c.from('calls').update({ status: 'completed' }).eq('telnyx_call_control_id', p.call_control_id);
+        // A row already closed with a real outcome (booked…) is left as it is.
+        if (c && p.call_control_id) {
+          await c.from('calls').update({ status: 'completed' }).eq('telnyx_call_control_id', p.call_control_id)
+            .in('status', ['ringing', 'in_progress', 'processing', 'dialing', 'connected']).then((r) => r, () => null);
+        }
         break;
       }
 
       // ── SMS EVENTS ─────────────────────────────────────────
       case 'message.received': {
-        const to = p.to?.[0]?.phone_number || p.to;
-        const tenant = await tenantForNumber(c, to);
-        if (!tenant) break;
-        const from = p.from?.phone_number || p.from;
-        // Look up or create the client
-        let { data: client } = await c.from('clients').select('id').eq('tenant_id', tenant.id).eq('phone', from).maybeSingle();
-        if (!client) {
-          const inserted = await c.from('clients').insert({ tenant_id: tenant.id, phone: from }).select().single();
-          client = inserted.data;
-        }
-        // Find or create thread
-        let { data: thread } = await c.from('inbox_threads').select('id, autopilot').eq('tenant_id', tenant.id).eq('client_phone', from).maybeSingle();
-        if (!thread) {
-          const inserted = await c.from('inbox_threads').insert({
-            tenant_id: tenant.id, client_id: client?.id, client_phone: from,
-            channel: 'sms', unread: true, autopilot: true
-          }).select().single();
-          thread = inserted.data;
-        }
-        // Persist the inbound message
-        await c.from('inbox_messages').insert({
-          thread_id: thread.id, tenant_id: tenant.id,
-          direction: 'in', text: p.text, created_at: new Date().toISOString()
-        });
-        await c.from('inbox_threads').update({ unread: true, preview: p.text, when: new Date().toISOString() }).eq('id', thread.id);
-
-        // If autopilot is on, hand to Lola. Otherwise the owner will reply
-        // manually from inbox.html.
-        if (thread.autopilot) {
-          // TODO: build the AI reply (Kimi via Telnyx AI Inference or Claude),
-          // then sendSMS() the reply back. Left as a hook so this webhook
-          // ships safely — the reply pipeline is its own module.
-        }
-        break;
+        // One texting pipeline: the same code /api/telnyx-sms runs (routing, STOP/HELP, owner relay,
+        // Lola's reply with her booking tools, dedupe of Telnyx retries). The signature is already verified.
+        const { handleVerifiedText } = await import('./telnyx-sms.js');
+        const out = collector();
+        await handleVerifiedText(payload, out);
+        return res.status(200).json({ ok: true, forwarded: 'telnyx-sms', result: out.body });
       }
+      case 'message.sent':
       case 'message.finalized': {
         // Outbound status update from Telnyx (delivered/failed).
         break;

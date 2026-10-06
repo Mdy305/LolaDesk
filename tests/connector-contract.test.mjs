@@ -102,7 +102,9 @@ test('Square connector returns the NORMALIZED appointment shape (mocked fetch)',
     if (url.includes('/v2/locations')) {
       return { ok: true, json: async () => ({ locations: [{ id: 'loc-1' }] }) };
     }
-    if (url.includes('/v2/bookings/search')) {
+    // ListBookings is GET /v2/bookings?start_at_min&start_at_max&location_id
+    // (there is no /v2/bookings/search endpoint — that was the bug).
+    if (url.includes('/v2/bookings?') && url.includes('location_id=loc-1') && url.includes('start_at_min=') && url.includes('start_at_max=')) {
       return {
         ok: true,
         json: async () => ({
@@ -127,7 +129,8 @@ test('Square connector returns the NORMALIZED appointment shape (mocked fetch)',
     assert.equal(a.duration_min, 45);
     assert.equal(a.stylist, 'tm-7');
     assert.ok(new Date(a.ends_at) > new Date(a.starts_at), 'ends_at must be after starts_at');
-    assert.ok(calls.length >= 2, 'should hit locations + bookings/search');
+    assert.ok(calls.length >= 2, 'should hit locations + ListBookings');
+    assert.ok(!calls.some(u => u.includes('/v2/bookings/search')), 'never the non-existent search endpoint');
   } finally {
     globalThis.fetch = realFetch;
   }

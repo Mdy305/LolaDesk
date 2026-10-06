@@ -82,8 +82,9 @@ for (const [label, dep, svc, want] of [
   ok(r.payment_link === 'https://buy.stripe.com/test_link' && T.deposits.filter((d) => d.booking_id === r.booking_id).length === 1, `${label}: pay link returned to the page, requested exactly once`);
 }
 // add-on raises the total → deposit on the total, same number both sides
+// (a public hold needs the visitor's mobile — nobody can hold a day anonymously)
 reset({ metadata: { deposits: { enabled: true, percent: 20 } } });
-r = await W('hold', { service_id: 'cut', staff_id: 'ana', starts_at: at('09:00') });
+r = await W('hold', { service_id: 'cut', staff_id: 'ana', starts_at: at('09:00'), client_phone: '3055550001' });
 const q2 = await W('deposit_quote', { service_ids: ['cut', 'gloss'] });
 r = await W('book', { service_ids: ['cut', 'gloss'], hold_token: r.hold.hold_token, starts_at: at('09:00'), client_name: 'Two Things', client_phone: '3055550001' });
 ok(r.ok && q2.amount_cents === 2500 && Math.round(T.deposits.find((d) => d.booking_id === r.booking_id).amount * 100) === 2500, 'cut + gloss: deposit on $125 total shown and charged ($25)');
@@ -149,7 +150,7 @@ reset();
 T.bookings.push(B('boEarly', 'bo', 'cut', at('09:00'), at('11:00')));
 r = await W('book', { service_id: 'cut', starts_at: at('11:00'), client_name: 'Any One', client_phone: '3055558888' });
 ok(r.ok && r.booking.staff_id === 'bo', `anyone at 11:00 → Bo (right after his client), not Ana's empty morning (got ${r.booking?.staff_id})`);
-r = await W('hold', { service_id: 'cut', starts_at: at('14:00') });
+r = await W('hold', { service_id: 'cut', starts_at: at('14:00'), client_phone: '3055559999' });
 ok(r.ok && r.hold.hold_token && r.hold.staff_name && Date.parse(r.hold.expires_at) - Date.now() > 4 * 60e3 && !('client_id' in r.hold), 'picking a time holds it ~5 minutes (public hold has no internal fields)');
 const r2 = await W('availability', { service_id: 'cut', date: day, one_per_time: 1 });
 ok(!r2.slots.some((s) => s.starts_at === at('14:00') && s.staff_id === r.hold.staff_id), 'the held time is off the held stylist’s list');
@@ -172,13 +173,13 @@ ok(r.ok && r.days.length === 5 && r.days.some((d) => d.date === day && !d.open) 
 
 // ── 8. Add-ons: real menu, same stylist, back to back ──
 reset();
-r = await W('hold', { service_id: 'cut', staff_id: 'ana', starts_at: at('10:00') });
+r = await W('hold', { service_id: 'cut', staff_id: 'ana', starts_at: at('10:00'), client_phone: '3055551212' });
 const ad = await W('addons', { hold_token: r.hold.hold_token });
 ok(ad.ok && ad.addons.length === 1 && ad.addons[0].id === 'gloss' && ad.addons[0].price === 45, 'after a 45-min cut (ends 10:45, off the 30-min grid) Ana can add the Gloss');
 let bk = await W('book', { service_ids: ['cut', 'gloss'], hold_token: r.hold.hold_token, starts_at: at('10:00'), client_name: 'Mia', client_phone: '3055551212' });
 ok(bk.ok && Date.parse(bk.booking.end_time) === Date.parse(at('11:15')) && Number(bk.booking.total_amount) === 125 && T.booking_services.filter((x) => x.booking_id === bk.booking_id).length === 2, 'one booking 10:00–11:15, $125, two booking_services rows');
 globalThis.__missing = new Set(['booking_services']);
-r = await W('hold', { service_id: 'cut', staff_id: 'bo', starts_at: at('10:00') });
+r = await W('hold', { service_id: 'cut', staff_id: 'bo', starts_at: at('10:00'), client_phone: '3055551313' });
 bk = await W('book', { service_ids: ['cut', 'gloss'], hold_token: r.hold.hold_token, starts_at: at('10:00'), client_name: 'Jo', client_phone: '3055551313' });
 const jo = T.bookings.filter((b) => b.staff_id === 'bo').sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time));
 ok(bk.ok && jo.length === 2 && jo[1].service_id === 'gloss' && Date.parse(jo[1].start_time) === Date.parse(at('10:45')), 'no booking_services table → the add-on is its own booking right after, same stylist');

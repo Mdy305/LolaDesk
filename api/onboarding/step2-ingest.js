@@ -12,6 +12,7 @@ import { bearer, getUserFromToken } from '../lib/auth.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { db } from '../lib/db.js';
 import { chatJson } from '../lib/telnyx-inference.js';
+import { safeFetch } from '../lib/safe-fetch.js';
 
 const PAGE_HINTS = [
   '/', '/services', '/service', '/menu', '/pricing', '/prices',
@@ -21,10 +22,9 @@ const PAGE_HINTS = [
 
 async function fetchPage(url) {
   try {
-    const r = await fetch(url, {
+    const r = await safeFetch(url, {
       headers: { 'User-Agent': 'LolaDesk/1.0 (+https://loladesk.com)' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(10000)
+      timeoutMs: 10000, maxBytes: 2 * 1024 * 1024
     });
     if (!r.ok) return null;
     const html = await r.text();

@@ -21,6 +21,9 @@
  * (skills/telnyx-porting-in-curl, telnyx-10dlc-curl + references, numbers-compliance).
  */
 import { db, e164, logUsage, upsertTenantNumber } from '../db.js';
+import { logCost, priceCents } from '../costs.js';
+import { serviceStatus } from '../service-gate.js';
+import { numberLimit, planFor } from '../plans.js';
 import { telnyxRequest, telnyxData, appUrl } from '../telnyx-client.js';
 import { encrypt, decrypt } from '../crypto.js';
 import { sendSms } from '../sms.js';
@@ -44,7 +47,8 @@ const clean = (v) => (v == null ? '' : String(v).trim());
 const errMsg = (e) => String(e?.message || e || 'unknown error').slice(0, 400);
 const webhookUrl = () => appUrl() + '/api/telecom-webhook';
 const safe = async (p, fb = null) => { try { return await p; } catch (_) { return fb; } };
-async function cost(tenantId, kind, units = 1, meta = {}) { try { await logUsage(tenantId, kind, units, meta); } catch (_) {} }
+// Every platform cost in CENTS (lib/costs.js): units × the kind's price (env-tunable).
+async function cost(tenantId, kind, units = 1, meta = {}) { try { await logCost(tenantId, kind, priceCents(kind) * (Number(units) || 1), { ...meta, count: Number(units) || 1 }); } catch (_) {} }
 
 /** Encrypt a secret, or null when no key is configured (the caller then never stores it). */
 export function seal(v) {
@@ -70,7 +74,7 @@ export async function tenantLines(c, tenant) {
   const out = [];
   try {
     const { data } = await c.from('tenant_numbers').select('*').eq('tenant_id', tenant.id).limit(20);
-    for (const r of (data || [])) if (r?.phone_number && r.status !== 'released') out.push({ phone_number: r.phone_number, kind: r.kind || 'primary', status: r.status || 'active' });
+    for (const r of (data || [])) if (r?.phone_number && r.status !== 'released' && r.status !== 'parked') out.push({ phone_number: r.phone_number, kind: r.kind || 'primary', status: r.status || 'active' });
   } catch (_) {}
   if (tenant.phone_number && !out.some((r) => r.phone_number === tenant.phone_number)) out.push({ phone_number: tenant.phone_number, kind: 'primary', status: 'active' });
   return out.sort((a, b) => (a.kind === 'primary' ? -1 : 0) - (b.kind === 'primary' ? -1 : 0));
@@ -140,6 +144,22 @@ export async function getNumber(tenant, { areaCode = '', confirmed = false, phon
   const t = await freshTenant(c, tenant);
   const lines = await tenantLines(c, t);
   if (lines.length && !additional && !temporary) return { ok: true, already: true, number: pretty(lines[0].phone_number), say: `You already have your Lola number: ${pretty(lines[0].phone_number)}. She’s answering it.` };
+  // Money rules: service must be on; numbers per plan; trials use the ready pool only (never a purchase).
+  const svc = serviceStatus(t);
+  if (!svc.ok) return { ok: false, paused: svc.reason, say: 'Your LolaDesk plan isn’t active right now, so I can’t add a number. Pick a plan in Billing and I’ll set it up right away.' };
+  const limit = numberLimit(t.plan);
+  if (additional && !temporary && lines.length >= limit) return { ok: false, limit, say: `Your ${planFor(t.plan).name} plan includes ${limit} Lola number${limit === 1 ? '' : 's'}, and you’re using ${limit === 1 ? 'it' : 'them all'}. Upgrade your plan in Billing for another line.` };
+  if (temporary && lines.length >= limit + 1) return { ok: false, limit, say: 'You already have a temporary number while we move yours over — Lola is answering it.' };
+  const sub = String(t.subscription_status || '').toLowerCase();
+  const onTrial = !sub || sub === 'trial' || sub === 'trialing' || sub === 'incomplete';
+  const paidOrComped = !onTrial || String(t.billing_status || '').toLowerCase() === 'active';
+  if (onTrial && !paidOrComped) {
+    try {
+      const { trialCheck, endTrial } = await import('../trial-guard.js');
+      const dup = await trialCheck(c, t);
+      if (dup && dup.duplicate) { await endTrial(c, t, dup.reason); return { ok: false, trial_used: true, say: 'This salon already had its free LolaDesk trial, so I can’t add a trial number. Pick a plan in Billing and I’ll set Lola’s number up right away.' }; }
+    } catch (_) {}
+  }
   const area = /^\d{3}$/.test(clean(areaCode)) ? clean(areaCode) : '';
   const wanted = phoneNumber ? phone10(phoneNumber) : null;
 
@@ -152,6 +172,9 @@ export async function getNumber(tenant, { areaCode = '', confirmed = false, phon
     source = pick ? 'platform_pool' : 'purchase';
   }
   let candidate = pick?.phone_number || wanted || null;
+  if (onTrial && !paidOrComped && source !== 'platform_pool') {
+    return { ok: false, trial_pool_empty: true, say: 'During your free trial Lola’s number comes from our ready-to-go pool, and there isn’t one free right now. You can keep your salon number and forward missed calls to Lola, or pick a plan and I’ll get you a brand-new local number.' };
+  }
   if (!candidate) {
     try { candidate = (await searchNumbers(area))[0]?.phone_number || null; }
     catch (e) { return { ok: false, say: area ? `I couldn’t find a free number in area code ${area}. Want me to try a nearby area code?` : 'I couldn’t find a number right now. Tell me an area code you’d like and I’ll look again.' }; }

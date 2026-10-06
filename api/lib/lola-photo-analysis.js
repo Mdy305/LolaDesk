@@ -23,10 +23,13 @@ const analysisCache = new Map();
 /**
  * Analyze single hair photo with validation and caching
  */
-export async function analyzeHairPhoto(imageUrl, clientMessage = '', tenantId = null) {
+export async function analyzeHairPhoto(imageUrl, clientMessage = '', tenantId = null, { deadlineMs = 0 } = {}) {
+  // Optional overall deadline (a texted photo): validation, every try and the backoff all fit inside it.
+  const started = Date.now();
+  const left = () => deadlineMs ? deadlineMs - (Date.now() - started) : null;
   try {
     // Step 1: Validate image
-    const validation = await validateImageUrl(imageUrl);
+    const validation = await validateImageUrl(imageUrl, left() != null ? { timeoutMs: Math.max(500, Math.min(5000, left())) } : undefined);
     if (!validation.valid) {
       console.warn(`[Photo] Image validation failed: ${validation.reason}`);
       return {
@@ -50,17 +53,21 @@ export async function analyzeHairPhoto(imageUrl, clientMessage = '', tenantId = 
     }
 
     // Step 3: Analyze with retry logic
-    const analysis = await retryWithBackoff(async () => {
+    const attempt = async () => {
+      if (left() != null && left() < 1000) throw new Error('photo analysis deadline');
       const result = await InvokeLLM({
         model: VISION_MODEL,
         images: [imageUrl],
         prompt: buildAnalysisPrompt(clientMessage),
         max_tokens: 600,
-        temperature: 0.2
+        temperature: 0.2,
+        ...(left() != null ? { deadlineMs: left() } : {})
       });
 
       return parseAnalysisResponse(result.response);
-    }, 2);
+    };
+    // With a deadline: one try (no backoff sleeps past it); without: the usual 2 tries.
+    const analysis = left() != null ? await attempt() : await retryWithBackoff(attempt, 2);
 
     // Step 4: Add metadata and cache
     analysis.analyzedAt = Date.now();
@@ -174,9 +181,10 @@ export async function generatePhotoResponse(analysis, context = {}) {
 /**
  * Moderate image for inappropriate content
  */
-export async function moderateImage(imageUrl) {
+export async function moderateImage(imageUrl, { deadlineMs = 0 } = {}) {
   try {
     const result = await InvokeLLM({
+      ...(deadlineMs ? { deadlineMs } : {}),
       model: REPLY_MODEL,
       images: [imageUrl],
       prompt: `Analyze this image for content appropriateness.

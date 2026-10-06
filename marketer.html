@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Marketer — LolaDesk</title>
+<title>Marketer · LolaDesk</title>
 <link rel="stylesheet" href="app.css"/>
 <style>
 .mk-hero{background:radial-gradient(ellipse 100% 90% at 50% 0%,rgba(168,85,247,.08),var(--surface) 70%);border:0.5px solid var(--border);border-radius:var(--r-lg);padding:32px;margin-bottom:22px}
@@ -214,7 +214,7 @@
       <div class="cp-head">
         <div>
           <div class="cp-title">One brain. Seven specialists.</div>
-          <div class="cp-sub">One brain, seven specialized agents: Lola (Voice), Ops, Growth, Website, Reputation, Citation, and Publication. Dispatch checks and task runs directly from here.</div>
+          <div class="cp-sub">Hand Lola a job in any area — calls, front desk, marketing, website, reviews, listings or content. She works on it with your salon’s real data and tells you exactly what she did.</div>
         </div>
         <div class="cp-orch" id="cpOrchestrator">
           <div class="cp-orch-name">Orchestrator</div>
@@ -297,7 +297,7 @@ async function runAnalyze(){
   out.innerHTML = thinking('Marketer is reading the site…');
   try{
     const r = await fetch('/api/marketer', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+gpToken()},
       body: JSON.stringify({ action:'analyze', url })
     });
     const d = await r.json();
@@ -496,7 +496,7 @@ async function draftCampaign(type, audience, channel){
   out.innerHTML = thinking('Drafting the campaign…');
   try{
     const r = await fetch('/api/marketer', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+gpToken()},
       body: JSON.stringify({
         action:'campaign',
         type, audience, channel,
@@ -561,26 +561,26 @@ function controlStatus(el, text, tone){
 
 async function dispatchAgent(agentId, task, statusId){
   const statusEl = document.getElementById(statusId);
-  controlStatus(statusEl, 'Dispatching…');
+  controlStatus(statusEl, 'Lola is working on it…');
   try{
+    let tok = '';
+    try{ tok = (window.LolaAuth && window.LolaAuth.token) || localStorage.getItem('loladesk_token') || ''; }catch(_){}
+    // The salon comes from the sign-in on the server — never named here.
     const r = await fetch('/api/orchestrator', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        route_to: agentId,
-        task,
-        tenant: { slug: 'demo' }
-      })
+      headers: Object.assign({'Content-Type':'application/json'}, tok ? { Authorization: 'Bearer ' + tok } : {}),
+      body: JSON.stringify({ route_to: agentId, task, context: { source: 'marketer' } })
     });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
+    if(r.status === 401){ controlStatus(statusEl, 'Please sign in again.', 'bad'); return; }
     if(!d.ok){
-      controlStatus(statusEl, d.error || 'Dispatch failed', 'bad');
+      controlStatus(statusEl, d.error || 'Lola couldn\u2019t finish that just now.', 'bad');
       return;
     }
-    const routed = d.routed?.agent?.name || agentId;
-    controlStatus(statusEl, `Delegated to ${routed}.`, 'ok');
+    // Show what she actually said / did — never a placeholder "delegated".
+    controlStatus(statusEl, d.reply || 'Done.', 'ok');
   }catch(e){
-    controlStatus(statusEl, e.message || 'Dispatch error', 'bad');
+    controlStatus(statusEl, 'Couldn\u2019t reach Lola. Check your connection.', 'bad');
   }
 }
 

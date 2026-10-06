@@ -259,3 +259,8 @@ export async function refreshToken(refresh_token){
   });
   return r.json();
 }
+
+// Cancels / moves: not wired for Booksy yet — the outbox fails the change and
+// texts the owner to make it in Booksy too.
+export async function cancelAppointment(){ throw new Error('unsupported: Booksy cancel is not available through its API yet'); }
+export async function updateAppointment(){ throw new Error('unsupported: Booksy reschedule is not available through its API yet'); }

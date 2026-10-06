@@ -2,7 +2,7 @@
 // Returns audio/mpeg of Lola saying the text. Used by the voice preview
 // button in onboarding.html step 0 and the "hear her again" button on step 5.
 import { synthesize } from './lib/elevenlabs.js';
-import { allowAnonymousSpeech, hasBearer } from './lib/voice-guard.js';
+import { allowSpeech, speechUser } from './lib/voice-guard.js';
 import { checkTextSig } from './lib/one-voice.js';
 
 export default async function handler(req, res) {
@@ -11,11 +11,13 @@ export default async function handler(req, res) {
 
   try {
     const text = String(req.query?.text || req.body?.text || '').slice(0, 600);
-    // Only signed-in owners may pick a different voice; everyone else hears Lola.
-    const voice_id = hasBearer(req) ? (req.query?.voice_id || req.body?.voice_id) : undefined;
     if (!text) return res.status(400).json({ ok: false, error: 'missing_text' });
+    // Only VERIFIED signed-in owners may pick a different voice; everyone else hears Lola.
+    const wantVoice = req.query?.voice_id || req.body?.voice_id;
+    const owner = wantVoice ? await speechUser(req) : null;
+    const voice_id = owner ? String(wantVoice).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || undefined : undefined;
     // Our own calls (Telnyx fetching her line) carry a signature: never rate-limited.
-    if (!checkTextSig(text, req.query?.sig) && !allowAnonymousSpeech(req)) return res.status(429).json({ ok: false, error: 'rate_limited' });
+    if (!checkTextSig(text, req.query?.sig) && !(await allowSpeech(req))) return res.status(429).json({ ok: false, error: 'rate_limited' });
 
     const audio = await synthesize({ text, voice_id });
     res.setHeader('Content-Type', 'audio/mpeg');

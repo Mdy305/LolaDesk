@@ -346,10 +346,11 @@ export async function autoAssignOwnedNumber(tenant){
     // tenants.phone_number column (a tenant may predate the routing table).
     const tracked = new Set();
     const [routes, legacy] = await Promise.all([
-      c.from('tenant_numbers').select('phone_number'),
+      c.from('tenant_numbers').select('phone_number,status'),
       c.from('tenants').select('phone_number')
     ]);
-    (routes?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+    // A line released from a cancelled salon is free to give to the next one.
+    (routes?.data || []).forEach(r => { if(r?.phone_number && r.status !== 'released') tracked.add(String(r.phone_number)); });
     (legacy?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
 
     const free = owned.find(n => !tracked.has(String(n.phone_number)));

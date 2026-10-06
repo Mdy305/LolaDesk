@@ -15,7 +15,10 @@ ok(r.status === 401, 'connect without a signed-in owner is refused');
 const { allowAnonymousSpeech } = await import(P + 'lib/voice-guard.js');
 const req = { headers: { 'x-forwarded-for': '9.9.9.9' } }; let n = 0; for (let i = 0; i < 40; i++) if (allowAnonymousSpeech(req)) n++;
 ok(n === 30, `anonymous voice capped at 30/hour per address (${n})`);
-ok(allowAnonymousSpeech({ headers: { 'x-forwarded-for': '9.9.9.9', authorization: 'Bearer ' + 'x'.repeat(40) } }), 'signed-in owner never capped');
+const { allowSpeech } = await import(P + 'lib/voice-guard.js');
+ok(!(await allowSpeech({ headers: { 'x-forwarded-for': '9.9.9.9', authorization: 'Bearer ' + 'x'.repeat(40) } })), 'a made-up Bearer token does not bypass the anonymous cap');
+globalThis.__authUsers = { ...(globalThis.__authUsers || {}), 'real-owner-token-123456789': { id: 'u-owner', email: 'o@x.com' } };
+ok(await allowSpeech({ headers: { 'x-forwarded-for': '9.9.9.9', authorization: 'Bearer real-owner-token-123456789' } }), 'a verified signed-in owner is not held to the anonymous cap');
 // public tenant: phone lookups with duplicate rows
 const { getTenantByPhoneStrict, getTenantByPhone } = await import(P + 'lib/db.js');
 T.tenants = [{ id: 'dup2', phone_number: '+13055550100', created_at: '2026-09-01' }, { id: 'dup1', phone_number: '+13055550100', created_at: '2026-08-01' }];

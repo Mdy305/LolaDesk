@@ -11,9 +11,9 @@
    This object is everything that makes LolaDesk white-label / multi-tenant.
    ───────────────────────────────────────────────────────────── */
 const DEFAULT_TENANT = {
-  id: 'demo-salon',
-  name: 'Demo Salon',
-  owner: 'Owner',
+  id: '',
+  name: '',
+  owner: '',
   location: '',
   hours: '',
   phone: '',
@@ -45,7 +45,41 @@ const TENANT = (function(){
       });
     }
   }catch(e){}
-  return DEFAULT_TENANT;
+  return Object.assign({}, DEFAULT_TENANT);
+})();
+
+/* The signed-in salon, from the live session (auth-guard → LolaAuth), so Lola
+   greets the real owner by first name (else the salon's name) — never "Owner".
+   Also remembered for this tab in sessionStorage.loladesk_tenant. */
+function applySignedInTenant(t){
+  if(!t || typeof t !== 'object') return;
+  const first = String(t.owner_name || '').trim().split(/\s+/)[0] || '';
+  Object.assign(TENANT, {
+    id: t.id || TENANT.id, slug: t.slug || TENANT.slug, name: t.name || t.business_name || TENANT.name,
+    owner: first || TENANT.owner, phone: t.phone_number || TENANT.phone, location: t.location || TENANT.location
+  });
+  try{
+    const keep = { id: TENANT.id, slug: TENANT.slug, name: TENANT.name, owner: TENANT.owner, phone: TENANT.phone, location: TENANT.location };
+    sessionStorage.setItem('loladesk_tenant', JSON.stringify(keep));
+  }catch(e){}
+  const g = document.getElementById('greetingName');
+  if(g && (!g.textContent.trim() || /^(there|owner)$/i.test(g.textContent.trim()))) g.textContent = TENANT.owner || TENANT.name || 'there';
+}
+const tenantReady = (async function(){
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  try{
+    for(let i = 0; i < 30 && !(window.LolaAuth && window.LolaAuth.ready); i++) await wait(100);
+    if(window.LolaAuth && window.LolaAuth.ready){
+      const auth = await Promise.race([Promise.resolve(window.LolaAuth.ready), wait(4000).then(()=>null)]);
+      if(auth && auth.tenant){ applySignedInTenant(auth.tenant); return TENANT; }
+    }
+    const tok = localStorage.getItem('loladesk_token');
+    if(tok){
+      const r = await fetch('/api/auth/session', { headers: { Authorization: 'Bearer ' + tok } });
+      if(r.ok){ const d = await r.json(); if(d && d.tenant) applySignedInTenant(d.tenant); }
+    }
+  }catch(e){}
+  return TENANT;
 })();
 
 /* Always use LolaDesk's authenticated server-side brain. Provider keys must
@@ -430,7 +464,8 @@ window.openChat = function(){
 // ("7 appointments today, $2,840 on the board, 3 clients due for
 // rebooking" — shown to every tenant regardless of their actual data).
 async function buildRealGreeting(){
-  const name = TENANT.owner || 'there';
+  await tenantReady;
+  const name = TENANT.owner || TENANT.name || 'there';
   try{
     if(!window.LolaData) throw new Error('LolaData unavailable');
     const [bkData, revData] = await Promise.all([
@@ -506,20 +541,20 @@ function detectDelegation(text){
 async function orchestrate(delegation, originalText){
   const headers = { 'Content-Type':'application/json' };
   try{ const tok = localStorage.getItem('loladesk_token'); if(tok) headers['Authorization'] = 'Bearer '+tok; }catch(e){}
+  // The server takes the salon from the sign-in — the page never names it.
   const res = await fetch('/api/orchestrator', {
     method:'POST', headers,
     body: JSON.stringify({
       route_to: delegation.agent,
       task: delegation.task,
-      tenant: { slug: TENANT?.slug, name: TENANT?.name },
       context: { source:'dashboard-voice', original: originalText }
     })
   });
   const data = await res.json().catch(()=> ({}));
-  if(!res.ok || data.ok === false) throw new Error(data.error || 'orchestrator failed');
-  const label = AGENT_LABELS[delegation.agent] || delegation.agent;
-  const status = data.routed?.status === 'delegated' ? 'is on it' : (data.routed?.status || 'received it');
-  return `Done — I've handed that to my *${label}* agent: "${delegation.task}". They ${status}; I'll surface the result in your feed the moment it lands.`;
+  if(!res.ok || data.ok === false || !data.reply) throw new Error(data.error || 'orchestrator failed');
+  // Her real answer (and anything she actually did) — never a "handed off" placeholder.
+  if(Array.isArray(data.actions) && data.actions.length) applyActions(data.actions, false);
+  return data.reply;
 }
 
 // What she did, not just what she said.
@@ -594,6 +629,7 @@ async function processMessage(text){
     if(JSON.parse(localStorage.getItem('lola.muted') || 'false')) return;
   }catch(e){}
   const ownerFirst = () => {
+    if(TENANT.owner) return String(TENANT.owner).split(' ')[0];
     try{ const t = JSON.parse(sessionStorage.getItem('loladesk_tenant') || '{}'); if(t.owner) return String(t.owner).split(' ')[0]; }catch(e){}
     const g = document.getElementById('greetingName'); return g && g.textContent.trim() && g.textContent.trim() !== 'there' ? g.textContent.trim() : '';
   };

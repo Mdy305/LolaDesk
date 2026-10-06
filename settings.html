@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Settings — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<title>Settings · LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
 .tabs{display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap;border-bottom:.5px solid var(--border);padding-bottom:0}
 .tab{padding:11px 18px;border-radius:11px 11px 0 0;background:transparent;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -71,17 +71,17 @@
     <h3>Salon details</h3>
     <div class="desc">Lola uses these on every call, text, and booking confirmation.</div>
     <div class="grid2">
-      <div class="fld"><label>Salon name</label><input id="sName"/></div>
-      <div class="fld"><label>Owner name</label><input id="sOwner"/></div>
-      <div class="fld"><label>Location</label><input id="sLocation" placeholder="1500 Alton Rd, Miami Beach, FL"/></div>
-      <div class="fld"><label>Business hours</label><input id="sHours" placeholder="Tue-Sat, Noon-8pm"/></div>
-      <div class="fld"><label>Website</label><input id="sWebsite" placeholder="https://yoursalon.com"/></div>
-      <div class="fld"><label>Google Business (Maps/GMB) link</label><input id="sGmb" placeholder="https://www.google.com/maps/place/Your+Salon"/></div>
-      <div class="fld"><label>Booking link</label><input id="sBookingUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Your LolaDesk booking page"/><small id="sBookingHint" style="display:block;margin-top:6px;font-size:11.5px;color:var(--text3);line-height:1.4">Already book through Boulevard, Vagaro, Square or your own site? Paste that link. Leave it empty and clients book on your LolaDesk page.</small></div>
+      <div class="fld"><label for="sName">Salon name</label><input id="sName"/></div>
+      <div class="fld"><label for="sOwner">Owner name</label><input id="sOwner"/></div>
+      <div class="fld"><label for="sLocation">Location</label><input id="sLocation" placeholder="1500 Alton Rd, Miami Beach, FL"/></div>
+      <div class="fld"><label for="sHours">Business hours</label><input id="sHours" placeholder="Tue-Sat, Noon-8pm"/></div>
+      <div class="fld"><label for="sWebsite">Website</label><input id="sWebsite" placeholder="https://yoursalon.com"/></div>
+      <div class="fld"><label for="sGmb">Google Business (Maps/GMB) link</label><input id="sGmb" placeholder="https://www.google.com/maps/place/Your+Salon"/></div>
+      <div class="fld"><label for="sBookingUrl">Booking link</label><input id="sBookingUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Your LolaDesk booking page"/><small id="sBookingHint" style="display:block;margin-top:6px;font-size:11.5px;color:var(--text3);line-height:1.4">Already book through Boulevard, Vagaro, Square or your own site? Paste that link. Leave it empty and clients book on your LolaDesk page.</small></div>
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveSalon()">Save salon details</button></div>
     <div class="msg" id="salonMsg"></div>
-    <div class="fld" style="margin-top:16px"><label>When Lola books by phone, text or DM</label>
+    <div class="fld" style="margin-top:16px"><label for="sLolaBooking">When Lola books by phone, text or DM</label>
       <select id="sLolaBooking" onchange="saveBookingMode()" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)">
         <option value="loladesk">She books it in LolaDesk’s calendar (instant)</option>
         <option value="link">She checks the time, then texts my booking link to finish it (Boulevard, Vagaro, Fresha…)</option>
@@ -127,10 +127,10 @@
     <h3>Port your existing number</h3>
     <div class="desc">Or move your number to LolaDesk for good (carriers take 1–3 weeks). Forwarding above works in the meantime.</div>
     <div class="grid2">
-      <div class="fld"><label>Current number</label><input id="portNumber" placeholder="+1 305 555 0100"/></div>
-      <div class="fld"><label>Current carrier</label><input id="portCarrier" placeholder="Verizon, AT&amp;T..."/></div>
-      <div class="fld"><label>Account number</label><input id="portAccount"/></div>
-      <div class="fld"><label>PIN / passcode</label><input id="portPin"/></div>
+      <div class="fld"><label for="portNumber">Current number</label><input id="portNumber" placeholder="+1 305 555 0100"/></div>
+      <div class="fld"><label for="portCarrier">Current carrier</label><input id="portCarrier" placeholder="Verizon, AT&amp;T..."/></div>
+      <div class="fld"><label for="portAccount">Account number</label><input id="portAccount"/></div>
+      <div class="fld"><label for="portPin">PIN / passcode</label><input id="portPin"/></div>
     </div>
     <div class="btn-row"><button class="btn-g" onclick="startPort()">Start port request</button></div>
     <div class="msg" id="portMsg"></div>
@@ -138,10 +138,10 @@
 
   <div class="card">
     <h3>Call handling</h3>
-    <div class="toggle-row"><div><div class="tl">Lola answers all calls</div><div class="ts">AI receptionist picks up instantly</div></div><div class="sw on" id="swVoice" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Record calls</div><div class="ts">Transcripts saved to client history</div></div><div class="sw on" id="swRecord" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">After-hours voicemail</div><div class="ts">Lola takes a message outside business hours</div></div><div class="sw on" id="swVoicemail" onclick="tog(this)"></div></div>
-    <div class="fld" style="margin-top:16px"><label>Forward to (if Lola can't handle)</label><input id="forwardNumber" placeholder="+1 305 555 0199"/></div>
+    <div class="toggle-row"><div><div class="tl">Lola answers all calls</div><div class="ts">AI receptionist picks up instantly</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Lola answers all calls" id="swVoice" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Record calls</div><div class="ts">Transcripts saved to client history</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Record calls" id="swRecord" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">After-hours voicemail</div><div class="ts">Lola takes a message outside business hours</div></div><div class="sw on" role="switch" tabindex="0" aria-label="After-hours voicemail" id="swVoicemail" onclick="tog(this)"></div></div>
+    <div class="fld" style="margin-top:16px"><label for="forwardNumber">Forward to (if Lola can't handle)</label><input id="forwardNumber" placeholder="+1 305 555 0199"/></div>
     <div class="btn-row"><button class="btn-p" onclick="saveVoice()">Save call settings</button></div>
     <div class="msg" id="voiceMsg"></div>
   </div>
@@ -151,8 +151,8 @@
     <div class="desc">Call your Lola number from your own cell and run your day by voice — “what's my day”, “how much did we make this month”, “cancel Sarah's appointment”. Lola recognizes you by caller ID and switches to your private chief-of-staff mode.</div>
     <div class="status" id="opStatus"><span class="dot off"></span><div class="status-txt"><b>Voice command not set up</b><small>Add your cell number below to unlock owner mode</small></div></div>
     <div class="grid2">
-      <div class="fld"><label>Your cell number</label><input id="opPhone" placeholder="+1 305 555 0100"/></div>
-      <div class="fld"><label>Spoken PIN (4–6 digits)</label><input id="opPin" maxlength="6" placeholder="1234" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
+      <div class="fld"><label for="opPhone">Your cell number</label><input id="opPhone" placeholder="+1 305 555 0100"/></div>
+      <div class="fld"><label for="opPin">Spoken PIN (4–6 digits)</label><input id="opPin" maxlength="6" placeholder="1234" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
     </div>
     <div class="btn-row"><button class="btn-p" onclick="saveOperator()">Save voice command</button></div>
     <div class="msg" id="opMsg"></div>
@@ -171,7 +171,7 @@
         <div style="flex:1;min-width:220px">
           <div class="fld"><label>Secret key</label><div class="copy-box" style="display:flex;align-items:center;gap:8px;justify-content:space-between"><code id="mfaSecret" style="font-size:12px;word-break:break-all"></code><button onclick="copyMfa('mfaSecret')">Copy</button></div></div>
           <div class="fld"><label>otpauth link</label><div class="copy-box" style="display:flex;align-items:center;gap:8px;justify-content:space-between"><code id="mfaUri" style="font-size:10px;word-break:break-all"></code><button onclick="copyMfa('mfaUri')">Copy</button></div></div>
-          <div class="fld"><label>Current code</label><input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="123456" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
+          <div class="fld"><label for="mfaCode">Current code</label><input id="mfaCode" inputmode="numeric" maxlength="6" placeholder="123456" oninput="this.value=this.value.replace(/\D/g,'')"/></div>
           <div class="btn-row"><button class="btn-p" onclick="mfaConfirm()">Turn on two-factor</button></div>
         </div>
       </div>
@@ -191,13 +191,13 @@
 
   <div class="card">
     <h3>Automatic messages</h3>
-    <div class="toggle-row"><div><div class="tl">Booking confirmations</div><div class="ts">Text sent the moment an appointment is booked</div></div><div class="sw on" id="swConfirm" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">24-hour reminders</div><div class="ts">Reduces no-shows significantly</div></div><div class="sw on" id="swRemind" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">2-hour heads-up</div><div class="ts">A radar nudge on appointment day</div></div><div class="sw on" id="swRadar" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Missed call text-back</div><div class="ts">Auto-text if a call goes unanswered</div></div><div class="sw on" id="swMissed" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Review requests</div><div class="ts">Ask happy clients for a review after their visit</div></div><div class="sw" id="swReview" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Email me every conversation</div><div class="ts">Each call and website chat with Lola — summary and full transcript — also appears on your Calls screen</div></div><div class="sw on" id="swTranscripts" onclick="tog(this)"></div></div>
-    <div class="fld"><label>Also send them to (optional)</label><input id="sTranscriptEmail" type="email" placeholder="front-desk@yoursalon.com" autocomplete="email"></div>
+    <div class="toggle-row"><div><div class="tl">Booking confirmations</div><div class="ts">Text sent the moment an appointment is booked</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Booking confirmations" id="swConfirm" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">24-hour reminders</div><div class="ts">Reduces no-shows significantly</div></div><div class="sw on" role="switch" tabindex="0" aria-label="24-hour reminders" id="swRemind" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">2-hour heads-up</div><div class="ts">A radar nudge on appointment day</div></div><div class="sw on" role="switch" tabindex="0" aria-label="2-hour heads-up" id="swRadar" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Missed call text-back</div><div class="ts">Auto-text if a call goes unanswered</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Missed call text-back" id="swMissed" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Review requests</div><div class="ts">Ask happy clients for a review after their visit</div></div><div class="sw" role="switch" tabindex="0" aria-label="Review requests" id="swReview" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Email me every conversation</div><div class="ts">Each call and website chat with Lola — summary and full transcript — also appears on your Calls screen</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Email me every conversation" id="swTranscripts" onclick="tog(this)"></div></div>
+    <div class="fld"><label for="sTranscriptEmail">Also send them to (optional)</label><input id="sTranscriptEmail" type="email" placeholder="front-desk@yoursalon.com" autocomplete="email"></div>
     <div class="btn-row"><button class="btn-p" onclick="saveMessaging()">Save messaging</button></div>
     <div class="msg" id="msgMsg"></div>
   </div>
@@ -215,34 +215,35 @@
     <h3>Booking rules</h3>
     <div class="desc">Applied everywhere — dashboard, online booking page, and Lola on the phone.</div>
     <div class="grid2">
-      <div class="fld"><label>Timezone</label><select id="bTimezone">
+      <div class="fld"><label for="bTimezone">Timezone</label><select id="bTimezone">
         <option value="America/New_York">Eastern</option><option value="America/Chicago">Central</option>
         <option value="America/Denver">Mountain</option><option value="America/Los_Angeles">Pacific</option>
       </select></div>
-      <div class="fld"><label>Slot interval (min)</label><input id="bSlot" type="number" value="15"/></div>
-      <div class="fld"><label>Minimum notice (min)</label><input id="bNotice" type="number" value="120"/></div>
-      <div class="fld"><label>Book up to (days ahead)</label><input id="bHorizon" type="number" value="90"/></div>
-      <div class="fld"><label>Cancellation window (hrs)</label><input id="bCancel" type="number" value="24"/></div>
-      <div class="fld"><label>Buffer after service (min)</label><input id="bBuffer" type="number" value="0"/></div>
+      <div class="fld"><label for="bSlot">Slot interval (min)</label><input id="bSlot" type="number" value="15"/></div>
+      <div class="fld"><label for="bNotice">Minimum notice (min)</label><input id="bNotice" type="number" value="120"/></div>
+      <div class="fld"><label for="bHorizon">Book up to (days ahead)</label><input id="bHorizon" type="number" value="90"/></div>
+      <div class="fld"><label for="bCancel">Cancellation window (hrs)</label><input id="bCancel" type="number" value="24"/></div>
+      <div class="fld"><label for="bBuffer">Buffer after service (min)</label><input id="bBuffer" type="number" value="0"/></div>
     </div>
     <div style="margin-top:14px">
-      <div class="toggle-row"><div><div class="tl">Public online booking</div><div class="ts">Clients book from your website link</div></div><div class="sw on" id="swPublic" onclick="tog(this)"></div></div>
-      <div class="toggle-row"><div><div class="tl">Voice booking</div><div class="ts">Lola books during phone calls</div></div><div class="sw on" id="swVoiceBook" onclick="tog(this)"></div></div>
-      <div class="toggle-row"><div><div class="tl">Clients choose their stylist</div><div class="ts">Otherwise assigned automatically</div></div><div class="sw on" id="swStaffChoice" onclick="tog(this)"></div></div>
-      <div class="toggle-row"><div><div class="tl">Require phone number</div><div class="ts">Needed for confirmations</div></div><div class="sw on" id="swReqPhone" onclick="tog(this)"></div></div>
-      <div class="toggle-row"><div><div class="tl">Require booking deposits</div><div class="ts">Clients pay a card deposit by text link — kept on no-shows and late cancels, refunded inside the cancellation window</div></div><div class="sw" id="swDeposit" onclick="tog(this);syncDepositFields()"></div></div>
-      <div class="toggle-row"><div><div class="tl">Auto-rebooking offers</div><div class="ts">When a visit is done, Lola texts the client one proposed time for their next visit — and reschedules the offer if the slot fills</div></div><div class="sw" id="swRebook" onclick="tog(this);syncRebookFields()"></div></div>
+      <div class="toggle-row"><div><div class="tl">Public online booking</div><div class="ts">Clients book from your website link</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Public online booking" id="swPublic" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Voice booking</div><div class="ts">Lola books during phone calls</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Voice booking" id="swVoiceBook" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Clients choose their stylist</div><div class="ts">Otherwise assigned automatically</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Clients choose their stylist" id="swStaffChoice" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Require phone number</div><div class="ts">Needed for confirmations</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Require phone number" id="swReqPhone" onclick="tog(this)"></div></div>
+      <div class="toggle-row"><div><div class="tl">Require booking deposits</div><div class="ts">Clients pay a card deposit by text link — kept on no-shows and late cancels, refunded inside the cancellation window</div></div><div class="sw" role="switch" tabindex="0" aria-label="Require booking deposits" id="swDeposit" onclick="tog(this);syncDepositFields()"></div></div>
+      <div class="toggle-row"><div><div class="tl">Auto-rebooking offers</div><div class="ts">When a visit is done, Lola texts the client one proposed time for their next visit — and reschedules the offer if the slot fills</div></div><div class="sw" role="switch" tabindex="0" aria-label="Auto-rebooking offers" id="swRebook" onclick="tog(this);syncRebookFields()"></div></div>
     </div>
     <div class="grid2" id="depositFields" style="margin-top:10px;display:none">
-      <div class="fld"><label>Deposit (% of service)</label><input id="bDepositPct" type="number" min="1" max="100" value="25"/></div>
-      <div class="fld"><label>Minimum deposit ($)</label><input id="bDepositMin" type="number" min="0" step="0.01" value="0"/></div>
-      <div class="fld"><label>Free-cancel grace (min)</label><input id="bDepositGrace" type="number" min="0" value="0"/></div>
+      <div class="fld"><label for="bDepositPct">Deposit (% of service)</label><input id="bDepositPct" type="number" min="1" max="100" value="25"/></div>
+      <div class="fld"><label for="bDepositMin">Minimum deposit ($)</label><input id="bDepositMin" type="number" min="0" step="0.01" value="0"/></div>
+      <div class="fld"><label for="bDepositGrace">Free-cancel grace (min)</label><input id="bDepositGrace" type="number" min="0" value="0"/></div>
+      <div class="ts" style="grid-column:1/-1">No-show and late-cancel fees, who pays and how long a slot is held: <a href="/banking-policies" style="color:inherit">Payments → Policies</a> — the same rule, saved in one place.</div>
     </div>
     <div class="grid2" id="rebookFields" style="margin-top:10px;display:none">
-      <div class="fld"><label>Days until next visit</label><input id="bRebookInterval" type="number" min="1" value="42"/></div>
-      <div class="fld"><label>Offer window (days)</label><input id="bRebookWindow" type="number" min="1" max="60" value="7"/></div>
+      <div class="fld"><label for="bRebookInterval">Days until next visit</label><input id="bRebookInterval" type="number" min="1" value="42"/></div>
+      <div class="fld"><label for="bRebookWindow">Offer window (days)</label><input id="bRebookWindow" type="number" min="1" max="60" value="7"/></div>
     </div>
-    <div class="btn-row"><button class="btn-p" onclick="saveBooking()">Save booking rules</button></div>
+    <div class="btn-row"><button class="btn-p" onclick="saveBooking()">Save booking rules</button><a class="btn-g" href="/booking-settings" style="text-decoration:none">Opening hours, reminders &amp; more</a></div>
     <div class="msg" id="bookMsg"></div>
   </div>
 
@@ -287,21 +288,21 @@
     <h3>Lola's personality</h3>
     <div class="desc">How she sounds and behaves on every call.</div>
     <div class="grid2">
-      <div class="fld"><label>Greeting</label><input id="lGreeting" placeholder="Hi, thank you for calling..."/></div>
+      <div class="fld"><label for="lGreeting">Greeting</label><input id="lGreeting" placeholder="Hi, thank you for calling..."/></div>
       <div class="fld"><label>Lola's voice</label><div style="padding:9px 12px;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:10px;font-size:13px;color:var(--text2,#ddd)"><b style="color:#d4ff00">LOLA™</b> — signature voice<div style="font-size:11px;color:var(--text3);margin-top:2px">One voice, every call, every salon. Lola is the brain of LolaDesk — like Siri on Apple, her voice is the brand. Not changeable.</div></div></div>
     </div>
-    <div class="fld"><label>Special instructions</label><textarea id="lInstructions" rows="4" placeholder="Anything Lola should always mention, avoid, or handle a specific way..."></textarea></div>
+    <div class="fld"><label for="lInstructions">Special instructions</label><textarea id="lInstructions" rows="4" placeholder="Anything Lola should always mention, avoid, or handle a specific way..."></textarea></div>
     <div class="btn-row"><button class="btn-p" onclick="saveLola()">Save Lola settings</button></div>
     <div class="msg" id="lolaMsg"></div>
   </div>
 
   <div class="card">
     <h3>What Lola can do</h3>
-    <div class="toggle-row"><div><div class="tl">Book appointments</div><div class="ts">Live booking during calls</div></div><div class="sw on" id="swCanBook" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Quote prices</div><div class="ts">Reads from your service catalog</div></div><div class="sw on" id="swCanQuote" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Recommend services</div><div class="ts">Suggests based on what the client describes</div></div><div class="sw on" id="swCanRecommend" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Upsell add-ons</div><div class="ts">Suggests complementary treatments</div></div><div class="sw on" id="swCanUpsell" onclick="tog(this)"></div></div>
-    <div class="toggle-row"><div><div class="tl">Recognize returning clients</div><div class="ts">Greets them by name with their history</div></div><div class="sw on" id="swCanRecognize" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Book appointments</div><div class="ts">Live booking during calls</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Book appointments" id="swCanBook" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Quote prices</div><div class="ts">Reads from your service catalog</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Quote prices" id="swCanQuote" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Recommend services</div><div class="ts">Suggests based on what the client describes</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Recommend services" id="swCanRecommend" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Upsell add-ons</div><div class="ts">Suggests complementary treatments</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Upsell add-ons" id="swCanUpsell" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Recognize returning clients</div><div class="ts">Greets them by name with their history</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Recognize returning clients" id="swCanRecognize" onclick="tog(this)"></div></div>
     <div class="btn-row"><button class="btn-p" onclick="saveCapabilities()">Save capabilities</button></div>
     <div class="msg" id="capMsg"></div>
   </div>
@@ -309,7 +310,7 @@
   <div class="card">
     <h3>Lola Autopilot</h3>
     <div class="desc">Lola works while you sleep — recovers missed calls, invites rebookings, and heals syncs on her own.</div>
-    <div class="toggle-row"><div><div class="tl">Autonomous agents</div><div class="ts">Let Lola run recovery, rebooking, and sync-healing without asking</div></div><div class="sw on" id="swAutopilot" onclick="tog(this)"></div></div>
+    <div class="toggle-row"><div><div class="tl">Autonomous agents</div><div class="ts">Let Lola run recovery, rebooking, and sync-healing without asking</div></div><div class="sw on" role="switch" tabindex="0" aria-label="Autonomous agents" id="swAutopilot" onclick="tog(this)"></div></div>
     <div class="btn-row"><button class="btn-p" onclick="saveAutopilot()">Save autopilot</button></div>
     <div class="msg" id="apMsg"></div>
   </div>
@@ -355,8 +356,8 @@
     <div class="desc">Keep the system you use. In Vagaro, Boulevard, Fresha, Mindbody, GlossGenius, Google or Apple, copy the private “subscribe” / iCal link (one for the salon, or one per stylist) and paste it here. Lola sees those appointments within minutes and never books over them.</div>
     <div id="icalList"></div>
     <div class="grid2">
-      <div class="fld"><label>Calendar link</label><input id="icalUrl" placeholder="https://… or webcal://…" autocomplete="off"/></div>
-      <div class="fld"><label>Whose calendar</label><select id="icalStaff" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)"><option value="">The whole salon</option></select></div>
+      <div class="fld"><label for="icalUrl">Calendar link</label><input id="icalUrl" placeholder="https://… or webcal://…" autocomplete="off"/></div>
+      <div class="fld"><label for="icalStaff">Whose calendar</label><select id="icalStaff" style="width:100%;background:var(--bg2);border:.5px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text)"><option value="">The whole salon</option></select></div>
     </div>
     <div class="btn-row"><button class="btn-p" id="icalBtn" onclick="icalAdd()">Connect calendar</button></div>
     <div class="msg" id="icalMsg"></div>
@@ -385,8 +386,8 @@
   <div class="card">
     <h3>Reviews — get 5-star reviews on Yelp &amp; Google</h3>
     <div class="desc">After every appointment ends, Lola texts the client a direct link to your review page — real customers write the reviews. Paste your two links below.</div>
-    <div class="fld"><label>Yelp review link</label><input class="sel" id="yelpReviewUrl" placeholder="https://www.yelp.com/biz/your-salon" value=""></div>
-    <div class="fld"><label>Google review link</label><input class="sel" id="googleReviewUrl" placeholder="https://g.page/r/xxxxx/review" value=""></div>
+    <div class="fld"><label for="yelpReviewUrl">Yelp review link</label><input class="sel" id="yelpReviewUrl" placeholder="https://www.yelp.com/biz/your-salon" value=""></div>
+    <div class="fld"><label for="googleReviewUrl">Google review link</label><input class="sel" id="googleReviewUrl" placeholder="https://g.page/r/xxxxx/review" value=""></div>
     <div class="desc" style="margin-top:8px">How to find them: open your salon on Yelp and click <b>Write a Review</b>, copy the URL. For Google, use the <b>Share review form</b> in Google Business Profile.</div>
     <div class="btn-row"><button class="btn-p" onclick="saveReviewLinks()">Save review links</button></div>
     <div class="msg" id="revMsg"></div>
@@ -405,17 +406,21 @@
 </main></div>
 <script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-let TENANT=null,SETTINGS={},selectedNumber='';
+let TENANT=null,SETTINGS={},selectedNumber='',STORED_DEPOSITS={};
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// /settings#booking opens Booking rules directly (linked from Calendar → Booking rules and Payments → Policies).
+addEventListener('DOMContentLoaded',()=>{ if(/^#(booking|booking-rules)$/.test(location.hash)) tab(3); else if(/^#(phone|number)$/.test(location.hash)) tab(1); });
 function tab(n){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('on',i===n));
   document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',Number(p.dataset.pane)===n));
 }
-function tog(el){el.classList.toggle('on');}
+function tog(el){el.classList.toggle('on');el.setAttribute('aria-checked',el.classList.contains('on')?'true':'false');}
 function on(id){return document.getElementById(id)?.classList.contains('on');}
-function setSw(id,v){const e=document.getElementById(id);if(e)e.classList.toggle('on',!!v);}
+function setSw(id,v){const e=document.getElementById(id);if(e){e.classList.toggle('on',!!v);e.setAttribute('aria-checked',v?'true':'false');}}
+// Switches work from the keyboard too (Space / Enter), and say whether they're on.
+document.querySelectorAll('.sw[role="switch"]').forEach(el=>{el.setAttribute('aria-checked',el.classList.contains('on')?'true':'false');el.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();el.click();}});});
 function val(id){return document.getElementById(id)?.value||'';}
 // Mirrors api/lib/booking-link.js: the salon's own link, else its LolaDesk page.
 function lolaPage(t){const k=(t&&(t.slug||t.id))||'';return k?location.origin+'/book?t='+encodeURIComponent(k):'';}
@@ -672,8 +677,13 @@ async function load(){
     setSw('swRemind',s.reminder_sms!==false);
     setSw('swRadar',s.radar_sms!==false);
     const dep=(s.metadata&&s.metadata.deposits)||null;
+    STORED_DEPOSITS=dep&&typeof dep==='object'?dep:{};
     setSw('swDeposit',!!(dep&&dep.enabled));
-    setVal('bDepositPct',(dep&&dep.percent)||25);
+    // One rule, two places: a fixed-dollar deposit set in Payments → Policies shows as dollars here.
+    const fixed=!!(dep&&dep.type==='fixed');
+    const pl=document.querySelector('label[for="bDepositPct"]'); if(pl) pl.textContent=fixed?'Deposit ($ per booking)':'Deposit (% of service)';
+    const pi=document.getElementById('bDepositPct'); if(pi){ pi.max=fixed?'':'100'; pi.step=fixed?'0.01':'1'; }
+    setVal('bDepositPct',fixed?(((dep&&dep.fixed_cents)||0)/100):((dep&&dep.percent)||25));
     setVal('bDepositMin',((dep&&dep.min_cents)||0)/100);
     setVal('bDepositGrace',(dep&&dep.grace_minutes)||0);
     syncDepositFields();
@@ -900,10 +910,13 @@ async function saveBooking(){
   try{
     const on=document.getElementById('swDeposit').classList.contains('on');
     const rbon=document.getElementById('swRebook').classList.contains('on');
-    const metadata={deposits:{enabled:on,
-      percent:Math.min(100,Math.max(1,Number(val('bDepositPct'))||25)),
+    // Merge over the stored rule so fees, who-pays and hold time set in Payments → Policies are kept.
+    const was=STORED_DEPOSITS||{}, fixed=was.type==='fixed', amt=Number(val('bDepositPct'))||0;
+    const metadata={deposits:Object.assign({},was,{enabled:on,
+      percent:fixed?(was.percent||25):Math.min(100,Math.max(1,amt||25)),
+      fixed_cents:fixed?Math.max(0,Math.round(amt*100)):(was.fixed_cents||0),
       min_cents:Math.round((Number(val('bDepositMin'))||0)*100),
-      grace_minutes:Math.max(0,Math.round(Number(val('bDepositGrace'))||0))},
+      grace_minutes:Math.max(0,Math.round(Number(val('bDepositGrace'))||0))}),
       rebooking:{enabled:rbon,
       interval_days:Math.max(1,Math.round(Number(val('bRebookInterval'))||42)),
       window_days:Math.min(60,Math.max(1,Math.round(Number(val('bRebookWindow'))||7)))}};
@@ -921,6 +934,7 @@ async function saveBooking(){
       metadata})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Save failed');
+    try{ STORED_DEPOSITS=(d.settings&&d.settings.metadata&&d.settings.metadata.deposits)||metadata.deposits; }catch(_){}
     msg('bookMsg','Booking rules saved — applied everywhere immediately.',true);
   }catch(e){msg('bookMsg',e.message,false);}
 }

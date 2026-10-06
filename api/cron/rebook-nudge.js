@@ -3,13 +3,11 @@
 // (per tenant's rebook_followup_days) and hasn't been reminded yet.
 // Sends a personalized SMS via Telnyx.
 import { db } from '../lib/db.js';
+import { cronAuthorized } from '../lib/cron-auth.js';
 import { sendSMS } from '../lib/telnyx.js';
 
-function isAuthorized(req) {
-  if (req.headers?.['x-vercel-cron']) return true;
-  const secret = req.query?.secret || req.headers?.['x-cron-secret'];
-  return secret && secret === process.env.CRON_SECRET;
-}
+// Only `Authorization: Bearer ${CRON_SECRET}` (what Vercel Cron sends); fails closed when unset.
+const isAuthorized = (req) => cronAuthorized(req);
 
 function nudgeText({ firstName, tenantName }) {
   const name = firstName ? `Hi ${firstName}` : 'Hi there';

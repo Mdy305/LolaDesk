@@ -21,3 +21,6 @@
  * now get the real Lola.)
  */
 export { default } from '../telnyx-sms.js';
+// The same raw-bytes contract as /api/telnyx-sms (its Ed25519 signature check needs the exact body).
+// Declared literally here: route config is read from each file, not followed through re-exports.
+export const config = { api: { bodyParser: false } };

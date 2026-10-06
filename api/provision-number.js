@@ -1,4 +1,4 @@
-import { getUserFromToken, bearer } from './lib/auth.js';
+import { getUserFromToken, bearer, isAdminEmail } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { searchNumbers, getAccountBalance, provisionNumberForTenant, attachOwnedNumberForTenant, freePlatformNumbers } from './lib/telnyx-provision.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
@@ -19,7 +19,24 @@ async function ownedByAnotherSalon(tenantId, number){
 // actually means she can take the first booking. Best-effort: the number is
 // already wired, so a seed failure must surface in the response, not fail
 // the whole provision.
-const isAdmin = (email) => String(process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(String(email || '').toLowerCase());
+const isAdmin = (email) => isAdminEmail(email);
+
+// LolaDesk's own lines (owner line, support/customer-care, demo/sender numbers) can NEVER be
+// attached to a salon — not even by an admin through this endpoint.
+export async function platformReservedNumbers(){
+  const set = new Set();
+  for (const k of ['OWNER_LINE_NUMBER', 'LOLADESK_OWNER_LINE', 'TELNYX_FROM_NUMBER', 'TELNYX_NUMBER', 'DEMO_FROM_NUMBER', 'SUPPORT_TRANSFER_NUMBER', 'CUSTOMER_CARE_NUMBER']) {
+    const n = e164(process.env[k] || ''); if (n) set.add(n);
+  }
+  try{
+    const c = db();
+    if (c) {
+      const { data } = await c.from('platform_settings').select('key,value').in('key', ['customer_care', 'owner_line', 'support_line']);
+      for (const r of (data || [])) { const v = r?.value || {}; for (const x of [v.number, v.phone_number, v.phone]) { const n = e164(x || ''); if (n) set.add(n); } }
+    }
+  }catch(_){}
+  return set;
+}
 
 async function seedBookability(tenant){
   try{
@@ -51,7 +68,8 @@ export default async function handler(req,res){
       const balance=who&&isAdmin(who.email)?await getAccountBalance().catch(()=>null):null;
       // Free platform numbers (no salon uses them) — attaching one costs nothing, so onboarding
       // never stalls on credit. Never another salon's number.
-      const owned=who?(await freePlatformNumbers().catch(()=>[])).map(n=>({phone_number:n.phone_number,status:n.status,sms_enabled:n.sms_enabled})):[];
+      const reserved=who?await platformReservedNumbers():new Set();
+      const owned=who?(await freePlatformNumbers().catch(()=>[])).filter(n=>!reserved.has(e164(n.phone_number))).map(n=>({phone_number:n.phone_number,status:n.status,sms_enabled:n.sms_enabled})):[];
       return res.json({ok:true,balance,numbers:nums.slice(0,10).map(n=>({phone_number:n.phone_number,region:n.region_information?.[0]?.region_name||'United States',monthly_cost:(()=>{ const v = n.cost_information?.monthly_cost ?? n.cost?.amount; return v!=null && v!=='' ? '$'+Number(v).toFixed(2)+'/mo' : ''; })()})),owned});
     }catch(e){return res.status(200).json({ok:false,error:e.message});}
   }
@@ -75,8 +93,19 @@ export default async function handler(req,res){
       const has=(mine||[]).find(r=>r.status!=='released')?.phone_number||tenant.phone_number||null;
       if(has && !isAdmin(user.email) && !body.additional) return res.json({ok:true,phoneNumber:has,already:true,messagingProfileLinked:true,lolaBrainLinked:true,message:'Your Lola number is already live: '+has});
     }catch(_){}
+    // Extra numbers (beyond the one Lola line) are a platform-admin action — never self-serve.
+    if(body.additional && !isAdmin(user.email)) return res.status(403).json({ok:false,error:'Additional numbers are added by LolaDesk support. Contact support to add another line.'});
     if(useExisting && requestedNumber){
+      const wanted=e164(requestedNumber);
+      if(!wanted || !/^\+\d{10,15}$/.test(wanted)) return res.status(400).json({ok:false,error:'Enter a valid phone number, e.g. +13055550100'});
+      if((await platformReservedNumbers()).has(wanted)) return res.status(403).json({ok:false,error:'That number is reserved for LolaDesk and cannot be attached to a salon.'});
       if(await ownedByAnotherSalon(tenant.id, requestedNumber)) return res.status(409).json({ok:false,error:'That number already belongs to another salon on LolaDesk.'});
+      // Owners may only take a number from the free LolaDesk pool offered to them (GET → owned);
+      // attaching any other number on the platform account is an admin action.
+      if(!isAdmin(user.email)){
+        const pool=await freePlatformNumbers().catch(()=>[]);
+        if(!pool.some(n=>e164(n.phone_number)===wanted)) return res.status(403).json({ok:false,error:'That number is not available. Pick a ready LolaDesk number or a new local number.'});
+      }
       const result=await attachOwnedNumberForTenant(tenant,requestedNumber);
       const bookingSeed=await seedBookability(tenant);
       return res.json({ok:true,phoneNumber:result.phoneNumber,texmlAppId:result.voiceLinked?process.env.TELNYX_VOICE_APP_ID:null,messagingProfileLinked:result.smsLinked,lolaBrainLinked:result.brainLinked,attachedExisting:true,message:'Your number is wired to Lola: '+result.phoneNumber,bookingSeed});

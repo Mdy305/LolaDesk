@@ -104,12 +104,17 @@ const YIELD_MAX_PER_TENANT = 3;                  // cap offers per tenant per ru
 // ── shared helpers ────────────────────────────────────────────────────────
 
 async function enabledTenants(client, select = 'id,slug,name,phone_number,autopilot_enabled,recovery_sms_sent_at'){
+  // '*' so the billing fields come along: salons whose service is off (lib/service-gate.js —
+  // canceled, unpaid past the 7-day grace, trial over, suspended) get no autopilot texts/calls.
+  void select;
   const { data } = await client.from('tenants')
-    .select(select)
+    .select('*')
     .order('created_at', { ascending: false })
     .limit(500)
     .then(r => r).catch(() => ({ data: [] }));
-  return (data || []).filter(t => t.autopilot_enabled !== false);
+  let allowed = () => true;
+  try { const { serviceStatus } = await import('./service-gate.js'); allowed = (t) => serviceStatus(t).ok; } catch (_) {}
+  return (data || []).filter(t => t.autopilot_enabled !== false && allowed(t));
 }
 
 async function primaryNumber(client, tenant){
@@ -494,7 +499,7 @@ async function callbackRecovery({ client, now }){
       }
     }
     if (sent){
-      await client.from('tenants').update({ callback_sent_at: new Date(now).toISOString() }).eq('id', t.id).catch(() => {});
+      try{ await client.from('tenants').update({ callback_sent_at: new Date(now).toISOString() }).eq('id', t.id); }catch{}
     }
   }
   const calledBack = actions.filter(a => a.status === 'called_back').length;

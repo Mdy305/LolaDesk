@@ -15,6 +15,7 @@
  * INTERVAL, COUNT, UNTIL, BYDAY) with EXDATE.
  */
 import { zonedLocalToUtc } from '../timezone.js';
+import { safeFetch } from '../safe-fetch.js';
 
 export const META = { name: 'Calendar link (iCal)', description: 'Any booking system that offers a calendar subscription link (Boulevard, Vagaro, Fresha, Mindbody, GlossGenius, Google, Apple).', status: 'available', docs: 'https://datatracker.ietf.org/doc/html/rfc5545' };
 
@@ -142,7 +143,9 @@ export function parseIcs(text, { from, to, defaultTz = 'America/New_York' } = {}
   return out.sort((a, b) => a.start - b.start);
 }
 
-export async function fetchIcs(url, { fetchImpl = fetch } = {}) {
+// Default fetch is SSRF-safe (public addresses only, redirects re-checked, size capped).
+const icsFetch = (u, init) => safeFetch(u, { ...init, timeoutMs: FETCH_MS, maxBytes: MAX_BYTES * 2 });
+export async function fetchIcs(url, { fetchImpl = icsFetch } = {}) {
   const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), FETCH_MS);
   try {
     const r = await fetchImpl(url, { headers: { Accept: 'text/calendar, text/plain, */*', 'User-Agent': 'LolaDesk-Calendar/1.0' }, signal: ac.signal, redirect: 'follow' });

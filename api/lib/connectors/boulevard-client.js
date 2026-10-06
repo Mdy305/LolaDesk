@@ -254,3 +254,7 @@ export async function createAppointment(integration, p) {
   if (!r.ok) { const e = new BoulevardError(r.message || r.error, r.error === 'taken' ? 'conflict' : r.error); e.offers = r.offers || []; e.menu = r.menu || []; throw e; }
   return { id: r.appointmentId, external_id: r.appointmentId, verified: r.verified, starts_at: r.startAt, ends_at: r.endAt, service: r.service, staff: r.staffName, state: r.state };
 }
+// Cancels / moves are not wired for the live Boulevard connector yet; LolaDesk's
+// repository skips queueing them (logged) and the change stays LolaDesk-only.
+export async function cancelAppointment() { throw new BoulevardError('unsupported: Boulevard cancel is not wired yet', 'unsupported'); }
+export async function updateAppointment() { throw new BoulevardError('unsupported: Boulevard reschedule is not wired yet', 'unsupported'); }

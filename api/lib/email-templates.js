@@ -3,14 +3,17 @@
  * ════════════════════════════════════════════════════════════════════
  * Pure renderers (no I/O) so they're unit-testable and provider-agnostic.
  * Every message carries an unsubscribe footer (CAN-SPAM) pointing at
- * /api/email/unsubscribe?email=…&tenant=… — the endpoint flips the client's
+ * /api/email?email=…&tenant=…&sig=… (signed) — the endpoint flips the client's
  * opt-out so Lola stops emailing them. Nothing here may ever log a secret.
  */
+
+import { unsubscribeUrl } from './unsubscribe-sign.js';
 
 const APP_URL = () => process.env.APP_URL || 'https://www.loladesk.com';
 
 function footerHtml(email, tenantId){
-  const unsub = `${APP_URL()}/api/email/unsubscribe?email=${encodeURIComponent(String(email||''))}&tenant=${encodeURIComponent(String(tenantId||''))}`;
+  // Signed (tenant + email): only links LolaDesk sent can unsubscribe someone.
+  const unsub = unsubscribeUrl(APP_URL(), tenantId, email);
   return `
   <div style="margin-top:28px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#9aa0a6">
     <p><em>LOLA the front desk</em> — your salon's AI receptionist.</p>
@@ -86,7 +89,7 @@ export function renderEmail(kind, { to, name, tenantId, tenantName, service, dat
   `);
 
   const strip = (s) => String(s||'').replace(/<[^>]*>/g, ' ').replace(/\s+/g,' ').trim();
-  const text = [subject, strip(paragraphs.join(' ')), (ctaHtml ? 'Book now: ' + `${app}/book/` : ''), `Unsubscribe: ${app}/api/email/unsubscribe?email=${encodeURIComponent(String(to||''))}`].filter(Boolean).join('\n\n');
+  const text = [subject, strip(paragraphs.join(' ')), (ctaHtml ? 'Book now: ' + `${app}/book/` : ''), `Unsubscribe: ${unsubscribeUrl(APP_URL(), tenantId, to)}`].filter(Boolean).join('\n\n');
 
   return { subject, html, text, preview };
 }

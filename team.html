@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Team — LolaDesk</title>
+<title>Team · LolaDesk</title>
 <meta name="description" content="Your staff — shown in the calendar, selectable by clients online, and known by Lola on every call."/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
@@ -238,26 +238,26 @@ details.cust-wrap summary:hover{color:var(--accent)}
     </div>
 
     <div class="row2">
-      <div class="fld"><label>First name *</label><input id="fFirst" placeholder="Sarah" autocomplete="given-name"/></div>
-      <div class="fld"><label>Last name</label><input id="fLast" placeholder="Johnson" autocomplete="family-name"/></div>
+      <div class="fld"><label for="fFirst">First name *</label><input id="fFirst" placeholder="Sarah" autocomplete="given-name"/></div>
+      <div class="fld"><label for="fLast">Last name</label><input id="fLast" placeholder="Johnson" autocomplete="family-name"/></div>
     </div>
 
-    <div class="fld"><label>Role</label><input id="fRole" placeholder="Senior Stylist, Colorist, Esthetician…"/></div>
+    <div class="fld"><label for="fRole">Role</label><input id="fRole" placeholder="Senior Stylist, Colorist, Esthetician…"/></div>
 
     <div class="row2">
-      <div class="fld"><label>Phone</label><input id="fPhone" type="tel" placeholder="(305) 555-0123" autocomplete="tel"/></div>
-      <div class="fld"><label>Email</label><input id="fEmail" type="email" placeholder="staff@salon.com" autocomplete="email"/></div>
+      <div class="fld"><label for="fPhone">Phone</label><input id="fPhone" type="tel" placeholder="(305) 555-0123" autocomplete="tel"/></div>
+      <div class="fld"><label for="fEmail">Email</label><input id="fEmail" type="email" placeholder="staff@salon.com" autocomplete="email"/></div>
     </div>
 
     <div class="fld">
-      <label>Calendar color</label>
-      <div class="color-row" id="colorRow"></div>
+      <label id="colorRowLbl">Calendar color</label>
+      <div class="color-row" id="colorRow" role="group" aria-labelledby="colorRowLbl"></div>
       <div class="fine">Used on the booking calendar so their appointments stand out.</div>
     </div>
 
     <div class="fld">
-      <label>Services they perform</label>
-      <div class="svc-picker" id="svcPicker"><div class="svc-empty">Loading services…</div></div>
+      <label id="svcPickerLbl">Services they perform</label>
+      <div class="svc-picker" id="svcPicker" role="group" aria-labelledby="svcPickerLbl"><div class="svc-empty">Loading services…</div></div>
       <div class="fine">If none picked, Lola offers this staff for every service.</div>
       <details class="cust-wrap" id="custWrap" hidden>
         <summary>Custom price or time for this stylist ›</summary>
@@ -278,7 +278,7 @@ details.cust-wrap summary:hover{color:var(--accent)}
     </div>
 
     <div class="fld">
-      <label>Status</label>
+      <label for="fActive">Status</label>
       <select id="fActive">
         <option value="true">Active — bookable now</option>
         <option value="false">Inactive — hidden from calendar and booking</option>

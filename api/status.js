@@ -1,5 +1,6 @@
 /**
  * GET /api/status — "why isn't it working?" in one call, safe to open publicly.
+ * Public callers get the redacted view (publicStatus); an ADMIN_EMAILS Bearer gets everything below.
  * Only yes/no answers and plain-language fixes: never a key, number or secret.
  *   release   which LolaDesk update is live (so we know the deploy landed)
  *   settings  each required Vercel variable: set or missing
@@ -11,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-site';
+export const RELEASE = 'lola-fixall';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -53,6 +54,17 @@ export async function buildStatus() {
   const fixes = [];
   // Database
   try { const c = db(); const { error } = c ? await c.from('tenants').select('id').limit(1) : { error: { message: 'not configured' } }; live.database = !error; } catch (_) { live.database = false; }
+  // October fixes (atomic holds, one-trial-per-salon, client notes): self-applied when possible,
+  // otherwise one SQL script for the owner to run.
+  if (live.database) {
+    try {
+      const { ensureBookingIntegritySchema } = await import('./lib/booking-integrity.js');
+      await Promise.race([ensureBookingIntegritySchema(), new Promise((r) => setTimeout(r, 4000))]);
+      const c = db();
+      const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1)]);
+      live.october_sql = probes.every((p) => !p?.error);
+    } catch (_) { live.october_sql = null; }
+  }
   // Telnyx key + AI brain
   if (settings.TELNYX_API_KEY) {
     const bal = await tget('/balance');
@@ -337,6 +349,7 @@ export async function buildStatus() {
   if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
+  if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check and double-booking protection.');
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
   if (relayUrl && live.voice_relay_secret === false) fixes.push('Add LOLA_VOICE_SECRET in Vercel — the SAME long word as on the Railway relay — then Redeploy. Until then the app uses her direct voice.');
@@ -344,10 +357,41 @@ export async function buildStatus() {
   return { ok: fixes.length === 0, release: RELEASE, settings, live, healed, fixes, checked_at: new Date().toISOString() };
 }
 
+// Public view: release, yes/no probes, healed and fixes in plain words — no env-variable map, no
+// assistant/app/number ids, no balance or credit figures, no raw provider error strings.
+// The full report is for a signed-in platform admin (ADMIN_EMAILS) only.
+const scrub = (t) => String(t || '')
+  .replace(/assistant-[0-9a-f-]{8,}/gi, 'assistant-…')
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '…')
+  .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
+  .replace(/\b\d{12,}\b/g, '…')
+  .replace(/\s*\((?:Telnyx said: )?[^()]*(?:error|refused|HTTP|status|\d{3})[^()]*\)/gi, '');
+export function publicStatus(full) {
+  const live = {};
+  for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
+  return {
+    ok: !!full?.ok, release: full?.release || RELEASE, live,
+    healed: (full?.healed || []).map(scrub), fixes: (full?.fixes || []).map(scrub),
+    checked_at: full?.checked_at || new Date().toISOString(),
+    ...(full?.error ? { error: 'status_check_failed' } : {}),
+  };
+}
+async function isAdminRequest(req) {
+  try {
+    const { getUserFromToken, bearer, isAdminEmail } = await import('./lib/auth.js');
+    const tok = bearer(req); if (!tok) return false;
+    const u = await getUserFromToken(tok).catch(() => null);
+    return !!(u && isAdminEmail(u.email));
+  } catch (_) { return false; }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (cache && Date.now() - cache.at < 60e3) return res.status(200).json(cache.body);
-  const body = await buildStatus().catch((e) => ({ ok: false, release: RELEASE, error: String(e?.message || e) }));
-  cache = { at: Date.now(), body };
-  return res.status(200).json(body);
+  let body;
+  if (cache && Date.now() - cache.at < 60e3) body = cache.body;
+  else {
+    body = await buildStatus().catch((e) => ({ ok: false, release: RELEASE, error: String(e?.message || e) }));
+    cache = { at: Date.now(), body };
+  }
+  return res.status(200).json((await isAdminRequest(req)) ? body : publicStatus(body));
 }

@@ -31,10 +31,12 @@ const h = (await import(P + 'marketer.js')).default;
 const run = (body, headers = {}) => new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve(o); }, end() { resolve({}); } }; h({ method: 'POST', headers, query: {}, body }, res); });
 
 let r = await run({ action: 'analyze', url: 'mmasalon.example' });
+ok(!r.ok && ai.length === 0, 'Analyze needs a signed-in owner (no anonymous AI spend / URL fetching)');
+r = await run({ action: 'analyze', url: 'mmasalon.example' }, { authorization: 'Bearer tok' });
 ok(r.ok && /Miami Beach/.test(r.summary) && r.services_detected?.includes('Balayage'), 'Analyze reads the URL and returns the report');
 ok(/Llama/.test(ai.at(-1).model) && ai.at(-1).max_tokens >= 1100, 'long reports are written by the fast model with room to finish (not a 120s Kimi chain that Vercel kills): ' + ai.at(-1).model + ' / ' + ai.at(-1).max_tokens);
 fastDown = true; ai.length = 0;
-r = await run({ action: 'analyze', url: 'mmasalon.example' });
+r = await run({ action: 'analyze', url: 'mmasalon.example' }, { authorization: 'Bearer tok' });
 ok(r.ok && ai.some((b) => /Kimi/.test(b.model)), 'fast model unavailable → Kimi finishes it inside the same budget');
 fastDown = false; ai.length = 0;
 

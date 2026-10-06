@@ -72,8 +72,11 @@ export async function sendAutopilotSms({ from, to, text, tenantId } = {}) {
     try { if (await isOptedOut(tenantId, to)) return { skipped: true, reason: 'opted_out' }; } catch { }
   }
   try {
-    await sendSms({ from: e164(from), to: e164(to), text, tenantId });
-    return { sent: true };
+    const r = await sendSms({ from: e164(from), to: e164(to), text, tenantId });
+    // A refused / skipped text (opt-out, bad number, 10DLC block, no balance) is NOT sent:
+    // autopilot only marks a client "contacted" when this says sent.
+    const sent = !!r && !r.skipped && !r.failed;
+    return sent ? { sent: true } : { sent: false, skipped: true, failed: !!r?.failed, reason: r?.reason || 'not_sent' };
   } catch (e) {
     return { skipped: true, reason: String(e?.message || e) };
   }
@@ -115,7 +118,8 @@ async function _resolveSalonLine(tenant, tenantId) {
     const c = _smsDb();
     if (c && id) {
       const { data: rows } = await c.from('tenant_numbers').select('*').eq('tenant_id', id);
-      const list = (rows || []).filter(r => r && (r.phone_number || r.phone_e164));
+      // A released / parked line no longer sends for this salon.
+      const list = (rows || []).filter(r => r && (r.phone_number || r.phone_e164) && !['released', 'parked'].includes(String(r.status || '')));
       const pick = list.find(r => r.kind === 'primary') || list.find(r => r.status === 'active') || list[0];
       if (pick) return pick.phone_number || pick.phone_e164;
     }

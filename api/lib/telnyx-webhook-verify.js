@@ -34,11 +34,24 @@ export function telnyxPublicKey(pub) {
   return crypto.createPublicKey({ key: der, format: 'der', type: 'spki' });
 }
 
+export function isProductionEnv() {
+  return process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+}
+/** Strict mode: refuse webhooks when the key is missing. Opt-in (TELNYX_REQUIRE_SIGNATURE=1) so a
+ *  deployment without TELNYX_PUBLIC_KEY never drops every call and text (Sep 30 lesson). */
+export function signatureRequired() {
+  return process.env.TELNYX_REQUIRE_SIGNATURE === '1';
+}
+
 export function verifyTelnyxSignature(req, payload) {
   const publicKey = process.env.TELNYX_PUBLIC_KEY;
-  // No key configured: accept (and say so) rather than silently dropping
-  // every call event. Set TELNYX_PUBLIC_KEY to enforce signatures.
-  if (!publicKey) { if (!globalThis.__lolaWarnedTelnyxKey) { globalThis.__lolaWarnedTelnyxKey = 1; console.warn('[telnyx] TELNYX_PUBLIC_KEY not set — webhook signatures are not being checked'); } return true; }
+  // No key configured: accept (and say so) rather than silently dropping every call event.
+  // Set TELNYX_PUBLIC_KEY to enforce signatures (status shows it as a fix to make).
+  if (!publicKey) {
+    if (signatureRequired()) return false;
+    if (!globalThis.__lolaWarnedTelnyxKey) { globalThis.__lolaWarnedTelnyxKey = 1; console.warn('[telnyx] TELNYX_PUBLIC_KEY not set — webhook signatures are not being checked'); }
+    return true;
+  }
 
   const headers = req.headers || {};
   const signature = headers['telnyx-signature-ed25519'];

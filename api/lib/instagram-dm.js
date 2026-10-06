@@ -12,6 +12,7 @@
  *
  * Env: INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_VERIFY_TOKEN.
  */
+import { derivedSecret } from './derived-secret.js';
 import crypto from 'node:crypto';
 import { appUrl } from './telnyx-client.js';
 import { encrypt, decrypt } from './crypto.js';
@@ -30,14 +31,16 @@ const secret = () => String(process.env.INSTAGRAM_APP_SECRET || '');
 const seal = (t) => { try { return encrypt(t); } catch (_) { return 'plain:' + t; } };
 const open = (t) => { const s = String(t || ''); if (s.startsWith('plain:')) return s.slice(6); try { return decrypt(s); } catch (_) { return null; } };
 
+// App secret when set; otherwise a server-derived secret (never a hard-coded one).
+const stateSecret = () => secret() || derivedSecret('ig-state') || crypto.randomBytes(32).toString('hex');
 export function signState(tenantId, now = Date.now()) {
   const body = `${tenantId}.${now}`;
-  return body + '.' + crypto.createHmac('sha256', secret() || 'x').update(body).digest('hex').slice(0, 32);
+  return body + '.' + crypto.createHmac('sha256', stateSecret()).update(body).digest('hex').slice(0, 32);
 }
 export function readState(state, now = Date.now()) {
   const [id, ts, sig] = String(state || '').split('.');
   if (!id || !ts || !sig) return null;
-  const want = crypto.createHmac('sha256', secret() || 'x').update(`${id}.${ts}`).digest('hex').slice(0, 32);
+  const want = crypto.createHmac('sha256', stateSecret()).update(`${id}.${ts}`).digest('hex').slice(0, 32);
   if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
   if (now - Number(ts) > 30 * 60e3) return null;
   return id;

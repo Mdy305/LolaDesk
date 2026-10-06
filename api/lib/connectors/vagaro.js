@@ -97,7 +97,7 @@ export async function listAppointments(integration, { from, to } = {}){
   const end   = to   || new Date(Date.now() + 30 * 864e5).toISOString();
   const r = await fetch(`${API_BASE}/appointments?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
-  if(!r.ok) return [];
+  if(!r.ok) throw new Error(`Vagaro appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
   const rows = data.appointments || data.data || data.items || [];
   return rows.map(normalize);
 }
@@ -135,3 +135,8 @@ export async function listClients(integration, { limit = 100 } = {}){
     raw: c
   }));
 }
+
+// Cancels / moves: Vagaro's partner API is not wired for changes yet. The outbox
+// records the change as failed and texts the owner to make it in Vagaro too.
+export async function cancelAppointment(){ throw new Error('unsupported: Vagaro cancel is not available through its API yet'); }
+export async function updateAppointment(){ throw new Error('unsupported: Vagaro reschedule is not available through its API yet'); }

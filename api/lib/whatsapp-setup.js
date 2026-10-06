@@ -116,7 +116,7 @@ export async function ensureTemplates(c, { wabaId, tenantId = null }) {
       const d = telnyxData(await telnyxRequest('/whatsapp/message_templates', { method: 'POST', body, timeoutMs: 15000 }));
       out.created.push(t.name);
       await upsertTemplateRow(c, { waba_id: wabaId, name: t.name, language: t.language, category: t.category, telnyx_template_id: d?.id || null, status: String(d?.status || 'PENDING').toUpperCase(), reason: null, tenant_id: tenantId });
-      if (tenantId) { try { await logUsage(tenantId, 'cost_whatsapp_template', 1, { template: t.name }); } catch (_) {} }
+      if (tenantId) { try { const { logCost, priceCents } = await import('./costs.js'); await logCost(tenantId, 'cost_whatsapp_template', priceCents('cost_whatsapp_template'), { template: t.name }); } catch (_) {} }
     } catch (e) {
       out.failed.push({ name: t.name, error: String(e?.message || e).slice(0, 200) });
       await upsertTemplateRow(c, { waba_id: wabaId, name: t.name, language: t.language, category: t.category, telnyx_template_id: null, status: 'NOT_SUBMITTED', reason: String(e?.message || e).slice(0, 200), tenant_id: tenantId });

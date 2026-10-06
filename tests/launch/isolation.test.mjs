@@ -85,7 +85,9 @@ delete process.env.LOLA_TOOL_SECRET;
 r = await run('lola/check-availability.js', { body: { to_number: LINE_A, service_id: 'nope' } });
 ok(r.status === 404 && r.body.error === 'service_not_found', 'check-availability stays public (no secret configured) and answers');
 r = await run('lola/book-appointment.js', { body: { to_number: LINE_A, from_number: MARIA, service_id: 'nope', start_iso: new Date(Date.now() + 864e5).toISOString() } });
-ok(r.status !== 401 && !hasPII(r.body), 'book-appointment stays public but never returns a client\'s record');
+ok(r.status === 401 && !hasPII(r.body), 'book-appointment (a write) refuses an unsigned caller, even with no secret configured');
+r = await run('lola/book-appointment.js', { body: { to_number: LINE_A, from_number: MARIA, service_id: 'nope', start_iso: new Date(Date.now() + 864e5).toISOString() }, query: { k: toolKey() } });
+ok(r.status !== 401 && !hasPII(r.body), 'book-appointment with LolaDesk\'s signed k answers, and never returns a client\'s record');
 
 // ── 3. Owner texts: only the real owner, on their own line or the owner line ──
 const smsIn = (from, to, text) => run('telnyx-sms.js', { body: { data: { event_type: 'message.received', id: 'ev' + Math.random(), payload: { id: 'p' + Math.random(), from: { phone_number: from }, to: [{ phone_number: to }], text, type: 'SMS' } } } });

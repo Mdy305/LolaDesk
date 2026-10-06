@@ -35,6 +35,7 @@ import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
 import { cancelBookingSafe, createBookingSafe, listAvailability, parseDurationMin, rescheduleBookingSafe } from './lib/calendar-engine.js';
 import { salonTz, fmtSalon } from './lib/salon-time.js';
 import { zonedLocalToUtc } from './lib/timezone.js';
+import { serviceGate } from './lib/paid-hooks.js';
 
 // Resolve which salon this call is for. When a dialed `to` number is present
 // (a Telnyx-originated call), resolution goes through the STRICT inbound
@@ -247,10 +248,7 @@ async function liveFor(tenant){
   try{ const { liveProviderFor } = await import('./lib/live-booking.js'); return await liveProviderFor(tenant.id); }catch(_){ return null; }
 }
 function dateKeyIn(date, tz){
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return String(date);
-  const t = date ? Date.parse(date) : NaN;
-  if(isNaN(t)) return null;
-  return new Date(t).toLocaleDateString('en-CA', { timeZone: tz || 'America/New_York' });
+  return resolveDateKey(date, tz);
 }
 const spokenTime = (iso, tz) => fmtSalon(iso, tz, 'time').replace(/:00(?=\s?[AP]M)/, '');
 function pickTimes(times, wantAt = null, n = 3){
@@ -331,6 +329,7 @@ async function book_appointment_live(tenant, lp, body, who){
   };
 }
 async function check_availability(tenant, body){
+  await normalizeDate(tenant, body);
   // The salon's live booking system, when it has one (otherwise LolaDesk's calendar, which sees every connected system).
   try{ const lp = await liveFor(tenant); if(lp) return await check_availability_live(tenant, lp, body); }
   catch(e){ console.warn('[lola-tools] live availability:', String(e?.message || e).slice(0, 160)); }
@@ -389,7 +388,31 @@ async function bookingIdentity(tenant, body){
 }
 const sayNeeds = (needs) => needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
 
+/** This client's own booking that ends right when the new one starts (or starts right when it ends), same day. */
+async function adjacentBooking(tenant, clientId, startsAt, durationMin){
+  if(!tenant?.id || !clientId || !startsAt) return null;
+  try{
+    const start = Date.parse(startsAt), end = start + (Number(durationMin) || 60) * 60e3;
+    const { data } = await db().from('bookings').select('id,start_time,end_time,status')
+      .eq('tenant_id', tenant.id).eq('client_id', clientId)
+      .gte('start_time', new Date(start - 12 * 3600e3).toISOString()).lte('start_time', new Date(start + 12 * 3600e3).toISOString())
+      .limit(20);
+    const tz = await salonTz(tenant.id);
+    const dayOf = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz });
+    const near = (a, b) => Math.abs(a - b) <= 5 * 60e3;
+    return (data || []).find((b) => b && String(b.status || '') !== 'cancelled' && dayOf(b.start_time) === dayOf(startsAt) && (
+      (b.end_time && near(Date.parse(b.end_time), start)) || near(Date.parse(b.start_time), end))) || null;
+  }catch(_){ return null; }
+}
+
+// "October 10" / "Friday" → the salon-calendar day (YYYY-MM-DD) before anything reads it.
+async function normalizeDate(tenant, body){
+  if(!body || !body.date || /^\d{4}-\d{2}-\d{2}$/.test(String(body.date))) return;
+  try{ const k = resolveDateKey(body.date, await salonTz(tenant.id)); if(k) body.date = k; }catch(_){}
+}
+
 async function book_appointment(tenant, body){
+  await normalizeDate(tenant, body);
   const { service, date, time, stylist } = body;
   // Conversations with clients (a phone call, the website) collect the full details first; bookings the
   // salon makes itself (dashboard, Zapier, owner commands) don't need them.
@@ -446,6 +469,9 @@ async function book_appointment(tenant, body){
     // Lola never waits on the salon's booking platform mid-call: she books in LolaDesk's
     // engine (conflict-safe) and the platform write follows in the background (booking-outbox).
     let upstream = null, bookedRow = null;
+    // An add-on right before/after this client's booking the same day (the upsell she just offered)
+    // joins that visit: no second confirmation text, no second deposit link, no second email.
+    const addOnTo = await adjacentBooking(tenant, client?.id, startsAt, durationMin);
     // Always record internally too (conflict-safe)
     if(tenant.id && startsAt){
       const safe = await createBookingSafe({
@@ -455,7 +481,8 @@ async function book_appointment(tenant, body){
         stylist,
         startsAt,
         durationMin,
-        price: s?.price
+        price: s?.price,
+        ...(addOnTo ? { sendConfirmation: false, addOnTo: addOnTo.id } : {})
       });
       if(!safe.ok && safe.conflict){
         const tzB = await salonTz(tenant.id);
@@ -473,6 +500,13 @@ async function book_appointment(tenant, body){
           booked: false,
           conflict: true,
           slots: av.slots || []
+        };
+      } else if(!safe.ok && safe.error === 'service_not_found'){
+        // Never a booking without a real service: offer the salon's actual menu.
+        const menu = (safe.menu || []).map(m => typeof m === 'string' ? m : m?.name).filter(Boolean).slice(0, 5);
+        return {
+          speak: menu.length ? `Which service should I book? We have ${orList(menu)}.` : `Which service would you like me to book?`,
+          booked: false, needs_service: true, menu, error: 'service_not_found'
         };
       } else if(!safe.ok){
         return {
@@ -501,18 +535,24 @@ async function book_appointment(tenant, body){
     const tzS = await salonTz(tenant.id);
     const bk = bookedRow;
     const whenStr = bk?.start_time ? fmtSalon(bk.start_time, tzS, 'long').replace(/:00(?= [AP]M)/, '') : `${date ? date : ''}${time ? ` at ${time}` : ''}`;
-    let staffName = stylist || null;
-    if(!staffName && bk?.staff_id){ try{ const { data } = await db().from('staff').select('name').eq('id', bk.staff_id).maybeSingle(); staffName = data?.name ? String(data.name).split(' ')[0] : null; }catch(_){} }
-    let speakStr = `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service} ${whenStr}${staffName?` with ${staffName}`:''}. `;
+    // The stylist the calendar actually assigned (the one asked for may not have been free).
+    let staffName = null;
+    if(bk?.staff_id){ try{ const { data } = await db().from('staff').select('name').eq('id', bk.staff_id).maybeSingle(); staffName = data?.name ? String(data.name).split(' ')[0] : null; }catch(_){} }
+    if(!staffName && !bk?.staff_id) staffName = stylist || null;
+    let speakStr = addOnTo
+      ? `Done${client_name?`, ${String(client_name).split(' ')[0]}`:''} — I've added ${s?.name||service} ${whenStr}${staffName?` with ${staffName}`:''} to your visit. `
+      : `You're all set${client_name?`, ${String(client_name).split(' ')[0]}`:''} — ${s?.name||service} ${whenStr}${staffName?` with ${staffName}`:''}. `;
     // The deposit line tells the truth: the salon's real policy, this client's real history, the real amount.
     let plan = { required: false };
-    if(bk?.id){ try{ const { depositPlan } = await import('./lib/deposits.js'); plan = await depositPlan({ tenantId: tenant.id, booking: bk, clientId: client?.id }); }catch(_){} }
+    if(addOnTo){ /* part of the visit already confirmed (and deposited) — nothing new to send */ }
+    else if(bk?.id){ try{ const { depositPlan } = await import('./lib/deposits.js'); plan = await depositPlan({ tenantId: tenant.id, booking: bk, clientId: client?.id }); }catch(_){} }
     else if(tenant.knowledge?.require_deposit) plan = { required: true, amount_cents: Math.round(Number(tenant.knowledge.deposit_amount || 50) * 100) };
-    if(plan.required) speakStr += `I'm texting you a secure link for the $${(plan.amount_cents / 100).toFixed(plan.amount_cents % 100 ? 2 : 0)} deposit${plan.hold_minutes ? ` — the spot is held for ${plan.hold_minutes} minutes` : ''}. `;
+    if(addOnTo) speakStr += `It's on the same appointment, so there's nothing new to confirm. `;
+    else if(plan.required) speakStr += `I'm texting you a secure link for the $${(plan.amount_cents / 100).toFixed(plan.amount_cents % 100 ? 2 : 0)} deposit${plan.hold_minutes ? ` — the spot is held for ${plan.hold_minutes} minutes` : ''}. `;
     else speakStr += client_email ? `I'll text and email you a confirmation. ` : `I'll text you a confirmation. `;
     // A real add-on from the menu that fits right after, with the same stylist — offered once.
     let upsell = null;
-    if(bk?.id && body.channel !== 'no_upsell'){
+    if(bk?.id && !addOnTo && body.channel !== 'no_upsell'){
       try{
         const { fitsAfter } = await import('./lib/smart-slots.js');
         const { listServices } = await import('./lib/booking-repository.js');
@@ -523,15 +563,17 @@ async function book_appointment(tenant, body){
     else speakStr += `Anything else?`;
     if(upsell){ try{ await logUsage(tenant.id, 'upsell_offered', 1, { service: upsell.name, price: upsell.price }); }catch(_){} }
     // The confirmation email (the text goes out with the booking itself).
-    let emailed = { sent: false, reason: 'no_email' };
-    if(bk?.id && client_email){
+    let emailed = { sent: false, reason: addOnTo ? 'add_on' : 'no_email' };
+    if(bk?.id && client_email && !addOnTo){
       try{ const { sendBookingEmail } = await import('./lib/booking-email.js'); emailed = await sendBookingEmail({ tenant, to: client_email, name: client_name, service: s?.name || service, when: whenStr }); }catch(_){}
     }
 
     return {
       speak: speakStr,
-      confirmation: { text_to: client_phone || null, email_to: emailed.sent ? client_email : null, email_error: emailed.sent ? null : (client_email ? emailed.reason : null) },
+      confirmation: { text_to: addOnTo ? null : (client_phone || null), email_to: emailed.sent ? client_email : null, email_error: emailed.sent || addOnTo ? null : (client_email ? emailed.reason : null) },
       booked: true, external: upstream?.ok ? 'queued' : false, deposit_required: !!plan.required,
+      ...(addOnTo ? { add_on_to: addOnTo.id } : {}),
+      ...(bk?.staff_id ? { stylist: staffName } : {}),
       ...(upsell ? { upsell: { service: upsell.name, price: upsell.price, starts_at: upsell.starts_at, stylist: upsell.staff_name, how: `If they say yes, call book_appointment with service "${upsell.name}", the same client name and phone, stylist "${upsell.staff_name}", date ${new Date(upsell.starts_at).toLocaleDateString('en-CA', { timeZone: tzS })} and time ${fmtSalon(upsell.starts_at, tzS, 'time')}.` } } : {})
     };
   }catch(e){
@@ -544,90 +586,110 @@ async function book_appointment(tenant, body){
   }
 }
 
-async function confirm_booking(tenant, { client_phone, client_name }){
+// ── A client's own bookings: found by their verified number, never by a name (names aren't unique) ──
+const last10 = (v) => String(v || '').replace(/\D/g, '').slice(-10);
+const BOOKING_COLS = 'id,tenant_id,client_id,service_id,staff_id,start_time,end_time,status,service:services(name)';
+const svcName = (b) => b?.service?.name || (typeof b?.service === 'string' ? b.service : '') || b?.service_name || 'appointment';
+/** "Tuesday, October 13 at 2 PM" in the salon's time zone. */
+function sayWhen(iso, tz){
+  const d = new Date(iso); if(isNaN(d)) return '';
+  try{
+    const day = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz });
+    const t = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }).replace(/:00(?=\s?[AP]M)/, '');
+    return `${day} at ${t}`;
+  }catch(_){ return fmtSalon(iso, tz, 'long'); }
+}
+/** The service's name for what Lola says back (when the join didn't bring it). */
+async function withServiceName(c, tenant, bk){
+  if(bk && !bk.service?.name && bk.service_id){
+    try{ const { data } = await c.from('services').select('name').eq('tenant_id', tenant.id).eq('id', bk.service_id).maybeSingle(); if(data?.name) bk.service = { name: data.name }; }catch(_){}
+  }
+  return bk;
+}
+async function nextBookingFor(c, tenant, clientId){
+  const { data } = await c.from('bookings').select(BOOKING_COLS)
+    .eq('tenant_id', tenant.id).eq('client_id', clientId)
+    .gte('start_time', new Date().toISOString()).neq('status', 'cancelled')
+    .order('start_time', { ascending: true }).limit(1);
+  return data?.[0] || null;
+}
+/**
+ * The booking this request may act on. With a client phone (the verified caller / texter), a given
+ * booking_id must belong to that client — anyone else's booking is refused. Without one, only the
+ * salon's own tools (dashboard / owner) reach here, and an explicit booking_id is honoured.
+ * → { booking } | { refused: true } | { none: true }
+ */
+async function ownedBooking(c, tenant, { booking_id, client_phone }){
+  const phone = String(client_phone || '').trim();
+  let client = null;
+  if(phone){ client = await getClientByPhone(tenant.id, phone).catch(() => null); }
+  if(booking_id){
+    const { data: bk } = await c.from('bookings').select(BOOKING_COLS).eq('tenant_id', tenant.id).eq('id', String(booking_id)).maybeSingle().then((r) => r, () => ({ data: null }));
+    if(!bk) return { none: true };
+    if(phone){
+      let owner = null;
+      if(bk.client_id){ const { data } = await c.from('clients').select('id,phone').eq('tenant_id', tenant.id).eq('id', bk.client_id).maybeSingle().then((r) => r, () => ({ data: null })); owner = data; }
+      if(!owner || !last10(owner.phone) || last10(owner.phone) !== last10(phone)) return { refused: true };
+    }
+    return { booking: bk };
+  }
+  if(!client) return { none: true };
+  const next = await nextBookingFor(c, tenant, client.id);
+  return next ? { booking: next, client } : { none: true, client };
+}
+const NOT_YOURS = "I can only look up or change bookings under the number you're calling from. Want me to help with that one?";
+
+async function confirm_booking(tenant, { client_phone }){
   const c = db();
   if(!c) return { speak:'I can confirm that now. Share your booking phone number.' };
-  let client = null;
-  if(client_phone) client = await getClientByPhone(tenant.id, client_phone);
-  if(!client && client_name){
-    const { data } = await c.from('clients').select('*').eq('tenant_id', tenant.id).ilike('name', `%${client_name}%`).limit(1);
-    client = data?.[0] || null;
-  }
-  if(!client) return { speak:'I could not find that booking yet. Share the phone number on the appointment.' };
-  const { data: rows } = await c
-    .from('bookings')
-    .select('id,tenant_id,client_id,service_id,staff_id,start_time,end_time,status,total_amount,created_at,updated_at,location_id,source,conversation_id,external_id,external_provider,hold_id,deposit_status,confirmation_code,starts_at:start_time,service:services(name)')
-    .eq('tenant_id', tenant.id)
-    .eq('client_id', client.id)
-    .gte('start_time', new Date().toISOString())
-    .neq('status', 'cancelled')
-    .order('start_time', { ascending: true })
-    .limit(1);
-  const next = rows?.[0];
+  // By the verified number only — a name search could read out someone else's appointment.
+  if(!client_phone) return { speak:"I can look that up from the number the appointment is under — are you calling or texting from it?", confirmed:false };
+  const client = await getClientByPhone(tenant.id, client_phone);
+  if(!client) return { speak:'I could not find a booking under this number yet. Want me to book one now?', confirmed:false };
+  const next = await withServiceName(c, tenant, await nextBookingFor(c, tenant, client.id));
   if(!next) return { speak:`I do not see an upcoming booking for ${client.name || 'that client'}. Want me to book one now?`, confirmed:false };
-  const when = fmtSalon(next.starts_at || next.start_time, await salonTz(tenant.id));
-  return { speak:`Yes - you are confirmed for ${next.service?.name || next.service || 'your appointment'} on ${when}.`, confirmed:true, booking:next };
+  const when = fmtSalon(next.start_time, await salonTz(tenant.id));
+  return { speak:`Yes - you are confirmed for ${svcName(next)} on ${when}.`, confirmed:true, booking:{ ...next, starts_at: next.start_time } };
 }
 
 async function reschedule_appointment(tenant, { booking_id, client_phone, new_date, new_time }){
   const c = db();
   if(!c) return { speak:'I can help reschedule. Please share booking details again.' };
-  let bookingId = booking_id;
-  if(!bookingId && client_phone){
-    const client = await getClientByPhone(tenant.id, client_phone);
-    if(client){
-      const { data } = await c.from('bookings')
-        .select('id')
-        .eq('tenant_id', tenant.id)
-        .eq('client_id', client.id)
-        .gte('start_time', new Date().toISOString())
-        .neq('status','cancelled')
-        .order('start_time', { ascending: true })
-        .limit(1);
-      bookingId = data?.[0]?.id;
-    }
-  }
-  if(!bookingId) return { speak:'I could not identify which booking to reschedule yet. Please share the booking phone number.' };
+  const found = await ownedBooking(c, tenant, { booking_id, client_phone });
+  if(found.refused) return { speak: NOT_YOURS, rescheduled:false, verified:false };
+  if(!found.booking) return { speak:'I could not identify which booking to reschedule yet. Please share the booking phone number.', rescheduled:false };
+  const bk = { ...found.booking }, bookingId = bk.id;   // a copy: the move may update the row in place
+  await withServiceName(c, tenant, bk);
   const targetIso = await salonInstant(tenant, new_date, new_time);
   if(!targetIso) return { speak:'Please share the new date and time, and I will move it immediately.' };
+  const tz = await salonTz(tenant.id);
   const out = await rescheduleBookingSafe({ tenantId: tenant.id, bookingId, newStartsAt: targetIso });
   if(!out.ok){
     if(out.conflict){
       const av = await listAvailability({ tenant, date: targetIso, durationMin: Number(out?.booking?.duration_min || 60) });
-      const tzR = await salonTz(tenant.id);
-      const options = (av.slots || []).slice(0, 3).map(x => fmtSalon(x, tzR, 'time')).join(', ');
+      const options = (av.slots || []).slice(0, 3).map(x => fmtSalon(x, tz, 'time')).join(', ');
       return { speak:`That new time is not available. I can offer ${options || 'the next open slot'} instead.`, rescheduled:false, conflict:true, slots:av.slots || [] };
     }
     return { speak:'I could not reschedule that just now. Please give me one moment and we can retry.', rescheduled:false };
   }
-  const when = fmtSalon(targetIso, await salonTz(tenant.id));
   await zapNotice(tenant, bookingId, 'booking.rescheduled');
-  return { speak:`Done - your appointment is moved to ${when}.`, rescheduled:true, booking:out.booking };
+  const was = sayWhen(bk.start_time, tz), now = sayWhen(out.booking?.start_time || targetIso, tz);
+  return { speak:`Done — your ${svcName(bk)}${was ? ` from ${was}` : ''} is moved to ${now}.`, rescheduled:true, booking:out.booking };
 }
 
 async function cancel_appointment(tenant, { booking_id, client_phone }){
   const c = db();
   if(!c) return { speak:'I can help cancel it now. Please confirm the booking phone number.' };
-  let bookingId = booking_id;
-  if(!bookingId && client_phone){
-    const client = await getClientByPhone(tenant.id, client_phone);
-    if(client){
-      const { data } = await c.from('bookings')
-        .select('id')
-        .eq('tenant_id', tenant.id)
-        .eq('client_id', client.id)
-        .gte('start_time', new Date().toISOString())
-        .neq('status','cancelled')
-        .order('start_time', { ascending: true })
-        .limit(1);
-      bookingId = data?.[0]?.id;
-    }
-  }
-  if(!bookingId) return { speak:'I could not find the booking to cancel yet. Share the booking phone number.' };
+  const found = await ownedBooking(c, tenant, { booking_id, client_phone });
+  if(found.refused) return { speak: NOT_YOURS, cancelled:false, verified:false };
+  if(!found.booking) return { speak:'I could not find the booking to cancel yet. Share the booking phone number.', cancelled:false };
+  const bk = { ...found.booking }, bookingId = bk.id;
+  await withServiceName(c, tenant, bk);
   const out = await cancelBookingSafe({ tenantId: tenant.id, bookingId });
-  if(!out.ok) return { speak:'I could not cancel that right now. Please give me one moment and retry.' };
+  if(!out.ok) return { speak:'I could not cancel that right now. Please give me one moment and retry.', cancelled:false };
   await zapNotice(tenant, bookingId, 'booking.cancelled');
-  return { speak:'Done. The appointment is canceled. Do you want me to suggest a new time now?', cancelled:true };
+  const when = sayWhen(bk.start_time, await salonTz(tenant.id));
+  return { speak:`Done — your ${svcName(bk)}${when ? ` on ${when}` : ''} is cancelled. Do you want me to find you a new time?`, cancelled:true };
 }
 
 // ── SKILL: capture a lead ──
@@ -684,9 +746,73 @@ function to24(t){
 // A caller's date + time are the SALON's local time (servers run in UTC).
 async function salonInstant(tenant, date, time){
   const t = to24(time); if(!date || !t) return null;
-  const key = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : (isNaN(new Date(date)) ? null : new Date(date).toISOString().slice(0,10));
+  const tz = await salonTz(tenant.id);
+  const key = resolveDateKey(date, tz);
   if(!key) return null;
-  return zonedLocalToUtc(key, t, await salonTz(tenant.id));
+  return zonedLocalToUtc(key, t, tz);
+}
+
+// ── Which calendar day a client means, as YYYY-MM-DD in the salon's time zone ──
+// "2026-10-10" as given; "today" / "tomorrow" / "Friday" / "next Friday"; "October 10", "Oct 10th",
+// "Friday, October 10", "10/10" → the NEXT time that day comes round (never a past year: a bare
+// "October 10" used to parse as 2001). An explicit year that has already gone is treated the same way.
+const MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const WEEKDAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const pad2 = (n) => String(n).padStart(2, '0');
+function addDaysKey(key, n){ const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
+function validMonthDay(y, m, d){ const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; }
+export function resolveDateKey(date, tz, now = Date.now()){
+  const s = String(date || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if(!s) return null;
+  const zone = tz || 'America/New_York';
+  let today;
+  try{ today = new Date(now).toLocaleDateString('en-CA', { timeZone: zone }); }catch(_){ today = new Date(now).toISOString().slice(0, 10); }
+  const thisYear = Number(today.slice(0, 4));
+  const nextOccurrence = (m, d, y = null) => {
+    if(!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+    let year = y && y >= thisYear ? y : thisYear;
+    if(!validMonthDay(year, m, d)){ if(!(m === 2 && d === 29)) return null; }
+    let key = `${year}-${pad2(m)}-${pad2(d)}`;
+    // No year given (or a year already gone): the next time that date comes round.
+    for(let i = 0; (!y || y < thisYear) && key < today && i < 8; i++){ year++; key = `${year}-${pad2(m)}-${pad2(d)}`; }
+    while(!validMonthDay(year, m, d) && year < thisYear + 8){ year++; key = `${year}-${pad2(m)}-${pad2(d)}`; }
+    return validMonthDay(year, m, d) ? key : null;
+  };
+  let mm;
+  if((mm = s.match(/^(\d{4})-(\d{2})-(\d{2})/))){
+    const y = +mm[1], m = +mm[2], d = +mm[3];
+    if(!validMonthDay(y, m, d)) return null;
+    return y < thisYear ? nextOccurrence(m, d) : `${mm[1]}-${mm[2]}-${mm[3]}`;
+  }
+  if(s === 'today' || s === 'tonight' || s === 'this evening' || s === 'this afternoon') return today;
+  if(s === 'tomorrow') return addDaysKey(today, 1);
+  if(s === 'day after tomorrow' || s === 'the day after tomorrow') return addDaysKey(today, 2);
+  const wd = WEEKDAY_NAMES.findIndex((w) => new RegExp('^(this |next |on )?' + w + '$').test(s));
+  if(wd >= 0){
+    const todayW = new Date(today + 'T12:00:00Z').getUTCDay();
+    let diff = (wd - todayW + 7) % 7;
+    if(/^next /.test(s) && diff === 0) diff = 7;
+    return addDaysKey(today, diff);
+  }
+  // "october 10", "oct 10th", "friday, october 10", "october 10 2026", "10 october"
+  const cleaned = s.replace(/^(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)[a-z]*,? /, '').replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if((mm = cleaned.match(/^([a-z]+)\.? (\d{1,2})(?: (\d{4}))?$/)) || (mm = cleaned.match(/^(\d{1,2}) ([a-z]+)\.?(?: (\d{4}))?$/))){
+    const word = /^\d/.test(mm[1]) ? mm[2] : mm[1];
+    const day = /^\d/.test(mm[1]) ? +mm[1] : +mm[2];
+    const m = MONTHS.indexOf(word.slice(0, 3)) + 1;
+    if(m >= 1) return nextOccurrence(m, day, mm[3] ? +mm[3] : null);
+  }
+  // "10/10", "10/10/2026", "10-10"
+  if((mm = cleaned.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/))){
+    let y = mm[3] ? +mm[3] : null; if(y && y < 100) y += 2000;
+    return nextOccurrence(+mm[1], +mm[2], y);
+  }
+  // Anything else Date can read: keep its month/day, never its (possibly ancient) default year.
+  const t = Date.parse(s);
+  if(isNaN(t)) return null;
+  const dt = new Date(t);
+  const explicitYear = /\b\d{4}\b/.test(s) ? dt.getFullYear() : null;
+  return nextOccurrence(dt.getMonth() + 1, dt.getDate(), explicitYear);
 }
 
 // ── SKILL: recognise a returning client from the number they give (website chat, blocked caller ID) ──
@@ -698,6 +824,9 @@ async function recall_client(tenant, { client_phone }){
   const story = await clientStory(db(), tenant, client);
   return { speak: welcomeBack(story, { salon: tenant.name }) || `Got you, ${story.first || 'welcome back'}! What can I do for you today?`, known: true, brief: story.brief };
 }
+
+const WRITE_SKILLS = new Set(['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'capture_lead']);
+const GATED_SKILLS = new Set(['book_appointment', 'reschedule_appointment']);
 
 export const SKILLS = {
   recall_client,
@@ -796,6 +925,14 @@ export default async function handler(req, res){
       return res.status(200).json({ speak: "I can help with booking, pricing, or recommendations — what would you like?", available_tools: Object.keys(SKILLS) });
     }
     
+    // Skills that write (a booking, a client record, texts to a number) only answer LolaDesk's own signed
+    // wiring: an unsigned request could otherwise book anything and text any number. The public read
+    // skills (menu, prices, open times) stay open; the heal above re-signs drifted wiring.
+    if(WRITE_SKILLS.has(String(tool)) && !signed){
+      console.warn('[lola-tools] unsigned write refused:', tool);
+      return res.status(200).json({ booked: false, ok: false, error: 'unsigned', verified: false,
+        speak: "I can't book from here right now, so nothing is booked yet. Please call or text the salon and I'll take care of it there." });
+    }
     if(tool === 'book_appointment'){ body.collect_details = true; body.channel = body.channel || (web ? 'web' : 'voice'); }
     const t0 = Date.now();
     const tenant = await resolveTenant(body);
@@ -806,6 +943,13 @@ export default async function handler(req, res){
       console.warn('[lola-tools] no salon for', tool, web ? '(website call: the widget code is missing X-LolaDesk-Salon — copy it from Settings → Lola on your website)' : '(unrouted number)');
       return res.status(200).json({ booked: false, ok: false, error: 'salon_unknown',
         speak: "I can't reach the salon's calendar from here right now, so nothing is booked yet. Leave me your name and mobile and the salon will text you to confirm — or call us and I'll book you on the phone." });
+    }
+    // An expired / cancelled / unpaid salon: no new bookings or moves through Lola (cancels stay open,
+    // so a client is never stranded). Fails open when the billing module isn't deployed.
+    if(GATED_SKILLS.has(String(tool))){
+      const gate = await serviceGate(tenant);
+      if(!gate.ok) return res.status(200).json({ booked: false, ok: false, error: 'service_paused', reason: gate.reason || null,
+        speak: gate.say || "The salon isn't taking bookings through me right now, so nothing is booked. Please call or text the salon directly." });
     }
     const clientPhone = body.client_phone || body.from;
     // Link this conversation to its salon (website calls have no dialed number): the

@@ -29,7 +29,7 @@
 import { db } from './db.js';
 import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
-import { createPaymentLink } from './stripe.js';
+import { createPaymentLink, deactivatePaymentLink } from './stripe.js';
 import { depositRequestText, depositKeptText, depositRefundText, depositUnpaidText, depositReleasedText } from './lola-persona.js';
 import { salonTz, fmtSalon } from './salon-time.js';
 
@@ -165,7 +165,9 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
     const link = await createLink({
       amountCents: cents,
       description: `${svc?.name || 'Appointment'} deposit — ${tenant.name || 'the salon'}`,
-      successUrl: `${process.env.APP_URL || 'https://www.loladesk.com'}/paid?salon=${encodeURIComponent(tenant.name || '')}`
+      successUrl: `${process.env.APP_URL || 'https://www.loladesk.com'}/paid?salon=${encodeURIComponent(tenant.name || '')}`,
+      // The salon's connected Stripe account gets the money; the webhook ties the payment back to this booking.
+      tenantId, metadata: { booking_id: String(booking.id) }
     });
     const { data: deposit, error } = await c.from('deposits').insert({
       tenant_id: tenantId, booking_id: booking.id, amount: cents / 100,
@@ -199,37 +201,77 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
   if(!c) throw new Error('database not configured');
   const result = { migrations, checked: 0, refunded: 0, kept: 0, flagged: 0, voided: 0, failed: 0, skipped: 0 };
 
-  const [{ data: pending }, { data: paid }] = await Promise.all([
-    c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id,created_at').eq('status', 'pending').order('created_at').limit(200),
-    c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id').eq('status', 'paid').order('created_at').limit(200)
-  ]);
-  const rows = [...(pending || []), ...(paid || [])];
-  if(!rows.length) return result;
+  // Every open deposit (keyset-paged — never just "the oldest 200"), then only
+  // the ones actually DUE, earliest appointment first.
+  const open = [];
+  for(const status of ['pending', 'paid']){
+    let last = null;
+    for(let page = 0; page < 40; page++){
+      let q = c.from('deposits').select('id,tenant_id,booking_id,amount,status,stripe_payment_intent_id,created_at').eq('status', status);
+      if(last) q = q.gt('id', last);
+      const { data } = await q.order('id', { ascending: true }).limit(500);
+      const list = data || [];
+      open.push(...list);
+      if(list.length < 500) break;
+      last = list[list.length - 1].id;
+    }
+  }
+  if(!open.length) return result;
 
-  const bookingIds = [...new Set(rows.map(d => d.booking_id).filter(Boolean))];
-  const { data: bookings } = bookingIds.length
-    ? await c.from('bookings').select('id,tenant_id,client_id,status,start_time,updated_at').in('id', bookingIds) : { data: [] };
-  const bMap = Object.fromEntries((bookings || []).map(b => [b.id, b]));
-  const tenantIds = [...new Set(rows.map(d => d.tenant_id).filter(Boolean))];
+  const bookingIds = [...new Set(open.map(d => d.booking_id).filter(Boolean))];
+  const bookings = [];
+  for(let i = 0; i < bookingIds.length; i += 300){
+    const ids = bookingIds.slice(i, i + 300);
+    // cancelled_at (20261006) is the real cancellation moment; older schemas
+    // fall back to updated_at.
+    let r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,updated_at,cancelled_at').in('id', ids);
+    if(r.error) r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,updated_at').in('id', ids);
+    bookings.push(...(r.data || []));
+  }
+  const bMap = Object.fromEntries(bookings.map(b => [b.id, b]));
+  const tenantIds = [...new Set(open.map(d => d.tenant_id).filter(Boolean))];
   const [settingsR, tenantsR] = await Promise.all([
-    tenantIds.length ? c.from('booking_settings').select('tenant_id,metadata').in('tenant_id', tenantIds) : Promise.resolve({ data: [] }),
+    tenantIds.length ? c.from('booking_settings').select('tenant_id,metadata,cancellation_window_hours').in('tenant_id', tenantIds) : Promise.resolve({ data: [] }),
     tenantIds.length ? c.from('tenants').select('id,name,phone_number').in('id', tenantIds) : Promise.resolve({ data: [] })
   ]);
   const sMap = Object.fromEntries((settingsR.data || []).map(s => [s.tenant_id, s]));
   const tMap = Object.fromEntries((tenantsR.data || []).map(t => [t.id, t]));
-  const clientIds = [...new Set((bookings || []).map(b => b.client_id).filter(Boolean))];
+
+  const graceMs = (tenantId) => (resolvePolicy(sMap[tenantId])?.grace_minutes ?? DEPOSIT_DEFAULTS.grace_minutes) * 60000;
+  // Free cancellation until `cancellation_window_hours` before the visit (the
+  // salon's booking setting); no window set → the deposit policy's grace.
+  const refundCutoff = (tenantId, startMs) => {
+    const h = Number(sMap[tenantId]?.cancellation_window_hours);
+    return Number.isFinite(h) && h > 0 ? startMs - h * 3600e3 : startMs - graceMs(tenantId);
+  };
+  const TERMINAL = ['cancelled', 'canceled', 'declined', 'no_show', 'no-show', 'completed', 'arrived', 'in_progress'];
+  const nowMs = now.getTime();
+  const isDue = (d) => {
+    const b = bMap[d.booking_id];
+    if(!b) return false;
+    const st = new Date(b.start_time).getTime();
+    const status = String(b.status || '').toLowerCase();
+    if(d.status === 'paid') return TERMINAL.includes(status);
+    const hold = resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0;
+    if(hold && !TERMINAL.includes(status) && st > nowMs && d.created_at && nowMs - new Date(d.created_at).getTime() > hold * 60000) return true;
+    return nowMs >= st - graceMs(d.tenant_id);
+  };
+  const due = open.filter(isDue).sort((x, y) => new Date(bMap[x.booking_id].start_time) - new Date(bMap[y.booking_id].start_time));
+  const rows = due.slice(0, 200);
+  // Not due yet (window open / visit still ahead) or booking gone: reviewed, nothing to do.
+  result.checked += open.length - rows.length;
+  result.skipped += open.length - due.length;
+  const clientIds = [...new Set(rows.map(d => bMap[d.booking_id]?.client_id).filter(Boolean))];
   const { data: clients } = clientIds.length
     ? await c.from('clients').select('id,name,phone').in('id', clientIds) : { data: [] };
   const clMap = Object.fromEntries((clients || []).map(cl => [cl.id, cl]));
-
-  const graceMs = (tenantId) => (resolvePolicy(sMap[tenantId])?.grace_minutes ?? DEPOSIT_DEFAULTS.grace_minutes) * 60000;
 
   for(const d of rows){
     result.checked++;
     const b = bMap[d.booking_id];
     if(!b){ result.skipped++; continue; } // booking gone — nothing to enforce
     const st = new Date(b.start_time).getTime();
-    const cutoff = st - graceMs(d.tenant_id); // refunds allowed until here
+    const cutoff = st - graceMs(d.tenant_id); // unpaid: enforced from here
     const status = String(b.status || '').toLowerCase();
     const unpaid = d.status === 'pending';
 
@@ -241,7 +283,18 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
       if(hold && live && st > now.getTime() && d.created_at && now.getTime() - new Date(d.created_at).getTime() > hold * 60000){
         const claimed = await setDepositStatus(c, d.id, 'expired', 'pending');
         if(!claimed){ result.skipped++; continue; }
-        await c.from('bookings').update({ status: 'cancelled', updated_at: now.toISOString() }).eq('id', b.id).eq('tenant_id', d.tenant_id);
+        await deactivatePaymentLink(d.stripe_payment_intent_id).catch(() => {}); // the link can't be paid after the time is released
+        // The canonical cancel: status history, fee void, upstream cancel to the
+        // salon's booking system — the client gets the release text below
+        // (not a second "Cancelled" text) — and the freed time goes to the waitlist.
+        try{
+          const repo = await import('./booking-repository.js');
+          await repo.updateCanonicalBooking(d.tenant_id, b.id, { status: 'cancelled' }, { source: 'deposit_sweep', reason: 'deposit_unpaid', sendCancellation: false });
+        }catch(e){ await c.from('bookings').update({ status: 'cancelled', updated_at: now.toISOString() }).eq('id', b.id).eq('tenant_id', d.tenant_id); }
+        try{
+          const { offerFreedSlot } = await import('./booking-reminders.js');
+          await offerFreedSlot({ tenantId: d.tenant_id, serviceId: b.service_id || null, freedAt: b.start_time });
+        }catch(_){ /* the waitlist never blocks the release */ }
         const cl = clMap[b.client_id]; const t = tMap[d.tenant_id];
         if(cl?.phone && t?.phone_number){
           await send({ from: t.phone_number, to: cl.phone, tenantId: d.tenant_id, type: 'SMS',
@@ -256,6 +309,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
       if(['cancelled', 'canceled', 'declined', 'no_show', 'no-show', 'completed', 'arrived', 'in_progress'].includes(status)){
         // Booking ended/abandoned without payment — nothing to enforce.
         await setDepositStatus(c, d.id, 'void', 'flagged');
+        await deactivatePaymentLink(d.stripe_payment_intent_id).catch(() => {});
         result.voided++;
         continue;
       }
@@ -290,8 +344,10 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
       continue;
     }
     if(['cancelled', 'canceled', 'declined'].includes(status)){
-      const cancelledAt = new Date(b.updated_at || b.start_time).getTime();
-      if(cancelledAt <= cutoff){
+      // When the client cancelled (cancelled_at; updated_at only on old schemas)
+      // against the salon's own cancellation window.
+      const cancelledAt = new Date(b.cancelled_at || b.updated_at || b.start_time).getTime();
+      if(cancelledAt <= refundCutoff(d.tenant_id, st)){
         // In-window cancellation: refund.
         const claimed = await setDepositStatus(c, d.id, 'refunding', 'paid');
         if(!claimed){ result.skipped++; continue; }

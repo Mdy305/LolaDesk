@@ -112,7 +112,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
   <form class="sheet" id="mfa" hidden>
     <h2>Enter your code</h2>
     <p>Open your authenticator app and type the 6-digit code for LolaDesk.</p>
-    <input class="input" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"/>
+    <input class="input" id="mfaCode" aria-label="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"/>
     <button class="btn btn-primary" type="submit">Continue</button>
     <p class="msg" id="mfaMsg" role="status"></p>
   </form>
@@ -121,7 +121,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
   <form class="sheet" id="forgot" hidden>
     <h2>Reset your password</h2>
     <p>Lola will email you a link to set a new one.</p>
-    <input class="input" id="forgotEmail" type="email" autocomplete="email" placeholder="you@salon.com"/>
+    <input class="input" id="forgotEmail" aria-label="Your email" type="email" autocomplete="email" placeholder="you@salon.com"/>
     <button class="btn btn-primary" type="submit">Email me a link</button>
     <p class="msg" id="forgotMsg" role="status"></p>
   </form>
@@ -130,7 +130,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
   <form class="sheet" id="callme" hidden>
     <h2>Hear Lola on a real call</h2>
     <p>She'll call your phone now, the way she answers your salon. US and Canada numbers.</p>
-    <input class="input" id="callPhone" type="tel" autocomplete="tel" placeholder="(305) 555-0123"/>
+    <input class="input" id="callPhone" aria-label="Your phone number" type="tel" autocomplete="tel" placeholder="(305) 555-0123"/>
     <button class="btn btn-primary" type="submit">Call me</button>
     <p class="msg" id="callMsg" role="status"></p>
   </form>

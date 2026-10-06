@@ -16,8 +16,15 @@
  *    never 9 p.m.–8 a.m. salon time. Every turned-away booking is logged.
  * 3. runTrialReminders(): 3 days and 1 day before the trial ends, the owner
  *    gets what Lola did for them so far, and the same link. Once each.
+ *
+ * Hard stops never wait for the switch: a salon whose service is OFF per
+ * lib/service-gate.js (canceled past its paid period, unpaid after the 7-day
+ * past_due grace, suspended, trial over by more than 3 days) is paused even
+ * with BILLING_ENFORCE unset. The switch only adds the immediate trial paywall
+ * (no 3-day grace) for conversion.
  */
 import { billingGate } from './billing-gate.js';
+import { rawServiceStatus as serviceStatus } from './service-gate.js';
 import { sendSms } from './sms.js';
 import { e164 } from './db.js';
 import { getBookingSettings } from './booking-repository.js';
@@ -32,9 +39,11 @@ export function enforcing(env = process.env) {
 
 /** null → book as normal. Otherwise the gate result (blocked, reason, speak lines). */
 export function gateNewBooking(tenant) {
-  if (!enforcing()) return null;
   const g = billingGate(tenant);
-  return g.blocked ? g : null;
+  if (!g.blocked) return null;
+  if (enforcing()) return g;
+  // Switch off: still stop salons whose service is genuinely off.
+  return serviceStatus(tenant).ok ? null : g;
 }
 
 /** What Lola says to a caller she can't book. Never mentions billing. */
@@ -105,7 +114,7 @@ export async function runTrialReminders(c, { now = new Date() } = {}) {
   for (const t of tenants) {
     try {
       const sub = String(t.subscription_status || '');
-      if (!t.trial_ends_at || ['active', 'canceling', 'canceled', 'past_due'].includes(sub) || t.billing_status === 'suspended') continue;
+      if (!t.trial_ends_at || ['active', 'trialing', 'canceling', 'canceled', 'past_due', 'unpaid'].includes(sub) || ['suspended', 'active'].includes(String(t.billing_status || ''))) continue;
       const end = Date.parse(t.trial_ends_at);
       if (!Number.isFinite(end) || end <= now) continue;
       const daysLeft = Math.ceil((end - now) / DAY);
@@ -136,6 +145,53 @@ export async function runTrialReminders(c, { now = new Date() } = {}) {
         out.push({ tenant: t.id, sent: daysLeft });
       } else out.push({ tenant: t.id, skipped: r?.reason || 'sms_failed' });
     } catch (e) { out.push({ tenant: t.id, error: String(e?.message || e) }); }
+  }
+  return out;
+}
+
+/**
+ * Tell the salon owner something about their account — a text from the salon
+ * line to the owner's cell, plus an email to the owner. Never throws.
+ * → { texted, emailed }
+ */
+export async function notifyOwner(tenant, text, { subject = 'Your LolaDesk account', sms = true, email = true } = {}) {
+  const out = { texted: false, emailed: false };
+  if (!tenant?.id || !text) return out;
+  if (sms) {
+    try {
+      const to = ownerPhone(tenant);
+      if (to) { const r = await sendSms({ tenant, to, body: text }); out.texted = !!(r && !r.skipped && !r.error && !r.failed); }
+    } catch (_) {}
+  }
+  if (email && tenant.owner_email) {
+    try {
+      const { SendEmail } = await import('./lola-integrations.js');
+      const r = await Promise.race([
+        SendEmail({ to: tenant.owner_email, subject, html: `<p>${String(text).replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]))}</p>`, textContent: text, from: process.env.EMAIL_FROM || process.env.SENDGRID_FROM || 'lola@loladesk.com' }),
+        new Promise((r2) => setTimeout(() => r2(null), 4000)),
+      ]);
+      out.emailed = !!(r && (r.success === true || r.sent === true || r.id || r.messageId));
+    } catch (_) {}
+  }
+  return out;
+}
+
+/** Alert the platform operator (ADMIN_EMAILS / ADMIN_ALERT_PHONE). Never throws. */
+export async function alertAdmin(subject, text) {
+  try { console.error('[admin-alert]', subject, text); } catch (_) {}
+  const out = { emailed: 0, texted: false };
+  const list = String(process.env.ADMIN_EMAILS || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (list.length) {
+    try {
+      const { SendEmail } = await import('./lola-integrations.js');
+      for (const to of list.slice(0, 5)) {
+        try { await Promise.race([SendEmail({ to, subject, html: `<p>${String(text).replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]))}</p>`, textContent: text, from: process.env.EMAIL_FROM || 'lola@loladesk.com' }), new Promise((r) => setTimeout(r, 4000))]); out.emailed++; } catch (_) {}
+      }
+    } catch (_) {}
+  }
+  const phone = e164(process.env.ADMIN_ALERT_PHONE || '');
+  if (phone) {
+    try { const r = await sendSms({ to: phone, body: `${subject}: ${text}`.slice(0, 600) }); out.texted = !!(r && !r.skipped && !r.error); } catch (_) {}
   }
   return out;
 }

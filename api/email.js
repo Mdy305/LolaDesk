@@ -7,7 +7,7 @@
  * so nothing could send). This is the missing send surface it reuses.
  *
  *   GET /api/email                        → provider config status (never the key)
- *   GET /api/email?email=…&tenant=…       → unsubscribe (flips the client's opt-out)
+ *   GET /api/email?email=…&tenant=…&sig=… → unsubscribe (signed link only; flips the client's opt-out)
  *   POST /api/email  (Bearer authed)      → send one templated email
  *       { kind: 'confirmation'|'follow_up'|'review_request',
  *         to? | client_id?, ...context }
@@ -20,6 +20,7 @@ import { getUserFromToken, bearer } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { SendEmail } from './lib/lola-integrations.js';
 import { renderEmail } from './lib/email-templates.js';
+import { unsubscribeSigOk } from './lib/unsubscribe-sign.js';
 
 function providerConfig(){
   return {
@@ -43,6 +44,12 @@ export function createHandler({ send = SendEmail, db = null } = {}){
       const email = String(req.query?.email || '');
       const tenantId = String(req.query?.tenant || '');
       if(email && tenantId){
+        // Only a signed link (sig = HMAC of tenant + email, put in every email we send) unsubscribes.
+        // An unsigned/forged link gets the same neutral page and changes nothing.
+        if(!unsubscribeSigOk(tenantId, email, req.query?.sig)){
+          res.setHeader('Content-Type','text/html; charset=utf-8');
+          return res.status(200).send('<h2>This unsubscribe link isn\u2019t valid</h2><p>Use the Unsubscribe link at the bottom of the email you received, or reply to the salon and ask to be removed.</p>');
+        }
         try{
           const c = db || (await import('./lib/db.js')).db();
           if(!c) return res.status(503).json({ ok:false, error:'database not configured' });

@@ -108,7 +108,7 @@ export async function listAppointments(integration, { from, to } = {}){
   const end   = (to   || new Date(Date.now() + 30 * 864e5).toISOString()).slice(0, 19);
   const r = await fetch(`${API_BASE}/appointment/staffappointments?StartDate=${encodeURIComponent(start)}&EndDate=${encodeURIComponent(end)}&limit=200`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
-  if(!r.ok) return [];
+  if(!r.ok) throw new Error(`Mindbody appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
   return (data.Appointments || []).map(normalize);
 }
 
@@ -144,3 +144,8 @@ export async function listClients(integration, { limit = 100 } = {}){
     raw: c
   }));
 }
+
+// Cancels / moves: Mindbody's partner API is not wired for changes yet. The outbox
+// records the change as failed and texts the owner to make it in Mindbody too.
+export async function cancelAppointment(){ throw new Error('unsupported: Mindbody cancel is not available through its API yet'); }
+export async function updateAppointment(){ throw new Error('unsupported: Mindbody reschedule is not available through its API yet'); }

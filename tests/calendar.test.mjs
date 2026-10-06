@@ -384,7 +384,7 @@ test('dashboard reschedule with series_scope following shifts later occurrences 
   assert.equal(new Date(r4.start_time).getTime(), orig['ser-4'] + delta, 'ser-4 shifted by the same delta');
 });
 
-test('calendar series move rejects on a later-occurrence collision with partial apply (parity with salon.js)', async () => {
+test('calendar series move rejects on a later-occurrence collision and moves NOTHING (validate all, then write)', async () => {
   seed();
   // Rival booking sits where ser-4 (+2h shift) will land; ser-3 clears, ser-4 stops.
   const ser4 = seriesRows().find(r => r.id === 'ser-4');
@@ -400,13 +400,14 @@ test('calendar series move rejects on a later-occurrence collision with partial 
   await handler(postReq({ action: 'reschedule', booking_id: 'ser-2', starts_at: newStart, staff_id: 'st-1', series_scope: 'following', channel: 'dashboard' }), res);
   assert.equal(out.code, 409, 'collision must be 409 — got: ' + JSON.stringify(out.body).slice(0, 300));
   assert.equal(out.body.conflict, true);
-  assert.equal(out.body.moved_count, 1, 'ser-3 moved before ser-4 clashed');
+  assert.equal(out.body.moved_count, 0, 'every occurrence is validated before any write');
   assert.equal(out.body.failed_at_occurrence, 4, 'names the colliding position');
   assert.match(out.body.error, /already booked/);
   const rows = fake.all('bookings');
   const orig = Object.fromEntries(seriesRows().map(r => [r.id, new Date(r.start_time).getTime()]));
-  assert.equal(new Date(rows.find(r => r.id === 'ser-2').start_time).getTime(), orig['ser-2'], 'target NOT moved (later-first order)');
-  assert.equal(new Date(rows.find(r => r.id === 'ser-3').start_time).getTime(), orig['ser-3'] + 2 * 3600000, 'cleared occurrence PERSISTED shifted (partial-apply contract)');
+  assert.equal(new Date(rows.find(r => r.id === 'ser-2').start_time).getTime(), orig['ser-2'], 'target NOT moved');
+  assert.equal(new Date(rows.find(r => r.id === 'ser-3').start_time).getTime(), orig['ser-3'], 'no half-moved series: ser-3 NOT moved either');
+  assert.ok(!fake.all('availability_holds').some(h => h.status === 'active'), 'the target hold was let go');
   assert.equal(new Date(rows.find(r => r.id === 'ser-4').start_time).getTime(), orig['ser-4'], 'colliding occurrence NOT moved');
   assert.equal(new Date(rows.find(r => r.id === 'rival-c').start_time).getTime(), new Date(rival.start_time).getTime(), 'rival untouched');
 });

@@ -33,7 +33,7 @@ export const TELNYX_CAPABILITIES = Object.freeze({
 export async function chat({ system='', messages=[], maxTokens=600, temperature=0.7, tools=null, fast, deadlineMs } = {}){
   const multimodal = (messages || []).some(m => m && m.content != null && typeof m.content !== 'string');
   const quick = fast ?? (!multimodal && Number(maxTokens || 600) <= 700);
-  if(multimodal) return chatTelnyx({ system, messages, maxTokens, temperature, tools });
+  if(multimodal) return chatTelnyx({ system, messages, maxTokens, temperature, tools, deadlineMs });
   // Long-form writing (reading a website, the growth strategy, campaigns) used to go to Kimi alone:
   // a reasoning model that can think past 30s per attempt, so with retries the request outlived
   // Vercel's 60s limit and the owner saw nothing. Now it's written by the fast model inside one
@@ -108,7 +108,10 @@ async function chatFast({ system, messages, maxTokens, temperature, tools, deadl
   return { ok:false, text:'', provider:AI_PROVIDER, model:FAST_MODEL(), error:'Telnyx inference failed: '+(last.error||'unknown error') };
 }
 
-async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
+async function chatTelnyx({ system, messages, maxTokens, temperature, tools, deadlineMs }){
+  // Optional overall budget (a texted photo must not outlive the request): every attempt fits inside it.
+  const started=Date.now();
+  const left=()=>deadlineMs ? Number(deadlineMs)-(Date.now()-started) : Infinity;
   if(!process.env.TELNYX_API_KEY){
     return { ok:false, text:'', provider:AI_PROVIDER, model:POWER_MODEL, error:'Missing TELNYX_API_KEY' };
   }
@@ -132,8 +135,9 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
   let dropTools=false;
 
   for(let i=0;i<budgets.length;i++){
+    if(left()<1000){ last={error:last.error==='no attempts'?'Telnyx inference deadline':last.error}; break; }
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+    const timer=setTimeout(()=>controller.abort(),Math.max(500,Math.min(REQUEST_TIMEOUT_MS,left())));
     try{
       const payload={
         model:POWER_MODEL,
@@ -176,7 +180,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
       const text=cleanAnswer(msg?.content||'');   // never speak the model's private reasoning
       const tool_calls=msg?.tool_calls||null;
       if(text||tool_calls){
-        return { ok:true, text, tool_calls, provider:AI_PROVIDER, model:POWER_MODEL, attempt:i+1 };
+        return { ok:true, text, tool_calls, provider:AI_PROVIDER, model:POWER_MODEL, attempt:i+1, ...(dropTools&&tools?.length ? { toolsDropped:true } : {}) };
       }
       last={error:'empty response'};
     }catch(error){
@@ -184,6 +188,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools }){
     }finally{
       clearTimeout(timer);
     }
+    if(left()<1250) break;
     await new Promise(resolve=>setTimeout(resolve,250));
   }
 

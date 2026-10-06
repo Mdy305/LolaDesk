@@ -51,7 +51,13 @@
 <div class="usage" id="usageGrid"></div>
 <div id="lolaBooked"></div>
 
-<h2 style="font-size:15px;font-weight:600;margin:24px 0 14px">Plans</h2>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:24px 0 14px">
+  <h2 style="font-size:15px;font-weight:600;margin:0">Plans</h2>
+  <div class="cycle" role="group" aria-label="Billing cycle" style="display:flex;gap:4px;background:var(--surface);border:.5px solid var(--border);border-radius:999px;padding:3px">
+    <button type="button" id="cyM" onclick="setCycle('monthly')" style="border:none;border-radius:999px;padding:7px 14px;font:inherit;font-size:12.5px;cursor:pointer">Monthly</button>
+    <button type="button" id="cyY" onclick="setCycle('annual')" style="border:none;border-radius:999px;padding:7px 14px;font:inherit;font-size:12.5px;cursor:pointer">Annual · 2 months free</button>
+  </div>
+</div>
 <div class="plans" id="plansGrid"></div>
 
 <div class="card">
@@ -68,7 +74,7 @@
 </main></div>
 <script src="auth-guard.js"></script><script src="sidebar.js"></script>
 <script>
-let STATE={};
+let STATE={}, PLANS=[], CYCLE='monthly';
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}
 function H(){return{'Content-Type':'application/json',Authorization:'Bearer '+token()};}
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -85,8 +91,9 @@ async function load(){
     renderBanner(sr);
     renderUsage(sr.usage||{});
     renderLolaBooked(sr.lola_bookings, sr.status);
-    renderPlans(pr.plans||[],sr);
-    document.getElementById('cancelBtn').style.display=(sr.status==='active'&&!sr.cancel_at_period_end)?'':'none';
+    PLANS=pr.plans||[]; if(sr.interval==='annual'&&sr.has_subscription) CYCLE='annual';
+    renderPlans(PLANS,sr);
+    document.getElementById('cancelBtn').style.display=(sr.has_subscription&&!sr.cancel_at_period_end&&sr.status!=='canceled')?'':'none';
     document.getElementById('resumeBtn').style.display=sr.cancel_at_period_end?'':'none';
   }catch(e){
     document.getElementById('statusBanner').innerHTML='<div class="banner danger"><div><h3>Billing unavailable</h3><p>'+esc(e.message)+'</p></div></div>';
@@ -95,6 +102,10 @@ async function load(){
 
 function renderBanner(s){
   const b=document.getElementById('statusBanner');
+  if(s.service&&s.service.ok===false){
+    b.innerHTML='<div class="banner danger"><div><h3>Lola is paused</h3><p>Lola is paused because '+esc(s.service.paused_because||'your plan is inactive')+'. Pick a plan below and she is back on right away.</p></div></div>';
+    return;
+  }
   if(!s.stripe_configured){
     b.innerHTML='<div class="banner warn"><div><h3>Stripe not connected</h3><p>Add STRIPE_SECRET_KEY in Vercel to enable billing.</p></div></div>';
     return;
@@ -103,12 +114,13 @@ function renderBanner(s){
     const d=s.trial_days_left;
     b.innerHTML='<div class="banner'+(d<=3?' warn':'')+'"><div><h3>'+d+' day'+(d===1?'':'s')+' left in your trial</h3>'+
       '<p>Pick a plan below to keep Lola answering your calls without interruption.</p></div></div>';
-  }else if(s.status==='active'){
+  }else if(s.status==='active'||s.status==='canceling'){
     const end=s.current_period_end?new Date(s.current_period_end).toLocaleDateString():'';
     b.innerHTML='<div class="banner"><div><h3>'+esc(s.plan_details?.name||s.plan)+' plan — active</h3>'+
       '<p>'+(s.cancel_at_period_end?'Ends on '+end:'Renews '+end)+'</p></div></div>';
   }else if(s.status==='past_due'){
-    b.innerHTML='<div class="banner danger"><div><h3>Payment failed</h3><p>Update your card to keep Lola running.</p></div>'+
+    const g=s.service&&s.service.grace_until?' Lola keeps working until '+new Date(s.service.grace_until).toLocaleDateString()+' while Stripe retries.':'';
+    b.innerHTML='<div class="banner danger"><div><h3>Payment failed</h3><p>Update your card to keep Lola running.'+esc(g)+'</p></div>'+
       '<button class="plan-btn primary" style="width:auto;padding:11px 20px" onclick="openPortal()">Update card</button></div>';
   }else if(s.status==='canceled'){
     b.innerHTML='<div class="banner danger"><div><h3>Subscription canceled</h3><p>Choose a plan to reactivate Lola.</p></div></div>';
@@ -139,27 +151,41 @@ function renderLolaBooked(f, status){
     '<div class="desc" style="margin-top:6px">LolaDesk fee'+(price?' ('+price+' per appointment Lola books, only if it happens)':'')+': <b>'+fee+'</b>. Cancelled and no-show appointments are never charged; bookings you add yourself are always free.</div></div>';
 }
 
+function setCycle(c){ CYCLE=c; renderPlans(PLANS,STATE); }
 function renderPlans(plans,s){
+  const on='background:var(--text);color:#080809', offc='background:transparent;color:var(--text2)';
+  const m=document.getElementById('cyM'), y=document.getElementById('cyY');
+  if(m&&y){ m.style.cssText+=';'+(CYCLE==='monthly'?on:offc); y.style.cssText+=';'+(CYCLE==='annual'?on:offc); }
+  const paying=!!s.has_subscription&&s.status!=='canceled';
   document.getElementById('plansGrid').innerHTML=plans.map(p=>{
-    const current=s.plan===p.id&&s.status==='active';
+    const current=paying&&s.plan===p.id&&(s.interval||'monthly')===CYCLE&&!s.cancel_at_period_end;
+    const amt=CYCLE==='annual'?(p.annual_display||p.price_display):p.price_display;
+    const sub=CYCLE==='annual'?'<div style="font-size:12px;color:var(--text3)">billed $'+((p.annual_cents||0)/100).toLocaleString()+' yearly</div>':'';
+    const label=current?'Current plan':(paying?'Switch to '+esc(p.name):'Start '+esc(p.name));
     return '<div class="plan'+(current?' current':'')+(p.id==='pro'?' featured':'')+'">'+
       '<div class="plan-tag">'+(current?'Your plan':(p.id==='pro'?'Most popular':''))+'</div>'+
       '<div class="plan-name">'+esc(p.name)+'</div>'+
-      '<div class="plan-price">'+esc(p.price_display)+'<span>/mo</span></div>'+
+      '<div class="plan-price">'+esc(amt)+'<span>/mo</span></div>'+sub+
       '<ul class="plan-feat">'+p.features.map(f=>'<li>'+esc(f)+'</li>').join('')+'</ul>'+
       '<button class="plan-btn '+(current?'ghost':'primary')+'" '+(current?'disabled':'')+
-      ' onclick="subscribe(\''+p.id+'\')">'+(current?'Current plan':(s.status==='trialing'?'Start '+esc(p.name):'Switch to '+esc(p.name)))+'</button>'+
+      ' onclick="subscribe(\''+p.id+'\')">'+label+'</button>'+
       '</div>';
   }).join('');
 }
 
 async function subscribe(plan){
-  msg('portalMsg','Opening secure checkout...',true);
+  const paying=!!STATE.has_subscription&&STATE.status!=='canceled';
+  if(paying){
+    const p=PLANS.find(x=>x.id===plan)||{name:plan};
+    if(!confirm('Switch your subscription to '+p.name+(CYCLE==='annual'?' (annual)':'')+'? Stripe prorates the difference on your next invoice.'))return;
+  }
+  msg('portalMsg',paying?'Switching your plan...':'Opening secure checkout...',true);
   try{
-    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'checkout',plan})});
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:paying?'switch':'checkout',plan,interval:CYCLE})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Checkout failed');
-    location.href=d.url;
+    if(d.url){ location.href=d.url; return; }
+    msg('portalMsg',d.message||'Plan updated.',true); load();
   }catch(e){msg('portalMsg',e.message,false);}
 }
 
@@ -197,6 +223,10 @@ if(new URLSearchParams(location.search).get('success')){
 }
 
 (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+</script>
+<script>
+// Came from a sign-up for a salon that already had its free trial: say why there's no new trial.
+(function(){try{if(!/[?&]trial_used=1/.test(location.search))return;var m=document.querySelector('main.main');if(!m)return;var d=document.createElement('div');d.setAttribute('role','status');d.style.cssText='margin:0 0 16px;padding:12px 14px;border-radius:12px;border:1px solid rgba(127,127,127,.25);font-size:14px;line-height:1.45';d.textContent='Welcome back! This salon has already used its free LolaDesk trial, so your account is ready but the trial won’t restart. Pick a plan below to turn Lola on.';m.insertBefore(d,m.firstChild);}catch(_){}})();
 </script>
 </body>
 </html>

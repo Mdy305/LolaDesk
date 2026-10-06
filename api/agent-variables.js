@@ -92,71 +92,48 @@ export default async function handler(req, res){
     const routing = await resolveInboundTenant({ to: toNumber, from: fromNumber });
     const tenant = routing.status === 'resolved' ? routing.tenant : null;
 
-    // ── POST-CALL INSIGHTS CORRELATION ──
+    // ── POST-CALL INSIGHTS CORRELATION + LIVE CALL ROW ──
     // The post-call insights webhook (call.conversation_insights.generated)
     // arrives with only call ids — no dialed number — so record this
-    // conversation's call_control_id → tenant mapping now, while the dialed
-    // number is known. Best-effort: never let this break the 1s response.
-    const bookkeeping = (async () => { if(tenant?.id){
+    // conversation's call_control_id → tenant mapping, and the live calls row
+    // the Lola Live panel streams. Telnyx waits at most ~3s for THIS answer,
+    // so the bookkeeping runs AFTER the reply is sent (see the end).
+    const bookkeeping = async () => { if(tenant?.id){
       const callControlId = body?.data?.payload?.call_control_id || body?.call_control_id || null;
-      // The assistant event family carries the session ids under
-      // data.payload.* (same shape as call.conversation.ended / the
-      // insights webhook). Parse defensively — call_control_id is the
-      // authoritative correlation key; the session id, when present, rides
-      // along and backfills at call end if this webhook lacked it.
       const callSessionId = body?.data?.payload?.call_session_id || body?.data?.call_session_id || body?.call_session_id || null;
       const callLegId = body?.data?.payload?.call_leg_id || body?.data?.call_leg_id || body?.call_leg_id || null;
       if(callControlId){
+        const c2 = db();
         try{
-          const c2 = db();
           if(c2) await c2.from('call_sessions').upsert({
             call_control_id: callControlId,
             tenant_id: tenant.id,
             from_number: fromNumber || null,
             to_number: toNumber || null
-          }, { onConflict: 'call_control_id' });
-        }catch(e){ /* never block the variable fetch */ }
-
-        // LIVE CALL ROW: persist the calls row at conversation start so the
-        // operator dashboard's Lola Live panel streams this call WHILE Lola
-        // is talking — not only after post-call insights land. Best-effort,
-        // exactly like call_sessions: a DB hiccup here must never break the
-        // 1s dynamic-variables response Telnyx is waiting on.
+          }, { onConflict: 'call_control_id' }).then((r) => r, () => null);
+        }catch(e){ /* never block */ }
+        // ONE row per call (the insights webhook and Call Control events update this same row).
         try{
-          const c3 = db();
-          if(c3){
-            const existing = await c3.from('calls')
-              .select('id,status,call_session_id')
-              .eq('telnyx_call_control_id', callControlId)
-              .maybeSingle()
-              .then((r) => r, () => ({ data: null }));   // the query builder has no .catch
-            if(existing?.data?.id){
-              // Same call reconnecting (Telnyx retries the variable fetch)
-              // → bring the row back to live and backfill a session id if
-              // this request carries one the row never got.
-              const patch = { status: 'in_progress' };
-              if(callSessionId) patch.call_session_id = callSessionId;
-              if(callLegId) patch.call_leg_id = callLegId;
-              await c3.from('calls').update(patch).eq('id', existing.data.id);
-            } else {
-              await c3.from('calls').insert({
-                tenant_id: tenant.id,
-                from_number: fromNumber || null,
-                to_number: toNumber || null,
-                direction: 'inbound',
-                status: 'in_progress',
-                telnyx_call_control_id: callControlId,
-                call_session_id: callSessionId || null,
-                call_leg_id: callLegId || null
-              });
-            }
+          if(c2){
+            const { upsertCallRow } = await import('./lib/call-row.js');
+            const patch = { status: 'in_progress' };
+            if(callLegId) patch.call_leg_id = callLegId;
+            await upsertCallRow(c2, { tenantId: tenant.id, callControlId, callSessionId, patch,
+              insert: { from_number: fromNumber || null, to_number: toNumber || null, direction: 'inbound', call_session_id: callSessionId || null, call_leg_id: callLegId || null } });
           }
-        }catch(e){ /* never block the variable fetch */ }
+        }catch(e){ /* never block */ }
       }
-    } })();
+    } };
+    // Reply first, then the bookkeeping (kept alive on Vercel with waitUntil).
+    const replyThenBook = async (payload, extraWork = null) => {
+      res.status(200).json(payload);
+      const work = Promise.resolve().then(async () => { await bookkeeping(); if(extraWork) await extraWork(); }).catch(() => {});
+      try{ const { afterResponse } = await import('./lib/booking-outbox.js'); afterResponse(work); }catch(_){}
+      await work;
+    };
 
     if(!tenant){
-      return res.status(200).json({
+      return replyThenBook({
         dynamic_variables: {
           tenant_id: '',
           to: toNumber || '',
@@ -172,8 +149,10 @@ export default async function handler(req, res){
       });
     }
 
-    // A forwarding test arriving (Lola's line called "from" itself or from the salon's number): mark it working.
-    const forwarded = (async () => { try{ const { noteForwardedArrival } = await import('./lib/forwarding.js'); await noteForwardedArrival(db(), tenant, fromNumber, toNumber); }catch(_){} })();
+    // A forwarding test arriving (Lola's line called "from" itself or from the salon's number): mark it working (after the reply).
+    const forwarded = async () => { try{ const { noteForwardedArrival } = await import('./lib/forwarding.js'); await noteForwardedArrival(db(), tenant, fromNumber, toNumber); }catch(_){} };
+    // An expired / cancelled / unpaid salon: Lola tells callers the line is paused instead of taking requests.
+    const gateP = (async () => { try{ const { serviceGate } = await import('./lib/paid-hooks.js'); return await serviceGate(tenant); }catch(_){ return { ok: true }; } })();
 
     let memory = { caller_known:'false', caller_name:'', caller_brief:'' };
     let story = null;
@@ -221,8 +200,14 @@ export default async function handler(req, res){
     });
 
     dynamic_variables.lola_greeting = greetingFor(tenant.name, story);
-    await Promise.all([bookkeeping, forwarded]).catch(() => {});
-    return res.status(200).json({ dynamic_variables });
+    const gate = await gateP;
+    if(gate && gate.ok === false){
+      const say = gate.say || `the salon's line is not taking requests right now — please text or call back later`;
+      dynamic_variables.salon_paused = 'true';
+      dynamic_variables.salon_paused_note = `IMPORTANT: ${tenant.name || 'This salon'} is not taking requests through Lola right now. Do not check availability, book, move or cancel anything, and do not take messages. Politely tell the caller: ${say}. Then end the call.`;
+      dynamic_variables.lola_greeting = discloseGreeting(`Thanks for calling ${tenant.name || 'the salon'}! This is Lola — ${String(say).replace(/[.!\s]+$/, '')}.`);
+    }
+    return replyThenBook({ dynamic_variables }, forwarded);
   }catch(e){
     return res.status(200).json({
       dynamic_variables: {

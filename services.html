@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Services — LolaDesk</title>
+<title>Services · LolaDesk</title>
 <meta name="description" content="Your service menu — what Lola quotes on every call and what clients see when they book online."/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
@@ -182,11 +182,11 @@
       </div>
     </div>
 
-    <div class="fld"><label>Service name *</label><input id="fName" placeholder="e.g. Luxury Balayage"/></div>
+    <div class="fld"><label for="fName">Service name *</label><input id="fName" placeholder="e.g. Luxury Balayage"/></div>
 
     <div class="row2">
       <div class="fld">
-        <label>Category</label>
+        <label for="fCategory">Category</label>
         <select id="fCategory">
           <option value="Hair">Hair</option>
           <option value="Color">Color</option>
@@ -201,21 +201,21 @@
           <option value="Other">Other</option>
         </select>
       </div>
-      <div class="fld"><label>Duration (min)</label><input id="fDur" type="number" min="5" max="480" placeholder="60" inputmode="numeric"/></div>
+      <div class="fld"><label for="fDur">Duration (min)</label><input id="fDur" type="number" min="5" max="480" placeholder="60" inputmode="numeric"/></div>
     </div>
 
     <div class="phase-box">
       <div class="phase-head"><b>Processing time</b><span class="phase-total" id="phaseTotal">Optional</span></div>
       <div class="row3">
-        <div class="fld"><label>Apply</label><input id="fA1" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
-        <div class="fld"><label>Processing</label><input id="fProc" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
-        <div class="fld"><label>Finish</label><input id="fA2" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+        <div class="fld"><label for="fA1">Apply</label><input id="fA1" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+        <div class="fld"><label for="fProc">Processing</label><input id="fProc" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
+        <div class="fld"><label for="fA2">Finish</label><input id="fA2" type="number" min="0" max="480" placeholder="0" inputmode="numeric" oninput="syncPhases()"/></div>
       </div>
       <div class="fine" style="font-size:11px;color:var(--text3);margin-top:8px">For color and treatments: the stylist is free during processing, so Lola can book a quick service in that gap.</div>
     </div>
 
     <div class="fld">
-      <label>Type</label>
+      <label for="fAddon">Type</label>
       <select id="fAddon">
         <option value="false">Main service</option>
         <option value="true">Add-on — booked alongside a main service</option>
@@ -223,15 +223,15 @@
     </div>
 
     <div class="row2">
-      <div class="fld"><label>Price ($)</label><input id="fPrice" type="number" min="0" step="1" placeholder="0" inputmode="decimal"/></div>
-      <div class="fld"><label>Buffer after (min)</label><input id="fBuffer" type="number" min="0" placeholder="Salon default" inputmode="numeric"/><div class="fine">Clean-up time after this service. Empty = salon default.</div></div>
+      <div class="fld"><label for="fPrice">Price ($)</label><input id="fPrice" type="number" min="0" step="1" placeholder="0" inputmode="decimal"/></div>
+      <div class="fld"><label for="fBuffer">Buffer after (min)</label><input id="fBuffer" type="number" min="0" placeholder="Salon default" inputmode="numeric"/><div class="fine">Clean-up time after this service. Empty = salon default.</div></div>
     </div>
 
-    <div class="fld"><label>Description</label><textarea id="fDesc" placeholder="Two lines shown to clients on the booking page."></textarea></div>
+    <div class="fld"><label for="fDesc">Description</label><textarea id="fDesc" placeholder="Two lines shown to clients on the booking page."></textarea></div>
 
     <div class="row2">
       <div class="fld">
-        <label>Deposit override</label>
+        <label for="fDepType">Deposit override</label>
         <select id="fDepType">
           <option value="">Use policy default</option>
           <option value="percent">Percent of service</option>
@@ -240,7 +240,7 @@
         </select>
         <div class="fine">Overrides Banking → Policies for this service only.</div>
       </div>
-      <div class="fld"><label>Deposit amount</label><input id="fDepAmt" type="number" min="0" placeholder="25" inputmode="numeric"/></div>
+      <div class="fld"><label for="fDepAmt">Deposit amount</label><input id="fDepAmt" type="number" min="0" placeholder="25" inputmode="numeric"/></div>
     </div>
 
     <div class="macts">

@@ -26,7 +26,11 @@ import { resolveBookingRequest } from './booking-resolver.js';
 import { getAvailability, holdAvailability } from './availability-engine-v2.js';
 import * as crm from './lola-crm.js';
 import { writeAppointment, getConnector } from './aggregator.js';
-import { listBookings, enrichBookings, resolveDate, to24, moveBooking } from './operator-db.js';
+import { listBookings, enrichBookings, resolveDateKey, to24, moveBooking } from './operator-db.js';
+import { salonTz, fmtSalon } from './salon-time.js';
+import { localDateKey, zonedLocalToUtc } from './timezone.js';
+import { sendConfirmationSMS } from './booking-repository.js';
+import { requestDeposit } from './deposits.js';
 import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
 import { offerFreedSlot } from './booking-reminders.js';
 
@@ -93,6 +97,11 @@ export async function commitToExternalProvider(tenantId, ctx){
     service_id: serviceId || ctx.service?.id || undefined,
     service: ctx.service?.name || null,
     team_member_id: teamMemberId || ctx.staff?.id || undefined,
+    // LolaDesk ids, so a connector can resolve its own mappings / idempotency.
+    local_booking_id: ctx.bookingId || undefined,
+    local_service_id: ctx.service?.id || undefined,
+    local_staff_id: ctx.staff?.id || undefined,
+    local_client_id: ctx.client?.id || undefined,
     notes: ctx.notes || 'Booked by Lola (LolaDesk AI front desk)',
     timezone: ctx.timezone || 'America/New_York',
     price: ctx.price
@@ -105,13 +114,20 @@ export async function commitToExternalProvider(tenantId, ctx){
     return { ok:true, external:{ id: externalId, provider } };
   }catch(e){
     const msg = String(e?.message || e);
-    return { ok:false, conflict: CONFLICT_RE.test(msg), error: msg };
+    // A setup problem (unmapped service, no location) won't fix itself on retry.
+    if(e?.code === 'config') return { ok:false, conflict:false, unsupported:true, error: msg };
+    return { ok:false, conflict: e?.code === 'conflict' || CONFLICT_RE.test(msg), error: msg };
   }
 }
 
 // ── small helpers ──────────────────────────────────────────────────
-const timeLabel = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-const dayLabel = d => new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+// Spoken times are the SALON's wall clock (Vercel runs in UTC).
+const timeLabel = (iso, tz) => fmtSalon(iso, tz, 'time');
+const dayLabel = (d, tz) => {
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? zonedLocalToUtc(String(d), '12:00:00', tz || 'America/New_York') : d;
+  try{ return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz || 'America/New_York' }); }
+  catch(_){ return new Date(iso).toDateString(); }
+};
 const first = n => String(n || '').split(' ')[0];
 function addMin(iso, minutes){ return new Date(new Date(iso).getTime() + Number(minutes || 0) * 60000).toISOString(); }
 
@@ -149,12 +165,26 @@ function jsonServices(tenant){
   }catch{ return []; }
 }
 
-async function startsAtFromParams(params, fallbackIso){
-  if(params.starts_at) return new Date(params.starts_at).toISOString();
-  const d = params.date ? resolveDate(params.date) : new Date(fallbackIso || Date.now());
-  const [h, m] = to24(params.time).split(':');
-  d.setHours(+h, +m, 0, 0);
-  return d.toISOString();
+/**
+ * The appointment instant from spoken params, built in the SALON's timezone.
+ *   starts_at (ISO)           → as given
+ *   date + time               → salon-local date at salon-local time
+ *   time only                 → on fallbackIso's salon-local day (reschedule: the
+ *                               booking's own day), else the salon's today
+ *   no time                   → null: the caller asks — a time is never invented
+ */
+export function startsAtFromParams(params, { fallbackIso = null, tz = 'America/New_York', now = new Date() } = {}){
+  if(params.starts_at && !/^\d{4}-\d{2}-\d{2}$/.test(String(params.starts_at))){
+    const d = new Date(params.starts_at);
+    if(!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  const hhmm = to24(params.time);
+  if(!hhmm) return null;
+  const dateParam = params.date || (/^\d{4}-\d{2}-\d{2}$/.test(String(params.starts_at || '')) ? params.starts_at : null);
+  const key = dateParam ? resolveDateKey(dateParam, tz, now)
+    : (fallbackIso ? localDateKey(new Date(fallbackIso), tz) : localDateKey(now, tz));
+  if(!key) return null;
+  return zonedLocalToUtc(key, hhmm, tz);
 }
 
 // ── tenant memory ("Lola remembers all") ────────────────────────────
@@ -293,11 +323,58 @@ export async function checkAvailability(tenant, params){
     limit: Number(params.limit || 12)
   });
   if(!av.ok) return { ok: false, error: av.error, speak: "I couldn't check that right now." };
-  const names = av.slots.slice(0, 4).map(s => `${timeLabel(s.starts_at)}${s.staff_name ? ` with ${first(s.staff_name)}` : ''}`);
+  const tz = await salonTz(tenant.id);
+  const names = av.slots.slice(0, 4).map(s => `${timeLabel(s.starts_at, tz)}${s.staff_name ? ` with ${first(s.staff_name)}` : ''}`);
   const speak = av.slots.length
     ? `I have ${av.slots.length} opening${av.slots.length === 1 ? '' : 's'}${names.length ? `: ${names.join(', ')}` : ''}.`
     : `That day looks full — want me to try a different day?`;
   return { ok: true, slots: av.slots, service: av.service, settings: av.settings, speak, text: speak };
+}
+
+// Upstream write-through for a booking that is ALREADY saved in LolaDesk:
+// queue it in the durable outbox (retried by cron) and wait a moment for the
+// salon's platform. → { committed, conflict, external, pending }
+// While we wait, a refusal does NOT text the owner (the caller pivots instead);
+// once we stop waiting, any later refusal alerts the owner as usual.
+const UPSTREAM_WAIT_MS = 3500;
+async function writeThroughNow(tenantId, booking, ctx){
+  let waiting = true;
+  try{
+    const { enqueueUpstream, processOutbox, afterResponse } = await import('./booking-outbox.js');
+    const c = db();
+    const q = await enqueueUpstream(c, { tenantId, bookingId: booking.id, ctx });
+    if(!q?.ok) return { pending: false };
+    const send = async (m) => { if(waiting) return { skipped: true, reason: 'caller_pivoting' }; const { sendSms } = await import('./sms.js'); return sendSms(m); };
+    const run = processOutbox(c, { bookingId: booking.id, send });
+    afterResponse(run);
+    const out = await Promise.race([run.catch(() => null), new Promise(r => setTimeout(() => r(null), UPSTREAM_WAIT_MS))]);
+    const res = (out?.results || []).find(x => x.op === 'create' || !x.op) || null;
+    if(res?.done) return { committed: true, external: res.external };
+    if(res?.failed && res.conflict) return { conflict: true, error: res.error };
+    return { pending: !res || res.retry_in_min != null };
+  }catch(e){ console.warn('[booking-brain] write-through:', String(e?.message||e).slice(0,160)); return { pending: true }; }
+  finally{ waiting = false; }
+}
+
+// Undo a local booking the salon's platform just refused (the caller is offered
+// another time instead) — silent: the client was never told it was booked.
+async function withdrawBooking(tenantId, booking, channel){
+  try{ await repo.updateCanonicalBooking(tenantId, booking.id, { status: 'cancelled' }, { source: channel, reason: 'upstream_conflict', sendCancellation: false, upstream: false }); }
+  catch(e){ console.warn('[booking-brain] withdraw failed:', e?.message || e); }
+}
+
+// The client is told once everything held: text + deposit request (same
+// contract createCanonicalBooking uses when it confirms inline).
+function confirmBooked(tenantId, booking){
+  sendConfirmationSMS({ tenantId, clientId: booking.client_id, serviceId: booking.service_id, startTime: booking.start_time, confirmationCode: booking.confirmation_code }).catch(() => {});
+  requestDeposit({ tenantId, booking, policy: null }).catch(() => {});
+}
+
+const ACTIVE = (b) => !/^(cancel|no[-_ ]?show)/i.test(String(b?.status || ''));
+async function overlappingActive(tenantId, startIso, endIso, excludeId = null){
+  const c = db(); if(!c) return [];
+  const { data } = await c.from('bookings').select('id,status,start_time,end_time,created_at,staff_id').eq('tenant_id', tenantId).lt('start_time', endIso);
+  return (data || []).filter(b => ACTIVE(b) && b.id !== excludeId && new Date(b.end_time || addMin(b.start_time, 60)).getTime() > new Date(startIso).getTime());
 }
 
 export async function bookAppointment(tenant, params, opts = {}){
@@ -311,31 +388,47 @@ export async function bookAppointment(tenant, params, opts = {}){
     const hasContact = params.client_phone || params.phone || params.client_name || params.name || params.client_email || params.email;
     if(!hasContact) return { ok: false, needs: 'client_phone', speak: "What's the best phone number for the appointment?" };
 
+    const tz = await salonTz(tenantId);
+    const startsAt = startsAtFromParams(params, { tz });
+    // No time given → ask. (It used to quietly become 10:00 server time.)
+    if(!startsAt) return { ok: false, needs: 'time', speak: `What time would you like${params.date ? ` on ${dayLabel(resolveDateKey(params.date, tz) || params.date, tz)}` : ''}?` };
+
     const client = await resolveClient(tenantId, params, true);
     if(!client?.id) return { ok: false, needs: 'client_phone', speak: "What's the best phone number for the appointment?" };
 
     let insights = null;
     try{ insights = await crm.getClientInsights(client.id, tenantId); }catch{}
 
-    const startsAt = await startsAtFromParams(params);
-
-    // JSON-service legacy path: no calendar rows yet, book directly.
+    // JSON-service legacy path: no calendar rows yet. Still conflict-checked:
+    // one client per chair (the onboarded team size) at any moment.
     if(resolved.jsonService){
       const svc = resolved.service;
       const duration = Math.max(15, Number(svc.duration_minutes || 60));
+      const endsAt = addMin(startsAt, duration);
+      const chairs = Math.max(1, Array.isArray(tenant.team) ? tenant.team.length : 0);
+      const taken = () => ({ ok: false, conflict: true, needs: 'alternate_time', speak: `That time is already booked — what other time works for you?`, alternatives: [] });
+      if((await overlappingActive(tenantId, startsAt, endsAt)).length >= chairs) return taken();
       const booking = await repo.createCanonicalBooking({
         tenantId, clientId: client.id, serviceId: null, staffId: null,
-        startTime: startsAt, endTime: addMin(startsAt, duration), status: 'confirmed',
+        startTime: startsAt, endTime: endsAt, status: 'confirmed',
         totalAmount: Number(svc.price || 0), notes: params.notes || null,
-        source: channel, conversationId, holdId: null
+        source: channel, conversationId, holdId: null, sendConfirmation: false
       });
+      // Re-check after insert: a racer that landed first keeps the chair.
+      const mineAt = new Date(booking.created_at || Date.now()).getTime();
+      const earlier = (await overlappingActive(tenantId, startsAt, endsAt, booking.id)).filter(b => {
+        const t = new Date(b.created_at || 0).getTime();
+        return t < mineAt || (t === mineAt && String(b.id) < String(booking.id));
+      });
+      if(earlier.length >= chairs){ await withdrawBooking(tenantId, booking, channel); return taken(); }
+      confirmBooked(tenantId, booking);
       await logEvent(tenantId, 'booking_created', { booking_id: booking.id, client_id: client.id, service: svc.name, at: startsAt });
-      const when = `${dayLabel(startsAt)} at ${timeLabel(startsAt)}`;
+      const when = `${dayLabel(startsAt, tz)} at ${timeLabel(startsAt, tz)}`;
       const speak = `Perfect${client.name ? `, ${first(client.name)}` : ''}. You're booked for ${svc.name} on ${when}.`;
       return { ok: true, booked: true, booking, speak, text: speak };
     }
 
-    // Smart path: hold the slot (checks real availability), then commit.
+    // Smart path: hold the slot atomically (checks real availability), then commit.
     let selected = resolved.staff, held = null;
     const candidates = resolved.staffResult?.candidates || [];
     if(selected){
@@ -348,59 +441,55 @@ export async function bookAppointment(tenant, params, opts = {}){
     } else {
       return { ok: false, needs: 'staff', speak: 'I can check that once your team is on the calendar — which stylist were you thinking?', options: [] };
     }
-    if(!held?.ok){
+    const pivot = async (lead) => {
       const alt = await getAvailability({ tenantId, serviceId: resolved.service.id, date: startsAt, limit: 5 }).catch(() => ({ ok: false, slots: [] }));
-      const hint = alt.ok && alt.slots.length ? ` I could do ${timeLabel(alt.slots[0].starts_at)}.` : '';
-      return { ok: false, conflict: true, needs: 'alternate_time', speak: `That time just got taken.${hint} Want me to grab the closest opening?`, alternatives: alt.slots || [] };
-    }
+      const hint = alt.ok && alt.slots.length ? ` I could do ${timeLabel(alt.slots[0].starts_at, tz)}.` : '';
+      return { ok: false, conflict: true, needs: 'alternate_time', speak: `${lead}${hint} Want me to grab the closest opening?`, alternatives: alt.slots || [] };
+    };
+    if(!held?.ok) return pivot('That time just got taken.');
 
     const services = await repo.listServices(tenantId);
     const svcRow = services.find(s => s.id === resolved.service.id) || resolved.service;
 
-    // ── EXTERNAL COMMIT: push to the connected booking provider ──
-    // The local hold is already taken; now the appointment must LAND on
-    // Square/Vagaro/etc. If the provider rejects it as already taken (409),
-    // release the hold and pivot to the closest openings — exactly the
-    // blueprint's conflict protocol. Any other failure (auth, network) keeps
-    // the booking local so the caller is never left unbooked; it's logged.
-    let externalRef = null;
-    const commit = await commitToExternalProvider(tenantId, {
-      client, service: svcRow, staff: selected,
-      startsAt: held.slot.starts_at, endsAt: held.slot.ends_at,
-      durationMin: held.slot.duration_minutes, notes: params.notes || null,
-      price: held.slot.price ?? svcRow.price ?? 0, timezone: held.slot.time_zone
-    }).catch(e => ({ ok:false, conflict:false, error:String(e?.message||e) }));
-
-    if(commit?.conflict){
-      await repo.releaseHold(tenantId, held.hold.hold_token, 'released');
-      await logEvent(tenantId, 'external_conflict', { provider: commit.provider || 'provider', time: held.slot.starts_at });
-      const alt = await getAvailability({ tenantId, serviceId: resolved.service.id, date: startsAt, limit: 5 }).catch(() => ({ ok:false, slots: [] }));
-      const hint = alt.ok && alt.slots.length ? ` I could do ${timeLabel(alt.slots[0].starts_at)}.` : '';
-      return { ok:false, conflict:true, needs:'alternate_time', speak:`That slot just filled up a second ago.${hint} Want me to grab the closest opening?`, alternatives: alt.slots || [] };
-    }
-    if(commit?.ok) externalRef = commit.external;
-    else if(commit && !commit.skipped) console.warn('[booking-brain] external commit failed — booking kept local:', commit.error);
-
-    const booking = await repo.createCanonicalBooking({
-      tenantId, clientId: client.id, serviceId: resolved.service.id, staffId: selected.id,
+    // ── LOCAL FIRST: the booking is saved in LolaDesk before anything else,
+    // so a salon-platform hiccup can never lose it. Claimed from the hold
+    // exactly once. The text + deposit go out after the platform answers.
+    const saved = await repo.bookFromHold(tenantId, held.hold, {
+      clientId: client.id, serviceId: resolved.service.id, staffId: selected.id,
       startTime: held.slot.starts_at, endTime: held.slot.ends_at, status: 'confirmed',
       totalAmount: held.slot.price ?? svcRow.price ?? 0, notes: params.notes || null,
-      source: channel, conversationId, holdId: held.hold.id,
-      externalId: externalRef?.id || null, externalSource: externalRef?.provider || null
+      source: channel, conversationId, sendConfirmation: false
     });
-    await repo.releaseHold(tenantId, held.hold.hold_token, 'converted');
-    if(externalRef){
-      try{
-        await repo.upsertProviderMapping({ tenantId, provider: externalRef.provider, entityType:'booking', localId: booking.id, externalId: externalRef.id, metadata:{ starts_at: booking.start_time } });
-      }catch{}
-      await logEvent(tenantId, 'external_commit', { provider: externalRef.provider, external_id: externalRef.id });
+    if(!saved.ok) return pivot('That time just got taken.');
+    let booking = saved.booking;
+
+    // ── WRITE-THROUGH to the salon's booking platform (durable outbox). A
+    // refusal while the caller is still on the line ("409, already booked
+    // there") withdraws the local booking and pivots — the blueprint's
+    // conflict protocol. Anything slower or transient keeps the booking and
+    // the outbox retries (owner alerted if it finally can't land).
+    const up = await writeThroughNow(tenantId, booking, {
+      bookingId: booking.id, client, service: svcRow, staff: selected,
+      startsAt: held.slot.starts_at, endsAt: held.slot.ends_at,
+      durationMin: held.slot.duration_minutes, notes: params.notes || null,
+      price: held.slot.price ?? svcRow.price ?? 0, timezone: held.slot.time_zone || tz
+    });
+    if(up.conflict){
+      await withdrawBooking(tenantId, booking, channel);
+      await logEvent(tenantId, 'external_conflict', { time: held.slot.starts_at });
+      return pivot('That slot just filled up a second ago.');
     }
+    if(up.committed && up.external?.id){
+      booking = { ...booking, external_id: up.external.id, external_provider: up.external.provider };
+      await logEvent(tenantId, 'external_commit', { provider: up.external.provider, external_id: up.external.id });
+    }
+    confirmBooked(tenantId, booking);
 
     await logEvent(tenantId, 'booking_created', { booking_id: booking.id, client_id: client.id, service: svcRow.name, staff: selected.name, at: booking.start_time });
     try{ await crm.updateClientFromConversation(client.id, tenantId, { intent: 'booking_completed', channel, summary: `Booked ${svcRow.name} with ${selected.name}` }); }catch{}
 
     const returning = insights && insights.total_bookings > 1;
-    const when = `${dayLabel(booking.start_time)} at ${timeLabel(booking.start_time)}`;
+    const when = `${dayLabel(booking.start_time, tz)} at ${timeLabel(booking.start_time, tz)}`;
     const speak = `${returning ? `Welcome back${client.name ? `, ${first(client.name)}` : ''}. ` : `Perfect${client.name ? `, ${first(client.name)}` : ''}. `}You're with ${selected.name} for ${svcRow.name || 'your appointment'} on ${when}. I'll text you the confirmation.`;
     const text = `Booked at ${tenant.name}: ${svcRow.name || 'Appointment'} with ${selected.name} on ${when}.`;
     return { ok: true, booked: true, booking, speak, text };
@@ -415,7 +504,12 @@ export async function rescheduleAppointment(tenant, params, opts = {}){
   try{
     const current = await getBookingRow(tenantId, params.booking_id);
     if(!current) return { ok: false, error: 'booking_not_found', speak: "I couldn't find that appointment." };
-    const newStart = await startsAtFromParams(params, current.start_time || current.starts_at || Date.now());
+    const tz = await salonTz(tenantId);
+    const curStart = current.start_time || current.starts_at;
+    const newStart = startsAtFromParams(params, { fallbackIso: curStart || null, tz });
+    if(!newStart) return { ok: false, needs: 'time', speak: 'What time should I move it to?' };
+    // The booking keeps its REAL length (a 2h colour stays 2h when it moves).
+    const lenMin = current.end_time && curStart ? Math.round((new Date(current.end_time) - new Date(curStart)) / 60000) : null;
 
     let serviceId = current.service_id || null;
     let staffId = params.staff_id || current.staff_id || null;
@@ -425,32 +519,35 @@ export async function rescheduleAppointment(tenant, params, opts = {}){
     }
 
     if(serviceId && staffId){
-      const held = await holdAvailability({ tenantId, clientId: current.client_id, serviceId, staffId, startsAt: newStart, channel, conversationId, ttlSeconds: 120 });
+      // excludeBookingId: the booking being moved never blocks its own new time.
+      const held = await holdAvailability({ tenantId, clientId: current.client_id, serviceId, staffId, startsAt: newStart, channel, conversationId, ttlSeconds: 120, excludeBookingId: current.id, minDurationMin: lenMin });
       if(held.ok){
         const patch = { start_time: held.slot.starts_at, end_time: held.slot.ends_at, duration_min: held.slot.duration_minutes };
         if(params.staff_id) patch.staff_id = params.staff_id;
+        // One history row (updateCanonicalBooking writes it when status changes;
+        // a pure move is recorded there as the reschedule reason).
         const booking = await repo.updateCanonicalBooking(tenantId, current.id, patch, { source: channel, reason: 'rescheduled' });
-        await repo.appendBookingHistory({ tenantId, bookingId: current.id, fromStatus: current.status, toStatus: 'confirmed', source: channel, reason: 'rescheduled' });
         await repo.releaseHold(tenantId, held.hold.hold_token, 'converted');
-        await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: current.start_time || current.starts_at, to: held.slot.starts_at });
+        await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: curStart, to: held.slot.starts_at });
         // The OLD slot just freed up — offer it to a consenting waitlisted client.
         let offer = null;
         try{
-          offer = await offerFreedSlot({ tenantId, serviceId: current.service_id || serviceId, serviceName: params.service || current.service || null, freedAt: current.start_time || current.starts_at });
+          offer = await offerFreedSlot({ tenantId, serviceId: current.service_id || serviceId, serviceName: params.service || current.service || null, freedAt: curStart });
           if(offer && offer.ok) await logEvent(tenantId, 'waitlist_offered', { client: offer.entry?.client_name || offer.entry?.client_phone, freed_by: 'reschedule' });
         }catch(e){ console.warn('[booking-brain] waitlist offer failed:', e.message); }
-        const speak = `Done — moved to ${dayLabel(held.slot.starts_at)} at ${timeLabel(held.slot.starts_at)}.`;
+        const speak = `Done — moved to ${dayLabel(held.slot.starts_at, tz)} at ${timeLabel(held.slot.starts_at, tz)}.`;
         return { ok: true, rescheduled: true, booking, waitlist_offer: offer, speak, text: speak };
       }
-      const alt = await getAvailability({ tenantId, serviceId, date: newStart, limit: 5 }).catch(() => ({ ok: false, slots: [] }));
-      return { ok: false, conflict: true, needs: 'alternate_time', speak: `That time is taken — I could do ${alt.slots?.[0] ? timeLabel(alt.slots[0].starts_at) : 'a different time'}. Want me to?`, alternatives: alt.slots || [] };
+      const alt = await getAvailability({ tenantId, serviceId, date: newStart, limit: 5, excludeBookingId: current.id }).catch(() => ({ ok: false, slots: [] }));
+      return { ok: false, conflict: true, needs: 'alternate_time', speak: `That time is taken — I could do ${alt.slots?.[0] ? timeLabel(alt.slots[0].starts_at, tz) : 'a different time'}. Want me to?`, alternatives: alt.slots || [] };
     }
 
-    // Legacy row without canonical ids: move without an availability hold.
-    const booking = await moveBooking(tenantId, current.id, newStart);
+    // Legacy row without canonical ids: no engine check possible — move it
+    // through the canonical update (history, text, upstream), keeping its length.
+    const booking = await moveBooking(tenantId, current.id, newStart, { source: channel });
     if(!booking) return { ok: false, error: 'move_failed', speak: "I couldn't move that appointment." };
-    await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: current.starts_at, to: newStart, legacy: true });
-    return { ok: true, rescheduled: true, booking, speak: `Done — moved to ${dayLabel(newStart)} at ${timeLabel(newStart)}.` };
+    await logEvent(tenantId, 'booking_rescheduled', { booking_id: current.id, from: curStart, to: newStart, legacy: true });
+    return { ok: true, rescheduled: true, booking, speak: `Done — moved to ${dayLabel(newStart, tz)} at ${timeLabel(newStart, tz)}.` };
   }catch(e){
     console.error('[booking-brain] reschedule failed:', e);
     return { ok: false, error: 'reschedule_failed', speak: "I hit a snag moving that — try again." };
@@ -546,12 +643,14 @@ export async function waitlistAdd(tenant, params, opts = {}){
 }
 
 // Owner day view — same shape operator-tools used, now served from here.
+// "tomorrow" is the salon's tomorrow; times are spoken on the salon's clock.
 export async function getDay(tenant, params){
-  const date = resolveDate(params.date);
-  const rows = await enrichBookings(tenant.id, await listBookings(tenant.id, { from: date, to: date }));
-  if(!rows.length) return { ok: true, count: 0, appointments: [], speak: `Nothing on the books for ${dayLabel(date)} yet.` };
-  const lines = rows.map(b => `${timeLabel(b.starts_at)} ${b.service}${b.client_name ? ` for ${first(b.client_name)}` : ''}${b.stylist ? ` with ${b.stylist}` : ''}`);
-  return { ok: true, count: rows.length, appointments: rows, speak: `${rows.length} on ${dayLabel(date)}: ${lines.join('; ')}.` };
+  const tz = await salonTz(tenant.id);
+  const date = resolveDateKey(params.date, tz) || localDateKey(new Date(), tz);
+  const rows = await enrichBookings(tenant.id, await listBookings(tenant.id, { from: date, to: date, tz }));
+  if(!rows.length) return { ok: true, count: 0, appointments: [], speak: `Nothing on the books for ${dayLabel(date, tz)} yet.` };
+  const lines = rows.map(b => `${timeLabel(b.starts_at, tz)} ${b.service}${b.client_name ? ` for ${first(b.client_name)}` : ''}${b.stylist ? ` with ${b.stylist}` : ''}`);
+  return { ok: true, count: rows.length, appointments: rows, speak: `${rows.length} on ${dayLabel(date, tz)}: ${lines.join('; ')}.` };
 }
 
 // ── unified dispatch for every transport ────────────────────────────

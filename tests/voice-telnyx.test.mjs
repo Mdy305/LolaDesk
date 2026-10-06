@@ -10,7 +10,8 @@
  *     so we don't regress to the OpenAI-style names that silently never connect.
  */
 import { strict as assert } from 'node:assert';
-import { issueVoiceToken, verifyVoiceToken, secret } from '../api/lib/voice-session-token.js';
+process.env.LOLA_VOICE_SECRET = process.env.LOLA_VOICE_SECRET || 'test-voice-secret'; // no built-in default secret any more
+const { issueVoiceToken, verifyVoiceToken, secret } = await import('../api/lib/voice-session-token.js');
 
 let passed = 0;
 const t = (name, fn) => { try { fn(); passed++; console.log('  ✓', name); } catch (e) { console.error('  ✗', name, '\n   ', e.message); process.exitCode = 1; } };
@@ -40,7 +41,12 @@ console.log('voice-session-token');
   t('rejects token minted under a different secret', () => {
     assert.equal(verifyVoiceToken(tok), null);
   });
-  delete process.env.LOLA_VOICE_SECRET;
+  t('refuses to issue or verify without LOLA_VOICE_SECRET', () => {
+    delete process.env.LOLA_VOICE_SECRET;
+    assert.throws(() => issueVoiceToken({ userId: 'u3', tenantId: 't3' }));
+    assert.equal(verifyVoiceToken(tok), null);
+  });
+  process.env.LOLA_VOICE_SECRET = 'test-voice-secret';
 })();
 
 console.log('protocol shapes (real Telnyx conversation WS)');

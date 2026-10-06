@@ -9,6 +9,24 @@
  */
 
 import { runReminders } from '../lib/booking-reminders.js';
+import { sendSMS } from '../telnyx-sms.js';
+import { serviceAllowed } from '../lib/service-gate.js';
+
+/** The reminder sender, minus salons whose service is off (lib/service-gate.js). */
+export function gatedSend(send = sendSMS) {
+  const gate = new Map();
+  const stats = { paused: 0 };
+  const fn = async (opts = {}) => {
+    const tid = opts.tenantId || opts.tenant?.id || null;
+    if (tid) {
+      if (!gate.has(tid)) gate.set(tid, (await serviceAllowed(tid)).ok);
+      if (!gate.get(tid)) { stats.paused++; return { skipped: true, reason: 'service_off' }; }
+    }
+    return send(opts);
+  };
+  fn.stats = stats;
+  return fn;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -25,8 +43,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const result = await runReminders();
-    return res.json({ ok: true, ...result });
+    const send = gatedSend();
+    const result = await runReminders(new Date(), { send });
+    return res.json({ ok: true, ...result, paused_service_off: send.stats.paused });
   } catch (e) {
     console.error('[cron/booking-reminders]', e);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });

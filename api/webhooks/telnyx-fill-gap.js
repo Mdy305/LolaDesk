@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const salon     = String(q.salon || 'the salon').trim();
 
     const base = process.env.APP_URL || 'https://www.loladesk.com';
-    const responseUrl = `${base}/api/webhooks/telnyx-fill-gap-response?attempt_id=${encodeURIComponent(attemptId)}&tenant_id=${encodeURIComponent(tenantId)}&name=${encodeURIComponent(q.name || '')}&gap_date=${encodeURIComponent(q.gap_date || '')}&gap_time=${encodeURIComponent(q.gap_time || '')}`;
+    const responseUrl = `${base}/api/webhooks/telnyx-fill-gap-response?attempt_id=${encodeURIComponent(attemptId)}&tenant_id=${encodeURIComponent(tenantId)}&name=${encodeURIComponent(q.name || '')}&gap_date=${encodeURIComponent(q.gap_date || '')}&gap_time=${encodeURIComponent(q.gap_time || '')}${q.k ? '&k=' + encodeURIComponent(q.k) : ''}`;
 
     const svcLine = service ? ` for ${service}` : '';
     const pitch = `Hi ${name}, it's Lola from ${salon}. A ${gapTime} spot just opened up today${svcLine}. If you'd like it, say yes after the beep. Otherwise, just say no problem and we'll catch you next time.`;

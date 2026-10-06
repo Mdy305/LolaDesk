@@ -70,7 +70,8 @@ body{background:#000;color:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,
       }).then(function(r){ return r.json(); }).then(function(f){
         if(f && f.tenant && f.tenant.id){
           localStorage.setItem('loladesk_tenant_id', f.tenant.id);
-          window.location.href = next || 'dashboard.html';
+          // A salon that already had its free trial goes straight to plans, with the reason.
+          window.location.href = f.trial_used ? 'subscription.html?trial_used=1' : (next || 'dashboard.html');
         } else {
           fail(f && f.error ? f.error : 'Could not set up your workspace.');
         }

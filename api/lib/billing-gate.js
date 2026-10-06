@@ -5,14 +5,17 @@
  *   • booking-brain runBookingAction (MCP voice, operator-tools, web tools)
  *   • lola-tools SKILLS (the legacy Telnyx AI-assistant skill layer)
  *
- * RULE
+ * RULE (shares lib/service-gate.js for everything but the trial):
  *   A tenant is BLOCKED from creating new bookings when:
  *     • billing_status === 'suspended'            (admin action)
- *     • subscription_status === 'canceled'        (subscription ended)
- *     • subscription_status === 'past_due'        (payment failed)
+ *     • subscription_status === 'canceled'        (subscription ended, paid period over)
+ *     • subscription_status === 'past_due' for MORE than 7 days (Stripe retries
+ *       for days — one failed card never pauses a salon on the spot)
+ *     • subscription_status === 'unpaid' / 'incomplete_expired'
  *     • trial_ends_at is set AND in the past AND no active subscription
  *   A tenant is ALLOWED when:
- *     • subscription_status === 'active' or 'canceling' (paid through period end)
+ *     • billing_status === 'active'  (admin "Activate" = comped / paid offline)
+ *     • subscription_status === 'active', 'trialing' or 'canceling' (paid through period end)
  *     • trial_ends_at is null (legacy tenant — never given a window)
  *     • trial_ends_at is still in the future
  *     • no billing fields at all (demo tenant)
@@ -26,6 +29,8 @@
  *   • callerSpeak — what a CLIENT hears (graceful, never reveals billing)
  *   • ownerSpeak  — what the OWNER/operator hears (drives conversion)
  */
+
+import { rawServiceStatus as serviceStatus } from './service-gate.js';
 
 export const BLOCKED_BOOKING_ACTIONS = new Set([
   'book_appointment',
@@ -43,28 +48,35 @@ function callerLine(){
 export function billingGate(tenant){
   if(!tenant || !tenant.id) return { blocked: false };
 
-  const sub = tenant.subscription_status;
+  const sub = String(tenant.subscription_status || '').toLowerCase();
+  const billing = String(tenant.billing_status || '').toLowerCase();
 
-  if(tenant.billing_status === 'suspended'){
+  if(billing === 'suspended'){
     return {
       blocked: true, reason: 'suspended', hard: true,
       callerSpeak: callerLine(),
       ownerSpeak: "Your LolaDesk account has been suspended, so I've paused new bookings. Contact support to reactivate."
     };
   }
-  if(sub === 'canceled' || sub === 'past_due'){
+  // Admin "Activate" (comped / paid offline) lifts the paywall, whatever Stripe says.
+  if(billing === 'active' || billing === 'comped') return { blocked: false };
+
+  // Everything Stripe-driven follows the shared service gate (7-day past_due grace,
+  // canceled only after the paid period, unpaid).
+  if(sub && sub !== 'trial' && sub !== 'incomplete'){
+    const s = serviceStatus(tenant);
+    if(s.ok) return { blocked: false, grace: !!s.grace };
+    const pastDue = s.reason === 'unpaid';
     return {
-      blocked: true, reason: sub, hard: true,
+      blocked: true, reason: pastDue ? 'past_due' : 'canceled', hard: true,
       callerSpeak: callerLine(),
-      ownerSpeak: sub === 'past_due'
+      ownerSpeak: pastDue
         ? "Your payment didn't go through, so I've paused new bookings. Update your billing to keep Lola taking appointments."
         : "Your LolaDesk subscription has ended. I've paused new bookings — resubscribe to keep Lola taking appointments."
     };
   }
-  // Active or canceling (paid through the current period) → always allowed.
-  if(sub === 'active' || sub === 'canceling') return { blocked: false };
 
-  // Trial: only block on an explicit, past trial_ends_at.
+  // LolaDesk trial: only block on an explicit, past trial_ends_at.
   if(tenant.trial_ends_at){
     const end = new Date(tenant.trial_ends_at).getTime();
     if(!Number.isNaN(end) && end < Date.now()){
@@ -80,7 +92,9 @@ export function billingGate(tenant){
 
 /**
  * One-call helper for booking paths: returns a ready-to-return blocked
- * response (null when the tenant may book). `channel` picks the message:
+ * response (null when the tenant may book). ALWAYS ON — independent of
+ * BILLING_ENFORCE — so every booking path (voice tools, widget, MCP,
+ * telnyx-book-tool, widget/book) refuses canceled / unpaid / expired salons. `channel` picks the message:
  * 'operator' → ownerSpeak (conversion), anything else → callerSpeak.
  */
 export function bookingGateResponse(tenant, channel = 'voice'){

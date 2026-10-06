@@ -18,6 +18,8 @@
 // Either generation is valid for SUPABASE_SERVICE_KEY; the definitive test is
 // the live RLS-bypass query below, NOT the prefix. This only flags a value
 // that matches NONE of the known shapes (e.g. a stray clipboard paste).
+import { requireAdmin } from './lib/admin-gate.js';
+
 function shape(name, value, expectedPrefix){
   if(!value) return { name, present:false };
   const info = { name, present:true, length: value.length };
@@ -29,6 +31,8 @@ function shape(name, value, expectedPrefix){
 }
 
 export default async function handler(req, res){
+  // Platform admins only (ADMIN_EMAILS): this exposes salon configuration / environment shape.
+  if (!(await requireAdmin(req, res))) return;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
 

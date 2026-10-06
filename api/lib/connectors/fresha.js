@@ -96,7 +96,7 @@ export async function listAppointments(integration, { from, to } = {}){
   const end   = to   || new Date(Date.now() + 30 * 864e5).toISOString();
   const r = await fetch(`${API_BASE}/appointments?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
-  if(!r.ok) return [];
+  if(!r.ok) throw new Error(`Fresha appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
   const rows = data.appointments || data.data || [];
   return rows.map(normalize);
 }
@@ -134,3 +134,8 @@ export async function listClients(integration, { limit = 100 } = {}){
     raw: c
   }));
 }
+
+// Cancels / moves: Fresha's partner API is not wired for changes yet. The outbox
+// records the change as failed and texts the owner to make it in Fresha too.
+export async function cancelAppointment(){ throw new Error('unsupported: Fresha cancel is not available through its API yet'); }
+export async function updateAppointment(){ throw new Error('unsupported: Fresha reschedule is not available through its API yet'); }
