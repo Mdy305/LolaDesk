@@ -102,7 +102,8 @@ export async function processWithVision({ image, mediaType, context, callControl
         ]
       }],
       maxTokens: 500,
-      temperature: 0.3
+      temperature: 0.3,
+      deadlineMs: 20000   // one bounded vision pass, never past the function's limit
     });
     if (!result.ok) throw new Error(result.error || 'Telnyx inference failed');
     const analysisText = result.text;
@@ -269,10 +270,14 @@ If ID, use for verification purposes only (never store card numbers).
 // HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────
 
-async function downloadMedia(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to download media: ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+async function downloadMedia(url, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Failed to download media: ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  } finally { clearTimeout(timer); }
 }
 
 async function findActiveCallByPhone(phoneNumber) {

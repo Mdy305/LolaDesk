@@ -30,7 +30,7 @@
  */
 import { WebSocketServer } from 'ws';
 import WebSocket from 'ws';
-import { verifyVoiceToken } from './lib/voice-session-token.js';
+import { verifyVoiceToken, hasVoiceSecret } from './lib/voice-session-token.js';
 
 const TELNYX_KEY = process.env.TELNYX_API_KEY;
 
@@ -49,6 +49,8 @@ wss.on('connection', (client, req) => {
   const url = new URL(req.url, 'http://telnyx.local');
   const assistantId = url.searchParams.get('assistant');
   const sessionToken = url.searchParams.get('token');
+  // No shared secret configured → refuse every connection (never fall back to a default secret).
+  if (!hasVoiceSecret()) { client.close(4403, 'relay secret not configured'); return; }
   const sess = verifyVoiceToken(sessionToken);
 
   if (!sess || !assistantId) {
@@ -144,6 +146,7 @@ export default function handler(req, res) {
   if (req.headers.upgrade?.toLowerCase() !== 'websocket') {
     return res.status(426).json({ error: 'Upgrade required — connect via wss://' });
   }
+  if (!hasVoiceSecret()) return res.status(503).json({ error: 'Live voice relay needs LOLA_VOICE_SECRET.', code: 'relay_secret_missing' });
   wss.handleUpgrade(req, req.socket, Buffer.alloc(0), (ws) => {
     wss.emit('connection', ws, req);
   });

@@ -8,6 +8,7 @@ import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { db } from '../lib/db.js';
 import { awayBrief } from '../lib/owner-brief.js';
 import { dayBoundsUtc } from '../lib/timezone.js';
+import { serviceStatus, pausedBecause } from '../lib/service-gate.js';
 
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
@@ -18,8 +19,11 @@ export async function lolaPulse(c, tenant, { now = new Date() } = {}) {
   try { since = dayBoundsUtc(now, tz).start; } catch (_) {}
   if (!since) since = new Date(now.getTime() - 12 * 3600e3).toISOString();
   let line = tenant.phone_number || null;
-  if (!line) { try { const { data } = await c.from('tenant_numbers').select('phone_number').eq('tenant_id', tenant.id).limit(1); line = data?.[0]?.phone_number || null; } catch (_) {} }
-  const paused = /^(canceled|cancelled|suspended|expired)$/i.test(String(tenant.subscription_status || ''));
+  if (!line) { try { const { data } = await c.from('tenant_numbers').select('phone_number,status').eq('tenant_id', tenant.id).limit(10); line = (data || []).find((r) => r.phone_number && !['released', 'parked'].includes(String(r.status || '')))?.phone_number || null; } catch (_) {} }
+  // Paused ONLY when the service really is off (lib/service-gate.js) — a salon paid
+  // through its period, or inside the 7-day payment-retry grace, is still live.
+  const svc = serviceStatus(tenant, now.getTime());
+  const paused = !svc.ok;
   const brief = await awayBrief(c, tenant, since, { now }).catch(() => null);
   const k = brief?.counts || { calls: 0, booked: 0, needs_you: 0 };
   let chats = 0;
@@ -27,15 +31,18 @@ export async function lolaPulse(c, tenant, { now = new Date() } = {}) {
   const live = !!line && !paused;
   const parts = [];
   if (!live) {
-    return { ok: true, live: false, headline: paused ? 'Lola is paused — your plan needs attention' : 'Lola isn’t answering yet — give her a phone number',
-      action: paused ? { label: 'Fix billing', href: '/subscription' } : { label: 'Get a number', href: '/telecom' }, parts, needs: [], counts: k };
+    return { ok: true, live: false, paused: paused ? svc.reason : null,
+      headline: paused ? `Lola is paused because ${pausedBecause(svc.reason)}` : 'Lola isn’t answering yet — give her a phone number',
+      action: paused ? { label: svc.reason === 'unpaid' ? 'Update payment' : svc.reason === 'suspended' ? 'Contact support' : 'Pick a plan', href: svc.reason === 'suspended' ? 'mailto:hello@loladesk.com' : '/subscription' } : { label: 'Get a number', href: '/settings#phone' }, parts, needs: [], counts: k };
   }
   if (k.calls) parts.push(plural(k.calls, 'call'));
   if (chats) parts.push(plural(chats, 'conversation'));
   parts.push(k.booked ? `${k.booked} booked today` : 'no new bookings yet');
   const needs = (brief?.needs || []).slice(0, 3).map((n) => ({ name: n.name, action: n.action, phone: n.phone }));
   parts.push(k.needs_you ? `${k.needs_you} need${k.needs_you === 1 ? 's' : ''} you` : 'nothing needs you');
-  return { ok: true, live: true, headline: ['Lola is answering', ...parts].join(' · '), parts, needs, counts: { ...k, conversations: chats } };
+  const out = { ok: true, live: true, headline: ['Lola is answering', ...parts].join(' · '), parts, needs, counts: { ...k, conversations: chats } };
+  if (svc.grace && String(tenant.subscription_status || '') === 'past_due') out.billing = { warning: 'payment_failed', grace_until: svc.grace_until || null, href: '/subscription' };
+  return out;
 }
 
 export default async function handler(req, res) {

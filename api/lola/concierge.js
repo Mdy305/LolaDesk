@@ -17,6 +17,31 @@ function limited(ip, max = 40, windowMs = 10 * 60e3) {
   h.push(now); hits.set(ip, h); return h.length > max;
 }
 
+// Demo-call caps. In-memory per-IP brake first (works even without a database), then the
+// demo_requests table: ≤5/hour and ≤10/day per address, and a platform-wide daily ceiling.
+const callHits = new Map();
+const DAY_MS = 24 * 3600e3;
+export async function demoCallCapped(c, ip) {
+  const now = Date.now();
+  const mine = (callHits.get(ip) || []).filter((t) => now - t < DAY_MS);
+  if (mine.filter((t) => now - t < 3600e3).length >= 5 || mine.length >= 10) { callHits.set(ip, mine); return 'That’s a lot of calls from here. Try again later.'; }
+  mine.push(now); callHits.set(ip, mine);
+  if (callHits.size > 5000) for (const [k, v] of callHits) if (!v.length || now - v[v.length - 1] > DAY_MS) callHits.delete(k);
+  if (!c) return null;
+  try {
+    const since = (ms) => new Date(now - ms).toISOString();
+    const [hour, day, all] = await Promise.all([
+      c.from('demo_requests').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', since(3600e3)),
+      c.from('demo_requests').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', since(DAY_MS)),
+      c.from('demo_requests').select('id', { count: 'exact', head: true }).gte('created_at', since(DAY_MS)),
+    ]);
+    if ((hour?.count || 0) >= 5 || (day?.count || 0) >= 10) return 'That’s a lot of calls from here. Try again later.';
+    const globalMax = Math.max(1, Number(process.env.DEMO_CALLS_PER_DAY || 200));
+    if ((all?.count || 0) >= globalMax) return 'I’ve made a lot of demo calls today. Leave your number below and the team will call you.';
+  } catch (_) {}
+  return null;
+}
+
 const SYSTEM = `You are Lola, the AI front desk inside LolaDesk (loladesk.com), speaking with someone on the LolaDesk sign-in page. They may be a salon owner signing in, or someone curious about you.
 What LolaDesk is: Lola answers a salon's, spa's or med spa's phone 24/7 on its own local number, books appointments straight into the salon's calendar (LolaDesk's calendar, or Boulevard, Square, Mindbody, Vagaro, Fresha, Google Calendar), texts confirmations, answers texts and website chat, fills open chairs with campaigns she plans and the owner approves, handles reviews, and runs checkout. Setup takes about five minutes: the owner gives her salon name, and Lola learns services, prices, team and hours from the website, menu or files. There is a 14-day free trial with no credit card.
 How you speak: warm, confident, brief. One or two short sentences, because your words are spoken aloud. No lists, no markdown, no emojis. Never invent prices, features, discounts or promises; for prices, offer to open the pricing page.
@@ -52,6 +77,9 @@ export default async function handler(req, res) {
     if (!knownPhone) return res.status(200).json({ ok: true, reply: 'Happy to call you. What’s your number? Type it below.', action: 'call_me' });
     const c = db();
     if (c && (await recentDemoRequestsByPhone(knownPhone, 60).catch(() => 0)) >= 3) return res.status(200).json({ ok: true, reply: 'I’ve called that number a few times already. Try again in an hour.', action: 'none' });
+    // Real phone calls cost money: per-address (hour + day) and platform-wide daily caps, like /api/demo-call.
+    const capped = await demoCallCapped(c, ip);
+    if (capped) return res.status(200).json({ ok: true, reply: capped, action: 'none' });
     try { if (c) await c.from('demo_requests').insert({ phone_number: knownPhone, ip }); } catch (_) {}
     const r = c ? await placeDemoCall(c, knownPhone).catch(() => null) : null;
     if (r && r.ok) return res.status(200).json({ ok: true, reply: 'Calling you now — pick up and talk to me.', action: 'none', called: true, phone: knownPhone });

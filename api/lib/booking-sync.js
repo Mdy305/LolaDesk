@@ -16,6 +16,7 @@ import { getConnector } from './aggregator.js';
 
 // The six sync targets. shopify is retail-only (no appointments API), so it
 // is deliberately not polled.
+export const SYNC_LOOKBACK_MS = 12 * 3600e3;
 export const SYNC_PROVIDERS = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'booksy', 'google_calendar', 'ical'];
 
 function normStatus(status){
@@ -41,7 +42,9 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
     SYNC_PROVIDERS.includes(i.provider) && (!provider || i.provider === provider));
   if(!targets.length) return { ok: true, skipped: true, note: 'no connected booking integrations' };
 
-  const from = new Date().toISOString();
+  // From 12h ago: an appointment that started an hour ago is still in the chair
+  // — it must stay busy (syncing from "now" dropped in-progress visits).
+  const from = new Date(Date.now() - SYNC_LOOKBACK_MS).toISOString();
   const to = new Date(Date.now() + rangeDays * 86400000).toISOString();
 
   const appointments = [];
@@ -96,8 +99,12 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
   let stale = [];
   try{
     const { data: cached } = prunable.length ? await client.from('cached_availability')
-      .select('id,provider,external_booking_id').eq('tenant_id', tenantId).in('provider', prunable) : { data: [] };
-    stale = (cached || []).filter(r => prunable.includes(r.provider) && !freshIds.has(`${r.provider}\u0000${r.external_booking_id}`));
+      .select('id,provider,external_booking_id,starts_at').eq('tenant_id', tenantId).in('provider', prunable) : { data: [] };
+    // Rows starting beyond the window we just listed are not judged by it (kept);
+    // anything earlier — inside the window, or history before the look-back — goes.
+    const toMs = new Date(to).getTime();
+    stale = (cached || []).filter(r => prunable.includes(r.provider) && !freshIds.has(`${r.provider}\u0000${r.external_booking_id}`)
+      && (!r.starts_at || new Date(r.starts_at).getTime() < toMs));
     if(stale.length){
       await client.from('cached_availability').delete()
         .eq('tenant_id', tenantId).in('id', stale.map(s => s.id));
@@ -147,7 +154,7 @@ export async function checkProviderDrift(client, tenantId, { rangeDays = 45 } = 
   const targets = integrations.filter(i => SYNC_PROVIDERS.includes(i.provider));
   if(!targets.length) return { ok: true, skipped: true, note: 'no connected booking integrations' };
 
-  const from = new Date().toISOString();
+  const from = new Date(Date.now() - SYNC_LOOKBACK_MS).toISOString();
   const to = new Date(Date.now() + rangeDays * 86400000).toISOString();
 
   const providers = [];

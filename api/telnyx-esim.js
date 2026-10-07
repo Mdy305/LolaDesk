@@ -24,9 +24,12 @@
  * tiers — a structural multi-tenant advantage: your COGS per tenant
  * FALLS as you grow, while retail stays flat.
  *
- * Billing: ordering logs an `esim_rent` usage event at retail with
- * wholesale+margin in metadata (same pattern as number_rent); a
- * monthly `esim_data_overage` event is logged from the usage check.
+ * Billing: ordering logs an `esim_rent` usage event at retail (CENTS,
+ * metadata.unit='cents') + what LolaDesk pays (cost_esim_month, cents).
+ * /api/cron/release-numbers re-accrues both monthly (lib/rent.js) and
+ * /api/cron/booking-fees puts unbilled rent on the salon's next invoice.
+ * Only PAYING salons can order (service on and not in a trial) — a free
+ * trial never creates a recurring hardware cost.
  * Retention lever: suspend on churn keeps the SIM at $0.20/mo
  * standby instead of cancellation — winback = one 'enable' call.
  *
@@ -41,6 +44,18 @@
 import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db, logUsage } from './lib/db.js';
+import { serviceStatus } from './lib/service-gate.js';
+import { logCost } from './lib/costs.js';
+
+/** eSIMs are a paid add-on: service on, and a real subscription (or admin comp). */
+export function esimAllowed(tenant){
+  const s = serviceStatus(tenant);
+  if(!s.ok) return { ok:false, reason:s.reason };
+  const sub = String(tenant?.subscription_status || '').toLowerCase();
+  if(String(tenant?.billing_status || '').toLowerCase() === 'active') return { ok:true };
+  if(['active','canceling','past_due'].includes(sub)) return sub === 'canceling' ? { ok:false, reason:'canceling' } : { ok:true };
+  return { ok:false, reason:'trial' };
+}
 
 const TELNYX = 'https://api.telnyx.com/v2';
 const PROVIDER = 'telnyx_esim';
@@ -124,6 +139,10 @@ export default async function handler(req, res){
     /* ── ORDER: one OTA eSIM for this salon ── */
     if(action === 'order'){
       if(simId) return res.status(200).json({ ok:true, already:true, esim: row.metadata, pricing });
+      const allowed = esimAllowed(tenant);
+      if(!allowed.ok) return res.status(402).json({ ok:false, error: allowed.reason === 'trial'
+        ? 'Lola Link eSIMs are available once you’re on a paid plan — pick one in Billing and order right after.'
+        : 'Your LolaDesk plan isn’t active, so eSIMs can’t be ordered right now.', reason: allowed.reason, upgrade: true });
       const order = await tx('/sim_card_orders', { method:'POST', body: JSON.stringify({ quantity: 1 }) });
       if(!order.ok) return res.status(502).json({ ok:false, error: order.data?.errors?.[0]?.detail || 'eSIM order failed' });
       // find the SIM the order produced (defensive: API returns order first)
@@ -147,10 +166,11 @@ export default async function handler(req, res){
       };
       await saveEsimRow(tenant.id, { sim_card_id: sim.id, iccid: sim.iccid, activation, included_mb: pricing.included_mb });
       // the recurring-revenue line, margin visible for the billing layer
-      await logUsage(tenant.id, 'esim_rent', pricing.retail_monthly, {
-        sim_card_id: sim.id, wholesale: pricing.wholesale_monthly,
+      await logUsage(tenant.id, 'esim_rent', Math.round(pricing.retail_monthly * 100), {
+        unit: 'cents', sim_card_id: sim.id, wholesale: pricing.wholesale_monthly,
         margin: +(pricing.retail_monthly - pricing.wholesale_monthly).toFixed(2)
       }).catch(()=>{});
+      await logCost(tenant.id, 'cost_esim_month', Math.round((pricing.wholesale_monthly + pricing.wholesale_esim_once) * 100), { sim_card_id: sim.id, first_month: true });
       return res.status(200).json({ ok:true, esim: { sim_card_id: sim.id, iccid: sim.iccid, activation }, pricing });
     }
 

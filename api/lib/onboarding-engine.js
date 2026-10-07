@@ -19,6 +19,7 @@
  */
 
 import { chat } from './llm.js';
+import { safeFetch } from './safe-fetch.js';
 
 export const STAGES = {
   business:      { order: 1, progress: 20, label: 'Who you are' },
@@ -82,8 +83,8 @@ export async function discoverWebsite({ websiteUrl, businessMode = 'salon', name
   const timer = setTimeout(() => controller.abort(), 8000);
   let response;
   try{
-    response = await fetch(url, {
-      signal: controller.signal,
+    response = await safeFetch(url, {
+      signal: controller.signal, timeoutMs: 8000, maxBytes: 3 * 1024 * 1024,
       headers: { 'User-Agent': 'LolaDesk-Business-Discovery/1.0' }
     });
   }finally{ clearTimeout(timer); }

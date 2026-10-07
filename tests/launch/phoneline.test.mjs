@@ -3,7 +3,7 @@
 // books with her skills and speaks in her ElevenLabs voice (cached in Supabase Storage).
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'tk';
 process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-lola'; process.env.TELNYX_VOICE_APP_ID = 'cc-app'; process.env.ELEVENLABS_API_KEY = 'el'; process.env.ELEVENLABS_VOICE_ID = 'lolaVoice';
-process.env.APP_URL = 'https://www.loladesk.com'; delete process.env.LOLA_PHONE_MODE; delete process.env.VOICE_PROVIDER; delete process.env.TELNYX_PUBLIC_KEY;
+process.env.APP_URL = 'https://www.loladesk.com'; process.env.LOLA_PHONE_MODE = 'loladesk'; /* LolaDesk's own line is optional (LolaBrain is the default) */ delete process.env.VOICE_PROVIDER; delete process.env.TELNYX_PUBLIC_KEY;
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 
 const texml = [{ id: 'old-line', friendly_name: 'LolaDesk', voice_url: 'https://lola-desk-one.vercel.app/api/telnyx-voice' }];
@@ -36,7 +36,7 @@ T.calls = []; T.clients = []; T.conversations = []; T.messages = []; T.usage_eve
 const P = new URL('../../api/', import.meta.url).href;
 const pv = await import(P + 'lib/telnyx-provision.js');
 
-ok(await pv.phoneMode() === 'loladesk', 'by default salon calls are answered on LolaDesk’s own line');
+ok(await pv.phoneMode() === 'loladesk', 'when chosen, salon calls are answered on LolaDesk’s own line');
 const line = await pv.getCanonicalVoiceConnectionId();
 ok(line === 'old-line', 'the existing “LolaDesk” call line is reused (the Call Control app in Vercel is never mistaken for it)');
 ok(texmlPatches.some((b) => b.voice_url === 'https://www.loladesk.com/api/telnyx-voice'), 'and pointed back at this deployment when it drifted to an old domain');
@@ -57,7 +57,7 @@ const call = (body, query = '') => new Promise((resolve) => {
 });
 const base = { CallSid: 'call-1', From: '+13055559999', To: '+13055550100', CallStatus: 'in-progress' };
 let r = await call({ ...base });
-ok(r.code === 200 && /<Play>https:\/\/fake\.supabase\.co\/storage\/v1\/object\/public\/voice-audio\/cached\/.+\.mp3<\/Play>/.test(r.xml) && /<Gather input="speech"/.test(r.xml), 'she answers in her own voice and listens');
+ok(r.code === 200 && /<Play>https:\/\/fake\.supabase\.co\/storage\/v1\/object\/public\/voice-audio\/cached\/.+\.mp3<\/Play>/.test(r.xml) && /<Gather input="dtmf speech"/.test(r.xml), 'she answers in her own voice and listens');
 ok(Object.keys(T.__buckets['voice-audio'].files).length >= 1, 'the greeting audio is stored once for every later caller');
 
 r = await call({ ...base, SpeechResult: 'Can I get a haircut tomorrow afternoon?' });
@@ -77,6 +77,14 @@ ok(/phone call/i.test(asked.messages[0].content) && /HOW YOU SPEAK/.test(asked.m
 ok(!/What service, day, and preferred time should I lock in/.test(JSON.stringify(T.messages)), 'no canned script answers a caller who already said what they want');
 ok(T.messages.some((m) => m.role === 'user' && /haircut tomorrow/i.test(m.content)) && T.messages.some((m) => m.role === 'assistant' && /two thirty/.test(m.content)), 'the conversation lands in the salon’s inbox');
 
+ok(/<Gather input="dtmf speech" finishOnKey="#"/.test(r.xml), 'Telnyx Gather listens for speech AND the keypad');
+llmScript = [{ content: 'Perfect — what time works for you?' }];
+r = await call({ ...base, Digits: '1' }, '?continue=');
+const k = await import(P + 'telnyx-voice.js');
+ok(k.keypadWords('1') === '(pressed 1 on the keypad) Yes.' && /My number is 3055550199/.test(k.keypadWords('3055550199#')) && /talk to someone/.test(k.keypadWords('0')), 'keys become words Lola understands (1 = yes, a typed number, 0 = the salon)');
+r = await call({ ...base, Digits: '1' });
+ok(/<Redirect method="POST">\/api\/telnyx-voice\?continue=/.test(r.xml) && Buffer.from(r.xml.match(/continue=([^<]+)</)[1], 'base64url').toString() === '(pressed 1 on the keypad) Yes.', 'pressing 1 mid-call is heard like saying “yes”');
+
 r = await call({ ...base, CallStatus: 'completed' });
 ok(r.code === 200 && /<Response\/>/.test(r.xml) && T.calls.length === 1, 'the call-finished callback is not mistaken for a new caller');
 
@@ -92,8 +100,10 @@ ok(r.code === 200 && /<Hangup\/>/.test(r.xml) && !/<Say/.test(r.xml), 'voice dow
 globalThis.fetch = realFetch;
 
 // The admin switch: the Telnyx assistant line.
-T.platform_settings.push({ key: 'lola_phone_mode', value: { mode: 'assistant' } }); pv._resetPhoneLineCache();
+delete process.env.LOLA_PHONE_MODE; T.platform_settings.push({ key: 'lola_phone_mode', value: { mode: 'assistant' } }); pv._resetPhoneLineCache();
 ok(await pv.phoneMode() === 'assistant' && await pv.getCanonicalVoiceConnectionId() === 'assistant-app', 'the admin can switch every salon to the Telnyx assistant line');
 process.env.LOLA_PHONE_MODE = 'loladesk';
 ok(await pv.phoneMode() === 'loladesk', 'LOLA_PHONE_MODE in Vercel wins over the admin switch');
+delete process.env.LOLA_PHONE_MODE; T.platform_settings.length = 0; pv._resetPhoneLineCache();
+ok(await pv.phoneMode() === 'assistant', 'by default LolaBrain answers every salon’s calls');
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

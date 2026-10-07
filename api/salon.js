@@ -17,7 +17,8 @@ import { db, upsertClient, getTenantBySlug } from './lib/db.js';
 import { sendSMS } from './telnyx-sms.js';
 import { confirmText } from './lib/lola-persona.js';
 import { bookingGateResponse } from './lib/billing-gate.js';
-import { createCanonicalBooking, sendConfirmationSMS, updateCanonicalBooking } from './lib/booking-repository.js';
+import { createCanonicalBooking, sendConfirmationSMS, updateCanonicalBooking, blockedHitTz, findWaitlistMatches } from './lib/booking-repository.js';
+import { offerFreedSlot } from './lib/booking-reminders.js';
 import { offerRebooking } from './lib/rebooking.js';
 import { randomUUID } from 'node:crypto';
 import { whenForTenant, salonTz } from './lib/salon-time.js';
@@ -46,30 +47,29 @@ async function confirmSMS(c,tenantId,bookingId){
 }
 
 const sameInstant=(a,b)=>new Date(a).getTime()===new Date(b).getTime();
-// n-th (0-based) occurrence start for a series cadence: UTC-day math; monthly
-// clamps to the month's last day (Jan 31 -> Feb 28) instead of spilling into March.
-function utcOccurrence(startISO,rule,n){
-  const d=new Date(startISO);
-  if(rule==='biweekly')d.setUTCDate(d.getUTCDate()+14*n);
-  else if(rule==='monthly'){const day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+n);const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,last));}
-  else d.setUTCDate(d.getUTCDate()+7*n);
-  return d.toISOString();
-}
-// Blocked time (lunch, breaks, days off) for one stylist in [start,end), keyed
-// on the SALON-local date with the block's local times converted to instants —
-// the same convention as the availability engine (was UTC hours before).
-async function blockedHit(c,T,staffId,startIso,endIso,tz){
-  const s=new Date(startIso).getTime(),e=new Date(endIso).getTime();
-  const keys=[...new Set([localDateKey(startIso,tz),localDateKey(new Date(e-1),tz)])];
-  for(const key of keys){
-    const {data:bk}=await c.from('blocked_slots').select('*').eq('tenant_id',T).eq('blocked_date',key);
-    const day=dayBoundsUtc(key,tz);
-    if((bk||[]).some(b=>(!b.staff_id||b.staff_id===staffId)&&
-      overlaps(s,e,new Date(b.start_time?zonedLocalToUtc(key,b.start_time,tz):day.start).getTime(),
-        new Date(b.end_time?zonedLocalToUtc(key,b.end_time,tz):day.end).getTime())))return key;
+const addDaysKey=(key,n)=>{const [y,m,d]=key.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);};
+// n-th (0-based) occurrence start for a series cadence, stepped on the SALON's
+// calendar: same wall-clock time every week, across DST (Nov 1 2026 used to
+// shift every later weekly visit by an hour when we added 7×24h in UTC).
+// Monthly clamps to the month's last day (Jan 31 -> Feb 28).
+function localOccurrence(startISO,rule,n,tz){
+  if(!n) return new Date(startISO).toISOString();
+  const key=localDateKey(startISO,tz);
+  const time=new Intl.DateTimeFormat('en-GB',{timeZone:tz,hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(startISO));
+  let k;
+  if(rule==='biweekly') k=addDaysKey(key,14*n);
+  else if(rule==='monthly'){
+    const [y,m,d]=key.split('-').map(Number);
+    const first=new Date(Date.UTC(y,m-1+n,1));
+    const last=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
+    k=`${first.getUTCFullYear()}-${String(first.getUTCMonth()+1).padStart(2,'0')}-${String(Math.min(d,last)).padStart(2,'0')}`;
   }
-  return null;
+  else k=addDaysKey(key,7*n);
+  return zonedLocalToUtc(k,time,tz);
 }
+// Blocked time for one stylist in [start,end), in the SALON's timezone
+// (shared with calendar.js via booking-repository.blockedHitTz).
+const blockedHit=(c,T,staffId,startIso,endIso,tz)=>blockedHitTz(c,T,staffId,startIso,endIso,tz);
 
 export default async function handler(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -313,26 +313,46 @@ export default async function handler(req,res){
       if(action==='cancel'){
         // Scoped series cancel: series_scope 'this' (default) | 'following' | 'all'.
         // Requires series_id on the target row; a plain booking ignores scope.
+        // Every row goes through the canonical update (status history, fee void,
+        // upstream cancel to the salon's booking system), then ONE client text
+        // — and only for rows that were confirmed (pending rows never promised anything).
         const scope=String(body.series_scope||'this').toLowerCase();
         const {data:target}=await c.from('bookings').select('id,series_id,start_time,status').eq('id',body.id).eq('tenant_id',T).maybeSingle();
         if(!target)return res.status(404).json({ok:false,error:'Booking not found'});
-        let q=c.from('bookings').update({status:'cancelled',updated_at:new Date().toISOString()}).eq('tenant_id',T);
+        let q=c.from('bookings').select('id,client_id,service_id,start_time,status').eq('tenant_id',T);
         if(scope!=='this'&&target.series_id){
           q=q.eq('series_id',target.series_id);
           if(scope==='following') q=q.gte('start_time',target.start_time);
         } else q=q.eq('id',body.id);
-        const {data:cancelled,error:cancelErr}=await q.neq('status','cancelled').order('start_time').select('id,client_id,service_id,start_time');
-        if(cancelErr)return res.status(500).json({ok:false,error:'Could not cancel booking: '+(cancelErr.message||JSON.stringify(cancelErr))});
-        // Telnyx wire: the client always hears about a cancellation — exactly
-        // ONE text per cancel action (the earliest affected occurrence
-        // represents a series), mirroring calendar.js's series contract.
-        const firstCancelled=(cancelled||[])[0];
+        const {data:rows,error:readErr}=await q.neq('status','cancelled').order('start_time');
+        if(readErr)return res.status(500).json({ok:false,error:'Could not cancel booking: '+(readErr.message||JSON.stringify(readErr))});
+        const cancelled=[];
+        try{
+          for(const r0 of (rows||[])){
+            const r={...r0};   // the status BEFORE this cancel
+            const u=await updateCanonicalBooking(T,r.id,{status:'cancelled'},{source:'dashboard',reason:body.reason||'owner_cancel',sendCancellation:false});
+            if(u) cancelled.push({...r,was:r.status});
+          }
+        }catch(cancelErr){ return res.status(500).json({ok:false,error:'Could not cancel booking: '+(cancelErr.message||String(cancelErr)),cancelled:cancelled.length}); }
+        // Telnyx wire: exactly ONE text per cancel action (the earliest
+        // affected confirmed occurrence represents a series).
+        const firstCancelled=cancelled.find(r=>String(r.was||'').toLowerCase()==='confirmed');
         if(firstCancelled && firstCancelled.client_id){
           try{
             await sendConfirmationSMS({tenantId:T,clientId:firstCancelled.client_id,serviceId:firstCancelled.service_id,startTime:firstCancelled.start_time,verb:'Cancelled'});
           }catch(e){ /* a failed cancel text must never fail the cancellation */ }
         }
-        return res.json({ok:true,cancelled:cancelled?.length||0,scope:target.series_id&&scope!=='this'?scope:'this'});
+        // The freed slot goes to the waitlist (earliest future one).
+        let waitlist_offer=null, waitlist_matches={count:0,entries:[]};
+        const freed=cancelled.find(r=>new Date(r.start_time)>new Date());
+        if(freed){
+          try{
+            const {data:sv}=freed.service_id?await c.from('services').select('name').eq('id',freed.service_id).maybeSingle():{data:null};
+            waitlist_matches=await findWaitlistMatches(T,{serviceId:freed.service_id||null,serviceName:sv?.name||null});
+            waitlist_offer=await offerFreedSlot({tenantId:T,serviceId:freed.service_id||null,serviceName:sv?.name||null,freedAt:freed.start_time});
+          }catch(e){ console.warn('[salon] waitlist offer failed:',e.message); }
+        }
+        return res.json({ok:true,cancelled:cancelled.length,scope:target.series_id&&scope!=='this'?scope:'this',waitlist_matches,waitlist_offer});
       }
       if(action==='update'||action==='reschedule'){
         const patch={updated_at:new Date().toISOString()};
@@ -342,7 +362,7 @@ export default async function handler(req,res){
         if(body.staff_id)patch.staff_id=body.staff_id;
         if(body.notes!=null)patch.notes=body.notes;
         if(body.starts_at){
-          const {data:ex}=await c.from('bookings').select('start_time,end_time,series_id,staff_id').eq('id',body.id).maybeSingle();
+          const {data:ex}=await c.from('bookings').select('start_time,end_time,series_id,staff_id,series_pos').eq('id',body.id).eq('tenant_id',T).maybeSingle();
           const dur=ex?(new Date(ex.end_time)-new Date(ex.start_time))/60000:60;
           const ns=new Date(body.starts_at);
           patch.start_time=ns.toISOString();
@@ -353,11 +373,10 @@ export default async function handler(req,res){
           // occurrence is checked first — staff overlap and blocked time,
           // the same checks creation runs — against everything EXCEPT the
           // moving set (they shift together, so mutual overlaps are
-          // preserved by construction). Target first, then later ones in
-          // chronological order; a collision stops the move with 409
-          // {conflict, moved_count, failed_at_occurrence} and the already-
-          // moved occurrences persist (same partial-apply contract as
-          // series creation).
+          // preserved by construction). ALL are validated before anything is
+          // written; a collision answers 409 {conflict, moved_count:0,
+          // failed_at_occurrence} and nothing moves (same all-or-nothing
+          // contract as series creation).
           const scope=String(body.series_scope||'this').toLowerCase();
           if(scope==='following'&&ex?.series_id){
             const delta=new Date(patch.start_time).getTime()-new Date(ex.start_time).getTime();
@@ -373,10 +392,10 @@ export default async function handler(req,res){
               const {data:cf}=await c.from('bookings').select('id').eq('tenant_id',T).eq('staff_id',occ.staff_id)
                 .neq('status','cancelled').lt('start_time',en.toISOString()).gt('end_time',st.toISOString());
               if(cf&&cf.some(x=>!moving.has(x.id)))
-                return 'Occurrence '+st.toISOString().slice(0,10)+' is already booked — the first '+occ.moved+' were moved.';
+                return 'Occurrence '+localDateKey(st,tz)+' is already booked — nothing was moved.';
               const ds=await blockedHit(c,T,occ.staff_id,st.toISOString(),en.toISOString(),tz);
               if(ds)
-                return 'Occurrence '+ds+' falls in blocked time — the first '+occ.moved+' were moved.';
+                return 'Occurrence '+ds+' falls in blocked time — nothing was moved.';
               return null;
             };
             // target first (same window the tail patch below applies)
@@ -385,18 +404,25 @@ export default async function handler(req,res){
             const targetConflict=await checkOcc(targetOcc);
             if(targetConflict)return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:targetOcc.series_pos,
               error:'The new time for occurrence '+targetOcc.series_pos+' collides — nothing was moved. '+(targetConflict.match(/falls in blocked time/)?'Blocked time in the way.':'Another booking is in the way.')});
-            const {data:movedTarget,error:movedErr}=await c.from('bookings').update(patch).eq('id',body.id).eq('tenant_id',T).select().single();
-            if(movedErr)throw movedErr;
-            let moved=0;
+            // Validate EVERY later occurrence before writing anything — a
+            // collision moves nothing (no half-moved series).
+            const plan=[];
             for(const occ of (later||[])){
               const ns=new Date(new Date(occ.start_time).getTime()+delta).toISOString();
               const ne=new Date(new Date(occ.end_time).getTime()+delta).toISOString();
-              const conflict=await checkOcc({start_time:ns,end_time:ne,staff_id:occ.staff_id,series_pos:occ.series_pos,moved});
-              if(conflict)return res.status(409).json({ok:false,conflict:true,moved_count:moved,failed_at_occurrence:occ.series_pos||null,error:conflict});
-              const {error:occErr}=await c.from('bookings').update({
-                start_time:ns,end_time:ne,updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',T);
-              if(occErr)return res.status(500).json({ok:false,error:'Could not move occurrence: '+(occErr.message||JSON.stringify(occErr))});
-              moved++;
+              const conflict=await checkOcc({start_time:ns,end_time:ne,staff_id:occ.staff_id,series_pos:occ.series_pos,moved:0});
+              if(conflict)return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:occ.series_pos||null,error:conflict});
+              plan.push({id:occ.id,start_time:ns,end_time:ne});
+            }
+            // All clear → write through the canonical update (history, upstream
+            // update to the salon's system); ONE "Rescheduled" text, for the target.
+            const {updated_at:_t,...tcanon}=patch;
+            const movedTarget=await updateCanonicalBooking(T,body.id,tcanon,{source:'dashboard',reason:'owner_series_reschedule'});
+            if(!movedTarget)return res.status(404).json({ok:false,error:'Booking not found'});
+            let moved=0;
+            for(const p of plan){
+              const u=await updateCanonicalBooking(T,p.id,{start_time:p.start_time,end_time:p.end_time},{source:'dashboard',reason:'owner_series_reschedule',sendReschedule:false});
+              if(u)moved++;
             }
             // series_moved is RESPONSE metadata, not a bookings column —
             // writing it into the patch once made every series move fail on
@@ -441,9 +467,8 @@ export default async function handler(req,res){
       const rule=String(body.repeat?.rule||'').toLowerCase();
       const count=['weekly','biweekly','monthly'].includes(rule)?Math.min(52,Math.max(1,parseInt(body.repeat?.count,10)||1)):1;
       const occStarts=[];
-      // Legacy contract: occurrences are exact UTC-day multiples of the first
-      // (api/calendar-owner.js — what the owner calendar uses — keeps salon wall time).
-      for(let n=0;n<count;n++)occStarts.push(n===0?startDt.toISOString():utcOccurrence(startDt.toISOString(),rule,n));
+      // Occurrences keep the salon's wall-clock time (DST-safe), like api/calendar-owner.js.
+      for(let n=0;n<count;n++)occStarts.push(localOccurrence(startDt.toISOString(),rule,n,tz));
       // Owner rules (same as api/calendar-owner.js): walk-ins, past, off-grid and
       // off-schedule times are the owner's call. Only a real same-stylist overlap
       // (LolaDesk or the salon platform) or a blocked window in SALON time refuses

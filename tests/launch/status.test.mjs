@@ -1,5 +1,6 @@
 // /api/status: one public call that says what's live and exactly what to fix — never a secret.
 process.env.LOLA_PHONE_MODE = 'assistant'; // these checks cover the Telnyx-assistant line (LolaDesk’s own line: phoneline.test)
+process.env.SENDGRID_API_KEY = 'sg-test'; // confirmation emails configured
 process.env.TELNYX_PUBLIC_KEY = 'pk-test'; process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
 delete process.env.CRON_SECRET; process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1'; process.env.ELEVENLABS_API_KEY = 'el-secret'; process.env.ELEVENLABS_VOICE_ID = 'lolaVoice';
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };

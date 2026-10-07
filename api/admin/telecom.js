@@ -4,7 +4,9 @@
  *          numbers: tenant_numbers rows vs Telnyx live (on account, connection, messaging profile)
  *          ports:   Telnyx order ids / status / FOC / exceptions / last_error (never PINs/account numbers)
  *          texting: 10DLC brand / campaign / assignment status + last_error (never the EIN)
- *          costs:   this month's cost_* usage_events per kind (what LolaDesk pays)
+ *          costs:   this month's cost_* usage_events per kind — event COUNT (what LolaDesk paid for)
+ *          cost_cents / cost_dollars: the same in money (lib/costs.js: cents; legacy count rows priced at defaults)
+ *          revenue: { mrr_cents, fees_cents } and margin_cents = MRR + fees − costs, per salon and in totals
  *   POST { action, tenant_id, port_id? }
  *          resync         — sync the salon's open ports + 10DLC from Telnyx
  *          retry_port     — resend the salon's port (PATCH details/documents, confirm)
@@ -19,6 +21,8 @@ import { liveTelnyxSnapshot } from '../lib/connection-sync.js';
 import { getCanonicalVoiceConnectionId } from '../lib/telnyx-provision.js';
 import { messagingProfileId } from '../lib/telnyx-account.js';
 import { portSync, portRetry, textingSync, retryCampaign, assignNumbersIfApproved, _internals } from '../lib/setup/telecom.js';
+import { costCents, dollars } from '../lib/costs.js';
+import { mrrCents, normalizePlan } from '../lib/plans.js';
 
 const monthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString(); };
 const PORT_PUBLIC = ['id', 'requested_phone_number', 'status', 'telnyx_status', 'telnyx_order_id', 'telnyx_order_ids', 'foc_date', 'requirements_met', 'exceptions', 'last_error', 'temporary_phone_number', 'current_carrier', 'entity_name', 'authorized_contact_name', 'billing_city', 'billing_state', 'billing_zip', 'loa_document_id', 'invoice_document_id', 'submitted_at', 'completed_at', 'synced_at', 'created_at', 'updated_at'];
@@ -32,19 +36,23 @@ function body(req) {
 }
 
 export async function registry(c, { live = true } = {}) {
-  const [tenants, numbers, channels, ports, comps, usage] = await Promise.all([
-    c.from('tenants').select('id,name,slug,owner_email,phone_number,subscription_status').limit(5000),
+  const [tenants, numbers, channels, ports, comps, usage, fees] = await Promise.all([
+    c.from('tenants').select('*').limit(5000),
     c.from('tenant_numbers').select('*').limit(5000),
     c.from('tenant_channels').select('tenant_id,channel,account_id,status,updated_at').eq('channel', 'forwarding').limit(5000),
     c.from('tenant_number_ports').select('*').order('created_at', { ascending: false }).limit(2000),
     c.from('tenant_compliance').select('*').limit(5000),
-    c.from('usage_events').select('tenant_id,kind,units,created_at').gte('created_at', monthStart()).limit(20000),
+    c.from('usage_events').select('tenant_id,kind,units,metadata,created_at').gte('created_at', monthStart()).limit(50000),
+    c.from('booking_fees').select('tenant_id,status,fee_cents').eq('period', monthStart().slice(0, 7)).limit(50000),
   ].map((q) => Promise.resolve(q).then((r) => r?.data || [], () => [])));
   const snap = live ? await liveTelnyxSnapshot().catch(() => null) : null;
   const expected = live ? await getCanonicalVoiceConnectionId().catch(() => null) : null;
   const mp = await messagingProfileId(c).catch(() => null);
-  const byT = new Map((tenants || []).map((t) => [t.id, { tenant: { id: t.id, name: t.name, slug: t.slug, owner_email: t.owner_email, phone_number: t.phone_number, subscription_status: t.subscription_status }, numbers: [], forwarding: [], ports: [], texting: null, costs: {} }]));
-  const slot = (id) => { if (!byT.has(id)) byT.set(id, { tenant: { id }, numbers: [], forwarding: [], ports: [], texting: null, costs: {} }); return byT.get(id); };
+  const paying = (t) => ['active', 'canceling', 'past_due'].includes(String(t.subscription_status || ''));
+  const byT = new Map((tenants || []).map((t) => [t.id, { tenant: { id: t.id, name: t.name, slug: t.slug, owner_email: t.owner_email, phone_number: t.phone_number, subscription_status: t.subscription_status, plan: normalizePlan(t.plan) || t.plan || null },
+    numbers: [], forwarding: [], ports: [], texting: null, costs: {}, cost_cents: {}, cost_cents_total: 0,
+    revenue: { mrr_cents: paying(t) ? mrrCents(t.plan, t.billing_interval) : 0, fees_cents: 0 } }]));
+  const slot = (id) => { if (!byT.has(id)) byT.set(id, { tenant: { id }, numbers: [], forwarding: [], ports: [], texting: null, costs: {}, cost_cents: {}, cost_cents_total: 0, revenue: { mrr_cents: 0, fees_cents: 0 } }); return byT.get(id); };
   for (const n of numbers) {
     const l = snap?.byPhone?.get(n.phone_number) || null;
     const drift = [];
@@ -64,14 +72,27 @@ export async function registry(c, { live = true } = {}) {
   for (const f of channels) slot(f.tenant_id).forwarding.push({ salon_number: f.account_id, status: f.status, updated_at: f.updated_at });
   for (const p of ports) slot(p.tenant_id).ports.push({ ...only(p, PORT_PUBLIC), comments: (p.metadata?.comments || []).slice(-3), missing: p.metadata?.missing || [], loa_source: p.metadata?.loa_source || null, has_pin: !!p.pin_enc, has_account_number: !!p.account_number_enc, secure_storage_missing: !!p.metadata?.secure_storage_missing });
   for (const r of comps) slot(r.tenant_id).texting = { ...only(r, COMP_PUBLIC), has_ein: !!r.ein_enc, ein_last4: r.details?.ein_last4 || null, sole_prop: !!r.details?.sole_prop };
-  const totals = {};
+  const totals = {}, totals_cents = {};
   for (const u of usage) {
     if (!/^cost_/.test(String(u.kind || ''))) continue;
     const s = slot(u.tenant_id);
-    s.costs[u.kind] = (s.costs[u.kind] || 0) + Number(u.units || 0);
-    totals[u.kind] = (totals[u.kind] || 0) + Number(u.units || 0);
+    const cents = costCents(u);
+    s.costs[u.kind] = (s.costs[u.kind] || 0) + 1;
+    s.cost_cents[u.kind] = (s.cost_cents[u.kind] || 0) + cents;
+    s.cost_cents_total += cents;
+    totals[u.kind] = (totals[u.kind] || 0) + 1;
+    totals_cents[u.kind] = (totals_cents[u.kind] || 0) + cents;
   }
-  return { tenants: [...byT.values()], totals, month_start: monthStart(), telnyx: { live: !!snap && !snap.error, error: snap?.error || null, expected_connection_id: expected, messaging_profile_id: mp } };
+  for (const f of fees) if (['pending', 'earned', 'billed'].includes(f.status)) slot(f.tenant_id).revenue.fees_cents += Number(f.fee_cents) || 0;
+  let cost_total = 0, mrr_total = 0, fee_total = 0;
+  for (const s of byT.values()) {
+    s.cost_dollars = dollars(s.cost_cents_total);
+    s.margin_cents = s.revenue.mrr_cents + s.revenue.fees_cents - s.cost_cents_total;
+    s.margin_dollars = dollars(s.margin_cents);
+    cost_total += s.cost_cents_total; mrr_total += s.revenue.mrr_cents; fee_total += s.revenue.fees_cents;
+  }
+  const money = { cost_cents: cost_total, cost_dollars: dollars(cost_total), mrr_cents: mrr_total, mrr_dollars: dollars(mrr_total), fees_cents: fee_total, margin_cents: mrr_total + fee_total - cost_total, margin_dollars: dollars(mrr_total + fee_total - cost_total), by_kind_cents: totals_cents };
+  return { tenants: [...byT.values()], totals, totals_cents, money, month_start: monthStart(), telnyx: { live: !!snap && !snap.error, error: snap?.error || null, expected_connection_id: expected, messaging_profile_id: mp } };
 }
 
 export default async function handler(req, res) {

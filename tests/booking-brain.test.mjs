@@ -233,8 +233,10 @@ test('provider 409 conflict pivots to alternatives and releases the hold', async
     assert.equal(r.needs, 'alternate_time');
     assert.match(r.speak, /filled up|just got taken/i);
 
-    // Nothing was booked locally, and the local hold was released.
-    assert.equal(fake.all('bookings').length, 0);
+    // Local-first: the booking was saved before the platform answered, then
+    // withdrawn (cancelled, silently) when the platform refused — nothing
+    // stays booked locally, and the local hold is no longer active.
+    assert.equal(fake.all('bookings').filter(b => b.status !== 'cancelled').length, 0);
     const holds = fake.all('availability_holds');
     assert.ok(holds.length >= 1);
     assert.ok(holds.every(h => h.status !== 'active'), 'no hold may remain active after a 409');

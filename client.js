@@ -28,7 +28,7 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt$ = c => { const v = Math.max(0, +c || 0) / 100; return '$' + v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 }); };
-  const fmtDate = d => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); };
+  const fmtDate = d => { if (!d) return ''; const dt = new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? d + 'T12:00:00' : d); return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); };
   const fmtDT   = d => { if (!d) return ''; const dt = new Date(d); return dt.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }); };
   const daysAgo = d => { if (!d) return null; return Math.round((Date.now() - new Date(d).getTime()) / 86400000); };
   const initials = name => String(name || '?').split(/\s+/).slice(0, 2).map(s => s[0] || '').join('').toUpperCase() || '?';
@@ -115,35 +115,28 @@
     }
   }
 
-  async function loadFormulas() {
-    for (const ep of [
-      `/api/clients/${encodeURIComponent(clientId)}/formulas`,
-      `/api/crm/formulas?client_id=${encodeURIComponent(clientId)}`
-    ]) {
-      try {
-        const r = await fetch(ep, { credentials: 'include' });
-        if (!r.ok) continue;
-        const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.formulas || d.rows || d.data || []);
-        if (rows.length) { state.formulas = rows; return; }
-      } catch (_) {}
-    }
+  // Notes + color formulas: one owner-signed-in endpoint (the salon comes from
+  // the session, never from the page). See api/crm-notes.js.
+  function authHeaders(extra) {
+    let tok = '';
+    try { tok = (window.LolaAuth && window.LolaAuth.token) || localStorage.getItem('loladesk_token') || ''; } catch (_) {}
+    return Object.assign(tok ? { Authorization: 'Bearer ' + tok } : {}, extra || {});
   }
-
-  async function loadNotes() {
-    for (const ep of [
-      `/api/clients/${encodeURIComponent(clientId)}/notes`,
-      `/api/crm/notes?client_id=${encodeURIComponent(clientId)}`
-    ]) {
+  let notesLoaded = null;
+  function loadNotesAndFormulas() {
+    if (!notesLoaded) notesLoaded = (async () => {
       try {
-        const r = await fetch(ep, { credentials: 'include' });
-        if (!r.ok) continue;
+        const r = await fetch(`/api/crm-notes?client_id=${encodeURIComponent(clientId)}`, { headers: authHeaders(), credentials: 'include' });
+        if (!r.ok) return;
         const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.notes || d.rows || d.data || []);
-        if (rows.length) { state.notes = rows; return; }
+        state.notes = Array.isArray(d.notes) ? d.notes : [];
+        state.formulas = Array.isArray(d.formulas) ? d.formulas : [];
       } catch (_) {}
-    }
+    })();
+    return notesLoaded;
   }
+  function loadFormulas() { return loadNotesAndFormulas(); }
+  function loadNotes() { return loadNotesAndFormulas(); }
 
   async function loadConversations() {
     for (const ep of [
@@ -270,7 +263,7 @@
     const c = state.client || {};
     const recent = state.appointments.slice(0, 3);
     const latestFormula = state.formulas[0];
-    const latestNote = state.notes[0];
+    const latestNote = state.notes.find(n => n.id !== 'legacy-on-file');
 
     el.innerHTML = `
       <div class="cp-grid">
@@ -300,7 +293,7 @@
           ${latestFormula ? `
             <div class="card">
               <div class="card-head">Latest formula</div>
-              <div class="formula-when">${esc(fmtDate(latestFormula.created_at || latestFormula.date))}</div>
+              <div class="formula-when">${esc(fmtDate(latestFormula.date || latestFormula.created_at))}</div>
               <div class="formula-body">${esc(latestFormula.formula || latestFormula.text || latestFormula.body || '')}</div>
             </div>
           ` : ''}
@@ -308,7 +301,7 @@
           ${latestNote ? `
             <div class="card">
               <div class="card-head">Latest note</div>
-              <div class="note-when">${esc(fmtDT(latestNote.created_at))}</div>
+              <div class="note-when">${esc(latestNote.created_at ? fmtDT(latestNote.created_at) : '')}</div>
               <div>${esc(latestNote.body || latestNote.text || latestNote.note || '')}</div>
             </div>
           ` : ''}
@@ -350,18 +343,48 @@
   }
 
   function renderFormulas(el) {
-    if (!state.formulas.length) {
-      el.innerHTML = `<div class="card"><div class="empty">No formulas recorded yet. Add one from an appointment.</div></div>`;
-      return;
-    }
-    el.innerHTML = `<div class="card"><div class="card-head">Formulas (${state.formulas.length})</div>${
-      state.formulas.map(f => `
-        <div class="formula-row">
-          <div class="formula-when">${esc(fmtDate(f.created_at || f.date))}${f.stylist ? ' · ' + esc(f.stylist) : ''}${f.service ? ' · ' + esc(f.service) : ''}</div>
-          <div class="formula-body">${esc(f.formula || f.text || f.body || '')}</div>
+    const today = new Date().toISOString().slice(0, 10);
+    const form = `
+      <form class="formula-add" id="formulaForm" autocomplete="off">
+        <div class="formula-grid">
+          <label class="fa-field"><span>Date</span><input type="date" id="fDate" value="${today}"></label>
+          <label class="fa-field"><span>Stylist</span><input type="text" id="fStylist" placeholder="Who did it"></label>
+          <label class="fa-field fa-wide"><span>Formula</span><input type="text" id="fFormula" placeholder="e.g. 7N + 7G, 1:1" required></label>
+          <label class="fa-field"><span>Developer</span><input type="text" id="fDeveloper" placeholder="e.g. 20 vol"></label>
+          <label class="fa-field"><span>Processing</span><input type="text" id="fProcessing" placeholder="e.g. 35 min"></label>
+          <label class="fa-field fa-wide"><span>Notes</span><input type="text" id="fNotes" placeholder="Anything to remember next time"></label>
         </div>
-      `).join('')
-    }</div>`;
+        <div class="fa-foot"><span class="fa-status" id="fStatus" role="status"></span><button type="submit" class="btn primary">Save formula</button></div>
+      </form>`;
+    const rows = state.formulas.map(f => `
+        <div class="formula-row">
+          <div class="formula-when">${esc(fmtDate(f.date || f.created_at))}${f.stylist ? ' · ' + esc(f.stylist) : ''}${f.service ? ' · ' + esc(f.service) : ''}</div>
+          <div class="formula-body">${esc(f.formula || f.text || f.body || '')}</div>
+          ${(f.developer || f.processing) ? `<div class="formula-meta">${f.developer ? 'Developer ' + esc(f.developer) : ''}${f.developer && f.processing ? ' · ' : ''}${f.processing ? 'Processing ' + esc(f.processing) : ''}</div>` : ''}
+          ${f.notes ? `<div class="formula-meta">${esc(f.notes)}</div>` : ''}
+        </div>`).join('');
+    el.innerHTML = `<div class="card"><div class="card-head">Color formulas${state.formulas.length ? ' (' + state.formulas.length + ')' : ''}</div>${form}${rows || '<div class="empty">No formulas yet. Save the first one above.</div>'}</div>`;
+    document.getElementById('formulaForm').addEventListener('submit', addFormula);
+  }
+
+  async function addFormula(e) {
+    e.preventDefault();
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    const f = { date: v('fDate'), stylist: v('fStylist'), formula: v('fFormula'), developer: v('fDeveloper'), processing: v('fProcessing'), notes: v('fNotes') };
+    const status = document.getElementById('fStatus');
+    if (!f.formula) { status.textContent = 'Add the formula first.'; document.getElementById('fFormula').focus(); return; }
+    status.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/crm-notes', {
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), credentials: 'include',
+        body: JSON.stringify(Object.assign({ client_id: clientId, kind: 'formula' }, f))
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) { status.textContent = 'Not saved — please try again.'; return; }
+      state.formulas.unshift(d.formula || Object.assign({ created_at: new Date().toISOString() }, f));
+      renderFormulas(document.getElementById('paneFormulas'));
+      const s2 = document.getElementById('fStatus'); if (s2) s2.textContent = 'Saved.';
+    } catch (_) { status.textContent = 'Not saved — check your connection.'; }
   }
 
   function renderNotes(el) {
@@ -369,12 +392,13 @@
       <div class="card">
         <div class="card-head">Notes</div>
         <div class="note-add">
-          <textarea id="noteText" class="note-input" placeholder="Add a note about ${esc(state.client?.name || 'this client')}…"></textarea>
+          <textarea id="noteText" class="note-input" aria-label="New note" placeholder="Add a note about ${esc(state.client?.name || 'this client')}…"></textarea>
           <button id="btnAddNote">Save</button>
         </div>
+        <div class="fa-status" id="noteStatus" role="status"></div>
         ${state.notes.length ? state.notes.map(n => `
           <div class="note-row">
-            <div class="note-when">${esc(fmtDT(n.created_at))}${n.author ? ' · ' + esc(n.author) : ''}</div>
+            <div class="note-when">${esc(n.created_at ? fmtDT(n.created_at) : '')}${n.author ? (n.created_at ? ' · ' : '') + esc(n.author) : ''}</div>
             <div>${esc(n.body || n.text || n.note || '')}</div>
           </div>
         `).join('') : '<div class="empty">No notes yet.</div>'}
@@ -492,29 +516,26 @@
   }
 
   async function addNote() {
-    const text = document.getElementById('noteText').value.trim();
+    const box = document.getElementById('noteText');
+    const text = box.value.trim();
     if (!text) return;
-    for (const ep of [
-      `/api/clients/${encodeURIComponent(clientId)}/notes`,
-      `/api/crm/notes`
-    ]) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST', headers: {'Content-Type':'application/json'}, credentials: 'include',
-          body: JSON.stringify({ client_id: clientId, body: text, text })
-        });
-        if (r.ok) {
-          document.getElementById('noteText').value = '';
-          state.notes.unshift({ body: text, created_at: new Date().toISOString(), author: 'You' });
-          renderNotes(document.getElementById('paneNotes'));
-          return;
-        }
-      } catch (_) {}
-    }
-    // Local fallback
-    state.notes.unshift({ body: text, created_at: new Date().toISOString(), author: 'You (local only)' });
-    document.getElementById('noteText').value = '';
-    renderNotes(document.getElementById('paneNotes'));
+    const status = document.getElementById('noteStatus');
+    if (status) status.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/crm-notes', {
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), credentials: 'include',
+        body: JSON.stringify({ client_id: clientId, kind: 'note', body: text })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.ok !== false) {
+        state.notes.unshift(d.note || { body: text, created_at: new Date().toISOString(), author: 'You' });
+        renderNotes(document.getElementById('paneNotes'));
+        const s2 = document.getElementById('noteStatus'); if (s2) s2.textContent = 'Saved.';
+        return;
+      }
+    } catch (_) {}
+    // Never pretend: the note stays in the box so nothing is lost.
+    if (status) status.textContent = 'Not saved — please try again.';
   }
 
   boot();

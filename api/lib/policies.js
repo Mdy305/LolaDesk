@@ -2,16 +2,12 @@
 // preview endpoint all agree on the same math. Never diverge these three.
 import { db } from './db.js';
 
-// Load a tenant's policies (creates default row if missing so callers can
-// rely on a non-null return).
+// Load a tenant's policies from the ONE source (booking_settings.metadata.deposits,
+// via lib/salon-policies.js) — the same rules Settings, Banking, Lola and the
+// deposits job use. Always non-null.
 export async function loadPolicies(tenant_id) {
-  const c = db();
-  let { data } = await c.from('billing_policies').select('*').eq('tenant_id', tenant_id).maybeSingle();
-  if (!data) {
-    const { data: inserted } = await c.from('billing_policies').insert({ tenant_id }).select().single();
-    data = inserted;
-  }
-  return data;
+  const { readSalonPolicies } = await import('./salon-policies.js');
+  return { tenant_id, ...(await readSalonPolicies(db(), tenant_id)) };
 }
 
 // Compute the deposit for a specific service, respecting per-service override

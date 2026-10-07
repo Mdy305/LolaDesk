@@ -140,7 +140,12 @@ test('POST review_request skips an opted-out client (send untouched)', async () 
 
 test('unsubscribe flips the client\u2019s opt-out', async () => {
   const [res, out] = makeRes();
-  await emailDefault({ method: 'GET', query: { email: 'client@t1.com', tenant: 't1' } }, res);
+  // An unsigned (forged) link changes nothing; the signed link from the email footer unsubscribes.
+  const { unsubscribeSig } = await import('../api/lib/unsubscribe-sign.js');
+  const [res0] = makeRes();
+  await emailDefault({ method: 'GET', query: { email: 'client@t1.com', tenant: 't1' } }, res0);
+  assert.notEqual(fake.all('clients').find(c => c.id === 'c1').opted_out, true);
+  await emailDefault({ method: 'GET', query: { email: 'client@t1.com', tenant: 't1', sig: unsubscribeSig('t1', 'client@t1.com') } }, res);
   assert.equal(out.code, 200);
   const row = fake.all('clients').find(c => c.id === 'c1');
   assert.equal(row.opted_out, true);

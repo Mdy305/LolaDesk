@@ -39,30 +39,37 @@ export default async function handler(req, res) {
   try { event = JSON.parse(payload); }
   catch { return res.status(400).json({ error: 'Invalid JSON payload' }); }
 
-  const parsed = parseInsightsEvent(event);
+  // Never a 500: Telnyx retries a failing webhook forever (and eventually disables it). Errors are
+  // acknowledged with 200 and reported in the body + logs instead.
+  try {
+    const parsed = parseInsightsEvent(event);
 
-  // call.conversation.ended — the assistant's hangup signal: close the live
-  // calls row (and backfill the session id / duration) so the operator's
-  // Lola Live panel returns to Standing by the moment the call ends.
-  if (parsed.eventType === 'call.conversation.ended') {
-    const result = await markConversationEnded(db(), parsed);
-    if (result.mode === 'error') console.error('[telnyx-insights] end-persist failed:', result.error);
-    // Hung up before talking / dropped line → Lola texts them right now.
-    let textback = null;
-    try { const { instantTextBack } = await import('../lib/textback.js'); textback = await instantTextBack(db(), parsed); } catch (e) { textback = { sent: false, reason: String(e?.message || e) }; }
-    return res.status(200).json({ ok: true, ...result, textback });
+    // call.conversation.ended — the assistant's hangup signal: close the live
+    // calls row (and backfill the session id / duration) so the operator's
+    // Lola Live panel returns to Standing by the moment the call ends.
+    if (parsed.eventType === 'call.conversation.ended') {
+      const result = await markConversationEnded(db(), parsed);
+      if (result.mode === 'error') console.error('[telnyx-insights] end-persist failed:', result.error);
+      // Hung up before talking / dropped line → Lola texts them right now.
+      let textback = null;
+      try { const { instantTextBack } = await import('../lib/textback.js'); textback = await instantTextBack(db(), parsed); } catch (e) { textback = { sent: false, reason: String(e?.message || e) }; }
+      return res.status(200).json({ ok: true, ...result, textback });
+    }
+
+    if (parsed.eventType && parsed.eventType !== 'call.conversation_insights.generated') {
+      return res.status(200).json({ ok: true, ignored: 'unexpected event type', event: parsed.eventType });
+    }
+    if (!parsed.results.length) {
+      return res.status(200).json({ ok: true, ignored: 'no insight results', event: parsed.eventType });
+    }
+
+    const classified = classifyResults(parsed.results);
+    const result = await persistCallInsights(db(), parsed, classified);
+    if (result.mode === 'error') console.error('[telnyx-insights] persist failed:', result.error);
+
+    return res.status(200).json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[telnyx-insights] handler error:', String(e?.message || e).slice(0, 300));
+    return res.status(200).json({ ok: false, mode: 'error', error: String(e?.message || e).slice(0, 300) });
   }
-
-  if (parsed.eventType && parsed.eventType !== 'call.conversation_insights.generated') {
-    return res.status(200).json({ ok: true, ignored: 'unexpected event type', event: parsed.eventType });
-  }
-  if (!parsed.results.length) {
-    return res.status(200).json({ ok: true, ignored: 'no insight results', event: parsed.eventType });
-  }
-
-  const classified = classifyResults(parsed.results);
-  const result = await persistCallInsights(db(), parsed, classified);
-  if (result.mode === 'error') console.error('[telnyx-insights] persist failed:', result.error);
-
-  return res.status(200).json({ ok: true, ...result });
 }

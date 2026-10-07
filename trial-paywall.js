@@ -18,7 +18,7 @@
     if(state.status==='active'||state.status==='canceling') return { visible:false };
     if(!state.stripe_configured) return { visible:false }; // no upgrade path yet — stay quiet
 
-    const plan = (state.plan==='pro'||state.plan==='scale') ? state.plan : 'starter';
+    const plan = (state.plan==='pro'||state.plan==='scale'||state.plan==='medspa') ? state.plan : 'starter';
     const d = Number(state.trial_days_left)||0;
 
     if(state.status==='trialing'){
@@ -120,7 +120,9 @@
         body:JSON.stringify({action:b.action==='portal'?'portal':'checkout',plan:b.plan})});
       const d=await r.json();
       if(!d.ok) throw new Error(d.error||'Could not open checkout');
-      location.href=d.url;
+      if(d.url){ location.href=d.url; return; }
+      btn.disabled=false; btn.textContent=b.cta;
+      if(d.message){ if(window.LolaUX) window.LolaUX.toast(d.message,{duration:5200}); else alert(d.message); }
     }catch(e){
       btn.disabled=false;
       btn.textContent=b.cta;

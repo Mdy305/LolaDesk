@@ -16,6 +16,7 @@
  * booking through the normal path (dashboard, public calendar, voice).
  */
 
+import { serviceAllowed } from './service-gate.js';
 import { db } from './db.js';
 import { ensureMigrations } from './migrate.js';
 import { sendSMS } from './sms.js';
@@ -61,6 +62,7 @@ export async function offerRebooking({ tenantId, booking, policy = null, send = 
     policy = resolvePolicy(s);
   }
   if(!policy || policy.enabled !== true) return { ok: true, skipped: true, reason: 'policy_off' };
+  if(!(await serviceAllowed(tenantId)).ok) return { ok: true, skipped: true, reason: 'service_off' };
   if(!booking?.id || !booking.completed_at) return { ok: true, skipped: true, reason: 'no_completion' };
   if(!booking.client_id) return { ok: true, skipped: true, reason: 'no_client' };
   if(!booking.service_id) return { ok: true, skipped: true, reason: 'no_service' };
@@ -161,8 +163,12 @@ export async function runRebookingSweep(now = new Date(), { send = sendSMS, avai
     ? await c.from('bookings').select('id,status,start_time,client_id,service_id,staff_id,completed_at').in('id', bookingIds) : { data: [] };
   const bMap = Object.fromEntries((bookings || []).map(b => [b.id, b]));
 
+  // Salons whose service is off (lib/service-gate.js) get no rebooking texts.
+  const gate = new Map();
+  const allowed = async (tid) => { if(!gate.has(tid)) gate.set(tid, (await serviceAllowed(tid)).ok); return gate.get(tid); };
   for(const o of offers){
     result.checked++;
+    if(!(await allowed(o.tenant_id))){ result.skipped++; result.paused = (result.paused || 0) + 1; continue; }
     const b = bMap[o.booking_id];
     const status = String(b?.status || '').toLowerCase();
 

@@ -5,9 +5,12 @@
 
 import { buildLolaSystemPrompt } from './lib/lola-skills.js';
 import { db } from './lib/db.js';
+import { requireAdmin } from './lib/admin-gate.js';
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
+  // Platform admins only (ADMIN_EMAILS): this exposes salon configuration / environment shape.
+  if (!(await requireAdmin(req, res))) return;
 
   try {
     // Get a sample tenant (first one in the database)

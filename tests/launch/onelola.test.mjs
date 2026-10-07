@@ -106,7 +106,7 @@ const { lolaPulse } = await import(P + 'lola/pulse.js');
 let pz = await lolaPulse(db(), T.tenants[0]);
 ok(pz.live && /^Lola is answering · /.test(pz.headline) && /booked today/.test(pz.headline) && /nothing needs you$/.test(pz.headline), 'the dashboard line: ' + pz.headline);
 pz = await lolaPulse(db(), { ...T.tenants[0], id: 'nobody', phone_number: null });
-ok(!pz.live && /isn’t answering yet/.test(pz.headline) && pz.action.href === '/telecom', 'no line → it says so, with the fix: ' + pz.headline);
+ok(!pz.live && /isn’t answering yet/.test(pz.headline) && pz.action.href === '/settings#phone', 'no line → it says so, with the fix: ' + pz.headline);
 const dash = (await import('node:fs')).readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
 ok(/id="lolaPulse"/.test(dash) && /\/api\/lola\/pulse/.test(dash) && !/part of the team and ready/.test(dash), 'the dashboard shows it live (refreshing every 30s)');
 

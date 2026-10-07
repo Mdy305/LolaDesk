@@ -24,6 +24,7 @@
  *      optional FACEBOOK_CONFIG_ID (Facebook Login for Business configuration),
  *      INTEGRATION_ENCRYPTION_KEY (Page tokens are never stored in plaintext).
  */
+import { derivedSecret } from './derived-secret.js';
 import crypto from 'node:crypto';
 import { appUrl } from './telnyx-client.js';
 import { getOrStartConversation, getConversationHistory, logMessage, logUsage, setClientMemory, getClientMemory } from './db.js';
@@ -47,7 +48,7 @@ export const fbConfigured = () => !!(fbAppId() && secret());
 export const redirectUri = () => appUrl() + '/api/messenger';
 
 // ── Signed state: which salon started the connect (30 minutes, can't be forged or reused for Instagram) ──
-const stateSig = (body) => crypto.createHmac('sha256', secret() || 'x').update('fb:' + body).digest('hex').slice(0, 32);
+const stateSig = (body) => crypto.createHmac('sha256', secret() || derivedSecret('fb-state') || crypto.randomBytes(32).toString('hex')).update('fb:' + body).digest('hex').slice(0, 32);
 export function signState(tenantId, now = Date.now()) {
   const body = `${tenantId}.${now}.${crypto.randomBytes(4).toString('hex')}`;
   return body + '.' + stateSig(body);

@@ -1,3 +1,4 @@
+import { fillGapKey } from '../lib/callback-sign.js';
 // POST /api/lola/voice-fill-gap
 // Body: { date, start_time, duration_minutes, stylist, service_hint?, max_candidates? }
 // Same waitlist/lapsed ranking as fill-gap.js, but instead of SMS, Lola
@@ -155,10 +156,12 @@ export default async function handler(req, res) {
         service: cand.service || '',
         gap_date: date,
         gap_time: startTime,
-        salon: salonName
+        salon: salonName,
+        // Per-attempt signature: the status/response callbacks only act on a call LolaDesk placed.
+        k: fillGapKey(attemptId)
       });
       const texmlUrl = `${base}/api/webhooks/telnyx-fill-gap?${params.toString()}`;
-      const statusUrl = `${base}/api/webhooks/telnyx-fill-gap-status?attempt_id=${attemptId || ''}`;
+      const statusUrl = `${base}/api/webhooks/telnyx-fill-gap-status?attempt_id=${encodeURIComponent(attemptId || '')}&k=${encodeURIComponent(fillGapKey(attemptId))}`;
 
       // Originate the call — Telnyx TeXML Application flow
       let telnyxJson = null;

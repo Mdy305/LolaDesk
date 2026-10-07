@@ -16,7 +16,8 @@ import { handleCareText } from './lib/customer-care.js';
 import { answerClient } from './lib/client-brain.js';
 import { salonTz } from './lib/salon-time.js';
 import { chat } from './lib/llm.js';
-import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
+import { readWebhookBody, checkTelnyxSignature } from './lib/webhook-body.js';
+import { serviceGate, logCostSafe, smsCents } from './lib/paid-hooks.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { moderateImage, analyzeHairPhoto } from './lib/lola-photo-analysis.js';
 
@@ -49,23 +50,6 @@ const START=['start','unstop'];   // not 'yes' — clients answer offers with ye
 const HELP=['help','info'];
 const kw=(t,l)=>l.includes(String(t||'').trim().toLowerCase());
 
-async function readBody(req){
-  if(req.body && typeof req.body === 'object'){
-    return { parsed: req.body, raw: '', parsedByRuntime: true };
-  }
-  return new Promise(resolve=>{
-    const chunks=[]; let raw='';
-    req.on('data',c=>chunks.push(Buffer.isBuffer(c)?c:Buffer.from(c)));
-    req.on('end',()=>{
-      raw=Buffer.concat(chunks).toString('utf8');   // whole bytes: a split multi-byte character must not break the signature
-      const ct=(req.headers['content-type']||'').toLowerCase();
-      if(ct.includes('json')){ try{ resolve({ parsed: JSON.parse(raw), raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
-      else{ try{ const p=new URLSearchParams(raw),o={}; for(const[k,v]of p)o[k]=v; resolve({ parsed: o, raw, parsedByRuntime: false }); }catch{ resolve({ parsed: {}, raw, parsedByRuntime: false }); } }
-    });
-    req.on('error',()=>resolve({ parsed:{}, raw:'', parsedByRuntime:false }));
-  });
-}
-
 function extract(raw){
   if(raw.data?.event_type==='message.received'){
     const p=raw.data.payload||{};
@@ -81,29 +65,26 @@ async function markDone(id){
 }
 
 export default async function handler(req,res){
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, telnyx-signature-ed25519, telnyx-timestamp');
+  if(req.method==='OPTIONS') return res.status(200).end();
+  const incoming=await readWebhookBody(req);
+  // Ed25519 over the exact bytes — for EVERY content type (JSON v2 and legacy form posts alike)
+  // whenever TELNYX_PUBLIC_KEY is set. It used to check JSON only, so a forged form post went through.
+  const verified = checkTelnyxSignature(req, incoming);
+  if(!verified.ok) return res.status(403).json({ ok:false, error:`invalid telnyx signature: ${verified.reason}` });
+  return handleVerifiedText(incoming.parsed, res);
+}
+
+/** The texting pipeline for an already-verified Telnyx event (also used by /api/telnyx-webhook). */
+export async function handleVerifiedText(raw, res){
   let eventId = null;
-  const out = await handleText(req, res, (id) => { eventId = id; });   // a crash leaves it 'processing' → Telnyx's retry is answered
+  const out = await handleText(raw || {}, res, (id) => { eventId = id; });   // a crash leaves it 'processing' → Telnyx's retry is answered
   if(eventId) await markDone(eventId);
   return out;
 }
 
-async function handleText(req,res,noteEvent){
-  res.setHeader('Access-Control-Allow-Origin','*');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type, telnyx-signature-ed25519, telnyx-timestamp');
-  if(req.method==='OPTIONS') return res.status(200).end();
-
-  const incoming=await readBody(req);
-  // Ed25519 signs Telnyx's v2 JSON webhooks; a legacy v1 (form) profile can't carry it — LolaDesk's
-  // messaging heal moves the profile to v2, and only then is every text verified.
-  const isJson = /json/i.test(String(req.headers?.['content-type'] || '')) || /^\s*\{/.test(incoming.raw || '');
-  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime && isJson){
-    const sig = getTelnyxSignatureHeaders(req);
-    const verified = verifyTelnyxSignature({ rawBody: incoming.raw, signature: sig.signature, timestamp: sig.timestamp });
-    if(!verified.ok){
-      return res.status(403).json({ ok:false, error:`invalid telnyx signature: ${verified.reason}` });
-    }
-  }
-  const raw=incoming.parsed;
+async function handleText(raw,res,noteEvent){
   const body=extract(raw);
 
   // Delivery receipts (message.sent / message.finalized …) are not texts to answer.
@@ -218,6 +199,14 @@ async function handleText(req,res,noteEvent){
     }
   }catch{}
 
+  // Paid service gate: an expired / cancelled / unpaid salon gets no AI reply (the text is still kept).
+  const gate = await serviceGate(row);
+  if(!gate.ok){
+    console.warn(`[${channel}] no AI reply — salon service paused:`, row.id, gate.reason || '');
+    try{ const cl = fromN ? await upsertClient(row.id,{ phone: fromN, whatsappEnabled: isWhatsApp }) : null; const cv = await getOrStartConversation(row.id,{ clientId: cl?.id, channel, agent:'lola' }); if(cv?.id) await logMessage({conversationId:cv.id,tenantId:row.id,role:'user',agent:'lola',content:text}); await logUsage(row.id,'ai_reply_paused',1,{ channel, reason: gate.reason || null }); }catch{}
+    return res.status(200).json({ ok:true, handled:'service_paused', reason: gate.reason || null });
+  }
+
   let client=null,conv=null,hist=[{role:'user',content:text}],clientProfile=null;
   try{
     if(fromN) client=await upsertClient(row.id,{phone:fromN,whatsappEnabled:isWhatsApp});
@@ -253,16 +242,24 @@ async function handleText(req,res,noteEvent){
   // reply path untouched.
   let photoContext = '';
   if(body.mediaUrls?.length){
-    try{
+    // ONE overall deadline for the photo step (it used to be able to run past Vercel's 60s:
+    // up to 4 tries × 30s inside 3 retries). Out of time → answer the text without the photo.
+    const PHOTO_DEADLINE_MS = 15000;
+    const started = Date.now();
+    const left = () => PHOTO_DEADLINE_MS - (Date.now() - started);
+    let timer;
+    const work = (async () => {
       const imageUrl = body.mediaUrls[0];
-      const moderation = await moderateImage(imageUrl);
-      if(moderation?.appropriate){
-        const analysis = await analyzeHairPhoto(imageUrl, text, row.id);
-        if(analysis && !analysis.error){
-          photoContext = `\nCLIENT JUST SENT A PHOTO — real vision-AI analysis (use this, do not ignore the photo):\nCondition: ${analysis.condition||'unknown'}\nRisk level: ${analysis.riskLevel||'unknown'}\n${analysis.requiresConsultation ? 'This needs an in-person consultation before booking — say so warmly, do not just quote a price.' : ''}\n${analysis.notes ? 'Notes: '+analysis.notes : ''}`;
-        }
+      const moderation = await moderateImage(imageUrl, { deadlineMs: Math.max(1000, left() - 500) });
+      if(!moderation?.appropriate || left() < 2000) return '';
+      const analysis = await analyzeHairPhoto(imageUrl, text, row.id, { deadlineMs: Math.max(1000, left() - 250) });
+      if(analysis && !analysis.error){
+        return `\nCLIENT JUST SENT A PHOTO — real vision-AI analysis (use this, do not ignore the photo):\nCondition: ${analysis.condition||'unknown'}\nRisk level: ${analysis.riskLevel||'unknown'}\n${analysis.requiresConsultation ? 'This needs an in-person consultation before booking — say so warmly, do not just quote a price.' : ''}\n${analysis.notes ? 'Notes: '+analysis.notes : ''}`;
       }
-    }catch(e){ console.warn('[sms] Photo analysis failed, continuing text-only:', e.message); }
+      return '';
+    })().catch((e) => { console.warn('[sms] Photo analysis failed, continuing text-only:', e?.message); return ''; });
+    const deadline = new Promise((resolve) => { timer = setTimeout(() => { console.warn('[sms] photo step hit its 15s deadline — answering text-only'); resolve(''); }, PHOTO_DEADLINE_MS); });
+    try{ photoContext = await Promise.race([work, deadline]); }finally{ clearTimeout(timer); }
   }
   // One Lola: same memory and the same hands (check times, book, move, cancel) as on the phone.
   let reply = '';
@@ -309,6 +306,9 @@ async function handleText(req,res,noteEvent){
       if(alert && alert.texted) reply = String(reply).trim() + ' I\u2019ve also let the owner know, so they can text you personally.';
     }catch{}
   }
-  try{ await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id,type}); }catch(e){ console.error(`[${channel}] send err:`,e.message); }
+  try{
+    const sent = await sendSMS({from:toN,to:fromN,text:reply,tenantId:row.id,type});
+    if(sent && !sent.skipped && !sent.failed) await logCostSafe(row.id, 'cost_sms', smsCents(reply), { channel, direction: 'outbound', chars: String(reply).length });
+  }catch(e){ console.error(`[${channel}] send err:`,e.message); }
   return res.status(200).json({ok:true});
 }

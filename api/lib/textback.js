@@ -37,6 +37,19 @@ export async function instantTextBack(c, { callControlId, callSessionId, duratio
   const { data: tenant } = await c.from('tenants').select('id,name,phone_number,operator_phone,missed_call_textback').eq('id', call.tenant_id).maybeSingle();
   if (!tenant || tenant.missed_call_textback === false) return { sent: false, reason: 'off' };
   if ([tenant.phone_number, tenant.operator_phone, to].map((x) => e164(x || '')).includes(from)) return { sent: false, reason: 'own_line' };
+  return textBackOnce(c, tenant, { from, to, send, now });
+}
+
+/**
+ * The one missed-call text sender (the dropped-call path above and the phone line's
+ * "caller went silent" goodbye): the STOP line, once per caller per day, never after they
+ * just booked; opt-outs are honoured by the SMS funnel. → { sent, reason?, to?, text? }
+ */
+export async function textBackOnce(c, tenant, { from, to = null, send = null, now = Date.now(), source = 'missed_call_textback' } = {}) {
+  from = e164(from || '');
+  if (!tenant?.id || !from || from.replace(/\D/g, '').length < 10) return { sent: false, reason: 'no_caller_id' };
+  if (tenant.missed_call_textback === false) return { sent: false, reason: 'off' };
+  if ([tenant.phone_number, tenant.operator_phone, to].map((x) => e164(x || '')).includes(from)) return { sent: false, reason: 'own_line' };
   try {
     const mem = await getClientMemory(tenant.id, from);
     const last = mem.find((m) => m.key === 'textback_at');
@@ -44,14 +57,16 @@ export async function instantTextBack(c, { callControlId, callSessionId, duratio
     if (at && now - at < DAY) return { sent: false, reason: 'already_texted_today' };
   } catch (_) {}
   try {
-    const { data: cl } = await c.from('clients').select('id').eq('tenant_id', tenant.id).eq('phone', from).maybeSingle();
-    if (cl?.id) { const { data: b } = await c.from('bookings').select('id').eq('tenant_id', tenant.id).eq('client_id', cl.id).gte('created_at', new Date(now - 2 * 3600e3).toISOString()).limit(1); if (b?.length) return { sent: false, reason: 'already_booked' }; }
+    if (c) {
+      const { data: cl } = await c.from('clients').select('id').eq('tenant_id', tenant.id).eq('phone', from).maybeSingle();
+      if (cl?.id) { const { data: b } = await c.from('bookings').select('id').eq('tenant_id', tenant.id).eq('client_id', cl.id).gte('created_at', new Date(now - 2 * 3600e3).toISOString()).limit(1); if (b?.length) return { sent: false, reason: 'already_booked' }; }
+    }
   } catch (_) {}
   const sms = send || (await import('./sms.js')).sendSms;
   const text = withStopLine(missedCallTextbackText(tenant.name));
-  const r = await sms({ tenantId: tenant.id, from: to || undefined, to: from, text }).catch((e) => ({ error: String(e?.message || e) }));
-  if (r?.skipped || r?.error) return { sent: false, reason: r.reason || r.error };
+  const r = await Promise.resolve(sms({ tenantId: tenant.id, from: to || undefined, to: from, text })).catch((e) => ({ error: String(e?.message || e) }));
+  if (r?.skipped || r?.error || r?.failed) return { sent: false, reason: r.reason || r.error || 'not_sent' };
   try { await setClientMemory(tenant.id, from, 'textback_at', { at: new Date(now).toISOString() }); } catch (_) {}
-  try { const { logUsage } = await import('./db.js'); await logUsage(tenant.id, 'textback_sent', 1); } catch (_) {}
+  try { const { logUsage } = await import('./db.js'); await logUsage(tenant.id, 'textback_sent', 1, { source }); } catch (_) {}
   return { sent: true, to: from, text };
 }

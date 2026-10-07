@@ -107,7 +107,10 @@
   const ready=loadSession().then(({data,token})=>{
     if(!data?.tenant){redirectToOnboarding();throw new Error('session valid but tenant not provisioned yet');}
     const role=String(data.role||'staff').toLowerCase();
-    window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready,platform_admin:data.platform_admin===true}; loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
+    window.LolaAuth={user:data.user,tenant:data.tenant,role,token,ready,platform_admin:data.platform_admin===true};
+    // Who's signed in, for this tab: pages greet the real owner (first name, else the salon), never "Owner".
+    try{ const t=data.tenant||{}; sessionStorage.setItem('loladesk_tenant',JSON.stringify({id:t.id,slug:t.slug,name:t.name||t.business_name||'',owner:String(t.owner_name||'').trim().split(/\s+/)[0]||''})); }catch(e){}
+    loadAppRuntime(); setTimeout(()=>renderReadiness(token,role),0); return window.LolaAuth;
   }).catch(err=>{if(String(err?.message||'').includes('tenant not provisioned'))return Promise.reject(err);console.warn('[auth-guard] session renewal failed, redirecting to login:',err);clearToken();redirectToLogin();throw err;});
   window.LolaAuth={ready};
 })();

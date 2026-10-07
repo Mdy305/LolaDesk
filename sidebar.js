@@ -73,59 +73,64 @@
     salon: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/>',
   };
 
+  // The owner's menu is the essentials only — Home, Inbox, Calls, Calendar,
+  // Services, Clients, Growth (Campaigns, Marketer), Reviews, Payments,
+  // Settings, Team, Billing. Everything else is kept (never deleted) and stays
+  // reachable by its URL, from the page it belongs to, and from ⌘K:
+  //   hidden: true  → not in the menu, still lights up its place when open
+  //   platform: true → LolaDesk operator only (env keys, carrier setup, Command)
+  // Menu labels match the page <title>s ("Name · LolaDesk").
   const TABS = [
-    { id: 'now', label: 'Now', href: '/dashboard',
-      subs: [{ label: 'Today', href: '/dashboard', pages: ['dashboard', ''] },
+    { id: 'now', label: 'Home', href: '/dashboard',
+      subs: [{ label: 'Home', href: '/dashboard', pages: ['dashboard', ''] },
              { label: 'Inbox', href: '/inbox', pages: ['inbox'] },
              { label: 'Calls', href: '/calls', pages: ['calls', 'call-center'] },
-             { label: 'Operations', href: '/operations-os', pages: ['operations-os'] },
+             { label: 'Operations', href: '/operations-os', pages: ['operations-os'], hidden: true },
              { label: 'Mission Control', href: '/operator', pages: ['operator'], platform: true },
-             { label: 'Lola Brain', href: '/brain-os', pages: ['brain-os'], manager: true }],
+             { label: 'Lola Brain', href: '/brain-os', pages: ['brain-os'], manager: true, hidden: true },
+             { label: 'Lola full screen', href: '/lola-live', pages: ['lola-live'], hidden: true }],
       pages: [] },
     { id: 'calendar', label: 'Calendar', href: '/bookings',
-      subs: [{ label: 'Schedule', href: '/bookings', pages: ['bookings', 'calendar'] },
-             { label: 'Booking rules', href: '/booking-settings', pages: ['booking-settings'], manager: true },
+      subs: [{ label: 'Calendar', href: '/bookings', pages: ['bookings', 'calendar'] },
              { label: 'Services', href: '/services', pages: ['services'] },
-             { label: 'Checkout', href: '/pos', pages: ['pos'] },
-             { label: 'Inventory', href: '/inventory', pages: ['inventory'] },
-             { label: 'Booking health', href: '/booking-integrity', pages: ['booking-integrity'], manager: true }],
+             { label: 'Booking rules', href: '/booking-settings', pages: ['booking-settings'], manager: true, hidden: true },
+             { label: 'Checkout', href: '/pos', pages: ['pos'], hidden: true },
+             { label: 'Inventory', href: '/inventory', pages: ['inventory'], hidden: true },
+             { label: 'Booking health', href: '/booking-integrity', pages: ['booking-integrity'], manager: true, hidden: true }],
       pages: [] },
     { id: 'growth', label: 'Growth', href: '/campaigns', manager: true,
       subs: [{ label: 'Campaigns', href: '/campaigns', pages: ['campaigns', 'marketing'] },
              { label: 'Marketer', href: '/marketer', pages: ['marketer'], manager: true },
-             { label: 'Opportunities', href: '/growth-os', pages: ['growth-os'], manager: true },
-             { label: 'Revenue', href: '/revenue', pages: ['revenue'], manager: true },
              { label: 'Reviews', href: '/reviews', pages: ['reviews'] },
-             { label: 'Banking', href: '/banking', pages: ['banking', 'banking-payments', 'banking-policies'], owner: true }],
+             { label: 'Payments', href: '/banking', pages: ['banking', 'banking-payments', 'banking-policies'], owner: true },
+             { label: 'Opportunities', href: '/growth-os', pages: ['growth-os'], manager: true, hidden: true },
+             { label: 'Revenue', href: '/revenue', pages: ['revenue'], manager: true, hidden: true }],
       pages: [] },
     { id: 'clients', label: 'Clients', href: '/clients', subs: [], pages: ['clients', 'client'] },
-    // Everything about the salon and Lola's setup — visible, not hidden behind the owner's name.
+    // The salon itself: settings (number, booking rules, Lola), team, billing.
     { id: 'salon', label: 'Salon', href: '/settings', pages: [],
       subs: [{ label: 'Settings', href: '/settings', pages: ['settings'], owner: true },
              { label: 'Team', href: '/team', pages: ['team'], manager: true },
-             { label: 'Phone & texting', href: '/telecom', pages: ['telecom', 'numbers'], owner: true },
-             { label: 'Teach Lola', href: '/onboarding?learn=1', pages: [], owner: true },
-             { label: 'Activate Lola', href: '/activation-studio', pages: ['activation-studio'], owner: true },
-             { label: 'Launch checklist', href: '/launch', pages: ['launch'], owner: true },
              { label: 'Billing', href: '/subscription', pages: ['subscription'], owner: true },
-             { label: 'Lola full screen', href: '/lola-live', pages: ['lola-live'] },
+             { label: 'Phone numbers', href: '/numbers', pages: ['numbers'], owner: true, hidden: true },
+             { label: 'Teach Lola', href: '/onboarding?learn=1', pages: [], owner: true, hidden: true },
+             { label: 'Activate Lola', href: '/activation-studio', pages: ['activation-studio'], owner: true, hidden: true },
+             { label: 'Phone & texting', href: '/telecom', pages: ['telecom'], platform: true },
+             { label: 'Launch checklist', href: '/launch', pages: ['launch'], owner: true, hidden: true },
              { label: 'LolaDesk Command', href: '/admin', pages: ['admin'], platform: true }] },
   ];
 
-  // Everything about the account and Lola's setup lives behind the owner's name.
+  // Behind the owner's name. On a phone the Salon place lives here (the bottom
+  // bar has no room for it); on the desktop those same links are already in
+  // the sidebar, so the menu there shows only what isn't (data-ln-dup hides them).
   const ACCOUNT = [
-    { label: 'Settings', href: '/settings', owner: true, pages: ['settings'] },
-    { label: 'Teach Lola your salon', href: '/onboarding?learn=1', owner: true, pages: [] },
-    { label: 'Activate Lola', href: '/activation-studio', owner: true, pages: ['activation-studio'] },
-    { label: 'Launch checklist', href: '/launch', owner: true, pages: ['launch'] },
-    { label: 'Team', href: '/team', manager: true, pages: ['team'] },
-    { label: 'Billing', href: '/subscription', owner: true, pages: ['subscription'] },
-    { label: 'Phone numbers', href: '/numbers', owner: true, pages: ['numbers'] },
-    { label: 'Telecom & texting', href: '/telecom', owner: true, pages: ['telecom'] },
-    { label: 'Lola full screen', href: '/lola-live', pages: ['lola-live'] },
-    { label: 'LolaDesk Command', href: '/admin', platform: true, pages: ['admin'] },
+    { label: 'Settings', href: '/settings', owner: true, pages: ['settings'], dup: true },
+    { label: 'Team', href: '/team', manager: true, pages: ['team'], dup: true },
+    { label: 'Billing', href: '/subscription', owner: true, pages: ['subscription'], dup: true },
+    { label: 'LolaDesk Command', href: '/admin', platform: true, pages: ['admin'], dup: true },
   ];
   const ACCOUNT_PAGES = ['settings', 'team', 'subscription', 'numbers', 'telecom', 'activation-studio', 'launch'];
+  const inMenu = (x) => allowed(x) && !x.hidden;
 
   const page = (location.pathname.split('/').pop() || '').replace(/\.html$/, '') || 'dashboard';
   const DATA_PAGE_ALIAS = { overview: 'dashboard', marketing: 'campaigns', brain: 'brain-os', operations: 'operations-os', growth: 'growth-os' };
@@ -192,6 +197,8 @@ body.ln-shell{padding-left:236px}
   background:rgba(255,255,255,.025);color:var(--ln-ink3);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s}
 .ln-find:hover,.ln-find:focus-visible{color:var(--ln-ink2);border-color:rgba(242,242,244,.35);outline:none}
 .ln-find .ln-ico{width:16px;height:16px}
+/* Desktop: Settings/Team/Billing are already in the sidebar — the name menu doesn't repeat them. */
+.ln-side .ln-menu [data-ln-dup]{display:none}
 .ln-find span{flex:1;text-align:left}
 .ln-find kbd{font:inherit;font-size:11px;color:var(--ln-ink3)}
 .ln-tfind{display:none}
@@ -301,9 +308,10 @@ body.ln-shell{padding-left:236px}
       const on = activeTab && activeTab.id === t.id;
       // Every page stays in sight: each place shows its pages, not only the one you're in.
       const subs = t.subs.filter(allowed);
+      const shown = subs.filter((x) => !x.hidden);
       const tabIsPage = on && !subs.length && t.pages.concat(...t.subs.map((s) => s.pages)).includes(page);
-      const subHTML = subs.length > 1
-        ? `<div class="ln-subs${on ? ' is-open' : ''}">${subs.map((s) => `<a class="ln-sub${isSub(s) ? ' is-active' : ''}" href="${s.href}"${isSub(s) ? ' aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')}</div>`
+      const subHTML = shown.length > 1
+        ? `<div class="ln-subs${on ? ' is-open' : ''}">${shown.map((s) => `<a class="ln-sub${isSub(s) ? ' is-active' : ''}" href="${s.href}"${isSub(s) ? ' aria-current="page"' : ''}>${esc(s.label)}</a>`).join('')}</div>`
         : '';
       return `<a class="ln-tab${on ? ' is-active' : ''}" href="${t.href}" data-tab="${t.id}"${tabIsPage ? ' aria-current="page"' : ''}>${svg(I[t.id])}<span>${esc(t.label)}</span></a>${subHTML}`;
     }).join('');
@@ -311,9 +319,9 @@ body.ln-shell{padding-left:236px}
   function menuHTML() {
     const items = ACCOUNT.filter(allowed).map((a) => {
       const on = a.pages.includes(page);
-      return `<a role="menuitem" href="${a.href}"${on ? ' class="is-active" aria-current="page"' : ''}>${esc(a.label)}</a>`;
+      return `<a role="menuitem" href="${a.href}"${a.dup ? ' data-ln-dup' : ''}${on ? ' class="is-active" aria-current="page"' : ''}>${esc(a.label)}</a>`;
     }).join('');
-    return `${items}${items ? '<hr>' : ''}<button type="button" role="menuitem" class="ln-out" data-ln-signout>Sign out</button>`;
+    return `${items}${items ? '<hr data-ln-dup>' : ''}<button type="button" role="menuitem" class="ln-out" data-ln-signout>Sign out</button>`;
   }
   function meHTML(compact) {
     return `<button type="button" class="ln-me${onAccountPage ? ' is-active' : ''}" aria-haspopup="menu" aria-expanded="false" aria-label="Account">
@@ -350,7 +358,7 @@ body.ln-shell{padding-left:236px}
   requestAnimationFrame(() => { try { const on = side.querySelector('.ln-sub.is-active') || side.querySelector('.ln-tab.is-active'); if (on) on.scrollIntoView({ block: 'nearest' }); } catch (_) {} });
 
   // Phone: top strip (this place's pages + the owner) and the bottom bar.
-  const subsNow = activeTab ? activeTab.subs.filter(allowed) : [];
+  const subsNow = activeTab ? activeTab.subs.filter(inMenu) : [];
   const top = document.createElement('div');
   top.className = 'ln-top';
   top.setAttribute('data-lola-nav', '');
@@ -466,30 +474,46 @@ body.ln-shell{padding-left:236px}
 
   // ── Go anywhere (⌘K): every page, Lola's actions, live client search ──
   const EXTRA = [
-    { label: 'Payments', href: '/banking-payments', owner: true, group: 'Growth', k: 'charges tips refunds deposits stripe' },
-    { label: 'Deposit & no-show policies', href: '/banking-policies', owner: true, group: 'Growth', k: 'deposit no show fee policy' },
+    { label: 'Payment history', href: '/banking-payments', owner: true, group: 'Growth', k: 'charges tips refunds deposits stripe payments' },
+    { label: 'Payment policies', href: '/banking-policies', owner: true, group: 'Growth', k: 'deposit no show fee policy' },
+    { label: 'Get a phone number', href: '/settings#phone', owner: true, group: 'Salon', k: 'number phone line port forward' },
   ];
   const ACTIONS = [
     { label: 'Talk to Lola', run: () => talkToLola(), group: 'Lola', lola: true, k: 'voice ask speak jarvis' },
-    { label: 'Lola full screen', href: '/lola-live', group: 'Lola', lola: true, k: 'voice immersive orb' },
     { label: 'Teach Lola your salon', href: '/onboarding?learn=1', owner: true, group: 'Lola', lola: true, k: 'learn website menu import' },
     { label: 'Ask Lola what to do first', run: () => askLola('What should I do first today?'), group: 'Lola', lola: true, k: 'priorities today' },
   ];
+  // Every page you're allowed to open — the menu's, plus the ones kept out of
+  // the menu (Operations, Checkout, Revenue…), each listed once.
   function destinations() {
-    const out = [];
+    const out = [], seen = new Set();
+    const add = (x) => { const key = x.href || x.label; if (seen.has(key)) return; seen.add(key); out.push(x); };
     TABS.filter(allowed).forEach((t) => {
-      if (!t.subs.length) out.push({ label: t.label, href: t.href, group: t.label });
-      t.subs.filter(allowed).forEach((x) => out.push({ label: x.label, href: x.href, group: t.label }));
+      if (!t.subs.length) add({ label: t.label, href: t.href, group: t.label });
+      t.subs.filter(allowed).forEach((x) => add({ label: x.label, href: x.href, group: t.label }));
     });
-    EXTRA.filter(allowed).forEach((x) => out.push(x));
-    ACCOUNT.filter(allowed).forEach((x) => out.push({ label: x.label, href: x.href, group: 'Account' }));
+    EXTRA.filter(allowed).forEach(add);
+    ACCOUNT.filter(allowed).forEach((x) => add({ label: x.label, href: x.href, group: 'Account' }));
     return ACTIONS.filter(allowed).concat(out);
   }
+  // Free text goes to Lola herself — the panel on this page (or the dashboard's own Lola).
   function askLola(text) {
     const L = window.LolaEverywhere;
-    if (L && typeof L.ask === 'function' && document.querySelector('.lp-root')) { L.open && L.open(); L.ask(text); return; }
-    if (typeof window.openChat === 'function' && document.getElementById('orbMic')) { window.openChat(); const i = document.getElementById('cmdInput'); if (i) { i.value = text; i.form ? i.form.requestSubmit() : i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } return; }
-    location.href = '/brain-os?q=' + encodeURIComponent(text);
+    if (typeof window.openChat === 'function' && document.getElementById('orbMic')) {
+      if (window.__lolaApp && typeof window.__lolaApp.ask === 'function') { window.openChat(); window.__lolaApp.ask(text); return; }
+      window.openChat(); const i = document.getElementById('cmdInput'); if (i) { i.value = text; i.form ? i.form.requestSubmit() : i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } return;
+    }
+    if (L && typeof L.ask === 'function' && document.querySelector('.lp-root')) { L.ask(text); return; }
+    // The panel isn't on the page yet: bring Lola in, then ask.
+    if (!window.LolaEverywhere && !document.querySelector('script[src$="lola-everywhere.js"]')) {
+      const sc = document.createElement('script'); sc.src = '/lola-everywhere.js'; document.head.appendChild(sc);
+    }
+    let tries = 0;
+    const wait = setInterval(() => {
+      tries++;
+      if (window.LolaEverywhere && document.querySelector('.lp-root')) { clearInterval(wait); window.LolaEverywhere.ask(text); }
+      else if (tries > 40) { clearInterval(wait); try { sessionStorage.setItem('lola.reopen', '1'); } catch (_) {} location.href = '/dashboard'; }
+    }, 100);
   }
   let pal = null, palItems = [], palIdx = 0, palSeq = 0, palClients = [], palPending = false;
   function palBuild() {

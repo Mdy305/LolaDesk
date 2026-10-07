@@ -33,19 +33,30 @@ import {
 } from './lib/db.js';
 import { db as __db } from './lib/db.js';
 import { chat } from './lib/llm.js';
+import { derivedSecret } from './lib/derived-secret.js';
+import { allow as allowRate } from './lib/public-rate-limit.js';
 import {
   detectLolaIntent, deterministicSkillReply, buildLolaSystemPrompt,
   extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, buildClientMemoryBlock
 } from './lib/lola-skills.js';
 
-function secret(){ return process.env.WIDGET_EMBED_SECRET || process.env.OPERATOR_TOOLS_SECRET || 'dev-only-secret-change-me'; }
+// Unchanged when WIDGET_EMBED_SECRET / OPERATOR_TOOLS_SECRET is set (every pasted embed key keeps working);
+// the last resort is a secret derived from the server key, never a string in the source.
+function secret(){ return process.env.WIDGET_EMBED_SECRET || process.env.OPERATOR_TOOLS_SECRET || derivedSecret('widget-embed'); }
 export function widgetKeyFor(slug){
+  if(!secret()) return '';
   return crypto.createHmac('sha256', secret()).update('widget|' + String(slug||'')).digest('hex').slice(0, 32);
 }
+// Keys pasted on salon websites before the server-derived secret keep working (an embed key is
+// public page source anyway — it only names the salon; rate limits and signed tools do the guarding).
+function legacyKeyFor(slug){
+  if(process.env.WIDGET_EMBED_SECRET || process.env.OPERATOR_TOOLS_SECRET) return '';
+  return crypto.createHmac('sha256', 'dev-only-secret-change-me').update('widget|' + String(slug||'')).digest('hex').slice(0, 32);
+}
 function keyOk(slug, key){
-  const want = widgetKeyFor(slug);
   const got = String(key||'');
-  return got.length === want.length && crypto.timingSafeEqual(Buffer.from(want), Buffer.from(got));
+  const same = (want) => !!want && got.length === want.length && crypto.timingSafeEqual(Buffer.from(want), Buffer.from(got));
+  return same(widgetKeyFor(slug)) || same(legacyKeyFor(slug));
 }
 
 /* per-instance rate limit: 20 messages/min per ip+visitor */
@@ -105,7 +116,16 @@ export default async function handler(req, res){
 
   /* ── public config for the launcher ── */
   if(req.method === 'GET'){
-    return res.status(200).json({ ok:true, name: tenant.name,
+    // Voice: LolaBrain (the one Telnyx assistant), told which salon this is by its Lola line —
+    // the website never has to carry an assistant id or a phone number itself.
+    let voice = null;
+    try{
+      const { resolveAssistant } = await import('./lib/assistant-wiring.js');
+      const a = await resolveAssistant();
+      const line = String(tenant.phone_number || '').trim();
+      if(a?.id && line) voice = { agent_id: a.id, line, widget: '0.36.0' };
+    }catch{}
+    return res.status(200).json({ ok:true, name: tenant.name, voice,
       greeting: `Hi! I'm Lola, ${tenant.name}'s assistant 💗 Ask me anything — or let's get you booked in.`,
       booking_url: bookingUrlFor(tenant) });
   }
@@ -116,6 +136,9 @@ export default async function handler(req, res){
   if(!message) return res.status(400).json({ ok:false, error:'empty message' });
   const ip = String(req.headers['x-forwarded-for']||'').split(',')[0] || 'noip';
   if(limited(`${ip}|${visitorId}`)) return res.status(429).json({ ok:false, error:'slow down a touch 💗' });
+  // A new visitor_id per message must not dodge the brake: also per address and per salon.
+  if(!allowRate(`widgetchat:ip:${ip}`, 30, 10 * 60e3)) return res.status(429).json({ ok:false, error:'slow down a touch 💗' });
+  if(!allowRate(`widgetchat:tenant:${tenant.id}`, Math.max(1, Number(process.env.WIDGET_CHAT_TENANT_DAILY || 500)), 24 * 3600e3)) return res.status(429).json({ ok:false, error:'Lola is taking a short break here — please call or book online.' });
 
   /* ── identity + memory (web visitors remember like callers do) ── */
   let client = null, conv = null, history = [], profile = null;
@@ -134,15 +157,17 @@ export default async function handler(req, res){
     }
   }catch{}
 
-  /* ── the brain: deterministic skill → LLM → grounded fallback ── */
+  /* ── the brain: the same Lola as the phone — real availability, real booking (full name, mobile,
+     email), verified, in whatever booking system the salon uses (lib/client-brain → lola-tools) ── */
   const intent = detectLolaIntent(message);
-  let reply = deterministicSkillReply({ tenant, intent, channel: 'web', clientName: profile?.name || '' }) || '';
-  // A skill handled it, but booking intents on the web channel must still
-  // hand off to a working booking page (salon URL or LolaDesk hosted page).
-  if(reply && intent === 'booking_new' && !/(http|book right here)/i.test(reply)){
-    const url = bookingUrlFor(tenant);
-    if(url) reply += ` You can book right here: ${url}`;
-  }
+  let reply = '';
+  try{
+    const { answerClient } = await import('./lib/client-brain.js');
+    const out = await answerClient({ tenant, client, channel: 'web', text: message, history, phone: null, memoryKey: 'web:' + visitorId,
+      tz: tenant.timezone || tenant.time_zone || 'America/New_York', budgetMs: 25000 });
+    // Her brain unreachable → the grounded answer below (it always links a working booking page).
+    reply = out?.ok ? String(out.reply || '').trim() : '';
+  }catch(e){ console.warn('[widget-chat] brain:', String(e?.message || e).slice(0, 160)); }
   if(!reply){
     const memoryBlock = buildClientMemoryBlock(profile) || '';
     const system = buildLolaSystemPrompt({ tenant, channel: 'web', intent, memoryBlock })

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 /**
  * /api/operator-tools — Privileged skill layer for the owner-facing "Jarvis".
  * ════════════════════════════════════════════════════════════════════════
@@ -36,14 +37,32 @@ import { runBookingAction } from './lib/booking-brain.js';
 import {
   findBooking,
   revenueSummary, dueForRebooking, broadcastAudience,
-  resolveDate, computeNewStart, pinOk, isKnownOperator, signAction, verifyAction,
+  resolveDateKey, computeNewStart, pinOk, isKnownOperator, signAction, verifyAction,
   tenantToolSecret
 } from './lib/operator-db.js';
+import { salonTz, fmtSalon } from './lib/salon-time.js';
+import { localDateKey, zonedLocalToUtc } from './lib/timezone.js';
+import { sharedCount } from './lib/booking-integrity.js';
 
-// ── spoken formatting helpers ─────────────────────────────────────────────
+// ── spoken formatting helpers (always in the SALON's timezone) ─────────────
 const money = n => `$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US')}`;
-const timeLabel = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-const dayLabel = d => new Date(d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const timeLabel = (iso, tz) => fmtSalon(iso, tz, 'time');
+const dayLabel = (d, tz) => {
+  // A bare "YYYY-MM-DD" is a salon calendar day: label it at local noon.
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? zonedLocalToUtc(String(d), '12:00:00', tz || 'America/New_York') : d;
+  try{ return new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: tz || 'America/New_York' }); }
+  catch(_){ return new Date(iso).toDateString(); }
+};
+
+// Owner-line PIN guessing: 5 wrong PINs per salon per hour, counted in the
+// shared ledger (public_rate_hits) so every serverless instance agrees.
+export const PIN_MAX_FAILS = 5, PIN_WINDOW_MS = 60 * 60e3;
+const pinKey = (tenantId) => 'pin:' + tenantId;
+async function pinLocked(tenant){
+  const { count } = await sharedCount(pinKey(tenant.id), PIN_WINDOW_MS, { record: false });
+  return count >= PIN_MAX_FAILS;
+}
+async function pinFailed(tenant){ await sharedCount(pinKey(tenant.id), PIN_WINDOW_MS, { record: true }); }
 
 // Resolve which salon this operator session belongs to.
 async function resolveTenant(body){
@@ -55,14 +74,20 @@ async function resolveTenant(body){
   try{ const r = await resolveInboundTenant({ to }); return r.status === 'resolved' ? r.tenant : null; }catch{ return null; }
 }
 
-function rangeFromArgs(args){
-  const now = new Date();
+function rangeFromArgs(args, tz){
+  const today = localDateKey(new Date(), tz);
   const r = String(args.range || '').toLowerCase();
-  if(r === 'week'){ const f = new Date(now); f.setDate(f.getDate() - f.getDay()); return { from: f, to: now, label: 'this week' }; }
-  if(r === 'month'){ const f = new Date(now.getFullYear(), now.getMonth(), 1); return { from: f, to: now, label: 'this month' }; }
-  if(args.from && args.to) return { from: new Date(args.from), to: new Date(args.to), label: 'that range' };
-  const d = resolveDate(args.date);
-  return { from: d, to: d, label: args.date ? dayLabel(d) : 'today' };
+  const [y, m] = today.split('-').map(Number);
+  if(r === 'week'){
+    const dow = new Date(zonedLocalToUtc(today, '12:00:00', tz)).toLocaleDateString('en-US', { weekday: 'short', timeZone: tz });
+    const back = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(dow);
+    const f = new Date(Date.UTC(y, m - 1, Number(today.slice(8, 10)) - Math.max(0, back))).toISOString().slice(0, 10);
+    return { from: f, to: today, label: 'this week' };
+  }
+  if(r === 'month') return { from: `${today.slice(0, 7)}-01`, to: today, label: 'this month' };
+  if(args.from && args.to) return { from: resolveDateKey(args.from, tz) || today, to: resolveDateKey(args.to, tz) || today, label: 'that range' };
+  const d = resolveDateKey(args.date, tz) || today;
+  return { from: d, to: d, label: args.date ? dayLabel(d, tz) : 'today' };
 }
 
 // Build the "needs confirmation" response with a signed token binding the action.
@@ -70,15 +95,20 @@ function needConfirm(tenant, tool, k, speak){
   return { speak, needs_confirmation: true, confirm_token: signAction({ t: tenant.id, tool, k }) };
 }
 // Validate a confirm call. Returns the signed action payload `k`, or an error speak.
-function takeConfirm(tenant, tool, args){
+async function takeConfirm(tenant, tool, args){
   const v = verifyAction(args.confirm_token);
   if(!v || v.t !== tenant.id || v.tool !== tool){
     return { error: "That confirmation expired — tell me what you'd like again." };
   }
+  if(!tenant.operator_pin_hash){
+    return { error: "No operator PIN is set up yet, so I can't make changes by voice." };
+  }
+  if(await pinLocked(tenant)){
+    return { error: "Too many wrong PINs — owner changes by voice are paused for an hour. You can still make changes in the dashboard.", locked: true };
+  }
   if(!pinOk(tenant, args.pin)){
-    return { error: tenant.operator_pin_hash
-      ? "That PIN doesn't match, so I didn't make any changes."
-      : "No operator PIN is set up yet, so I can't make changes by voice." };
+    await pinFailed(tenant);
+    return { error: "That PIN doesn't match, so I didn't make any changes." };
   }
   return { k: v.k };
 }
@@ -91,8 +121,9 @@ async function whats_my_day(tenant, args){
 
 // ── SKILL: revenue ────────────────────────────────────────────────────────
 async function find_revenue(tenant, args){
-  const { from, to, label } = rangeFromArgs(args);
-  const { total, count } = await revenueSummary(tenant.id, { from, to });
+  const tz = await salonTz(tenant.id);
+  const { from, to, label } = rangeFromArgs(args, tz);
+  const { total, count } = await revenueSummary(tenant.id, { from, to, tz });
   return { speak: `${label}: ${money(total)} booked across ${count} appointment${count === 1 ? '' : 's'}.`, total, count };
 }
 
@@ -110,49 +141,53 @@ async function who_is_due(tenant, args){
 
 // ── SKILL: move an appointment (destructive) ──────────────────────────────
 async function move_appointment(tenant, args){
+  const tz = await salonTz(tenant.id);
   if(args.confirm){
-    const r = takeConfirm(tenant, 'move_appointment', args);
-    if(r.error) return { speak: r.error };
+    const r = await takeConfirm(tenant, 'move_appointment', args);
+    if(r.error) return { speak: r.error, ...(r.locked ? { locked: true } : {}) };
     const moved = await runBookingAction('reschedule_appointment', tenant, { booking_id: r.k.id, starts_at: r.k.new_starts_at }, { channel: 'operator' });
     if(!moved.ok) return { speak: moved.speak || "I couldn't find that appointment to move." };
     return { speak: moved.speak, moved: true };
   }
-  const matches = await findBooking(tenant.id, args);
+  const matches = await findBooking(tenant.id, args, tz);
   if(!matches.length) return { speak: "I don't see that appointment — which client and time?" };
   if(matches.length > 1){
-    return { speak: `I see ${matches.length} that match — which one? ${matches.map(m => `${timeLabel(m.starts_at)} ${m.client_name || m.service}`).join(', ')}`, ambiguous: true };
+    return { speak: `I see ${matches.length} that match — which one? ${matches.map(m => `${timeLabel(m.starts_at, tz)} ${m.client_name || m.service}`).join(', ')}`, ambiguous: true };
   }
   const b = matches[0];
-  const new_starts_at = computeNewStart(b.starts_at, args);
+  const new_starts_at = computeNewStart(b.starts_at, args, tz);
+  // Never guess the new time.
+  if(!new_starts_at) return { speak: `What time should I move ${b.client_name || b.service || 'it'} to?`, needs: 'new_time' };
   return needConfirm(tenant, 'move_appointment', { id: b.id, new_starts_at },
-    `Move ${b.client_name || b.service} from ${timeLabel(b.starts_at)} to ${timeLabel(new_starts_at)} on ${dayLabel(new_starts_at)}? Say your PIN and "confirm".`);
+    `Move ${b.client_name || b.service} from ${timeLabel(b.starts_at, tz)} to ${timeLabel(new_starts_at, tz)} on ${dayLabel(new_starts_at, tz)}? Say your PIN and "confirm".`);
 }
 
 // ── SKILL: cancel an appointment (destructive) ────────────────────────────
 async function cancel_appointment(tenant, args){
+  const tz = await salonTz(tenant.id);
   if(args.confirm){
-    const r = takeConfirm(tenant, 'cancel_appointment', args);
-    if(r.error) return { speak: r.error };
+    const r = await takeConfirm(tenant, 'cancel_appointment', args);
+    if(r.error) return { speak: r.error, ...(r.locked ? { locked: true } : {}) };
     const cancelled = await runBookingAction('cancel_appointment', tenant, { booking_id: r.k.id, reason: r.k.label }, { channel: 'operator' });
     if(!cancelled.ok) return { speak: cancelled.speak || "I couldn't find that appointment." };
     return { speak: cancelled.speak, cancelled: true };
   }
-  const matches = await findBooking(tenant.id, args);
+  const matches = await findBooking(tenant.id, args, tz);
   if(!matches.length) return { speak: "I don't see that one — which client and time?" };
   if(matches.length > 1){
-    return { speak: `Which one? ${matches.map(m => `${timeLabel(m.starts_at)} ${m.client_name || m.service}`).join(', ')}`, ambiguous: true };
+    return { speak: `Which one? ${matches.map(m => `${timeLabel(m.starts_at, tz)} ${m.client_name || m.service}`).join(', ')}`, ambiguous: true };
   }
   const b = matches[0];
-  const label = `${b.client_name || b.service} at ${timeLabel(b.starts_at)}`;
+  const label = `${b.client_name || b.service} at ${timeLabel(b.starts_at, tz)}`;
   return needConfirm(tenant, 'cancel_appointment', { id: b.id, label },
-    `Cancel ${label} on ${dayLabel(b.starts_at)}? Say your PIN and "confirm".`);
+    `Cancel ${label} on ${dayLabel(b.starts_at, tz)}? Say your PIN and "confirm".`);
 }
 
 // ── SKILL: broadcast a text to a segment (destructive) ────────────────────
 async function broadcast_text(tenant, args){
   if(args.confirm){
-    const r = takeConfirm(tenant, 'broadcast_text', args);
-    if(r.error) return { speak: r.error };
+    const r = await takeConfirm(tenant, 'broadcast_text', args);
+    if(r.error) return { speak: r.error, ...(r.locked ? { locked: true } : {}) };
     // NOTE: sends inline up to the audience cap. For very large lists, route
     // through the existing jobs/worker queue instead of sending here.
     const audience = await broadcastAudience(tenant.id, { segment: r.k.segment, limit: 200 });
@@ -201,7 +236,8 @@ export default async function handler(req, res){
   const provided = req.headers['x-lola-operator-secret'];
   const slug = (req.query && req.query.tenant) || '';
   const master = process.env.OPERATOR_TOOLS_SECRET;
-  const ok = master && provided && (provided === master || (slug && provided === tenantToolSecret(slug)));
+  const same = (a, b) => { if(!a || !b) return false; const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+  const ok = master && provided && (same(provided, master) || (slug && same(provided, tenantToolSecret(slug))));
   if(!ok){
     return res.status(401).json({ speak: "I can't run owner commands from here." });
   }

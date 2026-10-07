@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Calendar — LolaDesk</title><link rel="stylesheet" href="app.css"/>
+<title>Calendar · LolaDesk</title><link rel="stylesheet" href="app.css"/>
 <style>
 /* ═══════════════════════════════════════════════════════════════
    Calendar OS — Apple-grade schedule surface
@@ -252,7 +252,7 @@
   <div class="cal-links" style="display:flex;gap:8px;align-items:center">
     <a href="services.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Services</a>
     <a href="team.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Team</a>
-    <a href="booking-settings.html" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Settings</a>
+    <a href="/settings#booking" style="padding:9px 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;text-decoration:none">Booking rules</a>
     <button class="wl-btn" onclick="openWaitlist()" title="Clients waiting for a slot to open">Waitlist <span class="wl-badge zero" id="wlCount">0</span></button>
     <button class="block-btn" onclick="openBlock()" title="Mark lunch, a break, or a day off on the staff grid">⏱ Block time</button>
     <button class="primary" onclick="openNew()" style="padding:10px 18px;border-radius:999px;background:var(--accent);color:#10140a;font-weight:650;font-size:13px;cursor:pointer;border:none;box-shadow:0 4px 14px rgba(242,242,244,.25)">+ New booking</button>
@@ -806,15 +806,15 @@ function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub=
   BK={client:null,walkIn:false};
   const t=min!=null?hhmm(min):'10:00';
   openModal(title,sub||'Lola will confirm this client by text when you save.',
-    '<div class="fld"><label>Client</label><div class="cl-pick"><input id="bkClient" placeholder="Search by name or phone — or type a new client" autocomplete="off"/><div id="bkClientRes" class="cl-res"></div></div><div id="bkClientChip"></div></div>'
-    +'<div class="fld"><label>Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
-    +'<div class="fld"><label>Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
-    +'<div class="row2"><div class="fld"><label>Staff</label><select id="bkStaff"></select></div>'
-    +'<div class="fld"><label>Date</label><input id="bkDate" type="date" value="'+curKey()+'"/></div></div>'
-    +'<div class="row2"><div class="fld"><label>Time <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">· salon time</span></label><input id="bkTime" type="time" step="300" value="'+t+'"/></div>'
-    +'<div class="fld"><label>Repeat</label><select id="bkRepeat">'+REPEAT_OPTS+'</select></div></div>'
-    +'<div class="fld"><label>Open times</label><div id="bkSuggest" class="sugg"><span class="sugg-empty">Pick a service to see open times</span></div></div>'
-    +'<div class="fld"><label>Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
+    '<div class="fld"><label for="bkClient">Client</label><div class="cl-pick"><input id="bkClient" placeholder="Search by name or phone — or type a new client" autocomplete="off"/><div id="bkClientRes" class="cl-res"></div></div><div id="bkClientChip"></div></div>'
+    +'<div class="fld"><label for="bkPhone">Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
+    +'<div class="fld"><label id="bkSvcLbl">Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list" role="group" aria-labelledby="bkSvcLbl"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
+    +'<div class="row2"><div class="fld"><label for="bkStaff">Staff</label><select id="bkStaff"></select></div>'
+    +'<div class="fld"><label for="bkDate">Date</label><input id="bkDate" type="date" value="'+curKey()+'"/></div></div>'
+    +'<div class="row2"><div class="fld"><label for="bkTime">Time <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">· salon time</span></label><input id="bkTime" type="time" step="300" value="'+t+'"/></div>'
+    +'<div class="fld"><label for="bkRepeat">Repeat</label><select id="bkRepeat">'+REPEAT_OPTS+'</select></div></div>'
+    +'<div class="fld"><label id="bkSuggestLbl">Open times</label><div id="bkSuggest" class="sugg" role="group" aria-labelledby="bkSuggestLbl"><span class="sugg-empty">Pick a service to see open times</span></div></div>'
+    +'<div class="fld"><label for="bkNotes">Notes</label><textarea id="bkNotes" rows="2"></textarea></div>'
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="ghost" onclick="walkInNow()" title="Book this client right now with no text sent">Walk-in now</button><button class="primary" id="bkSave" onclick="saveBooking()">Confirm booking</button></div>'
     +'<div class="mstatus" id="mstatus"></div>');
   hydrateForm();
@@ -939,11 +939,11 @@ async function saveBooking(){
 /* ── Blocked time (lunch, breaks, days off) ── */
 function openBlock(){
   const stfOpts=STATE.staff.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
-  openModal('Block time','Mark lunch, a break, or a day off — Lola and the calendar will treat the slot as unavailable.','<div class="fld"><label>Staff</label><select id="bkBlockStaff">'+stfOpts+'</select></div>'
-    +'<div class="fld"><label>Date</label><input id="bkBlockDate" type="date" value="'+curKey()+'"/></div>'
-    +'<div class="row2"><div class="fld"><label>Start time</label><input id="bkBlockStart" type="time" value="12:00"/></div>'
-    +'<div class="fld"><label>End time</label><input id="bkBlockEnd" type="time" value="13:00"/></div></div>'
-    +'<div class="fld"><label>Reason</label><input id="bkBlockReason" placeholder="Lunch, training, meeting, day off…"/></div>'
+  openModal('Block time','Mark lunch, a break, or a day off — Lola and the calendar will treat the slot as unavailable.','<div class="fld"><label for="bkBlockStaff">Staff</label><select id="bkBlockStaff">'+stfOpts+'</select></div>'
+    +'<div class="fld"><label for="bkBlockDate">Date</label><input id="bkBlockDate" type="date" value="'+curKey()+'"/></div>'
+    +'<div class="row2"><div class="fld"><label for="bkBlockStart">Start time</label><input id="bkBlockStart" type="time" value="12:00"/></div>'
+    +'<div class="fld"><label for="bkBlockEnd">End time</label><input id="bkBlockEnd" type="time" value="13:00"/></div></div>'
+    +'<div class="fld"><label for="bkBlockReason">Reason</label><input id="bkBlockReason" placeholder="Lunch, training, meeting, day off…"/></div>'
     +'<div class="fld"><label class="bk-day-off">All day (leave times empty)</label></div>'
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBlock()">Block this time</button></div>'
     +'<div class="mstatus" id="mstatus"></div>');
@@ -1076,11 +1076,11 @@ function openReschedule(id){
   const b=findBooking(id);if(!b)return;
   const p=salonParts(b.start_time);
   openModal('Reschedule','Move '+clientName(b.client)+' to a new time (salon time). The appointment keeps its status.',
-    '<div class="row2"><div class="fld"><label>New date</label><input id="rsDate" type="date" value="'+p.key+'"/></div>'
-    +'<div class="fld"><label>New time</label><input id="rsTime" type="time" step="300" value="'+hhmm(p.min)+'"/></div></div>'
-    +'<div class="row2"><div class="fld"><label>Staff</label><select id="rsStaff"></select></div>'
-    +'<div class="fld"><label>Length</label><input id="rsDur" type="number" min="5" step="5" value="'+spanMin(b)+'"/></div></div>'
-    +(b.series_id?'<div class="fld"><label>Apply to</label><select id="rsScope"><option value="this">This appointment only</option><option value="following">This and following in the series</option></select></div>':'')
+    '<div class="row2"><div class="fld"><label for="rsDate">New date</label><input id="rsDate" type="date" value="'+p.key+'"/></div>'
+    +'<div class="fld"><label for="rsTime">New time</label><input id="rsTime" type="time" step="300" value="'+hhmm(p.min)+'"/></div></div>'
+    +'<div class="row2"><div class="fld"><label for="rsStaff">Staff</label><select id="rsStaff"></select></div>'
+    +'<div class="fld"><label for="rsDur">Length</label><input id="rsDur" type="number" min="5" step="5" value="'+spanMin(b)+'"/></div></div>'
+    +(b.series_id?'<div class="fld"><label for="rsScope">Apply to</label><select id="rsScope"><option value="this">This appointment only</option><option value="following">This and following in the series</option></select></div>':'')
     +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveReschedule(\''+esc(id)+'\')">Move appointment</button></div>'
     +'<div class="mstatus" id="mstatus"></div>');
   const sel=document.getElementById('rsStaff');

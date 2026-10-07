@@ -3,12 +3,14 @@
  * AI speaks human language; Lola resolves IDs, validates availability,
  * creates a short hold, commits the booking, then returns confirmation.
  */
+import crypto from 'node:crypto';
 import { upsertClient } from './lib/db.js';
 import { getTenantById } from './lib/operator-db.js';
 import { resolveBookingRequest } from './lib/booking-resolver.js';
 import { holdAvailability } from './lib/availability-engine-v2.js';
 import { createCanonicalBooking, listServices, releaseHold } from './lib/booking-repository.js';
 import { whenForTenant } from './lib/salon-time.js';
+import { bookingGateResponse } from './lib/billing-gate.js';
 
 function bodyOf(req){
   if(typeof req.body==='string'){ try{return JSON.parse(req.body||'{}')}catch{return {}} }
@@ -22,9 +24,10 @@ export default async function handler(req,res){
   if(req.method==='OPTIONS') return res.status(204).end();
   if(req.method!=='POST') return res.status(405).json({speak:'Method not allowed'});
 
-  const provided=req.headers['x-lola-booking-secret'];
-  const expected=process.env.BOOKING_TOOL_SECRET;
-  if(!expected || !provided || provided!==expected){
+  const provided=String(req.headers['x-lola-booking-secret']||'');
+  const expected=String(process.env.BOOKING_TOOL_SECRET||'');
+  const same=(a,b)=>{ const x=Buffer.from(a), y=Buffer.from(b); return x.length===y.length && crypto.timingSafeEqual(x,y); };
+  if(!expected || !provided || !same(provided,expected)){
     return res.status(401).json({speak:"I'm not able to book that from here right now."});
   }
 
@@ -37,6 +40,8 @@ export default async function handler(req,res){
 
     const tenant=await getTenantById(tenant_id);
     if(!tenant) return res.status(404).json({speak:"I couldn't find this salon's account."});
+    const gate=bookingGateResponse(tenant,'voice');
+    if(gate) return res.status(200).json({...gate,booked:false});
 
     const resolved=await resolveBookingRequest(tenant.id,{service,stylist});
     if(!resolved.ok){

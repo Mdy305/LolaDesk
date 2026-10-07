@@ -1,12 +1,16 @@
 // POST /api/widget/book
-// { tenant, service_id, staff_id, start_iso, client: { first_name, last_name, phone, email } }
-// Creates a booking and (if deposit policy is on) a Stripe PaymentIntent for the deposit.
-// PUBLIC — no bearer token. Rate-limited by tenant+phone.
+// { tenant, service_id, staff_id, start_iso, hold_token?, client: { first_name, last_name, phone, email }, sms_consent? }
+// PUBLIC — no bearer token.
+//
+// This used to write bookings directly: no rate limit, no availability check, no billing gate, and
+// it attached the booking to whatever client record already had that phone number. It now goes
+// through the SAME public booking core as /api/public-booking (per-IP limits, the salon's booking
+// rules, real availability via a hold, the trial/billing gate, deposits, never overwriting an
+// existing client's details, confirmation text) — so this endpoint can't do anything the public
+// booking page can't.
 import { corsPublic, jsonBody } from '../lib/cors.js';
-import { db } from '../lib/db.js';
 import { resolveTenantFromRequest } from '../lib/widget-tenant.js';
-import { previewPolicy } from '../lib/policies.js';
-import { stripeFor, connectAccount } from '../lib/stripe.js';
+import publicBooking from '../public-booking.js';
 
 export default async function handler(req, res) {
   if (corsPublic(req, res)) return;
@@ -15,127 +19,43 @@ export default async function handler(req, res) {
     const tenant = await resolveTenantFromRequest(req);
     if (!tenant?.id) return res.status(404).json({ ok: false, error: 'no_tenant' });
 
-    const body = jsonBody(req);
+    const body = jsonBody(req) || {};
     const { service_id, staff_id, start_iso, client } = body;
     if (!service_id || !start_iso || !client?.phone) {
       return res.status(400).json({ ok: false, error: 'missing_fields' });
     }
+    const name = [client.first_name, client.last_name].filter(Boolean).join(' ').trim() || String(client.name || '').trim();
 
-    const c = db();
+    // Only the fields the public core accepts — the browser never picks the client record or price.
+    req.body = {
+      action: 'book',
+      tenant: tenant.slug || tenant.id,
+      service_id: String(service_id),
+      staff_id: staff_id ? String(staff_id) : undefined,
+      starts_at: String(start_iso),
+      hold_token: body.hold_token || undefined,
+      client_phone: String(client.phone),
+      client_name: name,
+      client_email: client.email || undefined,
+      sms_consent: body.sms_consent,
+      consent_text_version: body.consent_text_version,
+      notes: typeof body.notes === 'string' ? body.notes.slice(0, 500) : undefined,
+    };
+    req.query = { ...(req.query || {}), tenant: tenant.slug || tenant.id };
+    req.method = 'POST';
 
-    // Fetch service + policies.
-    const [{ data: service }, { data: policy }] = await Promise.all([
-      c.from('services')
-        .select('id, name, duration_min, price, currency, deposit_override_type, deposit_override_amount')
-        .eq('id', service_id).eq('tenant_id', tenant.id).maybeSingle(),
-      c.from('billing_policies').select('*').eq('tenant_id', tenant.id).maybeSingle()
-    ]);
-    if (!service) return res.status(404).json({ ok: false, error: 'service_not_found' });
-    // A stylist id from the browser must belong to THIS salon.
-    if (staff_id) {
-      const { data: st } = await c.from('staff').select('id').eq('id', staff_id).eq('tenant_id', tenant.id).maybeSingle();
-      if (!st) return res.status(404).json({ ok: false, error: 'staff_not_found' });
-    }
-
-    // Upsert client by phone.
-    let { data: existing } = await c.from('clients')
-      .select('id, first_name, last_name, name, email')
-      .eq('tenant_id', tenant.id)
-      .eq('phone', client.phone)
-      .maybeSingle();
-    let clientRow = existing;
-    if (!clientRow) {
-      const { data: inserted } = await c.from('clients').insert({
-        tenant_id: tenant.id,
-        first_name: client.first_name || null,
-        last_name: client.last_name || null,
-        name: [client.first_name, client.last_name].filter(Boolean).join(' ') || null,
-        phone: client.phone,
-        email: client.email || null
-      }).select().single();
-      clientRow = inserted;
-    }
-
-    // Compute end_time.
-    const startTime = new Date(start_iso);
-    const durationMin = Number(service.duration_min || 60);
-    const endTime = new Date(startTime.getTime() + durationMin * 60000);
-
-    // Compute deposit if policy on.
-    let depositCents = 0;
-    if (policy?.deposits?.enabled) {
-      const preview = previewPolicy({
-        policy,
-        service: {
-          price_cents: Math.round(Number(service.price || 0) * 100),
-          deposit_override_type: service.deposit_override_type,
-          deposit_override_amount: service.deposit_override_amount
-        }
-      });
-      depositCents = preview.deposit_cents || 0;
-    }
-
-    // Create booking (pending payment if deposit required).
-    const { data: booking, error: bookErr } = await c.from('bookings').insert({
-      tenant_id: tenant.id,
-      client_id: clientRow.id,
-      service_id: service.id,
-      staff_id: staff_id || null,
-      start_time: startTime.toISOString(),
-      end_time: endTime.toISOString(),
-      total_amount: Number(service.price || 0),
-      deposit_amount_cents: depositCents,
-      outcome: depositCents > 0 ? 'pending_payment' : 'confirmed',
-      source: 'widget',
-      created_at: new Date().toISOString()
-    }).select().single();
-    if (bookErr) throw bookErr;
-
-    // If no deposit, we're done.
-    if (depositCents === 0) {
-      return res.json({
-        ok: true,
-        booking: { id: booking.id, start_time: booking.start_time, end_time: booking.end_time },
-        payment_required: false
-      });
-    }
-
-    // Create Stripe PaymentIntent on the tenant's Connect account.
-    const account = await connectAccount(tenant.id);
-    if (!account?.charges_enabled) {
-      // No Stripe connected — accept booking without deposit (owner can chase later).
-      await c.from('bookings').update({ outcome: 'confirmed', deposit_amount_cents: 0 })
-        .eq('id', booking.id);
-      return res.json({
-        ok: true,
-        booking: { id: booking.id, start_time: booking.start_time, end_time: booking.end_time },
-        payment_required: false,
-        warning: 'stripe_not_connected'
-      });
-    }
-
-    const stripe = stripeFor(tenant.id, account.stripe_account_id);
-    const intent = await stripe.createPaymentIntent({
-      amount: depositCents,
-      currency: service.currency || 'usd',
-      metadata: {
-        booking_id: booking.id,
-        client_id: clientRow.id,
-        tenant_id: tenant.id,
-        kind: 'deposit'
-      },
-      description: `Deposit — ${service.name}`
-    });
-
-    return res.json({
-      ok: true,
-      booking: { id: booking.id, start_time: booking.start_time, end_time: booking.end_time },
-      payment_required: true,
-      client_secret: intent.client_secret,
-      stripe_account: account.stripe_account_id,
-      deposit_cents: depositCents
-    });
+    // Keep the legacy response shape ({ booking: { id, start_time, end_time }, payment_required }) on top of the core's.
+    const json = res.json.bind(res);
+    res.json = (o) => {
+      if (o && o.ok && o.booking_id && !o.booking?.id) {
+        o = { ...o, booking: { id: o.booking_id, start_time: o.starts_at || o.start_time || null, end_time: o.ends_at || o.end_time || null } };
+      }
+      if (o && o.ok && o.payment_required === undefined) o = { ...o, payment_required: !!(o.deposit && (o.deposit.required || o.deposit.link)) };
+      return json(o);
+    };
+    return publicBooking(req, res);
   } catch (e) {
-    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+    console.error('[widget/book]', e?.message || e);
+    return res.status(500).json({ ok: false, error: 'booking_failed' });
   }
 }

@@ -34,8 +34,19 @@ export async function resolveTenantAccessForUser(user){
   }catch{}
 
   if(user.email){
-    const { data }=await c.from('tenants').select('*').ilike('owner_email',String(user.email).trim()).limit(25);
-    const pick=rankTenants(data)[0];
+    // Case-insensitive but EXACT: LIKE wildcards (% _) and backslashes in the email are escaped, and
+    // every hit is re-checked in code — "a_b@x.com" or "%@x.com" can never match another salon's owner.
+    const email=String(user.email).trim().toLowerCase();
+    if(!email) return null;
+    const pattern=email.replace(/[\\%_]/g,(m)=>'\\'+m);
+    const { data }=await c.from('tenants').select('*').ilike('owner_email',pattern).limit(25);
+    let exact=(data||[]).filter(t=>String(t.owner_email||'').trim().toLowerCase()===email);
+    if(!exact.length){
+      const raw=String(user.email).trim();
+      const { data:eq }=await c.from('tenants').select('*').in('owner_email',[...new Set([email,raw])]).limit(25);
+      exact=(eq||[]).filter(t=>String(t.owner_email||'').trim().toLowerCase()===email);
+    }
+    const pick=rankTenants(exact)[0];
     if(pick) return {tenant:pick,role:'owner'};
   }
   return null;

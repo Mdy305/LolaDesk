@@ -6,8 +6,15 @@
  *       checkout.session.completed      → activate the salon's plan; deposit link paid → deposit 'paid'
  *       customer.subscription.updated   → active / canceling / past_due …
  *       customer.subscription.deleted   → canceled
- *       invoice.payment_succeeded       → active
- *       invoice.payment_failed          → past_due
+ *       invoice.payment_succeeded       → active (never overwrites a pending cancel)
+ *       invoice.payment_failed          → past_due (+ past_due_since: the 7-day grace starts here)
+ *       customer.subscription.trial_will_end → text + email the owner
+ *       checkout.session.async_payment_failed → deposit/sub payment failed: logged, owner told
+ *       charge.dispute.created          → deposit/payment at risk, admin alerted
+ *       charge.refunded                 → deposit / payment marked refunded
+ *     Plan comes from the subscription's PRICE (lib/plans.js planFromPrice), metadata as fallback.
+ *     Deposit links: only a PENDING deposit can be paid; a second / late payment
+ *     (already paid, released, booking cancelled) is refunded automatically.
  *   • Connected accounts (salon Stripe Connect): payment_intent.*, charge.*, account.updated, payout.paid
  * The Sep 22 rewrite kept only the Connect half, so paying salons were never
  * activated and deposits were never marked paid. Both halves live here now.
@@ -17,7 +24,8 @@
  * STRIPE_WEBHOOK_SECRET and the second in STRIPE_CONNECT_WEBHOOK_SECRET.
  */
 import { db } from './lib/db.js';
-import { stripe as stripeClient } from './lib/stripe.js';
+import { stripe as stripeClient, stripeApi, stripeRefund, deactivatePaymentLink } from './lib/stripe.js';
+import { planFromPrice, normalizePlan } from './lib/plans.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -55,14 +63,93 @@ async function tenantBy(c, key, value) {
   return (data || [])[0] || null;
 }
 async function saveTenant(c, id, patch) {
-  // stripe_subscription_id / current_period_end may be missing on older
-  // databases (sql/launch-pack.sql adds them) — retry without them.
+  // stripe_subscription_id / current_period_end / past_due_since / billing_interval
+  // may be missing on older databases (migrations add them) — retry without them.
   let r = await c.from('tenants').update(patch).eq('id', id);
   if (r.error) {
-    const core = { ...patch }; delete core.stripe_subscription_id; delete core.current_period_end;
+    const core = { ...patch };
+    for (const k of ['stripe_subscription_id', 'current_period_end', 'past_due_since', 'billing_interval', 'canceled_at']) delete core[k];
     r = await c.from('tenants').update(core).eq('id', id);
     if (r.error) console.error('[stripe-webhook] tenant update failed:', r.error.message);
   }
+}
+
+const iso = (sec) => (sec ? new Date(sec * 1000).toISOString() : null);
+
+/** plan + interval from a subscription object (price first, metadata second). */
+function planOfSubscription(sub, fallback) {
+  const price = sub?.items?.data?.[0]?.price || sub?.plan || null;
+  const fromPrice = planFromPrice(price);
+  if (fromPrice) return fromPrice;
+  const md = normalizePlan(sub?.metadata?.plan);
+  if (md) return { plan: md, interval: sub?.metadata?.interval === 'annual' ? 'annual' : (price?.recurring?.interval === 'year' ? 'annual' : 'monthly') };
+  return fallback ? { plan: normalizePlan(fallback) || fallback, interval: null } : null;
+}
+
+function subscriptionIdOf(obj) {
+  return obj.subscription || obj.parent?.subscription_details?.subscription || obj.lines?.data?.[0]?.subscription || null;
+}
+
+async function logMoney(c, tenantId, kind, meta) {
+  if (!tenantId) { console.warn('[stripe-webhook]', kind, JSON.stringify(meta || {})); return; }
+  try { await c.from('usage_events').insert({ tenant_id: tenantId, kind, units: 1, metadata: meta || {} }); } catch (_) {}
+}
+
+async function enforce() { return import('./lib/billing-enforce.js'); }
+
+/**
+ * A deposit Payment Link was paid. Only a PENDING deposit may be paid; any
+ * other state (paid already, expired/released, void, refunded) — or a booking
+ * that is cancelled — means the money goes straight back.
+ */
+async function depositPaid(c, obj) {
+  const link = obj.payment_link;
+  const pi = obj.payment_intent || null;
+  const claimed = await c.from('deposits').update({ status: 'paid', stripe_payment_intent_id: pi })
+    .eq('stripe_payment_intent_id', link).eq('status', 'pending').select().maybeSingle();
+  if (claimed.error) console.error('[stripe-webhook] deposit paid update failed:', claimed.error.message);
+  let dep = claimed.data || null;
+  let refundWhy = null;
+  if (!dep) {
+    // Same payment delivered again (another event for this session) → nothing to do.
+    if (pi) {
+      const { data: same } = await c.from('deposits').select('id').eq('stripe_payment_intent_id', pi).limit(1);
+      if ((same || []).length) return;
+    }
+    // The link's deposit is no longer pending (expired / released / void) → refund.
+    const { data: rows } = await c.from('deposits').select('*').eq('stripe_payment_intent_id', link).limit(1);
+    const known = (rows || [])[0] || null;
+    if (known) refundWhy = `deposit_${known.status}`;
+    // A deposit link (tagged at creation) whose deposit was already paid → a second payment.
+    else if (obj.metadata?.kind === 'deposit') refundWhy = 'deposit_already_paid';
+    else {
+      await logMoney(c, null, 'deposit_payment_unmatched', { payment_intent: pi, payment_link: link, amount: obj.amount_total ?? null });
+      const { alertAdmin } = await enforce();
+      await alertAdmin('Unmatched deposit payment', `Payment ${pi || '?'} on link ${link} matches no deposit — check it in Stripe.`);
+      return;
+    }
+    dep = known || { tenant_id: obj.metadata?.tenant_id || null };
+  } else if (dep.booking_id) {
+    const { data: b } = await c.from('bookings').select('id,status').eq('id', dep.booking_id).maybeSingle();
+    if (!b || /^(cancel|declined|no[-_ ]?show)/i.test(String(b.status || ''))) refundWhy = b ? 'booking_' + String(b.status).toLowerCase() : 'booking_missing';
+  }
+  await deactivatePaymentLink(link);
+  if (!refundWhy || !pi) return;
+  try {
+    await stripeRefund(pi, { metadata: { reason: refundWhy, payment_link: link } });
+    if (claimed.data) await c.from('deposits').update({ status: 'refunded' }).eq('id', claimed.data.id).eq('status', 'paid');
+    await logMoney(c, dep?.tenant_id, 'deposit_auto_refund', { payment_intent: pi, payment_link: link, reason: refundWhy, amount: obj.amount_total ?? null });
+  } catch (e) {
+    await logMoney(c, dep?.tenant_id, 'deposit_refund_failed', { payment_intent: pi, payment_link: link, reason: refundWhy, error: String(e?.message || e).slice(0, 200) });
+    const { alertAdmin } = await enforce();
+    await alertAdmin('Deposit refund failed', `Payment ${pi} on link ${link} (${refundWhy}) could not be refunded automatically: ${String(e?.message || e).slice(0, 200)}`);
+  }
+}
+
+async function tenantForObj(c, obj) {
+  return (await tenantBy(c, 'stripe_subscription_id', subscriptionIdOf(obj) || (String(obj.id || '').startsWith('sub_') ? obj.id : null)))
+    || (await tenantBy(c, 'stripe_customer_id', obj.customer))
+    || (tenantIdFrom(obj) && (await tenantBy(c, 'id', tenantIdFrom(obj))));
 }
 
 async function handleAccountEvent(c, event) {
@@ -71,47 +158,127 @@ async function handleAccountEvent(c, event) {
     case 'checkout.session.completed': {
       // A booking deposit paid through its Payment Link: pending → paid, and
       // keep the real PaymentIntent id (refunds need it).
-      if (obj.payment_link) {
-        const r = await c.from('deposits').update({ status: 'paid', stripe_payment_intent_id: obj.payment_intent || null })
-          .eq('stripe_payment_intent_id', obj.payment_link);
-        if (r.error) console.error('[stripe-webhook] deposit paid update failed:', r.error.message);
-      }
+      if (obj.payment_link && obj.metadata?.kind === 'no_show_fee') {
+        // A missed-appointment fee link (cron/no-show-scan) was paid: the salon's Payments row → succeeded.
+        try { await c.from('payments').update({ status: 'succeeded', at_risk: false }).eq('stripe_id', obj.payment_link).eq('sub_kind', 'no_show_fee'); } catch (_) {}
+        await deactivatePaymentLink(obj.payment_link);
+      } else if (obj.payment_link) await depositPaid(c, obj);
       const tid = tenantIdFrom(obj);
       if (tid && (obj.mode === 'subscription' || obj.subscription)) {
         const { data: t } = await c.from('tenants').select('*').eq('id', tid).maybeSingle();
-        if (t) await saveTenant(c, t.id, {
-          stripe_customer_id: obj.customer || t.stripe_customer_id || null,
-          stripe_subscription_id: obj.subscription || t.stripe_subscription_id || null,
-          subscription_status: 'active',
-          plan: obj.metadata?.plan || t.plan || 'starter',
-        });
-        else console.error('[stripe-webhook] checkout for unknown tenant', tid);
+        if (t) {
+          let sub = null;
+          if (obj.subscription && typeof obj.subscription === 'object') sub = obj.subscription;
+          else if (obj.subscription && process.env.STRIPE_SECRET_KEY) { try { sub = await stripeApi('/subscriptions/' + encodeURIComponent(obj.subscription)); } catch (_) {} }
+          const p = planOfSubscription(sub, obj.metadata?.plan) || { plan: normalizePlan(t.plan) || 'starter', interval: null };
+          const patch = {
+            stripe_customer_id: obj.customer || t.stripe_customer_id || null,
+            stripe_subscription_id: (sub?.id || obj.subscription) || t.stripe_subscription_id || null,
+            subscription_status: sub?.status === 'trialing' ? 'trialing' : 'active',
+            plan: p.plan || 'starter',
+            past_due_since: null,
+          };
+          if (p.interval || obj.metadata?.interval) patch.billing_interval = p.interval || (obj.metadata.interval === 'annual' ? 'annual' : 'monthly');
+          if (sub?.current_period_end) patch.current_period_end = iso(sub.current_period_end);
+          await saveTenant(c, t.id, patch);
+        } else console.error('[stripe-webhook] checkout for unknown tenant', tid);
       }
       break;
     }
+    case 'checkout.session.async_payment_failed': {
+      if (obj.payment_link) {
+        await logMoney(c, null, 'deposit_payment_failed', { payment_link: obj.payment_link, session: obj.id });
+        break;
+      }
+      const t = await tenantForObj(c, obj);
+      if (t) {
+        await logMoney(c, t.id, 'subscription_payment_failed', { session: obj.id });
+        const { notifyOwner, keepLolaLink } = await enforce();
+        await notifyOwner(t, `LolaDesk: your payment for ${t.name || 'your salon'} didn't go through. Try another payment method here: ${keepLolaLink()}`, { subject: 'Your LolaDesk payment did not go through' });
+      }
+      break;
+    }
+    case 'customer.subscription.created':
     case 'customer.subscription.updated': {
-      const t = (await tenantBy(c, 'stripe_subscription_id', obj.id)) || (await tenantBy(c, 'stripe_customer_id', obj.customer)) || (tenantIdFrom(obj) && (await tenantBy(c, 'id', tenantIdFrom(obj))));
-      if (t) await saveTenant(c, t.id, {
-        subscription_status: obj.cancel_at_period_end ? 'canceling' : (obj.status === 'trialing' ? 'trialing' : obj.status || t.subscription_status),
-        stripe_subscription_id: obj.id,
-        current_period_end: obj.current_period_end ? new Date(obj.current_period_end * 1000).toISOString() : null,
-        plan: obj.metadata?.plan || t.plan,
-      });
+      const t = await tenantForObj(c, obj);
+      if (t) {
+        const p = planOfSubscription(obj, t.plan);
+        const status = obj.cancel_at_period_end && obj.status !== 'canceled' ? 'canceling' : (obj.status === 'trialing' ? 'trialing' : obj.status || t.subscription_status);
+        const patch = {
+          subscription_status: status,
+          stripe_subscription_id: obj.id,
+          current_period_end: obj.current_period_end ? iso(obj.current_period_end) : (obj.items?.data?.[0]?.current_period_end ? iso(obj.items.data[0].current_period_end) : null),
+          plan: p?.plan || normalizePlan(t.plan) || t.plan,
+        };
+        if (p?.interval) patch.billing_interval = p.interval;
+        if (status === 'past_due' && !t.past_due_since) patch.past_due_since = new Date().toISOString();
+        if (['active', 'trialing', 'canceling'].includes(status)) patch.past_due_since = null;
+        await saveTenant(c, t.id, patch);
+      }
       break;
     }
     case 'customer.subscription.deleted': {
       const t = (await tenantBy(c, 'stripe_subscription_id', obj.id)) || (await tenantBy(c, 'stripe_customer_id', obj.customer));
-      if (t) await saveTenant(c, t.id, { subscription_status: 'canceled' });
+      // Ended now (period end for a scheduled cancel, or immediately after dunning).
+      if (t) await saveTenant(c, t.id, { subscription_status: 'canceled', current_period_end: iso(obj.ended_at) || new Date().toISOString(), canceled_at: new Date().toISOString() });
       break;
     }
+    case 'customer.subscription.trial_will_end': {
+      const t = await tenantForObj(c, obj);
+      if (t) {
+        const end = obj.trial_end ? new Date(obj.trial_end * 1000) : null;
+        const when = end ? end.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : 'in a few days';
+        const { notifyOwner, keepLolaLink } = await enforce();
+        await notifyOwner(t, `Lola here. Your LolaDesk free trial ends ${when}; your card on file will be charged for your ${normalizePlan(t.plan) || 'starter'} plan then. Review or change your plan: ${keepLolaLink()}`, { subject: 'Your LolaDesk trial ends soon' });
+      }
+      break;
+    }
+    case 'invoice.paid':
     case 'invoice.payment_succeeded': {
       const t = await tenantBy(c, 'stripe_customer_id', obj.customer);
-      if (t) await saveTenant(c, t.id, { subscription_status: 'active' });
+      if (!t) break;
+      const subId = subscriptionIdOf(obj);
+      const oneOff = obj.billing_reason === 'manual' || obj.metadata?.kind === 'final_usage';
+      if (oneOff) break; // a final-usage invoice never reactivates a cancelled salon
+      const cur = String(t.subscription_status || '');
+      if (cur === 'canceling') { await saveTenant(c, t.id, { past_due_since: null }); break; }   // respect cancel_at_period_end
+      if (cur === 'canceled' && subId && t.stripe_subscription_id && subId !== t.stripe_subscription_id) break;
+      if (subId && t.stripe_subscription_id && subId !== t.stripe_subscription_id) break;
+      await saveTenant(c, t.id, { subscription_status: 'active', past_due_since: null });
       break;
     }
     case 'invoice.payment_failed': {
       const t = await tenantBy(c, 'stripe_customer_id', obj.customer);
-      if (t) await saveTenant(c, t.id, { subscription_status: 'past_due' });
+      if (!t) break;
+      const oneOff = obj.billing_reason === 'manual' || obj.metadata?.kind === 'final_usage';
+      if (oneOff) { await logMoney(c, t.id, 'final_invoice_failed', { invoice: obj.id, amount: obj.amount_due ?? null }); break; }
+      if (String(t.subscription_status || '') === 'canceled') break;
+      const patch = { subscription_status: 'past_due' };
+      if (!t.past_due_since) patch.past_due_since = new Date().toISOString();
+      await saveTenant(c, t.id, patch);
+      break;
+    }
+    case 'charge.dispute.created': {
+      const pi = obj.payment_intent || null;
+      let tenantId = null;
+      if (pi) {
+        const { data: d } = await c.from('deposits').select('id,tenant_id,booking_id,status').eq('stripe_payment_intent_id', pi).maybeSingle();
+        if (d) { tenantId = d.tenant_id; await c.from('deposits').update({ status: 'disputed' }).eq('id', d.id); }
+        const r = await c.from('payments').update({ at_risk: true, sub_kind: 'dispute' }).eq('stripe_id', pi).select('tenant_id').maybeSingle();
+        tenantId = tenantId || r?.data?.tenant_id || null;
+      }
+      if (!tenantId && obj.customer) tenantId = (await tenantBy(c, 'stripe_customer_id', obj.customer))?.id || null;
+      await logMoney(c, tenantId, 'payment_disputed', { charge: obj.charge || obj.id, payment_intent: pi, amount: obj.amount ?? null, reason: obj.reason || null });
+      const { alertAdmin } = await enforce();
+      await alertAdmin('Stripe dispute opened', `Dispute ${obj.id} on ${pi || obj.charge || 'a charge'} for $${((Number(obj.amount) || 0) / 100).toFixed(2)} (${obj.reason || 'no reason'})${tenantId ? ' — tenant ' + tenantId : ''}. Respond in the Stripe dashboard before the deadline.`);
+      break;
+    }
+    case 'charge.refunded': {
+      const pi = obj.payment_intent || null;
+      if (!pi) break;
+      const full = obj.refunded === true || (Number(obj.amount_refunded) >= Number(obj.amount) && Number(obj.amount) > 0);
+      if (full) await c.from('deposits').update({ status: 'refunded' }).eq('stripe_payment_intent_id', pi).in('status', ['paid', 'kept', 'refunding', 'disputed', 'flagged']);
+      await c.from('payments').update({ refunded: true, status: full ? 'refunded' : 'partially_refunded' }).eq('stripe_id', pi);
       break;
     }
   }

@@ -115,9 +115,10 @@ test('exactly-once: a second run never re-texts the same appointment time', asyn
   const first = await runReminders(new Date(), { send });
   const second = await runReminders(new Date(), { send });
   assert.equal(first.sent, 1);
-  assert.equal(second.due, 1, 'still due (the booking is still in the window)');
+  // Already-reminded bookings are filtered out BEFORE the per-run cap (so a
+  // backlog can never starve new reminders) — the second tick finds nothing due.
+  assert.equal(second.due, 0, 'already reminded → not due again');
   assert.equal(second.sent, 0, 'but nothing is sent again');
-  assert.equal(second.skipped, 1);
   assert.equal(calls.length, 1, 'one SMS total across both runs');
   assert.equal(fake.all('booking_reminders').length, 1, 'one log row total');
 });
@@ -131,7 +132,7 @@ test('a pre-existing sent row for the same appointment time is not re-texted', a
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
   assert.equal(result.sent, 0);
-  assert.equal(result.skipped, 1);
+  assert.equal(result.due, 0, 'filtered out before claiming (already reminded)');
   assert.equal(calls.length, 0);
 });
 
@@ -250,7 +251,7 @@ test('falls back to SMS when the client opted in but the salon has no WhatsApp c
 // ── the 2h radar band ────────────────────────────────────────────────
 
 test('texts a 2h radar heads-up with its own copy, channel and log row', async () => {
-  seed({ bookingStart: isoHoursFromNow(3) });
+  seed({ bookingStart: isoHoursFromNow(2) });
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
   assert.equal(result['2h'].sent, 1, 'radar band sent');
@@ -266,10 +267,10 @@ test('texts a 2h radar heads-up with its own copy, channel and log row', async (
 });
 
 test('both bands text the same booking once each — 24h and 2h lanes are independent', async () => {
-  // A booking 3h out has already passed the 24h window, so it only proves the
+  // A booking 2h out has already passed the 24h window, so it only proves the
   // radar lane; the 24h lane is exercised below with a row seeded as already
   // claimed — proving the lanes do not shadow each other.
-  seed({ bookingStart: isoHoursFromNow(3) });
+  seed({ bookingStart: isoHoursFromNow(2) });
   const [calls, send] = makeSpy();
   await runReminders(new Date(), { send });
   await runReminders(new Date(), { send }); // second tick inside the radar span
@@ -278,7 +279,7 @@ test('both bands text the same booking once each — 24h and 2h lanes are indepe
 });
 
 test('radar gate: booking_settings.radar_sms=false mutes the 2h band only', async () => {
-  seed({ radarSms: false, bookingStart: isoHoursFromNow(3) });
+  seed({ radarSms: false, bookingStart: isoHoursFromNow(2) });
   const [calls, send] = makeSpy();
   const result = await runReminders(new Date(), { send });
   assert.equal(result.sent, 0);

@@ -128,63 +128,101 @@ function form(obj, prefix='', out=[]){
   return out.join('&');
 }
 
-async function stripeRest(path, method='POST', body){
+async function stripeRest(path, method='POST', body, headers={}){
+  if(!key()) throw new Error('Stripe not configured — set STRIPE_SECRET_KEY');
   const r = await fetch(`${STRIPE_API}${path}`, {
     method,
     headers:{
       'Authorization': `Bearer ${key()}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...headers
     },
-    body: body ? form(body) : undefined
+    body: body && method !== 'GET' ? form(body) : undefined
   });
-  const data = await r.json();
+  const data = await r.json().catch(() => ({}));
   if(!r.ok) throw new Error(data?.error?.message || `Stripe ${r.status}`);
   return data;
 }
 
-// Normalize the marketing slugs to billing plan keys.
-const PLAN_ALIAS = { solo:'starter', starter:'starter', pro:'pro', medspa:'medspa', 'med-spa':'medspa' };
+/** Raw Stripe REST call (form-encoded). headers: { 'Stripe-Account', 'Idempotency-Key' }. */
+export function stripeApi(path, method='GET', body=null, headers={}){
+  return stripeRest(path, method, body, headers);
+}
 
-// Map plan slug + billing interval -> env price id
+// Plans, prices and legacy names all live in lib/plans.js (the one source).
+import { lineItemFor, normalizePlan, normalizeInterval, SELLABLE, chargeCents, PLANS as PLAN_TABLE } from './plans.js';
+
+/**
+ * The Checkout line item for plan + interval: the Stripe Price id from env
+ * (STRIPE_PRICE_<PLAN>_<MONTHLY|ANNUAL>) when configured, else inline
+ * price_data at the advertised amount (annual = 12 × the annual monthly price).
+ * Returns null for an unknown / unsellable plan.
+ */
 export function priceFor(plan, interval='monthly'){
-  const p = PLAN_ALIAS[plan] || 'starter';
-  const monthly = {
-    starter: process.env.STRIPE_PRICE_STARTER,
-    pro:     process.env.STRIPE_PRICE_PRO,
-    medspa:  process.env.STRIPE_PRICE_MEDSPA
-  };
-  const annual = {
-    starter: process.env.STRIPE_PRICE_STARTER_ANNUAL,
-    pro:     process.env.STRIPE_PRICE_PRO_ANNUAL,
-    medspa:  process.env.STRIPE_PRICE_MEDSPA_ANNUAL
-  };
-  const map = interval === 'annual' ? annual : monthly;
-  // Fall back to the monthly price if an annual one isn't configured yet.
-  return map[p] || monthly[p] || monthly.starter;
+  return lineItemFor(plan, interval);
 }
 
 // Create a Checkout Session for a subscription
-export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly', areaCode }){
-  const price = priceFor(plan, interval);
-  if(!price) throw new Error('No Stripe price configured for plan: '+plan);
+export async function createCheckout({ plan, tenantId, email, customerId, interval='monthly', areaCode, successUrl, cancelUrl, trialEnd }){
+  const id = normalizePlan(plan);
+  const iv = normalizeInterval(interval);
+  const item = priceFor(id, iv);
+  if(!item) throw new Error('Unknown plan: '+plan);
   const appUrl = process.env.APP_URL || 'https://www.loladesk.com';
   // Both spellings are shipped so the webhook can never miss the tenant, and
   // preferred_area_code lets checkout.session.completed auto-provision the
   // salon's own local area-code number (defaults to 305 upstream).
-  const md = { tenantId: tenantId||'', tenant_id: tenantId||'', plan, interval, preferred_area_code: areaCode || '' };
+  const md = { tenantId: tenantId||'', tenant_id: tenantId||'', plan: id, interval: iv, preferred_area_code: areaCode || '' };
   const payload = {
     mode: 'subscription',
-    'line_items': [{ price, quantity: 1 }],
-    success_url: `${appUrl}/settings?billing=success`,
-    cancel_url: `${appUrl}/settings?billing=cancelled`,
+    'line_items': [item],
+    success_url: successUrl || `${appUrl}/settings?billing=success`,
+    cancel_url: cancelUrl || `${appUrl}/settings?billing=cancelled`,
     client_reference_id: tenantId || '',
     metadata: md,
-    subscription_data: { metadata: md }
+    subscription_data: { metadata: md },
+    allow_promotion_codes: true
   };
+  // A salon subscribing mid-trial keeps its remaining free days.
+  if(trialEnd){
+    const t = Math.floor(new Date(trialEnd).getTime()/1000);
+    if(Number.isFinite(t) && t - Date.now()/1000 > 48*3600) payload.subscription_data.trial_end = t;
+  }
   if(customerId) payload.customer = customerId;
   else if(email) payload.customer_email = email;
   return stripeRest('/checkout/sessions', 'POST', payload);
 }
+
+/**
+ * Switch an existing subscription to another plan/interval IN PLACE (never a
+ * second subscription). Prorates. Returns the updated subscription.
+ */
+export async function changeSubscriptionPlan({ subscriptionId, plan, interval='monthly', tenantId }){
+  const id = normalizePlan(plan);
+  const iv = normalizeInterval(interval);
+  if(!id || !SELLABLE.includes(id)) throw new Error('Unknown plan: '+plan);
+  if(!subscriptionId) throw new Error('No subscription to change');
+  const sub = await stripeRest('/subscriptions/'+encodeURIComponent(subscriptionId), 'GET');
+  const item = sub?.items?.data?.[0];
+  if(!item?.id) throw new Error('Subscription has no item to change');
+  const li = priceFor(id, iv);
+  const md = { tenant_id: tenantId || sub.metadata?.tenant_id || '', tenantId: tenantId || sub.metadata?.tenantId || '', plan: id, interval: iv };
+  const itemPatch = { id: item.id, quantity: 1 };
+  if(li.price) itemPatch.price = li.price;
+  else {
+    const product = typeof item.price?.product === 'string' ? item.price.product : item.price?.product?.id;
+    if(!product) throw new Error('Set STRIPE_PRICE_'+id.toUpperCase()+'_'+(iv==='annual'?'ANNUAL':'MONTHLY')+' to switch plans');
+    itemPatch.price_data = { currency: 'usd', product, unit_amount: chargeCents(id, iv), recurring: { interval: iv === 'annual' ? 'year' : 'month' } };
+  }
+  return stripeRest('/subscriptions/'+encodeURIComponent(subscriptionId), 'POST', {
+    items: [itemPatch],
+    proration_behavior: 'create_prorations',
+    cancel_at_period_end: false,
+    metadata: md
+  });
+}
+
+export { PLAN_TABLE };
 
 // Customer portal so salons manage/cancel their plan
 export async function createPortal({ customerId }){
@@ -238,8 +276,26 @@ export async function flushMeteredTextUsageToStripe(tenantId, messageCount = 1){
 // Stripe's hosted page (no card data ever touches LolaDesk); checkout.session
 // .completed on that link flips the deposit row in api/stripe-webhook.js and
 // records the PaymentIntent id for later refunds.
-export async function createPaymentLink({ amountCents, description, successUrl }){
+//
+// Money goes to the SALON: when the salon has a connected Stripe account with
+// charges enabled, the link is a destination charge (transfer_data.destination)
+// — created on LolaDesk's account so the webhook and refunds keep working, but
+// the funds land in the salon's account. Without one, the old behavior stays.
+// A link accepts ONE payment (restrictions.completed_sessions.limit = 1).
+export async function connectedDestination(tenantId){
+  if(!tenantId) return null;
+  try{
+    const { db } = await import('./db.js');
+    const c = db(); if(!c) return null;
+    const { data } = await c.from('stripe_connect_accounts').select('stripe_account_id,charges_enabled').eq('tenant_id', tenantId).maybeSingle();
+    return data?.stripe_account_id && data.charges_enabled !== false ? data.stripe_account_id : null;
+  }catch(_){ return null; }
+}
+
+export async function createPaymentLink({ amountCents, description, successUrl, tenantId = null, destination = undefined, metadata = {} }){
   if(!Number.isFinite(amountCents) || amountCents <= 0) throw new Error('deposit amount must be positive');
+  const dest = destination === undefined ? await connectedDestination(tenantId) : destination;
+  const md = { kind: 'deposit', ...(tenantId ? { tenant_id: tenantId } : {}), ...(metadata || {}) };
   const body = {
     line_items: [{
       quantity: 1,
@@ -249,14 +305,44 @@ export async function createPaymentLink({ amountCents, description, successUrl }
         product_data: { name: description || 'Booking deposit' }
       }
     }],
+    restrictions: { completed_sessions: { limit: 1 } },
+    metadata: md,
+    payment_intent_data: { metadata: md },
     after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/paid` } }
   };
+  if(dest){
+    body.transfer_data = { destination: dest };
+    body.on_behalf_of = dest;
+  }
   const link = await stripeRest('/payment_links', 'POST', body);
-  return { id: link.id, url: link.url };
+  return { id: link.id, url: link.url, destination: dest || null };
 }
 
-// Refund a deposit's PaymentIntent (in-window cancellations).
-export async function stripeRefund(paymentIntentId){
-  return stripeRest('/refunds', 'POST', { payment_intent: paymentIntentId });
+/** Turn a deposit link off (paid, booking cancelled, slot released). Never throws. */
+export async function deactivatePaymentLink(id){
+  if(!id || !String(id).startsWith('plink_')) return { ok: false, skipped: true };
+  try{ await stripeRest('/payment_links/'+encodeURIComponent(id), 'POST', { active: false }); return { ok: true }; }
+  catch(e){ return { ok: false, error: String(e?.message || e) }; }
 }
 
+// Refund a deposit's PaymentIntent (in-window cancellations, late/duplicate
+// payments). A destination charge pulls the money back from the salon too.
+export async function stripeRefund(paymentIntentId, { reason, metadata } = {}){
+  const body = { payment_intent: paymentIntentId };
+  try{
+    const pi = await stripeRest('/payment_intents/'+encodeURIComponent(paymentIntentId), 'GET');
+    if(pi?.transfer_data?.destination) body.reverse_transfer = true;
+  }catch(_){}
+  if(reason) body.reason = reason;
+  if(metadata) body.metadata = metadata;
+  return stripeRest('/refunds', 'POST', body, { 'Idempotency-Key': 'refund_' + paymentIntentId });
+}
+
+/** One-off invoice NOW for pending invoice items (cancelling salons). */
+export async function invoiceNow(customerId, { description, metadata, idempotencyKey } = {}){
+  const inv = await stripeRest('/invoices', 'POST', {
+    customer: customerId, auto_advance: true, collection_method: 'charge_automatically',
+    pending_invoice_items_behavior: 'include', description: description || 'LolaDesk — final usage', metadata: metadata || {}
+  }, idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {});
+  return stripeRest('/invoices/'+encodeURIComponent(inv.id)+'/finalize', 'POST', { auto_advance: true });
+}

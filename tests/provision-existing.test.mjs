@@ -149,8 +149,9 @@ test('POST use_existing with a number NOT on the account fails politely, no purc
   ownedOnAccount = false;
   const [res, out] = makeRes();
   await handler(req('POST', { phone_number: '+12025550199', use_existing: true }), res);
-  assert.equal(out.code, 500);
-  assert.match(String(out.body.error), /not on this Telnyx account/i);
+  // Owners may only attach a number from LolaDesk's free pool (security pack 2): refused up front.
+  assert.equal(out.code, 403);
+  assert.match(String(out.body.error), /not available/i);
   assert.equal(numberOrdersCalls, 0);
   assert.equal(fake.all('tenants')[0].phone_number, null);
   assert.equal(fake.all('tenant_numbers').length, 0);
@@ -160,7 +161,7 @@ test('POST use_existing with a malformed number is rejected before any Telnyx ca
   seed();
   const [res, out] = makeRes();
   await handler(req('POST', { phone_number: 'not-a-number', use_existing: true }), res);
-  assert.equal(out.code, 500);
+  assert.equal(out.code, 400);
   assert.match(String(out.body.error), /valid phone number/i);
   assert.equal(numberOrdersCalls, 0);
 });

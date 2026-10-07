@@ -6,7 +6,7 @@ import { getAvailability, holdAvailability } from './lib/availability-engine-v2.
 import {
   addMinutes, addToWaitlist, createCanonicalBooking, findWaitlistMatches, getHold, getBookingSettings,
   listBookings, listServices, listStaff, listWaitlist, releaseHold, removeFromWaitlist, sendConfirmationSMS, updateCanonicalBooking,
-  upsertProviderMapping
+  upsertProviderMapping, bookFromHold, createHoldAtomic, blockedHitTz
 } from './lib/booking-repository.js';
 import { ensureBookingBaseline } from './lib/booking-seed.js';
 import { dayBoundsUtc, localDateKey, zonedLocalToUtc } from './lib/timezone.js';
@@ -14,7 +14,7 @@ import { offerFreedSlot } from './lib/booking-reminders.js';
 import { gateNewBooking, turnedAway, WIDGET_LINE } from './lib/billing-enforce.js';
 import { writeThrough, afterResponse, enqueueUpstream, processOutbox } from './lib/booking-outbox.js';
 import { bestStaffAt, rankDay, findSmartSlots } from './lib/smart-slots.js';
-import { limitPublic } from './lib/public-rate-limit.js';
+import { limitPublicShared, clientIp, holdRequesterKey, PUBLIC_HOLD_TTL_MAX_S, PUBLIC_MAX_ACTIVE_HOLDS, activeHoldsFor, noteHold } from './lib/public-rate-limit.js';
 import {
   bookingRules, disabledMessage, validEmail, validPhone, findClientByPhone, publicClient, saveConsent,
   collectsDeposits, serviceDepositCents, depositQuote, policyWindow, addonsAfter, hasBookingServices, publicHold, fitsBackToBack
@@ -61,19 +61,10 @@ function serviceIdList(body){
 }
 
 // A moved booking keeps its real length (multi-service bookings run longer
-// than their first service's slot).
-function keepLength(current, slot){
-  const orig=new Date(current.end_time).getTime()-new Date(current.start_time).getTime();
-  const slotLen=new Date(slot.ends_at).getTime()-new Date(slot.starts_at).getTime();
-  return Number.isFinite(orig) && orig>slotLen ? new Date(new Date(slot.starts_at).getTime()+orig).toISOString() : slot.ends_at;
-}
-
-// Is the stylist free for the extra time a long booking needs after its slot?
-async function extraTimeFree(tenantId, staffId, fromIso, toIso, excludeId){
-  if(!staffId || toIso<=fromIso) return true;
-  const { data }=await db().from('bookings').select('id,status').eq('tenant_id',tenantId).eq('staff_id',staffId)
-    .lt('start_time',toIso).gt('end_time',fromIso);
-  return !(data||[]).some(b=>b.id!==excludeId && !/^cancel/i.test(b.status||''));
+// than their first service's slot): holdAvailability({ minDurationMin }).
+function lengthMin(b){
+  const m=Math.round((new Date(b?.end_time).getTime()-new Date(b?.start_time).getTime())/60000);
+  return Number.isFinite(m) && m>0 ? m : null;
 }
 
 function normPhone(p){
@@ -96,7 +87,8 @@ export default async function handler(req,res){
       // Anonymous visitors never choose the client record, the price, or a
       // long hold. (These fields used to be trusted from the browser.)
       delete body.client_id; delete body.total_amount; delete body.tenant_id;
-      if(body.ttl_seconds!=null) body.ttl_seconds=Math.min(600,Math.max(60,Number(body.ttl_seconds)||300));
+      // A public hold blocks a real chair: at most 5 minutes.
+      body.ttl_seconds=Math.min(PUBLIC_HOLD_TTL_MAX_S,Math.max(60,Number(body.ttl_seconds)||PUBLIC_HOLD_TTL_MAX_S));
       if(body.limit!=null) body.limit=Math.min(300,Math.max(1,Number(body.limit)||12));
     }
     const tenant=await tenantForRequest(req,body);
@@ -113,7 +105,7 @@ export default async function handler(req,res){
     // Public visitors: per-IP limits, and the salon's own booking settings.
     let rules=null, pubSettings=null;
     if(isPublic){
-      if(!limitPublic(req,action,tenant.id)) return res.status(429).json({ ok:false, error:'rate_limited', message:'Too many tries from this device — please wait a few minutes and try again.' });
+      if(!(await limitPublicShared(req,action,tenant.id))) return res.status(429).json({ ok:false, error:'rate_limited', message:'Too many tries from this device — please wait a few minutes and try again.' });
       pubSettings=(await getBookingSettings(tenant.id).catch(()=>null))||{};
       rules=bookingRules(pubSettings);
       if(!rules.enabled && ['availability','hold','book','reschedule','waitlist_add','open_days','deposit_quote','addons'].includes(action)){
@@ -394,6 +386,16 @@ export default async function handler(req,res){
 
     if(action==='hold'){
       let clientId=body.client_id||null;
+      let requester=null;
+      if(isPublic){
+        // Anyone could hold a whole day: one device (and one phone, when given)
+        // keeps at most 2 live holds of at most 5 minutes. The visitor picks a
+        // time before typing their mobile, so the hold itself doesn't need one.
+        if(body.client_phone && !validPhone(body.client_phone)) delete body.client_phone;
+        requester=holdRequesterKey(req);
+        const byDevice=await activeHoldsFor(tenant.id,{requester});
+        if(byDevice.length>=PUBLIC_MAX_ACTIVE_HOLDS) return res.status(429).json({ok:false,error:'too_many_holds',message:'You already have times on hold — finish booking one or let it expire.'});
+      }
       if(!clientId && (body.client_phone||body.client_name)){
         const client=isPublic
           ? (body.client_phone ? await publicClient(tenant.id,{phone:body.client_phone,name:body.client_name,email:body.client_email}) : null)
@@ -410,15 +412,22 @@ export default async function handler(req,res){
         resolved={ok:true,service:{id:body.service_id},staff:{id:sid}};
       }
       if(!resolved.ok || !resolved.staff?.id) return res.status(200).json({ok:false,needs:resolved.needs||'staff'});
+      if(isPublic && clientId){
+        // Same phone, new time (the visitor changed their mind): the oldest of
+        // their live holds is let go so they never sit on more than 2.
+        const byPhone=await activeHoldsFor(tenant.id,{clientId});
+        for(const h of byPhone.slice(0,Math.max(0,byPhone.length-(PUBLIC_MAX_ACTIVE_HOLDS-1)))) await releaseHold(tenant.id,h.hold_token,'released').catch(()=>{});
+      }
       const held=await holdAvailability({
         tenantId:tenant.id,clientId,serviceId:resolved.service.id,staffId:resolved.staff.id,
         startsAt:body.starts_at,channel:body.channel||'dashboard',conversationId:body.conversation_id||null,
-        ttlSeconds:Number(body.ttl_seconds||300)
+        ttlSeconds:Number(body.ttl_seconds||300),requester
       });
       if(isPublic){
         // The visitor gets the time for 5 minutes while they finish — and only
         // the hold token/time/stylist back, never internal rows.
         if(!held.ok) return res.status(200).json({ok:false,conflict:!!held.conflict,error:held.error||'slot_unavailable'});
+        noteHold(requester,held.hold);
         return res.json({ok:true,hold:publicHold(held.hold,held.slot)});
       }
       return res.json(held);
@@ -462,10 +471,11 @@ export default async function handler(req,res){
         if(!resolved.ok || !resolved.staff?.id) return res.status(200).json({ok:false,needs:resolved.needs||'staff'});
         serviceId=resolved.service.id; staffId=resolved.staff.id;
       }
+      let ownHold=false;
       if(!hold){
         const held=await holdAvailability({tenantId:tenant.id,clientId,serviceId,staffId,startsAt:body.starts_at,channel:body.channel||'dashboard',conversationId:body.conversation_id||null,ttlSeconds:120});
         if(!held.ok) return res.status(200).json(isPublic?{ok:false,conflict:!!held.conflict,error:held.error||'slot_unavailable'}:held);
-        hold=held.hold;
+        hold=held.hold; ownHold=true;
       }
 
       const services=await listServices(tenant.id);
@@ -473,43 +483,54 @@ export default async function handler(req,res){
       const start=hold.starts_at;
       const end=hold.ends_at || addMinutes(start,service?.duration_minutes||60);
       // Add-ons (service_ids[1..]): same stylist, back to back, each checked
-      // against the stylist's real day before anything is written.
+      // against the stylist's real day AND held atomically before anything is written.
       const extras=ids.slice(1).map(id=>services.find(x=>x.id===id)).filter(Boolean);
-      const segs=[]; let cursor=end;
+      const segs=[]; const segHolds=[]; let cursor=end;
+      const letGo=async()=>{ for(const h of segHolds) await releaseHold(tenant.id,h.hold_token,'released').catch(()=>{}); if(ownHold) await releaseHold(tenant.id,hold.hold_token,'released').catch(()=>{}); };
       for(const ad of extras){
         const fit=await fitsBackToBack({tenantId:tenant.id,service:ad,staffId,startIso:cursor});
-        if(!fit){
-          if(!body.hold_token) await releaseHold(tenant.id,hold.hold_token,'released');
+        const sh=fit ? await createHoldAtomic({tenantId:tenant.id,clientId,staffId,serviceId:ad.id,startsAt:fit.starts_at,endsAt:fit.ends_at,channel:body.channel||'dashboard',ttlSeconds:120,seenBookingIds:[]}) : null;
+        if(!fit || !sh?.ok){
+          await letGo();
           return res.status(200).json({ok:false,conflict:true,error:'addon_unavailable',service_name:ad.name});
         }
+        segHolds.push(sh.hold);
         segs.push({service:ad,...fit}); cursor=fit.ends_at;
       }
       const mainPrice=isPublic ? (service?.price ?? 0) : (body.total_amount ?? service?.price ?? 0);
       const grandTotal=Number(mainPrice||0)+segs.reduce((a,x)=>a+Number(x.service.price||0),0);
       const multi=segs.length ? ((await hasBookingServices()) ? 'one' : 'split') : null;
       const source=body.channel||body.source||'dashboard';
-      const booking=await createCanonicalBooking({
-        tenantId:tenant.id,clientId,serviceId,staffId,locationId:body.location_id||null,
+      // Claim the hold FIRST (active → converted, conditional), then write: a
+      // retried / double-submitted request can never turn one hold into two bookings.
+      const made=await bookFromHold(tenant.id,hold,{
+        clientId,serviceId,staffId,locationId:body.location_id||null,
         startTime:start,endTime:multi==='one'?cursor:end,status:'confirmed',totalAmount:multi==='one'?grandTotal:mainPrice,
-        notes:body.notes||null,source,conversationId:body.conversation_id||null,holdId:hold.id,
+        notes:body.notes||null,source,conversationId:body.conversation_id||null,
         // Public: the confirmation text and deposit request are sent below,
         // awaited, so the page can say truthfully what happened (and never
         // request a deposit twice).
         sendConfirmation:!isPublic
       });
+      if(!made.ok){
+        for(const h of segHolds) await releaseHold(tenant.id,h.hold_token,'released').catch(()=>{});
+        return res.status(200).json({ok:false,conflict:true,error:made.error||'hold_expired'});
+      }
+      const booking=made.booking;
       const extraBookings=[];
       if(multi==='one'){
         const rows=[service,...segs.map(x=>x.service)].map((sv,i)=>({ booking_id:booking.id, service_id:sv?.id||null, staff_id:staffId, sequence_no:i+1,
           active_duration_1_min:Number(sv?.duration_minutes||60), price:Number(sv?.price||0) }));
         const { error:bsErr }=await db().from('booking_services').insert(rows);
         if(bsErr) console.warn('[calendar] booking_services:',bsErr.message||bsErr);
+        for(const h of segHolds) await releaseHold(tenant.id,h.hold_token,'converted').catch(()=>{});
       } else if(multi==='split'){
-        for(const sg of segs){
-          extraBookings.push(await createCanonicalBooking({ tenantId:tenant.id,clientId,serviceId:sg.service.id,staffId,startTime:sg.starts_at,endTime:sg.ends_at,
-            status:'confirmed',totalAmount:sg.service.price||0,notes:`Add-on (with ${booking.confirmation_code||'main booking'})`,source,sendConfirmation:false }));
+        for(const [i,sg] of segs.entries()){
+          const r=await bookFromHold(tenant.id,segHolds[i],{ clientId,serviceId:sg.service.id,staffId,startTime:sg.starts_at,endTime:sg.ends_at,
+            status:'confirmed',totalAmount:sg.service.price||0,notes:`Add-on (with ${booking.confirmation_code||'main booking'})`,source,sendConfirmation:false });
+          if(r.ok) extraBookings.push(r.booking);
         }
       }
-      await releaseHold(tenant.id,hold.hold_token,'converted');
       // The salon's own booking platform (Square/Boulevard/Zapier…): a durable
       // outbox row, committed right after this reply and retried by cron —
       // same write-through Lola's voice bookings use.
@@ -620,13 +641,10 @@ export default async function handler(req,res){
         if(new Date(startsAt)<=new Date()) return res.status(200).json({ok:false,error:'time_in_past'});
         // Keep the current stylist unless the client picked another (and the salon lets them).
         const newStaff=(rules.allow_staff_choice && body.staff_id) ? body.staff_id : current.staff_id;
-        const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:newStaff,startsAt,channel:'public_widget',ttlSeconds:120,excludeBookingId:current.id});
+        // The booking keeps its real length; the extra time is checked by the engine.
+        const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:newStaff,startsAt,channel:'public_widget',ttlSeconds:120,excludeBookingId:current.id,minDurationMin:lengthMin(current)});
         if(!held.ok) return res.status(200).json({ok:false,conflict:!!held.conflict,error:held.error||'slot_unavailable'});
-      const pubEnd=keepLength(current,held.slot);
-      if(pubEnd!==held.slot.ends_at && !(await extraTimeFree(tenant.id,newStaff,held.slot.ends_at,pubEnd,current.id))){
-        await releaseHold(tenant.id,held.hold.hold_token,'released'); return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable'});
-      }
-      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:newStaff,start_time:held.slot.starts_at,end_time:pubEnd,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
+      const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:newStaff,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:'public_widget',reason:'client_self_service_reschedule'});
       await releaseHold(tenant.id,held.hold.hold_token,'converted');
       if(updated) zapLater(tenant,current.id,'booking.rescheduled');
       let publicOffer=null;
@@ -642,84 +660,67 @@ export default async function handler(req,res){
     if(!current) return res.status(404).json({ok:false,error:'booking_not_found'});
     // Scoped series reschedule: series_scope 'following' moves this + every
     // later occurrence by the same delta (cadence preserved between them);
-    // 'this' (default) moves only this occurrence. EVERY moved occurrence is
-    // checked first — staff overlap and blocked time, the same checks series
-    // creation runs — against everything EXCEPT the moving set (they shift
-    // together, so mutual overlaps are preserved by construction). Target
-    // first (its own hold below runs the full availability engine), then
-    // later ones chronologically; a collision stops the move with 409
-    // {conflict, moved_count, failed_at_occurrence} and the already-moved
-    // occurrences persist (same partial-apply contract as series creation).
+    // 'this' (default) moves only this occurrence. ALL occurrences are
+    // validated BEFORE anything is written — the target through the full
+    // availability engine (atomic hold), every later one for stylist overlap
+    // and blocked time in the SALON's timezone (salon.js rules) — against
+    // everything except the moving set (they shift together). Any collision →
+    // 409 {conflict, moved_count:0, failed_at_occurrence} and nothing moved.
     const seriesScope=String(body.series_scope||'this').toLowerCase();
-    let seriesMoved=0;
-    let seriesConflict=null;
-    if(seriesScope==='following'&&current.series_id){
-      const { data: later, error: laterErr }=await c.from('bookings').select('id,start_time,end_time,staff_id,series_pos')
-        .eq('series_id',current.series_id).eq('tenant_id',tenant.id).neq('status','cancelled')
-        .gt('start_time',current.start_time).order('start_time');
-      if(laterErr) return res.status(500).json({ok:false,error:'series_read_failed',detail:laterErr.message||JSON.stringify(laterErr)});
-      const moving=new Set([current.id,...(later||[]).map(o=>o.id)]);
-      const delta=new Date(body.starts_at).getTime()-new Date(current.start_time).getTime();
-      // Minute-window helpers mirroring salon.js's blocked-time check
-      // (DAY_START 8:00 / DAY_END 21:00 as the all-day block bounds).
-      const toMinutes=(t)=>{const [h,m]=String(t).split(':').map(Number);return (h||0)*60+(m||0);};
-      const windowsOverlap=(aS,aE,bS,bE)=>Math.max(aS,bS)<Math.min(aE,bE);
-      for(const occ of (later||[])){
-        const st=new Date(new Date(occ.start_time).getTime()+delta);
-        const en=new Date(new Date(occ.end_time).getTime()+delta);
-        if(occ.staff_id){
-          const { data: cf }=await c.from('bookings').select('id').eq('tenant_id',tenant.id).eq('staff_id',occ.staff_id)
-            .neq('status','cancelled').lt('start_time',en.toISOString()).gt('end_time',st.toISOString());
-          if(cf&&cf.some(x=>!moving.has(x.id))){
-            seriesConflict={moved_count:seriesMoved,failed_at_occurrence:occ.series_pos||null,
-              error:'Occurrence '+st.toISOString().slice(0,10)+' is already booked — the first '+seriesMoved+' later occurrences were moved.'};
-            break;
-          }
-          const ds=st.toISOString().slice(0,10);
-          const { data: bk }=await c.from('blocked_slots').select('*').eq('tenant_id',tenant.id).eq('blocked_date',ds);
-          const rs=st.getHours()*60+st.getMinutes(),re=en.getHours()*60+en.getMinutes();
-          const blockedHit=(bk||[]).some(b=>(!b.staff_id||b.staff_id===occ.staff_id)&&
-            windowsOverlap(rs,re,
-              b.start_time?toMinutes(b.start_time):8*60,
-              b.end_time?toMinutes(b.end_time):21*60));
-          if(blockedHit){
-            seriesConflict={moved_count:seriesMoved,failed_at_occurrence:occ.series_pos||null,
-              error:'Occurrence '+ds+' falls in blocked time — the first '+seriesMoved+' later occurrences were moved.'};
-            break;
-          }
-        }
-        const { error: occErr }=await c.from('bookings').update({
-          start_time:st.toISOString(),end_time:en.toISOString(),
-          updated_at:new Date().toISOString()}).eq('id',occ.id).eq('tenant_id',tenant.id);
-        if(occErr) return res.status(500).json({ok:false,error:'series_move_failed',detail:occErr.message||JSON.stringify(occErr)});
-        seriesMoved++;
-        zapLater(tenant,occ.id,'booking.rescheduled');
-      }
-      if(seriesConflict){
-        return res.status(409).json({ok:false,conflict:true,...seriesConflict,
-          detail:'Target not moved; the later occurrences counted in moved_count were.'});
-      }
-    }
-    const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:body.staff_id||current.staff_id,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120,excludeBookingId:current.id});
+    const newStaffId=body.staff_id||current.staff_id;
+    const held=await holdAvailability({tenantId:tenant.id,clientId:current.client_id,serviceId:current.service_id,staffId:newStaffId,startsAt:body.starts_at,channel:body.channel||'dashboard',ttlSeconds:120,excludeBookingId:current.id,minDurationMin:lengthMin(current)});
     if(!held.ok){
-      // Series move: the later occurrences were already shifted (they passed
-      // their checks), so a target-window collision is a partial-apply 409 —
-      // the same contract salon.js returns — never a bare failure that hides
-      // what already moved.
-      if(seriesScope==='following'&&current.series_id&&seriesMoved>0){
-        return res.status(409).json({ok:false,conflict:true,moved_count:seriesMoved,failed_at_occurrence:current.series_pos||1,
-          error:'The new time for occurrence '+(current.series_pos||1)+' collides — the first '+seriesMoved+' later occurrences were moved.'});
+      if(seriesScope==='following'&&current.series_id){
+        return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:current.series_pos||1,
+          error:'The new time for occurrence '+(current.series_pos||1)+' collides — nothing was moved.'});
       }
       return res.status(200).json(held);
     }
-    const newEnd=keepLength(current,held.slot);
-    if(newEnd!==held.slot.ends_at && !(await extraTimeFree(tenant.id,body.staff_id||current.staff_id,held.slot.ends_at,newEnd,current.id))){
-      await releaseHold(tenant.id,held.hold.hold_token,'released');
-      return res.status(200).json({ok:false,conflict:true,error:'slot_unavailable',detail:'Not enough free time for the whole appointment.'});
+    const plan=[];   // later occurrences: { occ, start, end }
+    if(seriesScope==='following'&&current.series_id){
+      const { data: later, error: laterErr }=await c.from('bookings').select('id,start_time,end_time,staff_id,series_pos,status')
+        .eq('series_id',current.series_id).eq('tenant_id',tenant.id).neq('status','cancelled')
+        .gt('start_time',current.start_time).order('start_time');
+      if(laterErr){ await releaseHold(tenant.id,held.hold.hold_token,'released'); return res.status(500).json({ok:false,error:'series_read_failed',detail:laterErr.message||JSON.stringify(laterErr)}); }
+      const moving=new Set([current.id,...(later||[]).map(o=>o.id)]);
+      const delta=new Date(held.slot.starts_at).getTime()-new Date(current.start_time).getTime();
+      const tz=(await getBookingSettings(tenant.id).catch(()=>null))?.timezone||'America/New_York';
+      for(const occ of (later||[])){
+        const st=new Date(new Date(occ.start_time).getTime()+delta).toISOString();
+        const en=new Date(new Date(occ.end_time).getTime()+delta).toISOString();
+        const staffId=occ.staff_id===current.staff_id ? newStaffId : occ.staff_id;
+        if(staffId){
+          const { data: cf }=await c.from('bookings').select('id,status').eq('tenant_id',tenant.id).eq('staff_id',staffId)
+            .neq('status','cancelled').lt('start_time',en).gt('end_time',st);
+          const clash=(cf||[]).some(x=>!moving.has(x.id) && !/^(cancel|no[-_ ]?show)/i.test(String(x.status||'')));
+          const { data: hl }=await c.from('availability_holds').select('id,expires_at').eq('tenant_id',tenant.id).eq('staff_id',staffId).eq('status','active')
+            .lt('starts_at',en).gt('ends_at',st);
+          const holdClash=(hl||[]).some(h=>h.id!==held.hold.id && new Date(h.expires_at)>new Date());
+          if(clash||holdClash){
+            await releaseHold(tenant.id,held.hold.hold_token,'released');
+            return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:occ.series_pos||null,
+              error:'Occurrence '+localDateKey(new Date(st),tz)+' is already booked — nothing was moved.'});
+          }
+          const blocked=await blockedHitTz(c,tenant.id,staffId,st,en,tz);
+          if(blocked){
+            await releaseHold(tenant.id,held.hold.hold_token,'released');
+            return res.status(409).json({ok:false,conflict:true,moved_count:0,failed_at_occurrence:occ.series_pos||null,
+              error:'Occurrence '+blocked+' falls in blocked time — nothing was moved.'});
+          }
+        }
+        plan.push({occ,start:st,end:en,staffId});
+      }
     }
-    const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:body.staff_id||current.staff_id,start_time:held.slot.starts_at,end_time:newEnd,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
+    // Everything fits → write: target first, then each later occurrence (one
+    // "Rescheduled" text for the target; occurrences move quietly).
+    const updated=await updateCanonicalBooking(tenant.id,current.id,{staff_id:newStaffId,start_time:held.slot.starts_at,end_time:held.slot.ends_at,status:'confirmed'},{source:body.channel||'dashboard',reason:'rescheduled'});
     await releaseHold(tenant.id,held.hold.hold_token,'converted');
     if(updated) zapLater(tenant,current.id,'booking.rescheduled');
+    let seriesMoved=0;
+    for(const p of plan){
+      const u=await updateCanonicalBooking(tenant.id,p.occ.id,{start_time:p.start,end_time:p.end,...(p.staffId&&p.staffId!==p.occ.staff_id?{staff_id:p.staffId}:{})},{source:body.channel||'dashboard',reason:'series_rescheduled',sendReschedule:false});
+      if(u){ seriesMoved++; zapLater(tenant,p.occ.id,'booking.rescheduled'); }
+    }
     let dashOffer=null;
     if(updated){
       try{ dashOffer=await offerFreedSlot({tenantId:tenant.id,serviceId:current.service_id||null,serviceName:current.service||current.service_name||null,freedAt:current.start_time||current.starts_at}); }

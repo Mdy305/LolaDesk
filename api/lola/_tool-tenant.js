@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Shared by the /api/lola/* voice tools (not a route: "_" prefix).
 // Resolves the salon from the number that was called, the same strict way
 // every other inbound path does (tenant_numbers.phone_number / tenants.phone_number).
@@ -19,11 +20,12 @@ const queryOf = (req) => {
  * The old helper returned true whenever LOLA_TOOL_SECRET was unset, so anyone could read a caller's
  * history by POSTing the salon's public number and a client's phone.
  */
+function sameSecret(a, b) { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); }
 export function toolAuth(req, purpose = 'tools') {
   const q = queryOf(req);
   const secret = process.env.LOLA_TOOL_SECRET;
   const header = req?.headers?.['x-lola-tool-secret'];
-  if (secret && header && header === secret) return 'signed';
+  if (secret && header && sameSecret(String(header), String(secret))) return 'signed';
   if (toolKeyOk(q.k, purpose)) return 'signed';
   return secret ? 'refused' : 'public';
 }

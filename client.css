@@ -388,3 +388,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .cp-name { font-size: 22px; }
   .cp-tabs { align-self: stretch; }
 }
+
+/* Color formula form */
+.formula-add { margin: 4px 0 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.formula-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.fa-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--ink-mute); }
+.fa-field.fa-wide { grid-column: 1 / -1; }
+.fa-field input {
+  height: 38px; padding: 0 12px; font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); outline: none;
+}
+.fa-field input:focus { border-color: var(--brand); }
+.fa-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 12px; }
+.fa-status { font-size: 12px; color: var(--ink-mute); min-height: 16px; }
+.formula-meta { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+@media (max-width: 560px) { .formula-grid { grid-template-columns: 1fr; } }

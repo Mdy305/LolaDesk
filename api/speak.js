@@ -14,7 +14,7 @@
  */
 
 import { synthesize } from './lib/elevenlabs.js';
-import { allowAnonymousSpeech } from './lib/voice-guard.js';
+import { allowSpeech } from './lib/voice-guard.js';
 
 export default async function handler(req, res){
   res.setHeader('Access-Control-Allow-Origin','*');
@@ -27,7 +27,7 @@ export default async function handler(req, res){
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
     const text = (body.text||'').toString().slice(0, 2500);
     if(!text) return res.status(400).json({ error:'text required' });
-    if(!allowAnonymousSpeech(req)) return res.status(429).json({ error:'rate_limited' });
+    if(!(await allowSpeech(req))) return res.status(429).json({ error:'rate_limited' });
 
     // No register, no voice_settings — Lola speaks in the voice exactly
     // as the owner created it (see lib/elevenlabs.js).

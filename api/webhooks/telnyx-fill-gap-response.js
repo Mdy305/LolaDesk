@@ -2,6 +2,28 @@
 // Telnyx hits this after <Gather>. We parse the caller's answer, book /
 // decline accordingly, and return a final TeXML message.
 export const config = { api: { bodyParser: false } };
+import { fillGapKeyOk } from '../lib/callback-sign.js';
+import { verifyTelnyxSignature } from '../lib/telnyx-webhook-verify.js';
+
+// Statuses an attempt can still be answered from. Every outcome below CLAIMS the attempt with a
+// conditional update (status still open → new status) first, so a replayed or doubled Gather
+// callback can never book the same gap twice.
+const OPEN = ['pending', 'ringing', 'answered'];
+const hangup = (res) => { res.setHeader('Content-Type', 'application/xml'); return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'); };
+
+/**
+ * Is this callback from a call LolaDesk placed? The per-attempt k=… (api/lib/callback-sign.js), or a
+ * valid Telnyx signature. Until the TeXML script forwards k= on its Gather action
+ * (api/webhooks/telnyx-fill-gap.js), an unsigned callback is still accepted unless
+ * FILL_GAP_REQUIRE_SIG=1 — it can only act once per attempt (OPEN claim below).
+ */
+export function fillGapCallbackAllowed(req, attemptId, rawBody) {
+  const q = req.query || {};
+  if (q.k) return fillGapKeyOk(attemptId, q.k);
+  const h = req.headers || {};
+  if (h['telnyx-signature-ed25519'] && process.env.TELNYX_PUBLIC_KEY) return verifyTelnyxSignature(req, rawBody);
+  return process.env.FILL_GAP_REQUIRE_SIG !== '1';
+}
 
 async function readBody(req) {
   return new Promise((resolve) => {
@@ -34,6 +56,7 @@ export default async function handler(req, res) {
 
     let body = '';
     try { body = await readBody(req); } catch (_) {}
+    if (!attemptId || !fillGapCallbackAllowed(req, attemptId, body)) return hangup(res);
     const form = parseForm(body);
     const speech = String(form.SpeechResult || '').toLowerCase().trim();
     const digits = String(form.Digits || '').trim();
@@ -47,10 +70,15 @@ export default async function handler(req, res) {
     try {
       const { db: dbFn } = await import('../lib/db.js');
       const c = dbFn();
+      // Claim the attempt (one outcome per call). Already handled → just say goodbye, do nothing.
+      const claimStatus = yes ? 'accepted' : no ? 'declined' : 'unclear';
+      const { data: claimed } = await c.from('fill_gap_attempts')
+        .update({ status: claimStatus, outcome: yes ? 'yes' : no ? 'no' : 'unclear', responded_at: new Date().toISOString(), gather_response: speech || digits || '(none)' })
+        .eq('id', attemptId).in('status', OPEN).select('id');
+      if (!Array.isArray(claimed) || !claimed.length) return hangup(res);
       if (yes) {
         farewell = `Amazing — I'll lock in ${gapTime ? 'the ' + fmtHumanTime(gapTime) + ' spot' : 'your spot'} for you and send a text confirmation. See you soon.`;
         bookedText = 'accepted';
-        if (attemptId) await c.from('fill_gap_attempts').update({ status: 'accepted', outcome: 'yes', responded_at: new Date().toISOString(), gather_response: speech || digits }).eq('id', attemptId);
 
         // Book it through the canonical engine (same path as every booking):
         // createCanonicalBooking writes `bookings`, logs history, and sends
@@ -59,14 +87,14 @@ export default async function handler(req, res) {
         try {
           const { data: attempt } = await c.from('fill_gap_attempts').select('*').eq('id', attemptId).maybeSingle();
           if (attempt && attempt.client_phone) {
-            const { createCanonicalBooking, getBookingSettings, addMinutes } = await import('../lib/booking-repository.js');
+            const { getBookingSettings } = await import('../lib/booking-repository.js');
+            const { bookGapFillSlot } = await import('../lib/gap-fill-booking.js');
             const { zonedLocalToUtc } = await import('../lib/timezone.js');
             const { upsertClient, e164 } = await import('../lib/db.js');
             const settings = await getBookingSettings(attempt.tenant_id);
             const tz = settings?.timezone || 'America/New_York';
             const hhmm = String(attempt.gap_start_time || '').slice(0, 5);
             const startIso = zonedLocalToUtc(String(attempt.gap_date).slice(0, 10), `${hhmm}:00`, tz);
-            const endIso = addMinutes(startIso, attempt.gap_duration_minutes || 60);
             let clientId = attempt.client_id || null;
             if (!clientId) {
               // Find the existing client by phone first — never rename a known client.
@@ -79,15 +107,22 @@ export default async function handler(req, res) {
               clientId = cl?.id || null;
             }
             if (clientId) {
-              const booking = await createCanonicalBooking({
-                tenantId: attempt.tenant_id, clientId,
-                startTime: startIso, endTime: endIso, status: 'confirmed',
+              // Several clients may say yes to the same gap: the atomic hold lets exactly one win.
+              const got = await bookGapFillSlot({
+                tenantId: attempt.tenant_id, clientId, startsAt: startIso,
+                durationMin: attempt.gap_duration_minutes || 60, stylist: attempt.gap_stylist || null,
                 source: 'lola_gap_fill',
                 notes: `Booked by Lola on an outbound gap-fill call${attempt.gap_stylist ? ' · requested ' + attempt.gap_stylist : ''}`,
               });
-              booked = !!booking?.id;
-              await c.from('fill_gap_attempts').update({ status: 'booked', outcome: 'booked' }).eq('id', attemptId);
-              if (attempt.waitlist_id) {
+              if (!got.ok && got.taken) {
+                booked = true; // nothing to text: they're told on the call
+                farewell = `Oh — someone just grabbed that spot a moment ago, I'm so sorry. I'll put you first in line for the next opening.`;
+                await c.from('fill_gap_attempts').update({ status: 'taken', outcome: 'taken' }).eq('id', attemptId);
+                try { const { addToWaitlist } = await import('../lib/booking-repository.js'); await addToWaitlist?.({ tenantId: attempt.tenant_id, clientId, preferredDate: String(attempt.gap_date).slice(0, 10), notes: 'Said yes to a gap that was already taken' }); } catch (_) {}
+              }
+              if (got.ok) booked = !!got.booking?.id;
+              if (got.ok) await c.from('fill_gap_attempts').update({ status: 'booked', outcome: 'booked' }).eq('id', attemptId);
+              if (got.ok && attempt.waitlist_id) {
                 try { await c.from('booking_waitlist').update({ status: 'fulfilled', updated_at: new Date().toISOString() }).eq('id', attempt.waitlist_id); } catch (_) {}
               }
             }
@@ -111,10 +146,8 @@ export default async function handler(req, res) {
         }
       } else if (no) {
         farewell = `No problem — thanks anyway. I'll ping you next time something opens up.`;
-        if (attemptId) await c.from('fill_gap_attempts').update({ status: 'declined', outcome: 'no', responded_at: new Date().toISOString(), gather_response: speech || digits }).eq('id', attemptId);
       } else {
         farewell = `I didn't quite catch that. No worries — I'll text you the details and you can grab it if you want. Talk soon.`;
-        if (attemptId) await c.from('fill_gap_attempts').update({ status: 'unclear', outcome: 'unclear', responded_at: new Date().toISOString(), gather_response: speech || digits || '(none)' }).eq('id', attemptId);
         // Fallback SMS with the offer since voice was inconclusive
         try {
           const sms = await import('../lib/sms.js').catch(() => null);

@@ -1,0 +1,47 @@
+# Files that must never be uploaded to (and so never served from) the Vercel deployment.
+# Runtime = api/**, the root .html/.js/.css pages, assets/, public/, vendor/, ai-receptionist/.
+# Nothing under api/ reads any path excluded here (migrations/*.sql are applied by
+# scripts/apply-migrations.mjs from a laptop/CI, never by a serverless function).
+
+# Backups and editor leftovers
+*.bak
+*.orig
+*.swp
+
+# Database schema / migrations (internal structure, RLS policies)
+*.sql
+/migrations/
+/sql/
+
+# Scripts, local tooling, containers
+*.py
+/scripts/
+/deploy.sh
+/setup.sh
+/test-integration.sh
+/docker-compose.yml
+/Dockerfile
+/verify-tenant-routing.mjs
+/salon.test.mjs
+
+# Tests and end-to-end harnesses
+/tests/
+/e2e/
+
+# Unrelated / vendored side projects that live in the repo
+/OpenMythos/
+/r4ven/
+/bat-security-toolkit/
+/copilot-worktrees/
+/macv7/
+
+# The live-voice relay is a separate Railway service
+/relay/
+
+# Internal docs (legal pages are .html and stay)
+/docs/
+/*.md
+
+# Local env files (never deploy)
+.env
+.env.*

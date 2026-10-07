@@ -32,11 +32,14 @@
     {"path":"/api/cron/publish-reviews","schedule":"0 * * * *"},
     {"path":"/api/cron/sync-connections","schedule":"0 3 * * *"},
     {"path":"/api/cron/autopilot","schedule":"0 * * * *"},
-    {"path":"/api/cron/booking-reminders","schedule":"0 * * * *"},
+    {"path":"/api/cron/booking-reminders","schedule":"*/15 * * * *"},
     {"path":"/api/cron/deposits","schedule":"*/5 * * * *"},
     {"path":"/api/cron/rebooking","schedule":"0 * * * *"},
     {"path":"/api/cron/fill-plans","schedule":"7 * * * *"},
     {"path":"/api/cron/booking-fees","schedule":"23 9 * * *"},
-    {"path":"/api/cron/telecom-sync","schedule":"*/30 * * * *"}
+    {"path":"/api/cron/telecom-sync","schedule":"*/30 * * * *"},
+    {"path":"/api/cron/conversation-reports","schedule":"*/5 * * * *"},
+    {"path":"/api/cron/release-numbers","schedule":"41 6 * * *"},
+    {"path":"/api/cron/no-show-scan","schedule":"*/15 * * * *"}
   ]
 }

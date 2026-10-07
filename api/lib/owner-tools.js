@@ -140,14 +140,32 @@ async function getPending(tenantId) {
   return v;
 }
 
+/**
+ * Take the parked action atomically: DELETE … RETURNING hands the row to exactly one caller, so a
+ * double "yes" (two taps, a retry, voice + text at once) can never run the same action twice.
+ */
+async function claimPending(tenantId) {
+  const c = db(); if (!c) return null;
+  const r = await Promise.resolve(c.from('client_memories').delete()
+    .eq('tenant_id', tenantId).eq('client_phone', 'owner_pending').eq('key', 'action').select('value'))
+    .then((x) => x, () => ({ data: null, error: { message: 'claim failed' } }));
+  if (r?.error) return null;
+  const row = Array.isArray(r?.data) ? r.data[0] : r?.data;
+  const v = row?.value;
+  if (!v || !v.name || Date.now() - (v.at || 0) > 10 * 60 * 1000) return null;
+  return v;
+}
+
 /** Called by the brain before anything else: a bare "yes"/"no" resolves the parked action. */
 export async function takePendingAction({ tenant, text, req }) {
   if (!isAffirmative(text) && !isNegative(text)) return null;
   const pending = await getPending(tenant.id);
   if (!pending) return null;
-  await setPending(tenant.id, null);
+  const claimed = await claimPending(tenant.id);
+  // Someone else's "yes" already took it (or it just expired): never run it a second time.
+  if (!claimed) return { ok: true, say: isNegative(text) ? "Okay, I won't." : "That one's already been handled.", duplicate: true };
   if (isNegative(text)) return { ok: true, say: "Okay, I won't.", cancelled: true };
-  return runOwnerTool({ tenant, name: pending.name, args: { ...pending.args, confirmed: true }, req });
+  return runOwnerTool({ tenant, name: claimed.name, args: { ...claimed.args, confirmed: true }, req });
 }
 
 // ── helpers ──

@@ -133,10 +133,13 @@ test('persistCallInsights updates an existing calls row matched by control id', 
   assert.equal(r.callId, 'call-1');
   const row = fake.all('calls')[0];
   assert.equal(row.summary, 'Booked a balayage for Friday at 2pm.');
-  assert.equal(row.outcome, 'booked');
+  // outcome/transcript are GENERATED columns (schema.sql): the outcome rides in status and the
+  // transcript in recording_url as "Caller:/Lola:" lines — writing the aliases fails in Postgres.
+  assert.equal(row.status, 'booked');
   assert.equal(row.insight_id, 'evt-1');
   assert.equal(row.call_session_id, 'sess-1');
-  assert.deepEqual(row.transcript, transcriptResult().result.transcript);
+  assert.equal(row.recording_url, 'Lola: Hi, this is Lola. How can I help you?\nCaller: I want to book a balayage Friday.\n');
+  assert.ok(!('outcome' in row) && !('transcript' in row), 'generated columns are never written');
 });
 
 test('persistCallInsights creates a row via the call_sessions map when no call row exists', async () => {
@@ -151,7 +154,7 @@ test('persistCallInsights creates a row via the call_sessions map when no call r
   assert.equal(rows[0].from_number, '+19294568227');
   assert.equal(rows[0].to_number, '+14107848940');
   assert.equal(rows[0].direction, 'inbound');
-  assert.equal(rows[0].status, 'completed');
+  assert.equal(rows[0].status, 'booked', 'the outcome rides in status (outcome is generated from it)');
   assert.equal(rows[0].summary, 'Booked a balayage for Friday at 2pm.');
 });
 
@@ -472,6 +475,7 @@ test('persistCallInsights closes a LIVE calls row when insights land (status →
   const r = await persistCallInsights(fake, parsed, classifyResults(parsed.results));
   assert.equal(r.mode, 'updated');
   const row = fake.all('calls')[0];
-  assert.equal(row.status, 'completed', 'insights fire at conversation end — a live row must never stay live');
+  assert.ok(!['in_progress', 'ringing', 'processing', 'dialing', 'connected'].includes(row.status), 'insights fire at conversation end — a live row must never stay live');
+  assert.equal(row.status, 'booked', 'closed with its real outcome');
   assert.equal(row.summary, 'Booked a balayage for Friday at 2pm.');
 });

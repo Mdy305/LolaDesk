@@ -5,6 +5,22 @@
  * { ok, text } — the page renders the text. No JSON parsing to fail.
  */
 import { chat } from './lib/llm.js';
+import { safeFetch } from './lib/safe-fetch.js';
+import { allow, clientIp } from './lib/public-rate-limit.js';
+
+// Every action here spends AI credits (and analyze fetches a URL), so: analyze and campaign need a
+// signed-in owner; everything is rate limited per address AND per salon.
+const LIMITS = { ip: [20, 10 * 60e3], ip_anon: [5, 10 * 60e3], tenant: [60, 60 * 60e3] };
+async function ownerTenant(req){
+  try{
+    const { getUserFromToken, bearer } = await import('./lib/auth.js');
+    const user = await getUserFromToken(bearer(req)).catch(() => null);
+    if(!user) return { user: null, tenant: null };
+    const { resolveTenantForUser } = await import('./lib/tenant-access.js');
+    const tenant = await resolveTenantForUser(user).catch(() => null);
+    return { user, tenant: tenant?.id ? tenant : null };
+  }catch(_){ return { user: null, tenant: null }; }
+}
 
 // The salon's real numbers — open chair-hours by day, who is due back, who lapsed, the menu —
 // so the strategy is a plan to fill THESE chairs, not generic advice.
@@ -97,7 +113,7 @@ async function fetchSite(url){
     const controller = new AbortController();
     const timer = setTimeout(()=>controller.abort(), 8000);
     let r;
-    try{ r = await fetch(url, { headers:{ 'User-Agent':'Mozilla/5.0 (compatible; LolaDesk/1.0)' }, redirect:'follow', signal: controller.signal }); }
+    try{ r = await safeFetch(url, { headers:{ 'User-Agent':'Mozilla/5.0 (compatible; LolaDesk/1.0)' }, signal: controller.signal, timeoutMs: 8000, maxBytes: 2 * 1024 * 1024 }); }
     finally { clearTimeout(timer); }
     if(!r || !r.ok) return { ok:false, error:'HTTP '+(r?r.status:'none'), url, title:'', text:'' };
     const html = await r.text();
@@ -192,6 +208,13 @@ export default async function handler(req, res){
   try{
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
     const action = body.action || (req.method==='GET' ? 'analyze' : '');
+    if(!['analyze','strategy','campaign'].includes(action)) return res.status(200).json({ ok:false, error:'unknown action' });
+    const who = await ownerTenant(req);
+    if((action === 'analyze' || action === 'campaign') && !who.tenant) return res.status(401).json({ ok:false, error:'Sign in to use the Marketer.' });
+    const ip = clientIp(req);
+    const ipRule = who.tenant ? LIMITS.ip : LIMITS.ip_anon;
+    if(!allow('marketer:ip:' + ip, ipRule[0], ipRule[1])) return res.status(429).json({ ok:false, error:'Too many requests — try again in a few minutes.' });
+    if(who.tenant && !allow('marketer:tenant:' + who.tenant.id, LIMITS.tenant[0], LIMITS.tenant[1])) return res.status(429).json({ ok:false, error:'Hourly Marketer limit reached for this salon — try again later.' });
     if(action === 'analyze'){
       const url = body.url;
       if(!url) return res.status(200).json({ ok:false, error:'url required' });

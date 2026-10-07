@@ -18,9 +18,15 @@ import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 // ── Calls we place (demo, owner bridge, forwarding test): Telnyx plays HER voice, rendered by
 // /api/speak-lola (the same ElevenLabs voice as the app). Signed, so Telnyx's fetch is never
 // rate-limited as an anonymous visitor and nobody can use the link to voice other text.
-const voiceKey = () => String(process.env.TELNYX_API_KEY || process.env.SUPABASE_SERVICE_KEY || 'loladesk') + ':lola-voice';
+// Same key as before whenever TELNYX_API_KEY / SUPABASE_SERVICE_KEY is set; no hard-coded last resort.
+const voiceRoot = () => String(process.env.TELNYX_API_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const voiceKey = () => voiceRoot() + ':lola-voice';
 export const signText = (text) => crypto.createHmac('sha256', voiceKey()).update(String(text)).digest('base64url').slice(0, 22);
-export const checkTextSig = (text, sig) => !!sig && String(sig) === signText(text);
+export const checkTextSig = (text, sig) => {
+  if (!sig || !voiceRoot()) return false;
+  const a = Buffer.from(String(sig)), b = Buffer.from(signText(text));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 export const voiceUrl = (text) => `${appUrl()}/api/speak-lola?text=${encodeURIComponent(text)}&sig=${signText(text)}`;
 /** Telnyx events that mean "she finished saying it". */
 export const saidEnded = (type) => type === 'call.playback.ended' || type === 'call.speak.ended';

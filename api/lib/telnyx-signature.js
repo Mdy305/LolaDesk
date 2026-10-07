@@ -1,5 +1,5 @@
 import { verify as verifySig } from 'crypto';
-import { telnyxPublicKey } from './telnyx-webhook-verify.js';
+import { telnyxPublicKey, signatureRequired } from './telnyx-webhook-verify.js';
 
 function header(req, name){
   return req.headers?.[name] || req.headers?.[name.toLowerCase()] || req.headers?.[name.toUpperCase()] || '';
@@ -14,7 +14,8 @@ export function getTelnyxSignatureHeaders(req){
 
 export function verifyTelnyxSignature({ rawBody, signature, timestamp }){
   const publicKeyPem = process.env.TELNYX_PUBLIC_KEY || '';
-  if(!publicKeyPem) return { ok: true, skipped: true }; // optional unless configured
+  // Optional unless configured (TELNYX_REQUIRE_SIGNATURE=1 makes a missing key fail closed).
+  if(!publicKeyPem) return signatureRequired() ? { ok: false, reason: 'TELNYX_PUBLIC_KEY not configured' } : { ok: true, skipped: true };
   if(!rawBody || !signature || !timestamp) return { ok: false, reason: 'missing headers/body' };
 
   const ts = Number(timestamp);

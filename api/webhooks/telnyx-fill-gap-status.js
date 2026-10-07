@@ -1,6 +1,8 @@
 // POST /api/webhooks/telnyx-fill-gap-status
 // Telnyx StatusCallback — updates the attempt with final call disposition.
 export const config = { api: { bodyParser: false } };
+import { fillGapKeyOk } from '../lib/callback-sign.js';
+import { verifyTelnyxSignature } from '../lib/telnyx-webhook-verify.js';
 
 async function readBody(req) {
   return new Promise((resolve) => {
@@ -26,6 +28,12 @@ export default async function handler(req, res) {
   try {
     const attemptId = req.query?.attempt_id || '';
     const raw = await readBody(req);
+    // Only a call LolaDesk placed: the per-attempt k=… that voice-fill-gap.js puts on this URL,
+    // or a valid Telnyx signature. Anything else is acknowledged and ignored.
+    const h = req.headers || {};
+    const signed = fillGapKeyOk(attemptId, req.query?.k)
+      || (!!h['telnyx-signature-ed25519'] && !!process.env.TELNYX_PUBLIC_KEY && verifyTelnyxSignature(req, raw));
+    if (!signed) return res.status(200).send('OK');
     const form = parseForm(raw);
     const callStatus = String(form.CallStatus || form.status || '').toLowerCase();
     const duration = parseInt(form.CallDuration || '0', 10) || 0;

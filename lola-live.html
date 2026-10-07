@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-<title>Lola</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Lola full screen · LolaDesk</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -147,7 +147,12 @@
     padding:10px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(10,10,12,.6);color:var(--text);text-decoration:none;
     font-size:13px;letter-spacing:.02em;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);min-height:40px}
   .exit:hover,.exit:focus-visible{border-color:rgba(204,255,0,.5);outline:none}
+  /* With the LolaDesk menu on the page, Lola fills the space beside it. */
+  body.ln-shell .exit{display:none}
+  @media (min-width:1101px){ body.ln-shell #stage{width:calc(100vw - 236px)} }
+  @media (max-width:1100px){ body.ln-has-bar{display:block} body.ln-has-bar #stage{height:calc(100vh - 52px - 62px - env(safe-area-inset-bottom,0px))} body.ln-has-bar .exit{display:none} }
 </style>
+<script src="/lola-auth-fetch.js"></script>
 <script src="/lola-orb.js"></script>
 </head>
 <body>
@@ -575,5 +580,7 @@ setInterval(() => {
   }
 }, 1800);
 </script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js" data-shell="bare"></script>
 </body>
 </html>

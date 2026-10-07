@@ -24,7 +24,46 @@
   }catch(e){ VID = 'v' + Math.random().toString(36).slice(2); }
 
   var host = document.createElement('div');
-  host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;right:0;width:0;height:0;';
+  host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;right:0;width:0;height:0;display:none;';
+  var CFG = null;
+
+  /* ── Voice first: LolaBrain through Telnyx's agent widget, told which salon this is.
+     The salon pastes ONE line (this script); the assistant id, its version and the salon's
+     line all come from LolaDesk — so it keeps working when any of them change. ── */
+  function showChat(){ host.style.display = ''; }
+  function startVoice(v){
+    try{
+      var existing = document.querySelectorAll('telnyx-ai-agent');
+      var headers = JSON.stringify([{ name: 'X-LolaDesk-Salon', value: v.line }]);
+      if(existing.length){
+        // A raw Telnyx snippet is already on the page: make it this salon's Lola (header + LolaBrain).
+        for(var i = 0; i < existing.length; i++){ existing[i].setAttribute('agent-id', v.agent_id); existing[i].setAttribute('call-custom-headers', headers); if(CFG && CFG.name) existing[i].setAttribute('call-caller-name', CFG.name); }
+        return true;
+      }
+      var el = document.createElement('telnyx-ai-agent');
+      el.setAttribute('agent-id', v.agent_id);
+      el.setAttribute('environment', 'production');
+      if(CFG && CFG.name) el.setAttribute('call-caller-name', String(CFG.name).replace(/["<>&']/g, ''));
+      el.setAttribute('call-custom-headers', headers);
+      (document.body || document.documentElement).appendChild(el);
+      if(!(window.customElements && customElements.get('telnyx-ai-agent'))){
+        var sc = document.createElement('script');
+        sc.async = true;
+        sc.src = 'https://unpkg.com/@telnyx/ai-agent-widget@' + (v.widget || '0.36.0');
+        sc.onerror = function(){ try{ el.remove(); }catch(e){} showChat(); };   // voice unavailable → Lola by chat
+        document.head.appendChild(sc);
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+  fetch(API + '?slug=' + encodeURIComponent(SLUG) + '&key=' + encodeURIComponent(KEY))
+    .then(function(r){ return r.json(); })
+    .then(function(cfg){
+      CFG = cfg && cfg.ok ? cfg : null;
+      if(CFG && CFG.voice && startVoice(CFG.voice)) return;
+      showChat();
+    })
+    .catch(function(){ showChat(); });
   var root = host.attachShadow ? host.attachShadow({mode:'closed'}) : host;
   document.addEventListener('DOMContentLoaded', function(){ document.body.appendChild(host); });
   if(document.body) document.body.appendChild(host);
@@ -91,13 +130,9 @@
     panel.classList.toggle('open', opened);
     if(opened && !greeted){
       greeted = true;
-      fetch(API + '?slug=' + encodeURIComponent(SLUG) + '&key=' + encodeURIComponent(KEY))
-        .then(function(r){ return r.json(); })
-        .then(function(cfg){
-          panel.querySelector('.hn').textContent = 'Lola · ' + (cfg.name || 'your salon');
-          add('ai', cfg.greeting || "Hi! I'm Lola 💗 Ask me about services, prices, or booking.");
-        })
-        .catch(function(){ add('ai', "Hi! I'm Lola 💗 Ask me about services, prices, or booking."); });
+      var cfg = CFG || {};
+      panel.querySelector('.hn').textContent = 'Lola · ' + (cfg.name || 'your salon');
+      add('ai', cfg.greeting || "Hi! I'm Lola. Ask me about services, prices, or booking.");
     }
     if(opened) setTimeout(function(){ input.focus(); }, REDUCED ? 0 : 380);
   }

@@ -1,6 +1,6 @@
 import {
   addMinutes, getBookingSettings, listServices, listStaff, getStaffServices,
-  getStaffSchedules, getStaffTimeOff, getBlockedSlots, listBookings, listActiveHolds, createHold
+  getStaffSchedules, getStaffTimeOff, getBlockedSlots, listBookings, listActiveHolds, createHoldAtomic
 } from './booking-repository.js';
 import { dayBoundsUtc, localWeekday, zonedLocalToUtc } from './timezone.js';
 
@@ -137,7 +137,7 @@ async function listExternalBusy(tenantId,from,to,localBookings){
   }catch(_){ return []; }
 }
 
-export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null,context=false}){
+export async function getAvailability({tenantId,serviceId,date,staffId=null,limit=12,excludeBookingId=null,context=false,_seen=false}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
   const services=await listServices(tenantId);
@@ -252,16 +252,51 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
   // Earliest times first across ALL stylists (it used to stop after the first
   // stylist's first 12 slots, so afternoons and other stylists never showed).
   slots.sort((a,b)=>ms(a.starts_at)-ms(b.starts_at));
-  return {ok:true,slots:slots.slice(0,Math.max(1,Number(limit)||12)),service,settings,...(day?{day,services}:{})};
+  return {ok:true,slots:slots.slice(0,Math.max(1,Number(limit)||12)),service,settings,...(day?{day,services}:{}),
+    // _seen: the bookings this answer was computed against (holdAvailability hands
+    // them to the atomic hold so only bookings written AFTER this read conflict).
+    ...(_seen?{seen_booking_ids:existing.map(b=>b.id),buffers:bufferFor(service,settings)}:{})};
 }
 
-export async function holdAvailability({tenantId,clientId=null,serviceId,staffId,startsAt,channel='voice',conversationId=null,ttlSeconds=300,excludeBookingId=null}){
+// Buffers that travel with a new appointment (same rule as the slot loop above).
+export function bufferFor(service,settings){
+  const before=Number(settings?.default_buffer_before_min||0);
+  const svcAfter=service?.buffer_after_min;
+  const after=(svcAfter!=null && svcAfter!=='' && Number.isFinite(Number(svcAfter)))?Math.max(0,Number(svcAfter)):Number(settings?.default_buffer_after_min||0);
+  return {before,after};
+}
+
+/**
+ * Check the slot with the full engine, then take it ATOMICALLY (createHoldAtomic:
+ * Postgres advisory lock + re-check, or insert + re-check fallback).
+ *   minDurationMin — keep a moved booking's real length (multi-service / long
+ *                    visits): the hold spans max(slot, minDurationMin) and the
+ *                    extra time must be free too.
+ *   requester      — public callers' device key (caps holds per device).
+ */
+export async function holdAvailability({tenantId,clientId=null,serviceId,staffId,startsAt,channel='voice',conversationId=null,ttlSeconds=300,excludeBookingId=null,minDurationMin=null,requester=null}){
   const settings=await getBookingSettings(tenantId);
   const timeZone=settings.timezone||'America/New_York';
-  const av=await getAvailability({tenantId,serviceId,date:startsAt,staffId,limit:500,excludeBookingId});
+  const wantLonger=Number(minDurationMin)>0;
+  const av=await getAvailability({tenantId,serviceId,date:startsAt,staffId,limit:500,excludeBookingId,_seen:true,context:wantLonger});
   const target=new Date(startsAt).toISOString();
-  const match=av.slots.find(x=>x.staff_id===staffId && x.starts_at===target);
-  if(!match) return {ok:false,conflict:true,error:'slot_unavailable',slots:av.slots.slice(0,5),time_zone:timeZone};
-  const hold=await createHold({tenantId,clientId,staffId,serviceId,startsAt:match.starts_at,endsAt:match.ends_at,channel,conversationId,ttlSeconds});
-  return {ok:true,hold,slot:match};
+  const match=(av.slots||[]).find(x=>x.staff_id===staffId && ms(x.starts_at)===ms(target));
+  if(!match) return {ok:false,conflict:true,error:av.ok===false?(av.error||'slot_unavailable'):'slot_unavailable',slots:(av.slots||[]).slice(0,5),time_zone:timeZone};
+  let slot=match;
+  if(wantLonger && ms(match.starts_at)+Number(minDurationMin)*60000>ms(match.ends_at)){
+    const endsAt=new Date(ms(match.starts_at)+Number(minDurationMin)*60000).toISOString();
+    // The extra time after the slot must be free too: inside the stylist's
+    // (salon-clamped) shift, and clear of bookings, holds, time off and blocks.
+    const extraEnd=addMinutes(endsAt,(av.buffers||{}).after||0);
+    const d=av.day?.[staffId];
+    const busy=(d?.busy||[]).some(x=>overlap(match.ends_at,extraEnd,x.start,x.end));
+    if(!d || ms(extraEnd)>ms(d.shift[1]) || busy) return {ok:false,conflict:true,error:'slot_unavailable',detail:'not_enough_time',slots:(av.slots||[]).slice(0,5),time_zone:timeZone};
+    slot={...match,ends_at:endsAt,duration_minutes:Math.round((ms(endsAt)-ms(match.starts_at))/60000)};
+  }
+  const {before,after}=av.buffers||{before:0,after:0};
+  const taken=await createHoldAtomic({tenantId,clientId,staffId,serviceId,startsAt:slot.starts_at,endsAt:slot.ends_at,
+    windowStart:addMinutes(slot.starts_at,-before),windowEnd:addMinutes(slot.ends_at,after),
+    channel,conversationId,ttlSeconds,excludeBookingId,seenBookingIds:av.seen_booking_ids||[],requester});
+  if(!taken.ok) return {ok:false,conflict:true,error:'slot_unavailable',reason:taken.reason,slots:(av.slots||[]).filter(x=>x!==match).slice(0,5),time_zone:timeZone};
+  return {ok:true,hold:taken.hold,slot,atomic:!!taken.atomic};
 }

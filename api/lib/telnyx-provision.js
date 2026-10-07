@@ -167,10 +167,10 @@ export function getLolaBrainConnectionIdSync(){
 }
 
 // ── Which line answers the salon's calls ─────────────────────────
-// 'loladesk' (default): LolaDesk's own call line — Telnyx sends each turn of the call to
+// 'assistant' (default): LolaBrain — the ONE Telnyx AI assistant — answers every salon's calls on its own TeXML app.
+// 'loladesk' (optional): LolaDesk's own call line — Telnyx sends each turn of the call to
 //   /api/telnyx-voice, where Lola thinks (Telnyx AI), books with her real tools and speaks in
 //   her ElevenLabs voice. This is the path that answered every call before the assistant move.
-// 'assistant': the Telnyx AI assistant (LolaBrain) answers on its own TeXML app.
 // LOLA_PHONE_MODE in Vercel wins; otherwise platform_settings.lola_phone_mode (admin switch).
 const MODES = new Set(['loladesk', 'assistant']);
 let _mode = null, _modeAt = 0;
@@ -178,7 +178,7 @@ export async function phoneMode(){
   const env = String(process.env.LOLA_PHONE_MODE || '').trim().toLowerCase();
   if(MODES.has(env)) return env;
   if(_mode && Date.now() - _modeAt < 60_000) return _mode;
-  let m = 'loladesk';
+  let m = 'assistant';
   try{
     const c = db();
     if(c){
@@ -346,10 +346,11 @@ export async function autoAssignOwnedNumber(tenant){
     // tenants.phone_number column (a tenant may predate the routing table).
     const tracked = new Set();
     const [routes, legacy] = await Promise.all([
-      c.from('tenant_numbers').select('phone_number'),
+      c.from('tenant_numbers').select('phone_number,status'),
       c.from('tenants').select('phone_number')
     ]);
-    (routes?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
+    // A line released from a cancelled salon is free to give to the next one.
+    (routes?.data || []).forEach(r => { if(r?.phone_number && r.status !== 'released') tracked.add(String(r.phone_number)); });
     (legacy?.data || []).forEach(r => { if(r?.phone_number) tracked.add(String(r.phone_number)); });
 
     const free = owned.find(n => !tracked.has(String(n.phone_number)));

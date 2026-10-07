@@ -20,7 +20,9 @@ reset();
 
 const call = async (mod, body) => { const h = (await import(P + mod)).default; return new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({ status: this.statusCode }); } }; h({ method: 'POST', url: '/api/' + mod, headers: {}, body }, res); }); };
 const avail = (t) => call('lola/check-availability.js', { to_number: t.phone_number, from_number: '+13055559999', service_id: 'svc' });
-const book = (t) => call('lola/book-appointment.js', { to_number: t.phone_number, from_number: '+13055559999', service_id: 'svc', start_iso: new Date(now + 3 * DAY).toISOString() });
+// Booking by phone is a write: only LolaDesk's own (signed k=…) Telnyx wiring may call it.
+const { toolKey } = await import(P + 'lib/tool-key.js');
+const book = async (t) => { const h = (await import(P + 'lola/book-appointment.js')).default; return new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({ status: this.statusCode }); } }; h({ method: 'POST', url: '/api/lola/book-appointment?k=' + toolKey(), query: { k: toolKey() }, headers: {}, body: { to_number: t.phone_number, from_number: '+13055559999', service_id: 'svc', start_iso: new Date(now + 3 * DAY).toISOString() } }, res); }); };
 const widget = async (t, action, extra = {}) => { const h = (await import(P + 'public-booking.js')).default; return new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({ status: this.statusCode }); } }; h({ method: 'POST', url: '/api/public-booking', headers: {}, query: {}, body: { action, tenant: t.slug, ...extra } }, res); }); };
 
 // ── Switch off (default): nothing changes for anyone ──

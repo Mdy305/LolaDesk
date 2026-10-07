@@ -311,3 +311,24 @@ export async function listClients(integration, { limit = 250 } = {}){
   }
   return [...seen.values()];
 }
+
+/** Cancel a Cal.com booking (POST /v2/bookings/{uid}/cancel). */
+export async function cancelAppointment(integration, { id, reason = 'Cancelled in LolaDesk' } = {}){
+  if (!bearerToken(integration)) throw new Error('Cal.com mesh node is not configured');
+  if (!id) throw new Error('Cal.com cancel requires the booking uid');
+  const r = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST', headers: headers(integration), body: JSON.stringify({ cancellationReason: reason })
+  });
+  const data = await parse(r, 'booking cancel');
+  return data && typeof data === 'object' ? normalizeBooking({ uid: id, ...data }) : { id, status: 'cancelled' };
+}
+
+/** Move a Cal.com booking (POST /v2/bookings/{uid}/reschedule). Cal.com issues a new uid. */
+export async function updateAppointment(integration, { id, starts_at, reason = 'Rescheduled in LolaDesk' } = {}){
+  if (!bearerToken(integration)) throw new Error('Cal.com mesh node is not configured');
+  if (!id || !starts_at) throw new Error('Cal.com reschedule requires the booking uid and the new start');
+  const r = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/reschedule`, {
+    method: 'POST', headers: headers(integration), body: JSON.stringify({ start: new Date(starts_at).toISOString(), reschedulingReason: reason })
+  });
+  return normalizeBooking(await parse(r, 'booking reschedule'));
+}

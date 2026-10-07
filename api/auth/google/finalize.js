@@ -39,12 +39,25 @@ export default async function handler(req, res){
     const tenant = await provisionTenantForUser(user, {});
     if(!tenant) return res.status(500).json({ error: 'Could not provision workspace' });
 
-    const auto = await withCap(autoAssignOwnedNumber(tenant));
+    // One free trial per salon (same rule as email sign-up); a repeat salon gets an account, no new trial, no number.
+    let trial = { trial: true };
+    try{
+      const { db } = await import('../../lib/db.js');
+      const { trialCheck, endTrial } = await import('../../lib/trial-guard.js');
+      const c = db();
+      if(c){
+        const dup = await trialCheck(c, tenant, { excludeId: tenant.id });
+        if(dup?.duplicate){ await endTrial(c, tenant, dup.reason); trial = { trial: false, reason: dup.reason }; }
+      }
+    }catch(_){}
+    const auto = trial.trial ? await withCap(autoAssignOwnedNumber(tenant)) : null;
 
     return res.status(200).json({
       tenant: { ...tenant, phone_number: auto?.assigned ? auto.phoneNumber : tenant.phone_number },
       created: true,
-      autoProvisioned: auto
+      autoProvisioned: auto,
+      trial: trial.trial,
+      ...(trial.trial ? {} : { trial_used: true, message: 'Welcome back! This salon has already used its free LolaDesk trial, so your account is ready but the trial won’t restart. Pick a plan in Billing to turn Lola on.' })
     });
   }catch(e){
     return res.status(500).json({ error: String(e && e.message || e) });

@@ -2,6 +2,8 @@ import { db, updateTenantFields, logUsage } from './lib/db.js';
 import { getUserFromToken, bearer, isAdminEmail } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { getCanonicalVoiceConnectionId } from './lib/telnyx-provision.js';
+import { logCost, priceCents } from './lib/costs.js';
+import { numberLimit } from './lib/plans.js';
 
 /**
  * /api/telnyx-numbers — Search & buy phone numbers
@@ -28,9 +30,12 @@ const TELNYX = 'https://api.telnyx.com/v2';
    The salon pays retail — env-configurable so pricing is a knob,
    not a redeploy. Search results return BOTH `cost` (what Telnyx
    charges you) and `monthly` (what the salon pays), so the UI shows
-   retail and the margin per number is visible in one place. Every
-   purchase logs a `number_rent` usage event at the retail price,
-   which the billing layer can roll into the monthly invoice. */
+   retail and the margin per number is visible in one place.
+   The plan INCLUDES its numbers (lib/plans.js: Starter/Pro 1, Med-Spa 2).
+   A purchase logs what LolaDesk pays (cost_number_month, cents) and —
+   only for a line beyond the plan — a `number_rent` event (cents, retail),
+   billed on the next invoice by /api/cron/booking-fees (lib/rent.js) and
+   re-accrued monthly by /api/cron/release-numbers. */
 const RETAIL = {
   local: Number(process.env.NUMBER_RETAIL_MONTHLY || 5),
   toll_free: Number(process.env.NUMBER_RETAIL_TOLLFREE_MONTHLY || 9)
@@ -147,34 +152,34 @@ export default async function handler(req, res){
       let provisioning = null;
       if(pnId) provisioning = await provisionNumber({ phone_number_id: pnId });
 
-      // Save phone number to the tenant row in the database
+      // Attach to the salon the admin named (never to the admin's own workspace).
+      let attached = null;
       try {
-        const token = bearer(req);
-        if(token) {
-          const user = await getUserFromToken(token);
-          if(user) {
-            const c = db();
-            if(c) {
-              const tenant = await resolveTenantForUser(user);
-              if(tenant) {
-                await updateTenantFields(tenant.id, { phone_number: body.phone_number });
-                // Recurring revenue line: retail rent for this number,
-                // rolled into the monthly invoice by the billing layer.
-                const price = pricingFor(body.type === 'toll_free' ? 'toll_free' : 'local');
-                await logUsage(tenant.id, 'number_rent', price.monthly, {
-                  phone_number: body.phone_number,
-                  wholesale: price.cost,
-                  margin: price.margin
-                }).catch(()=>{});
-              }
+        const c = db();
+        const tid = body.tenant_id || body.tenantId || null;
+        if(c && tid && pnId) {
+          const { data: tenant } = await c.from('tenants').select('*').eq('id', tid).maybeSingle();
+          if(tenant) {
+            const { data: lines } = await c.from('tenant_numbers').select('phone_number,status').eq('tenant_id', tenant.id).limit(50);
+            const live = (lines || []).filter(r => r.phone_number && !['released','parked'].includes(String(r.status||''))).length;
+            if(!tenant.phone_number) await updateTenantFields(tenant.id, { phone_number: body.phone_number });
+            const price = pricingFor(body.type === 'toll_free' ? 'toll_free' : 'local');
+            await logCost(tenant.id, 'cost_number_month', body.type === 'toll_free' ? Math.round(price.cost * 100) : priceCents('cost_number_month'), { phone_number: body.phone_number, source: 'admin_purchase' });
+            const extra = live >= numberLimit(tenant.plan);
+            if(extra){
+              // Recurring revenue line: retail rent for a line beyond the plan.
+              await logUsage(tenant.id, 'number_rent', Math.round(price.monthly * 100), {
+                unit: 'cents', phone_number: body.phone_number, wholesale: price.cost, margin: price.margin, extra_line: true
+              }).catch(()=>{});
             }
+            attached = { tenant_id: tenant.id, included: !extra };
           }
         }
       } catch(dbErr) {
         console.error('[telnyx-numbers] Database phone number update failed:', dbErr);
       }
 
-      return res.status(200).json({ ok:true, order, provisioning });
+      return res.status(200).json({ ok:true, order, provisioning, attached, ...(attached ? {} : { note: 'Pass tenant_id to attach the number to a salon.' }) });
     }
 
     return res.status(400).json({ error:'unknown action' });

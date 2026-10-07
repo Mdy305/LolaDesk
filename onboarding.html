@@ -183,7 +183,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
         <div class="step-label">Your business</div>
         <h2>What's your salon<br/>called?</h2>
         <p class="sub">That's all we need right now. Lola learns the rest as you go.</p>
-        <div class="field"><label>Salon / Spa name</label><input class="input" id="salonName" placeholder="MMA Salon" autocomplete="organization"/></div>
+        <div class="field"><label for="salonName">Salon / Spa name</label><input class="input" id="salonName" placeholder="e.g. Bella Hair Studio" autocomplete="organization"/></div>
         <div class="actions"><button class="btn-p" onclick="next1()">Hear your Lola</button></div>
         <div class="error" id="err1"></div>
       </div>
@@ -224,6 +224,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 
     <!-- STEP 3 · NUMBER — one decision: give Lola her line -->
     <div class="step" data-step="3">
+      <div id="trialUsed" role="status" style="display:none;margin:0 0 16px;padding:12px 14px;border-radius:12px;border:1px solid var(--line,rgba(127,127,127,.25));font-size:13px;line-height:1.45"></div>
       <div class="auto-num" id="autoNum" style="display:none">
         <span class="num-badge">LIVE</span>
         <div><b id="autoNumNumber"></b><small>Lola already has her line — voice, SMS, and brain wired the moment your workspace was created. Call it now.</small></div>
@@ -342,7 +343,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
           <div class="embed-sub">One script tag — the same engine Lola uses on the phone. Clients see live slots and can cancel later with their confirmation code.</div>
           <div class="embed-snippet" id="embedCode"></div>
           <div class="embed-actions">
-            <button class="btn-p" onclick="copyEmbed()">Copy embed code</button>
+            <button class="btn-p" onclick="copyEmbed()">Add Lola to your website</button>
             <a class="embed-link" id="embedLink" href="#" onclick="openBookingLink(event)">Preview booking page ↗</a>
           </div>
           <div class="embed-note" id="embedNote"></div>
@@ -524,7 +525,7 @@ function showEmailVerify(email){
     +'<h2 style="margin:0 0 12px;font-size:24px;font-weight:600">Check your email</h2>'
     +'<p style="max-width:440px;color:rgba(255,255,255,.72);line-height:1.6;margin:0 0 4px">We sent a confirmation link to <strong>'+(email?_e(email):'your inbox')+'</strong>.</p>'
     +'<p style="max-width:440px;color:rgba(255,255,255,.55);line-height:1.6;margin:0 0 8px">Click it to activate your salon, then come back and sign in.</p>'
-    +'<a href="login.html?next=%2Fcalendar.html" style="margin-top:18px;padding:12px 26px;border-radius:12px;background:#fff;color:#0a0a0c;font-weight:600;text-decoration:none">Enter your calendar</a>'
+    +'<a href="login.html?next=%2Fcalendar.html" style="margin-top:18px;padding:12px 26px;border-radius:12px;background:#fff;color:#0a0a0c;font-weight:600;text-decoration:none">I\u2019ve confirmed \u2014 sign in</a>'
     +'<div style="margin-top:22px;font-size:12px;color:rgba(255,255,255,.38)">Didn\u2019t get it? Check spam, or try another email address.</div>';
   document.body.appendChild(ov);
 }
@@ -548,6 +549,7 @@ async function createAccount(){
     localStorage.setItem('loladesk_token',S.token);
     if(d.session?.refresh_token)localStorage.setItem('loladesk_refresh',d.session.refresh_token);
     if(d.autoProvisioned?.assigned&&d.autoProvisioned.phoneNumber){S.autoAssigned=d.autoProvisioned.phoneNumber;S.selectedNumber=S.autoAssigned;}
+    if(d.trial_used){const tu=document.getElementById('trialUsed');if(tu){tu.textContent=d.message||'This salon has already used its free trial — pick a plan in Billing to turn Lola on.';tu.style.display='block';}}
     go(3);
   }catch(e){err.textContent=(e.name==='AbortError'?'The network timed out — check your connection and try again.':e.message)||'Something went wrong.';}
   finally{btn.disabled=false;btn.textContent='Create workspace';}
@@ -680,7 +682,7 @@ function renderEmbed(){
 }
 function flashEmbedNote(){
   const note=document.getElementById('embedNote');
-  note.textContent='Copied ✓ — paste it right before </body> on your site.';
+  note.textContent='Copied ✓ — paste it once into your website’s custom code (Wix, Squarespace, Shopify, WordPress), just before </body>.';
   note.style.opacity='1';
   setTimeout(()=>{note.style.opacity='0';},2200);
 }

@@ -33,27 +33,20 @@ import { answerOwner, briefingLine } from './lib/owner-brain.js';
 import { getConversationHistory, db } from './lib/db.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
 import crypto from 'crypto';
+import { readWebhookBody, checkTelnyxSignature } from './lib/webhook-body.js';
 
 function escapeXml(v=''){ return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
 
-async function readBody(req){
-  if(req.body && typeof req.body === 'object') return req.body;
-  return new Promise(resolve => {
-    let raw=''; req.on('data',c=>raw+=c); req.on('end',()=>{
-      const ct = String(req.headers['content-type']||'').toLowerCase();
-      if(ct.includes('json')){ try{ return resolve(JSON.parse(raw)); }catch{ return resolve({}); } }
-      if(ct.includes('urlencoded')){ const o={}; for(const [k,v] of new URLSearchParams(raw)) o[k]=v; return resolve(o); }
-      resolve({});
-    }); req.on('error',()=>resolve({}));
-  });
-}
+// Telnyx signs the exact bytes of every TeXML request: read them raw and verify (TELNYX_PUBLIC_KEY).
+export const config = { api: { bodyParser: false } };
 
 function extract(parsed){
   const p = parsed?.data?.payload || parsed || {};
   return {
     from: p.from || p.From || parsed?.From || '',
     to:   p.to   || p.To   || parsed?.To   || '',
-    speech: String(p.speech_result || p.SpeechResult || parsed?.SpeechResult || '').trim(),
+    // Telnyx <Gather input="dtmf speech">: the owner can say it or type it — a PIN typed on the keypad works too.
+    speech: (String(p.speech_result || p.SpeechResult || parsed?.SpeechResult || '').trim() || String(p.digits || p.Digits || parsed?.Digits || '').replace(/[^0-9]/g, '')),
     callId: p.call_leg_id || p.call_session_id || parsed?.CallSid || ''
   };
 }
@@ -130,7 +123,7 @@ function texml({ say, playUrl, state = null, hangup = false }){
   const speak = `<Play>${escapeXml(playUrl)}</Play>`;
   if(hangup) return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Hangup/>\n</Response>`;
   const action = '/api/operator-voice' + (state ? `?state=${packState(state)}` : '');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="speech" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n  ${speak}\n  <Gather input="dtmf speech" finishOnKey="#" language="en-US" timeout="7" speechTimeout="auto" hints="${escapeXml(HINTS)}" action="${escapeXml(action)}" method="POST"/>\n  <Redirect method="POST">/api/operator-voice?silence=1${state?`&amp;state=${packState(state)}`:''}</Redirect>\n</Response>`;
 }
 
 export default async function handler(req, res){
@@ -138,7 +131,11 @@ export default async function handler(req, res){
   if(req.method === 'OPTIONS') return res.status(200).end();
   if(req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const parsed = await readBody(req);
+  const incoming = await readWebhookBody(req);
+  // The owner line changes the book and texts clients: a forged request must never reach it.
+  const verified = checkTelnyxSignature(req, incoming, { texml: true });
+  if(!verified.ok) return res.status(403).json({ error: `invalid telnyx signature: ${verified.reason}` });
+  const parsed = incoming.parsed;
   const { from, to, speech, callId } = extract(parsed);
   const url = new URL(req.url, 'http://x');
   const silence = url.searchParams.get('silence') === '1';

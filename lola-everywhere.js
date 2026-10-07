@@ -422,6 +422,7 @@
     if (window.__lolaClock) return; window.__lolaClock = true;
     const prevSeen = startPresenceClock();
     if (document.getElementById('orbMic') || document.getElementById('cmdInput')) { setTimeout(() => checkAway(prevSeen), 1500); return; } // the dashboard has its own Lola
+    if (/(^|\/)lola-live(\.html)?$/.test(location.pathname)) return;     // Lola full screen IS Lola — no second one in the corner
     if (document.querySelector('.lp-root')) return;
     // The calendar's old white atom is replaced by Lola herself.
     ['atom', 'atomOverlay'].forEach(id => { const el = document.getElementById(id); if (el) el.hidden = true; });

@@ -92,12 +92,24 @@ export function welcomeBack(story, { salon = '', voice = false } = {}) {
 export const CLIENT_TOOLS = [
   { name: 'list_services', description: 'The salon menu with prices.', parameters: { type: 'object', properties: {} } },
   { name: 'check_availability', description: 'Open times for a service on a date (YYYY-MM-DD).', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string' } }, required: ['date'] } },
-  { name: 'book_appointment', description: 'Book the client. Only after they chose a service, date and time.', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, client_name: { type: 'string' }, stylist: { type: 'string' }, client_phone: { type: 'string', description: 'Only if the client gave a mobile number in this chat' } }, required: ['service', 'date', 'time'] } },
+  { name: 'book_appointment', description: 'Book the client. Only after they chose a service, date and time.', parameters: { type: 'object', properties: { service: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, client_name: { type: 'string', description: 'First AND last name' }, stylist: { type: 'string' }, client_phone: { type: 'string', description: 'Only if the client gave a mobile number in this chat' }, client_email: { type: 'string', description: 'For the confirmation email' }, no_email: { type: 'boolean', description: 'true only if they chose not to give an email' } }, required: ['service', 'date', 'time', 'client_name'] } },
   { name: 'confirm_booking', description: 'Look up the client’s next appointment.', parameters: { type: 'object', properties: {} } },
   { name: 'reschedule_appointment', description: 'Move the client’s next appointment.', parameters: { type: 'object', properties: { new_date: { type: 'string', description: 'YYYY-MM-DD' }, new_time: { type: 'string' } }, required: ['new_date', 'new_time'] } },
   { name: 'cancel_appointment', description: 'Cancel the client’s next appointment, only after they clearly confirm.', parameters: { type: 'object', properties: {} } },
   { name: 'take_message', description: 'Pass a message to the salon team (questions you can’t answer, complaints, special requests).', parameters: { type: 'object', properties: { message: { type: 'string' }, client_name: { type: 'string' } }, required: ['message'] } },
 ].map((f) => ({ type: 'function', function: f }));
+
+// Booking skills that act on an EXISTING booking: only for the client's verified line (call / text).
+const PRIVATE_TOOLS = new Set(['cancel_appointment', 'reschedule_appointment', 'confirm_booking']);
+// The same words /api/lola-tools says to an unverified caller.
+export const PRIVACY_SPEAK = "For your privacy I can only change a booking when you call from the number it's under. I can text that number a link to manage it — or help you with something else?";
+// A reply that offers times or reports a booking change — only true when a tool said so.
+const CLAIMS = /\b(\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?)|o['’]?clock|noon|booked|book(ed)? you|all set|confirmed|cancell?ed|moved|rescheduled|(is|are) (open|free|available)|openings?|availab\w*|slots?)\b/i;
+const WANTS_BOOKING = /\b(book|appointment|available|availability|opening|slot|reschedul|move|cancel|confirm|time|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+const HONEST_NO_TOOLS = 'I can’t reach the salon’s calendar this second, so nothing is booked or changed yet. Tell me the service and day you’d like and I’ll check it for you in a moment — or the salon can text you to confirm.';
+
+const GATED_TOOLS = new Set(['book_appointment', 'reschedule_appointment']);
+async function paidGate(tenant) { try { const { serviceGate } = await import('./paid-hooks.js'); return await serviceGate(tenant); } catch (_) { return { ok: true }; } }
 
 let _skills = null;
 async function skills() { if (!_skills) _skills = (await import('../lola-tools.js')).SKILLS; return _skills; }
@@ -128,21 +140,35 @@ ${greet ? `OPEN WITH THIS WELCOME (in your own words, then answer what they aske
 YOU CAN REALLY DO THINGS — use the tools, never pretend:
 - To book: find the service, check_availability for the day, offer 2–3 real times, then book_appointment once they pick.
 - To move or cancel: reschedule_appointment / cancel_appointment (cancel only after they clearly confirm).
-- Never say a time is open or that something is booked/moved/cancelled unless a tool just told you so.
+- Before booking: their FIRST AND LAST name${phone ? '' : ', their mobile number'} and their email for the confirmation (they may skip it — then pass no_email: true). Read the details back and get a yes.
+- Never say a time is open or that something is booked/moved/cancelled unless a tool just told you so (book_appointment answers booked: true). If it answers booked: false, do what it says.
 ${phone ? '' : '- Before booking, ask for their mobile number so the salon can text the confirmation; pass it as client_phone.'}
 ${extra}`.trim();
 
   const msgs = [...history.slice(-10), { role: 'user', content: String(text || '').slice(0, 1500) }];
   const S = await skills();
   const actions = [];
+  let inferences = 0, gate = null;
+  // What the AI cost (once per answered turn; silent when the billing module isn't there).
+  const done = async (out) => {
+    if (inferences && tenant?.id) { try { const { logCostSafe, aiCents } = await import('./paid-hooks.js'); await logCostSafe(tenant.id, 'cost_ai', aiCents(), { channel, inferences }); } catch (_) {} }
+    return out;
+  };
   for (let round = 0; round < 4; round++) {
     if (left() < 3000) break;   // a live call can't wait: answer with what the tools already said
     const r = await chat({ system, messages: msgs, tools: CLIENT_TOOLS, maxTokens: 300, temperature: 0.5, fast: true, deadlineMs: Math.min(12000, left()) }).catch(() => null);
+    if (r) inferences++;
     if (!r || !r.ok) break;
     const calls = Array.isArray(r.tool_calls) ? r.tool_calls : [];
     if (!calls.length) {
-      const reply = String(r.text || '').replace(/[*_#`]/g, '').trim();
-      if (reply) return { ok: true, reply, actions, story };
+      let reply = String(r.text || '').replace(/[*_#`]/g, '').trim();
+      // Telnyx refused the tool list this turn: she checked nothing and changed nothing, so a reply
+      // that offers times or says booked/moved/cancelled would be invented. Say so honestly instead.
+      if (reply && r.toolsDropped && !actions.length && (CLAIMS.test(reply) || WANTS_BOOKING.test(String(text || '')))) {
+        reply = HONEST_NO_TOOLS;
+        return done({ ok: true, reply, actions, story, toolsDropped: true });
+      }
+      if (reply) return done({ ok: true, reply, actions, story });
       break;
     }
     msgs.push({ role: 'assistant', content: r.text || null, tool_calls: calls });
@@ -152,9 +178,19 @@ ${extra}`.trim();
       const skill = name === 'take_message' ? 'takeMessage' : name;
       let result;
       if (!S[skill]) result = { speak: 'That tool isn’t available.' };
+      else if (!phone && PRIVATE_TOOLS.has(name)) {
+        // Website chat / Instagram / Messenger: no verified line. A number typed in a chat proves nothing,
+        // so looking up, moving or cancelling a booking is refused — never acted on someone else's booking.
+        result = { speak: PRIVACY_SPEAK, verified: false };
+      }
+      else if (GATED_TOOLS.has(name) && !(gate ||= await paidGate(tenant)).ok) {
+        // An expired / cancelled / unpaid salon: nothing new goes in the book (cancels still work).
+        result = { booked: false, error: 'service_paused', speak: gate.say || "The salon isn't taking bookings through me right now, so nothing is booked. Please call or text the salon directly." };
+      }
       else {
-        const clientPhone = phone || args.client_phone || null;
-        const body = { ...args, client_phone: clientPhone, from: clientPhone, client_name: args.client_name || (story.first ? story.name : undefined), channel };
+        // The verified line (call / text) always wins; a typed number only ever books (how web visitors book).
+        const clientPhone = phone || (name === 'book_appointment' || name === 'take_message' || name === 'check_availability' ? (args.client_phone || null) : null);
+        const body = { ...args, client_phone: clientPhone, from: clientPhone, client_name: args.client_name || (story.first ? story.name : undefined), channel, collect_details: channel === 'voice' || channel === 'web' };
         // Same gate as the phone (an expired trial can't take new bookings; cancels always work).
         try { const { executeSkill } = await import('./orchestrator.js'); result = await executeSkill(tenant, clientPhone, skill, body, S); }
         catch (e) { result = { speak: 'That didn’t go through — offer to have the salon follow up.', error: String(e?.message || e) }; }
@@ -165,5 +201,5 @@ ${extra}`.trim();
   }
   // The brain is down: never leave a client unanswered.
   const fallback = greet || `Thanks for reaching out to ${tenant?.name || 'us'}! Tell me the service and day you’d like, and I’ll find you a time.`;
-  return { ok: false, reply: actions.at(-1)?.result?.speak || fallback, actions, story };
+  return done({ ok: false, reply: actions.at(-1)?.result?.speak || fallback, actions, story });
 }

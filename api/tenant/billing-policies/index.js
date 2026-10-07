@@ -1,40 +1,41 @@
 // GET/POST /api/tenant/billing-policies
-const DEFAULTS = {
-  deposits:    { enabled: false, mode: 'percent', percent: 25, fixed_cents: 2500, services: 'all', hold_minutes: 0 },
-  no_show:     { enabled: true, fee_cents: 5000, charge_after_minutes: 15 },
-  late_cancel: { enabled: true, hours_before: 24, fee_cents: 2500 },
-  tips:        { enabled: true, suggested_percents: [15, 18, 20, 25] },
-  auto_charge: { enabled: false, require_card_on_file: true }
-};
-function merge(d, i) {
-  if (!i || typeof i !== 'object') return d;
-  const out = {}; for (const k of Object.keys(d)) out[k] = { ...d[k], ...(i[k] || {}) }; return out;
-}
+//
+// The salon's deposit / no-show / late-cancel / tip policy. Storage is ONE place:
+// booking_settings.metadata.deposits (api/lib/salon-policies.js) — the same
+// object Settings → Booking rules, Lola and the deposits job use. This endpoint
+// maps to and from it and keeps its long-standing response shape
+// ({ deposits, no_show, late_cancel, tips, auto_charge }) for other readers.
+//
+// For readers that still query the legacy billing_policies table (widget/book via
+// lib/policies.js, cron/no-show-scan), a POST also writes a best-effort mirror row.
+import { readSalonPolicies, writeSalonPolicies, policiesFromMetadata } from '../../lib/salon-policies.js';
+
+// Kept for callers/tests: save just the deposit part (Banking → Policies field names).
 export async function mirrorDeposits(c, tenantId, d) {
-  const type = (d.type || d.mode) === 'fixed' ? 'fixed' : 'percent';
-  const amount = Number(d.amount ?? (type === 'fixed' ? (Number(d.fixed_cents) || 0) / 100 : d.percent)) || 0;
-  const deposits = {
-    enabled: !!d.enabled, type,
-    percent: type === 'percent' ? Math.max(1, Math.min(100, Math.round(amount || 25))) : 25,
-    fixed_cents: type === 'fixed' ? Math.round(amount * 100) : 0,
-    premium_value: Number(d.premium_amount) > 0 ? Number(d.premium_amount) : 0,
-    min_cents: Math.round((Number(d.min_amount) || 0) * 100),
-    hold_minutes: Math.max(0, Math.min(1440, Math.round(Number(d.hold_minutes) || 0))),
-    who: ['risky', 'flaky'].includes(d.who) ? d.who : 'everyone',
-  };
-  const { data: row } = await c.from('booking_settings').select('tenant_id,metadata').eq('tenant_id', tenantId).maybeSingle();
-  const metadata = { ...((row && row.metadata) || {}), deposits: { ...(((row && row.metadata) || {}).deposits || {}), ...deposits } };
-  if (row) await c.from('booking_settings').update({ metadata }).eq('tenant_id', tenantId);
-  else await c.from('booking_settings').insert({ tenant_id: tenantId, metadata });
-  return deposits;
+  return writeSalonPolicies(c, tenantId, { deposits: d || {} });
+}
+
+async function mirrorLegacyRow(c, tenantId, policies, userId) {
+  try {
+    const row = {
+      tenant_id: tenantId, policies, updated_at: new Date().toISOString(), updated_by: userId || null,
+      deposits: { ...policies.deposits }, no_show: { ...policies.no_show }, late_cancel: { ...policies.late_cancel },
+      tips: { ...policies.tips }, auto_charge: { ...policies.auto_charge },
+    };
+    let r = await c.from('billing_policies').upsert(row, { onConflict: 'tenant_id' });
+    if (r && r.error) {
+      const { deposits, no_show, late_cancel, tips, auto_charge, ...core } = row;
+      r = await c.from('billing_policies').upsert(core, { onConflict: 'tenant_id' });
+    }
+  } catch (_) { /* the mirror never blocks the real save */ }
 }
 
 export default async function handler(req, res) {
-  let cors, jsonBody, bearer, getUserFromToken, resolveTenantForUser, dbFn;
+  let cors, jsonBody, bearer, getUserFromToken, resolveTenantAccessForUser, dbFn;
   try {
     ({ cors, jsonBody } = await import('../../lib/cors.js'));
     ({ bearer, getUserFromToken } = await import('../../lib/auth.js'));
-    ({ resolveTenantForUser } = await import('../../lib/tenant-access.js'));
+    ({ resolveTenantAccessForUser } = await import('../../lib/tenant-access.js'));
     ({ db: dbFn } = await import('../../lib/db.js'));
   } catch (e) { return res.status(500).json({ ok: false, error: 'import_failed', message: String(e?.message || e) }); }
 
@@ -42,27 +43,20 @@ export default async function handler(req, res) {
     if (cors && cors(req, res)) return;
     const user = await getUserFromToken(bearer(req));
     if (!user) return res.status(401).json({ ok: false, error: 'not_authenticated' });
-    const tenant = await resolveTenantForUser(user);
+    const access = await resolveTenantAccessForUser(user);
+    const tenant = access?.tenant;
     if (!tenant?.id) return res.status(404).json({ ok: false, error: 'no_tenant' });
 
     const c = dbFn();
-    if (req.method === 'GET') {
-      let data = null;
-      try { ({ data } = await c.from('billing_policies').select('*').eq('tenant_id', tenant.id).maybeSingle()); }
-      catch (_) { data = null; }
-      const policies = data?.policies ? merge(DEFAULTS, data.policies) : DEFAULTS;
-      return res.json({ ok: true, data: policies });
-    }
+    if (!c) return res.status(503).json({ ok: false, error: 'database_not_configured' });
+    if (req.method === 'GET') return res.json({ ok: true, data: await readSalonPolicies(c, tenant.id) });
     if (req.method === 'POST') {
+      if (access.role && !['owner', 'admin', 'manager'].includes(String(access.role).toLowerCase())) return res.status(403).json({ ok: false, error: 'Only the owner or a manager can change payment policies.' });
       const body = (jsonBody ? jsonBody(req) : null) || {};
-      const policies = merge(DEFAULTS, body);
-      const row = { tenant_id: tenant.id, policies, updated_at: new Date().toISOString(), updated_by: user.id || null };
-      const { data, error } = await c.from('billing_policies').upsert(row, { onConflict: 'tenant_id' }).select().single();
-      if (error) throw error;
-      // The deposit Lola actually requests (phone, texts, web) reads booking_settings.metadata.deposits:
-      // keep it in step with what the owner just saved here.
-      try { await mirrorDeposits(c, tenant.id, policies.deposits || {}); } catch (_) {}
-      return res.json({ ok: true, data: data.policies });
+      const stored = await writeSalonPolicies(c, tenant.id, body);
+      const policies = policiesFromMetadata(stored);
+      await mirrorLegacyRow(c, tenant.id, policies, user.id);
+      return res.json({ ok: true, data: policies });
     }
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   } catch (e) { return res.status(500).json({ ok: false, error: String(e?.message || e) }); }

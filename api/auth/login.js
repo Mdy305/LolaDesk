@@ -38,10 +38,17 @@ export default async function handler(req, res){
     // so a provisioning hiccup never fails a successful login.
     if(c && tenant?.id){
       try{
-        const act = await activateTenant(c, tenant);
-        if(act && act.activated && !tenant.phone_number){
-          const auto = await autoAssignOwnedNumber(tenant);
-          if(auto?.assigned && auto.phoneNumber) tenant = { ...tenant, phone_number: auto.phoneNumber };
+        await activateTenant(c, tenant);
+        // Signup no longer attaches a number (one free trial per salon is decided first), so the
+        // owner's first real login does — only for a salon that may use Lola (trial or paid).
+        if(!tenant.phone_number){
+          const { billingGate } = await import('../lib/billing-gate.js');
+          let lines = [];
+          try{ const { data } = await c.from('tenant_numbers').select('phone_number,status').eq('tenant_id', tenant.id).limit(5); lines = (data || []).filter(r => r.phone_number && !['released','parked'].includes(String(r.status||''))); }catch(_){}
+          if(!lines.length && !billingGate(tenant).blocked){
+            const auto = await Promise.race([autoAssignOwnedNumber(tenant), new Promise(r => setTimeout(() => r(null), 6000))]);
+            if(auto?.assigned && auto.phoneNumber) tenant = { ...tenant, phone_number: auto.phoneNumber };
+          }
         }
       }catch(ae){ /* never block a successful login */ }
     }

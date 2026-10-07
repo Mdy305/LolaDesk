@@ -1,6 +1,5 @@
 // Telnyx helpers. Sends calls + SMS via HTTPS; verifies webhook signatures.
-import crypto from 'crypto';
-import { telnyxPublicKey } from './telnyx-webhook-verify.js';
+import { verifyTelnyxSignature } from './telnyx-webhook-verify.js';
 import { sendSms } from './sms.js';
 
 const BASE = 'https://api.telnyx.com/v2';
@@ -39,47 +38,16 @@ export async function answerCallWithAssistant(call_control_id, assistant_id, { c
   return j.data;
 }
 
-// Whisper a system message into an active AI Assistant call (documented: ai_assistant_add_messages).
-export async function whisperToAssistant(call_control_id, message) {
-  const r = await fetch(BASE + '/calls/' + encodeURIComponent(call_control_id) + '/actions/ai_assistant_add_messages', {
-    method: 'POST',
-    headers: auth(),
-    body: JSON.stringify({ messages: [{ role: 'system', content: String(message || '') }] })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.errors?.[0]?.detail || 'Whisper failed');
-  return j.data;
-}
-
-// Callback flow: ring the owner first, then bridge to the target.
-export async function placeCallback({ from, owner_phone, target_phone }) {
-  const r = await fetch(BASE + '/calls', {
-    method: 'POST',
-    headers: auth(),
-    body: JSON.stringify({
-      connection_id: process.env.TELNYX_CONNECTION_ID,
-      to: owner_phone,
-      from,
-      client_state: Buffer.from(JSON.stringify({ target: target_phone, kind: 'owner_callback' })).toString('base64')
-    })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j?.errors?.[0]?.detail || 'Callback failed');
-  return j.data;
-}
-
 // Verify Ed25519 signature of a Telnyx webhook. Returns true on valid.
 // Header names (case-insensitive): telnyx-signature-ed25519, telnyx-timestamp.
+// Same rule as every other Telnyx receiver (telnyx-webhook-verify.js): with no TELNYX_PUBLIC_KEY
+// it accepts outside production (and says so) and FAILS CLOSED in production — it used to answer
+// 401 to every event whenever the key was missing, even in preview/local.
 export function verifyTelnyxSig(headers, rawBody) {
   try {
-    const sig = headers['telnyx-signature-ed25519'] || headers['Telnyx-Signature-Ed25519'];
-    const ts  = headers['telnyx-timestamp']         || headers['Telnyx-Timestamp'];
-    const pub = process.env.TELNYX_PUBLIC_KEY;  // Telnyx dashboard → public key for this endpoint
-    if (!sig || !ts || !pub) return false;
-    if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;   // replayed / stale (Telnyx: 5-minute window)
-    const payload = ts + '|' + rawBody;
-    const key = telnyxPublicKey(pub);
-    return crypto.verify(null, Buffer.from(payload), key, Buffer.from(sig, 'base64'));
+    const h = headers || {};
+    const pick = (k) => h[k] || h[k.toLowerCase()] || h[k.replace(/(^|-)([a-z])/g, (m, d, c) => d + c.toUpperCase())] || '';
+    return verifyTelnyxSignature({ headers: { 'telnyx-signature-ed25519': pick('telnyx-signature-ed25519'), 'telnyx-timestamp': pick('telnyx-timestamp') } }, rawBody);
   } catch { return false; }
 }
 

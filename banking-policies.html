@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Policies — LolaDesk</title>
+<title>Payment policies · LolaDesk</title>
 <meta name="description" content="Every revenue lever in one place: deposits, no-show fees, late cancellations, tip presets, and when Lola auto-charges."/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
@@ -16,7 +16,7 @@
     <div class="topbar">
       <div class="page-head">
         <h1 class="page-title">Policies</h1>
-        <p class="page-narrative" id="narrativeLine">Every lever that turns bookings into revenue.</p>
+        <p class="page-narrative" id="narrativeLine">Every lever that turns bookings into revenue. Deposits here are the same rule as <a href="/settings#booking" style="color:var(--accent);text-decoration:none">Settings → Booking rules</a> — change either, both update.</p>
       </div>
     </div>
 
@@ -40,34 +40,34 @@
         <p class="policy-sub">Charge a card at the moment of booking. Salons that require a deposit see a <b style="color:var(--accent)">30–60% drop</b> in no-shows. Lola holds the deposit — if the client shows, it applies to the service; if not, it stays with you.</p>
         <div class="field-row">
           <div class="field">
-            <label>Deposit type</label>
-            <select data-field="deposits.type">
+            <label for="pol-deposits-type">Deposit type</label>
+            <select id="pol-deposits-type" data-field="deposits.type">
               <option value="percent">Percentage of service</option>
               <option value="fixed">Fixed amount</option>
             </select>
           </div>
           <div class="field">
-            <label>Amount</label>
-            <input data-field="deposits.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
+            <label for="pol-deposits-amount">Amount</label>
+            <input id="pol-deposits-amount" data-field="deposits.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
             <div class="fine" data-fine="deposits.amount">Applies to services under $250. Higher-value services use the tier below.</div>
           </div>
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Premium service tier ($250+)</label>
-            <input data-field="deposits.premium_amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
+            <label for="pol-deposits-premium-amount">Premium service tier ($250+)</label>
+            <input id="pol-deposits-premium-amount" data-field="deposits.premium_amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
             <div class="fine">Applies to services $250 or more (balayage, extensions, color corrections).</div>
           </div>
           <div class="field">
-            <label>Minimum deposit</label>
-            <input data-field="deposits.min_amount" type="number" min="0" step="1" value="15" inputmode="numeric"/>
+            <label for="pol-deposits-min-amount">Minimum deposit</label>
+            <input id="pol-deposits-min-amount" data-field="deposits.min_amount" type="number" min="0" step="1" value="15" inputmode="numeric"/>
             <div class="fine">Never less than this, even on small services.</div>
           </div>
         </div>
         <div class="field-row">
           <div class="field">
-            <label>If they don’t pay</label>
-            <select data-field="deposits.hold_minutes">
+            <label for="pol-deposits-hold-minutes">If they don’t pay</label>
+            <select id="pol-deposits-hold-minutes" data-field="deposits.hold_minutes">
               <option value="0">Keep the booking — remind them</option>
               <option value="10">Hold the slot 10 minutes, then release it</option>
               <option value="15">Hold the slot 15 minutes, then release it</option>
@@ -77,8 +77,8 @@
             <div class="fine">When Lola books, she texts a secure Stripe link. With a hold, the time locks once they pay — or goes back on your calendar.</div>
           </div>
           <div class="field">
-            <label>Who pays a deposit</label>
-            <select data-field="deposits.who">
+            <label for="pol-deposits-who">Who pays a deposit</label>
+            <select id="pol-deposits-who" data-field="deposits.who">
               <option value="everyone">Everyone</option>
               <option value="risky">New clients + anyone who no-showed or cancelled late (recommended)</option>
               <option value="flaky">Only clients who no-showed or cancelled late</option>
@@ -104,23 +104,23 @@
         <p class="policy-sub">If a client doesn't show and doesn't call, Lola auto-charges the card on file 30 minutes after the appointment start. Applies whether or not a deposit was collected. Fee is separate from the deposit — deposits go back if the appointment happens.</p>
         <div class="field-row">
           <div class="field">
-            <label>Fee type</label>
-            <select data-field="no_show.type">
+            <label for="pol-no-show-type">Fee type</label>
+            <select id="pol-no-show-type" data-field="no_show.type">
               <option value="fixed">Fixed amount</option>
               <option value="percent">Percentage of service</option>
               <option value="full">Full service price</option>
             </select>
           </div>
           <div class="field">
-            <label>Amount</label>
-            <input data-field="no_show.amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
+            <label for="pol-no-show-amount">Amount</label>
+            <input id="pol-no-show-amount" data-field="no_show.amount" type="number" min="0" step="1" value="50" inputmode="numeric"/>
             <div class="fine">Client sees this on the confirmation SMS and again on the reminder 24h before.</div>
           </div>
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Charge delay</label>
-            <select data-field="no_show.delay_minutes">
+            <label for="pol-no-show-delay-minutes">Charge delay</label>
+            <select id="pol-no-show-delay-minutes" data-field="no_show.delay_minutes">
               <option value="15">15 minutes after start</option>
               <option value="30" selected>30 minutes after start</option>
               <option value="60">1 hour after start</option>
@@ -129,8 +129,8 @@
             <div class="fine">Extra buffer for stuck-in-traffic messages.</div>
           </div>
           <div class="field">
-            <label>Waive on chronic clients?</label>
-            <select data-field="no_show.waive_first_offense">
+            <label for="pol-no-show-waive-first-offense">Waive on chronic clients?</label>
+            <select id="pol-no-show-waive-first-offense" data-field="no_show.waive_first_offense">
               <option value="true">First offense — always waive</option>
               <option value="false" selected>Never waive automatically</option>
             </select>
@@ -155,8 +155,8 @@
         <p class="policy-sub">Give clients room to cancel, but charge when the slot is impossible to fill. Lola compares the cancel time to this window automatically.</p>
         <div class="field-row">
           <div class="field">
-            <label>Cancel window (hours before)</label>
-            <select data-field="late_cancel.window_hours">
+            <label for="pol-late-cancel-window-hours">Cancel window (hours before)</label>
+            <select id="pol-late-cancel-window-hours" data-field="late_cancel.window_hours">
               <option value="12">12 hours</option>
               <option value="24" selected>24 hours</option>
               <option value="48">48 hours</option>
@@ -165,8 +165,8 @@
             <div class="fine">Inside this window = late cancel = fee applies.</div>
           </div>
           <div class="field">
-            <label>Late-cancel fee</label>
-            <input data-field="late_cancel.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
+            <label for="pol-late-cancel-amount">Late-cancel fee</label>
+            <input id="pol-late-cancel-amount" data-field="late_cancel.amount" type="number" min="0" step="1" value="25" inputmode="numeric"/>
             <div class="fine">Half of your no-show fee is a common starting point.</div>
           </div>
         </div>
@@ -183,27 +183,27 @@
         </div>
         <p class="policy-sub">Presets shown to the client on the payment screen. Higher first preset → higher average tip. The order matters: put the number you want them to pick first.</p>
         <div class="field">
-          <label>Presets (%)</label>
+          <label id="tipPresetsLabel">Presets (%)</label>
           <div class="tip-row" id="tipRow">
-            <label class="tip-preset"><input type="number" min="0" max="100" value="20" data-tip-idx="0"/>%</label>
-            <label class="tip-preset on"><input type="number" min="0" max="100" value="25" data-tip-idx="1"/>%</label>
-            <label class="tip-preset"><input type="number" min="0" max="100" value="30" data-tip-idx="2"/>%</label>
-            <label class="tip-preset"><input type="number" min="0" max="100" value="0" data-tip-idx="3"/>% (custom)</label>
+            <label class="tip-preset"><input type="number" min="0" max="100" value="20" data-tip-idx="0" aria-label="Tip preset 1 (percent)"/>%</label>
+            <label class="tip-preset on"><input type="number" min="0" max="100" value="25" data-tip-idx="1" aria-label="Tip preset 2 (percent)"/>%</label>
+            <label class="tip-preset"><input type="number" min="0" max="100" value="30" data-tip-idx="2" aria-label="Tip preset 3 (percent)"/>%</label>
+            <label class="tip-preset"><input type="number" min="0" max="100" value="0" data-tip-idx="3" aria-label="Tip preset 4 (percent)"/>% (custom)</label>
           </div>
           <div class="fine">The highlighted preset is the default. Most salons set 25% as the default.</div>
         </div>
         <div class="field-row" style="margin-top:16px">
           <div class="field">
-            <label>Suggest tip after every…</label>
-            <select data-field="tips.suggest_when">
+            <label for="pol-tips-suggest-when">Suggest tip after every…</label>
+            <select id="pol-tips-suggest-when" data-field="tips.suggest_when">
               <option value="all" selected>Service, product, and gift card</option>
               <option value="service_only">Service only</option>
               <option value="off">Never suggest (silent tip)</option>
             </select>
           </div>
           <div class="field">
-            <label>Base tip on…</label>
-            <select data-field="tips.base_on">
+            <label for="pol-tips-base-on">Base tip on…</label>
+            <select id="pol-tips-base-on" data-field="tips.base_on">
               <option value="subtotal" selected>Subtotal (pre-tax)</option>
               <option value="total">Total (with tax)</option>
             </select>
@@ -273,7 +273,7 @@
 <script>
 /* ═══════════════════════════════════════════════════════════════
    Policies page — dirty-state save bar + live preview.
-   Policy shape (sent to POST /api/tenant/billing-policies):
+   Policy shape (this page; stored in booking_settings.metadata.deposits via POST /api/booking-settings):
      {
        deposits:    { enabled, type:"percent"|"fixed", amount, premium_amount, min_amount },
        no_show:     { enabled, type:"fixed"|"percent"|"full", amount, delay_minutes, waive_first_offense },
@@ -283,14 +283,63 @@
      }
    ═══════════════════════════════════════════════════════════════ */
 
+/* Same mapping as api/lib/salon-policies.js (metadata.deposits ⇄ this page). */
+function policiesFromDeposits(dep){
+  const d = dep || {}, n = (v, x) => (Number.isFinite(Number(v)) ? Number(v) : (x || 0));
+  const type = d.type === 'fixed' ? 'fixed' : 'percent';
+  return {
+    deposits: { enabled: d.enabled === true, type, amount: type === 'fixed' ? n(d.fixed_cents) / 100 : n(d.percent, 25),
+      premium_amount: n(d.premium_value), min_amount: n(d.min_cents) / 100, hold_minutes: n(d.hold_minutes),
+      who: ['risky','flaky'].includes(d.who) ? d.who : 'everyone' },
+    no_show: Object.assign({ enabled: false, type: 'fixed', amount: 50, delay_minutes: 15, waive_first_offense: false }, d.no_show || {}),
+    late_cancel: Object.assign({ enabled: false, window_hours: 24, amount: 25 }, d.late_cancel || {}),
+    tips: Object.assign({ enabled: true, presets: [15,18,20,25], default_index: 1, suggest_when: 'checkout', base_on: 'service' }, d.tips || {}),
+    auto_charge: Object.assign({ deposit_on_booking: false, no_show_fee: false, late_cancel_fee: false, retry_failed: true, rebook_nudge: false }, d.auto_charge || {})
+  };
+}
+function depositsFromPolicies(p, prev){
+  const D = (p && p.deposits) || {}, was = prev || {}, n = (v, x) => (Number.isFinite(Number(v)) ? Number(v) : (x || 0));
+  const type = D.type === 'fixed' ? 'fixed' : 'percent', amount = n(D.amount);
+  const pick = (o, keys) => { const r = {}; keys.forEach(k => { if(o && o[k] !== undefined) r[k] = o[k]; }); return r; };
+  const ns = Object.assign({}, was.no_show || {}, pick(p.no_show, ['enabled','type','amount','delay_minutes','waive_first_offense']));
+  ns.enabled = ns.enabled === true; ns.fee_cents = Math.round(n(ns.amount) * 100);
+  const lc = Object.assign({}, was.late_cancel || {}, pick(p.late_cancel, ['enabled','window_hours','amount']));
+  lc.enabled = lc.enabled === true; lc.fee_cents = Math.round(n(lc.amount) * 100);
+  return Object.assign({}, was, {
+    enabled: D.enabled === true, type,
+    percent: type === 'percent' ? Math.max(1, Math.min(100, Math.round(amount || 25))) : n(was.percent, 25),
+    fixed_cents: type === 'fixed' ? Math.max(0, Math.round(amount * 100)) : n(was.fixed_cents),
+    premium_value: Math.max(0, n(D.premium_amount)),
+    min_cents: Math.max(0, Math.round(n(D.min_amount) * 100)),
+    hold_minutes: Math.max(0, Math.min(1440, Math.round(n(D.hold_minutes)))),
+    who: ['risky','flaky','everyone'].includes(D.who) ? D.who : 'everyone',
+    no_show: ns, late_cancel: lc,
+    tips: Object.assign({}, was.tips || {}, pick(p.tips, ['enabled','presets','default_index','suggest_when','base_on'])),
+    auto_charge: Object.assign({}, was.auto_charge || {}, pick(p.auto_charge, ['deposit_on_booking','no_show_fee','late_cancel_fee','retry_failed','rebook_nudge']))
+  });
+}
+
 const LolaBankPolicies = {
   original: null,
   current:  null,
   dirty: new Set(),
 
+  // ONE source: booking_settings.metadata.deposits (the rule Lola, the deposit texts and
+  // Settings → Booking rules all use). Read + written through /api/booking-settings.
+  stored: {},
   async load(){
-    const { ok, data } = await LolaBank.api('/api/tenant/billing-policies');
-    if(!ok || !data){ return; }
+    const r = await LolaBank.api('/api/booking-settings');
+    const md = (r.ok && r.data && r.data.settings && r.data.settings.metadata) || {};
+    this.stored = (md && typeof md.deposits === 'object' && md.deposits) || {};
+    let data = policiesFromDeposits(this.stored);
+    if(!this.stored.no_show || !this.stored.late_cancel){
+      // Older salons: fees saved before the merge are filled in by the server.
+      const old = await LolaBank.api('/api/tenant/billing-policies');
+      if(old.ok && old.data && old.data.data){
+        const o = old.data.data;
+        data = Object.assign({}, o, Object.keys(this.stored).length ? { deposits: data.deposits } : {});
+      }
+    }
     this.original = JSON.parse(JSON.stringify(data));
     this.current  = JSON.parse(JSON.stringify(data));
     this.paint();
@@ -393,10 +442,16 @@ const LolaBankPolicies = {
     btn.disabled = true;
     const prev = btn.textContent;
     btn.textContent = 'Saving…';
-    const { ok, data } = await LolaBank.api('/api/tenant/billing-policies', {
+    const deposits = depositsFromPolicies(this.current, this.stored);
+    const { ok, data } = await LolaBank.api('/api/booking-settings', {
       method: 'POST',
-      body: JSON.stringify(this.current)
+      body: JSON.stringify({ metadata: { deposits } })
     });
+    if(ok){
+      this.stored = (data && data.settings && data.settings.metadata && data.settings.metadata.deposits) || deposits;
+      // Refresh the legacy copy older readers still use (an empty POST re-mirrors the one source).
+      LolaBank.api('/api/tenant/billing-policies', { method: 'POST', body: '{}' }).catch(() => {});
+    }
     if(ok){
       this.original = JSON.parse(JSON.stringify(this.current));
       this.dirty.clear();

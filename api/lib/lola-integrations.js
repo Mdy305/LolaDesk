@@ -14,13 +14,15 @@ const MAX_RETRIES = 3;
 /**
  * Invoke LLM with multi-modal support (images, documents)
  */
-export async function InvokeLLM({ model, prompt, messages, images, max_tokens, temperature }) {
+export async function InvokeLLM({ model, prompt, messages, images, max_tokens, temperature, deadlineMs }) {
+  const started = Date.now();
+  const left = () => deadlineMs ? Number(deadlineMs) - (Date.now() - started) : null;
   try {
     let requestMessages = messages || [{ role: 'user', content: prompt }];
     if (images && images.length > 0) {
       const contentBlocks = [];
       for (const imageUrl of images) {
-        const imageData = await downloadImageAsBase64(imageUrl);
+        const imageData = await downloadImageAsBase64(imageUrl, { timeoutMs: left() != null ? Math.max(500, Math.min(10000, left() - 500)) : 10000 });
         contentBlocks.push({
           type: 'image_url',
           image_url: { url: `data:image/jpeg;base64,${imageData}` }
@@ -35,7 +37,8 @@ export async function InvokeLLM({ model, prompt, messages, images, max_tokens, t
       messages: requestMessages,
       maxTokens: max_tokens || 1000,
       temperature: temperature ?? 0.7,
-      model: model || POWER_MODEL
+      model: model || POWER_MODEL,
+      ...(left() != null ? { deadlineMs: Math.max(1000, left()) } : {})
     });
     if (!result.ok) throw new Error(result.error || 'Telnyx inference failed');
 
@@ -238,23 +241,35 @@ async function sendViaMailgun({ to, subject, html, from, textContent }) {
 /**
  * Download image and convert to base64
  */
-export async function downloadImageAsBase64(imageUrl) {
-  const response = await fetch(imageUrl, { timeout: 10000 });
+/** fetch with a real deadline: global fetch ignores a `timeout` option, so abort it ourselves. */
+async function fetchWithTimeout(url, init = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 10000));
+  try { return await fetch(url, { ...init, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status}`);
-  }
-
-  const buffer = await response.buffer();
-  return buffer.toString('base64');
+export async function downloadImageAsBase64(imageUrl, { timeoutMs = 10000 } = {}) {
+  // One deadline for the headers AND the bytes.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 10000));
+  try {
+    const response = await fetch(imageUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status}`);
+    }
+    // (global fetch has no .buffer(); arrayBuffer is the standard body reader)
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer.toString('base64');
+  } finally { clearTimeout(timer); }
 }
 
 /**
  * Validate image before processing
  */
-export async function validateImageUrl(imageUrl) {
+export async function validateImageUrl(imageUrl, { timeoutMs = 5000 } = {}) {
   try {
-    const response = await fetch(imageUrl, { method: 'HEAD', timeout: 5000 });
+    const response = await fetchWithTimeout(imageUrl, { method: 'HEAD' }, timeoutMs);
 
     const contentType = response.headers.get('content-type') || '';
     const contentLength = parseInt(response.headers.get('content-length') || '0', 10);

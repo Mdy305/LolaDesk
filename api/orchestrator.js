@@ -4,7 +4,8 @@ import { validateLLMOutput } from './lib/llm-validator.js';
 import { delegateToAgent } from './lib/router.js';
 import { normalizeAgentName, summarizeTopology } from './lib/agent-topology.js';
 import { chat } from './lib/llm.js';
-import { authenticatedTenant } from './lib/tenant-context.js';
+import { bearer, getUserFromToken } from './lib/auth.js';
+import { resolveTenantForUser } from './lib/tenant-access.js';
 
 // Control plane endpoint:
 // 1) explicit routing mode (route_to + task)
@@ -15,12 +16,12 @@ export default async function handler(req, res){
   const prompt = body.prompt || null;
   const routeTo = body.route_to || body.routeTo || null;
   const task = body.task || null;
-  // The salon is the signed-in user's own — never a slug/id the browser names. Routing mode is a
-  // placeholder hand-off (no salon data) and stays open for the marketer page; the LLM planning
-  // mode spends AI on the platform's account and writes an audit row, so it needs a signed-in salon.
-  let signed = null;
-  try { signed = await authenticatedTenant(req); } catch (_) { signed = null; }
-  const tenant = signed ? { id: signed.id, slug: signed.slug, name: signed.name } : {};
+  // The salon is ALWAYS the signed-in user's own — never a slug/id the browser names
+  // (body.tenant is ignored). Both modes act on the salon, so both need a sign-in.
+  let user = null, signed = null;
+  try { user = await getUserFromToken(bearer(req)); if(user) signed = await resolveTenantForUser(user); } catch (_) { signed = null; }
+  if(!signed?.id) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  const tenant = signed;
 
   const c = db();
   if(!c) return res.status(500).json({ error: 'Supabase not configured' });
@@ -35,20 +36,21 @@ export default async function handler(req, res){
         topology: summarizeTopology()
       });
     }
-    const routed = await delegateToAgent(normalized, task || 'Run default check-in', tenant, body.context || {});
+    const routed = await delegateToAgent(normalized, task, tenant, { ...(body.context || {}), user });
     return res.status(200).json({
-      ok: routed.status === 'delegated',
+      ok: routed.status === 'done',
       mode: 'direct-route',
       route_to: normalized,
-      task: task || 'Run default check-in',
+      task: routed.accepted_task || task || '',
+      reply: routed.reply || null,
+      actions: routed.actions || [],
+      error: routed.status === 'done' ? undefined : routed.error,
       routed
     });
   }
   if(!prompt){
     return res.status(400).json({ error: 'missing prompt (or pass route_to + task)' });
   }
-  if(!signed?.id) return res.status(401).json({ error: 'Not authenticated' });
-
   // Plan through the same Telnyx Kimi client used by every Lola channel.
   let llmRaw = null;
   try{
@@ -96,9 +98,10 @@ export default async function handler(req, res){
         topology: summarizeTopology()
       });
     }
-    const routed = await delegateToAgent(normalized, parsed.task || prompt, tenant, body.context || {});
+    const routed = await delegateToAgent(normalized, parsed.task || prompt, tenant, { ...(body.context || {}), user });
     return res.status(200).json({
-      ok: routed.status === 'delegated',
+      ok: routed.status === 'done',
+      reply: routed.reply || null,
       mode: 'llm-route',
       output: parsed,
       route_to: normalized,

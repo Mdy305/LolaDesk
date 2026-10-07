@@ -18,7 +18,10 @@ import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenla
 import { sendSMS } from './telnyx-sms.js';
 import { missedCallTextbackText, smsGreeting } from './lib/lola-persona.js';
 import crypto from 'crypto';
-import { getTelnyxSignatureHeaders, verifyTelnyxSignature } from './lib/telnyx-signature.js';
+import { readWebhookBody, checkTelnyxSignature } from './lib/webhook-body.js';
+import { serviceGate, logCostSafe, voiceMinuteCents, ttsCents } from './lib/paid-hooks.js';
+import { textBackOnce } from './lib/textback.js';
+import { withStopLine } from './lib/legal.js';
 import { buildClientMemoryBlock, buildLolaSystemPrompt, detectConversationMood, detectLolaIntent, deterministicSkillReply, evaluateInteractionQuality, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows } from './lib/lola-skills.js';
 import { answerClient } from './lib/client-brain.js';
 import { getInCallMmsResult, buildMmsVisionPromptBlock } from './lib/telnyx-live-mms-vision.js';
@@ -32,33 +35,9 @@ function escapeXml(value=''){
     .replace(/'/g, '&apos;');
 }
 
-async function readBody(req){
-  if(req.body && typeof req.body === 'object'){
-    return { parsed: req.body, raw: '', parsedByRuntime: true };
-  }
-  return new Promise(resolve => {
-    let raw = '';
-    req.on('data', c => raw += c.toString());
-    req.on('end', () => {
-      const ct = String(req.headers['content-type'] || '').toLowerCase();
-      if(ct.includes('application/json')){
-        try{ return resolve({ parsed: JSON.parse(raw), raw, parsedByRuntime: false }); }catch{ return resolve({ parsed: {}, raw, parsedByRuntime: false }); }
-      }
-      if(ct.includes('application/x-www-form-urlencoded')){
-        try{
-          const p = new URLSearchParams(raw);
-          const obj = {};
-          for(const [k,v] of p.entries()) obj[k] = v;
-          return resolve({ parsed: obj, raw, parsedByRuntime: false });
-        }catch{
-          return resolve({ parsed: {}, raw, parsedByRuntime: false });
-        }
-      }
-      resolve({ parsed: {}, raw, parsedByRuntime: false });
-    });
-    req.on('error', () => resolve({ parsed: {}, raw: '', parsedByRuntime: false }));
-  });
-}
+// Telnyx signs the exact bytes of every TeXML request: read them raw (no runtime body parsing)
+// and verify them whenever TELNYX_PUBLIC_KEY is set.
+export const config = { api: { bodyParser: false } };
 
 function extractVoicePayload(parsed){
   const p = parsed?.data?.payload || parsed || {};
@@ -67,6 +46,7 @@ function extractVoicePayload(parsed){
     from: p.from || p.From || parsed?.From || parsed?.from || '',
     to: p.to || p.To || parsed?.To || parsed?.to || '',
     speechResult: p.speech_result || p.SpeechResult || parsed?.SpeechResult || parsed?.speech_result || parsed?.speech || '',
+    digits: String(p.digits || p.Digits || parsed?.Digits || parsed?.digits || '').replace(/[^0-9*#]/g, ''),
     callSid: p.call_leg_id || p.call_session_id || parsed?.CallSid || parsed?.call_sid || ''
   };
 }
@@ -96,6 +76,20 @@ function extractVoicePayload(parsed){
       (sendSMS checks the opt-out table) and each send is logged as
       a usage event for billing.
    ───────────────────────────────────────────────────────────── */
+const SYNTH_TRY_MS = 3500;     // one ElevenLabs request
+const SYNTH_BUDGET_MS = 6000;  // all tries for one line of speech
+
+export function keypadWords(d){
+  const digits = String(d || '').replace(/[^0-9*#]/g, '').replace(/#$/, '');
+  if(!digits) return '';
+  if(/^\d{10,11}$/.test(digits)) return `(typed on the keypad) My number is ${digits}.`;
+  if(digits === '1') return '(pressed 1 on the keypad) Yes.';
+  if(digits === '2') return '(pressed 2 on the keypad) No.';
+  if(digits === '0') return '(pressed 0 on the keypad) I\'d like to talk to someone at the salon.';
+  if(digits === '*') return '(pressed * on the keypad) Can you repeat that?';
+  return `(typed on the keypad) ${digits}`;
+}
+
 function buildHints(tenant){
   const services = [];
   try{
@@ -128,7 +122,7 @@ function texmlSayAndGather({ say, playUrl, hints = '', silence = 0, hangupAfter 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${speakBlock}
-  <Gather input="speech" language="en-US" timeout="6" speechTimeout="auto"${hintsAttr} action="/api/telnyx-voice" method="POST"/>
+  <Gather input="dtmf speech" finishOnKey="#" language="en-US" timeout="6" speechTimeout="auto"${hintsAttr} action="/api/telnyx-voice" method="POST"/>
   <Redirect method="POST">/api/telnyx-voice?silence=${silence + 1}</Redirect>
 </Response>`;
 }
@@ -143,18 +137,41 @@ export default async function handler(req, res){
   // Top-level try-catch: any crash returns a loud 502 (never a substitute
   // voice) so the failure is visible in Vercel logs and the Telnyx dashboard.
   try{
-  const incoming = await readBody(req);
-  if(process.env.TELNYX_PUBLIC_KEY && !incoming.parsedByRuntime){
-    const sig = getTelnyxSignatureHeaders(req);
-    const verified = verifyTelnyxSignature({ rawBody: incoming.raw, signature: sig.signature, timestamp: sig.timestamp });
-    if(!verified.ok){
-      return res.status(403).json({ error: `invalid telnyx signature: ${verified.reason}` });
-    }
+  const incoming = await readWebhookBody(req);
+  // Every content type (TeXML posts form-urlencoded), whenever TELNYX_PUBLIC_KEY is set. It used to be
+  // skipped whenever the runtime had parsed the body — i.e. always on Vercel.
+  const verified = checkTelnyxSignature(req, incoming, { texml: true });
+  if(!verified.ok){
+    return res.status(403).json({ error: `invalid telnyx signature: ${verified.reason}` });
   }
   const parsed = incoming.parsed;
   // The call line's status callback lands here too: a finished call is not a new caller.
   const callStatus = String(parsed?.CallStatus || parsed?.call_status || '').toLowerCase();
   if(/^(completed|busy|failed|no-answer|canceled)$/.test(callStatus)){
+    // The call is over: its transcript + summary land on the Calls screen and in the salon's email.
+    if(callStatus === 'completed'){
+      try{
+        const sid = String(parsed?.CallSid || parsed?.call_sid || '');
+        const routed = await resolveInboundTenant({ to: e164(parsed?.To || parsed?.to || '') });
+        // What the call cost the salon's line (minutes, rounded up). Silent if billing isn't deployed.
+        const secs = Number(parsed?.CallDuration || parsed?.call_duration || 0);
+        if(secs > 0 && routed?.status === 'resolved' && routed.tenant?.id){
+          await logCostSafe(routed.tenant.id, 'cost_voice_minutes', voiceMinuteCents(secs), { call_sid: sid || null, seconds: secs, source: 'texml' });
+        }
+        const c = db();
+        if(sid && routed?.status === 'resolved' && routed.tenant && c){
+          const call = await getCallByTelnyxId(routed.tenant.id, sid);
+          const { parseLines, summarize, reportConversation } = await import('./lib/conversation-report.js');
+          const turns = parseLines(call?.recording_url || '');
+          if(call && turns.length){
+            const booked = call.status === 'booked' || call.outcome === 'booked';
+            const summary = await summarize(turns, { salon: routed.tenant.name, booked });
+            await reportConversation(c, routed.tenant, { turns, summary, booked, key: 'texml:' + sid, channel: 'phone', callControlId: sid,
+              fromNumber: call.from_number || parsed?.From || null, toNumber: call.to_number || parsed?.To || null, durationSeconds: Number(parsed?.CallDuration || 0) || null });
+          }
+        }
+      }catch(e){ console.warn('[VOICE] call report:', String(e?.message || e).slice(0, 160)); }
+    }
     res.setHeader('Content-Type', 'application/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?>\n<Response/>');
   }
@@ -169,7 +186,8 @@ export default async function handler(req, res){
   const VOICE_BUCKET = 'voice-audio';
   const supabase = db();
   const voiceId = process.env.ELEVENLABS_VOICE_ID || '';
-  let tenantForUsage = null;
+  let tenantForUsage = null, voiceDownLogged = false;
+  const payloadSid = (() => { try{ const p0 = extractVoicePayload(parsed); return p0.callSid || p0.callControlId || ''; }catch(_){ return ''; } })();
   async function upload(path, audio){
     let { error } = await supabase.storage.from(VOICE_BUCKET).upload(path, audio, { contentType: 'audio/mpeg', upsert: true });
     if(error && /not.?found|does not exist|bucket/i.test(String(error.message || error))){
@@ -179,7 +197,14 @@ export default async function handler(req, res){
     return error;
   }
   async function speakCached(text){
-    if(!elevenLabsConfigured() || !supabase || !text) return '';
+    if(!elevenLabsConfigured()){
+      // Never a robot voice — but never a silent hang-up nobody hears about either.
+      const missing = ['ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID'].filter((k) => !process.env[k]);
+      console.error(`[VOICE] Lola's voice is not configured (missing ${missing.join(', ') || 'voice'}) — call ${payloadSid || '?'} cannot be answered in her voice.`);
+      if(tenantForUsage && !voiceDownLogged){ voiceDownLogged = true; try{ await logUsage(tenantForUsage.id, 'voice_unavailable', 1, { reason: 'elevenlabs_not_configured', missing }); }catch(_){} }
+      return '';
+    }
+    if(!supabase || !text) return '';
     const key = crypto.createHash('sha1').update(`${voiceId}|${text}`).digest('hex');
     const storagePath = `cached/${key}.mp3`;
     try{
@@ -193,15 +218,27 @@ export default async function handler(req, res){
         }catch{}finally{ clearTimeout(timer); }
       }
     }catch{}
+    // ElevenLabs gets a hard deadline (a hung request used to hold the caller in silence until Telnyx
+    // gave up): ~3.5s per try, one retry only if it still fits the budget.
+    const started = Date.now();
     for(let attempt = 0; attempt < 2; attempt++){
+      const left = SYNTH_BUDGET_MS - (Date.now() - started);
+      if(attempt > 0 && left < 1500) break;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(500, Math.min(SYNTH_TRY_MS, left)));
       try{
-        const audio = await synthesize(text);
+        const audio = await synthesize(text, { signal: controller.signal });
+        clearTimeout(timer);
         const upErr = await upload(storagePath, audio);
         if(upErr){ console.error('[VOICE] Supabase upload error:', upErr?.message || upErr); return ''; }
         const { data: pubData2 } = supabase.storage.from(VOICE_BUCKET).getPublicUrl(storagePath);
-        if(tenantForUsage) await logUsage(tenantForUsage.id, 'tts_chars', text.length, { source: 'voice' }).catch?.(()=>{});
+        if(tenantForUsage){
+          try{ await logUsage(tenantForUsage.id, 'tts_chars', text.length, { source: 'voice' }); }catch(_){}
+          await logCostSafe(tenantForUsage.id, 'cost_tts', ttsCents(text.length), { chars: text.length, source: 'voice' });
+        }
         return pubData2?.publicUrl || '';
-      }catch(e){ console.error('[VOICE] synth failed:', String(e.message||e).slice(0,120)); }
+      }catch(e){ console.error('[VOICE] synth failed' + (controller.signal.aborted ? ' (deadline)' : '') + ':', String(e?.message||e).slice(0,120)); }
+      finally{ clearTimeout(timer); }
     }
     return '';
   }
@@ -245,6 +282,20 @@ export default async function handler(req, res){
     const c = sp.get('continue');
     if(c) continueText = Buffer.from(c, 'base64url').toString('utf8').slice(0, 600);
   }catch{}
+  const firstTurn = !silence && !continueText && !String(payload.speechResult || '').trim() && !payload.digits;
+
+  // ── Paid service gate (first turn): an expired / cancelled / unpaid salon's line says so, in
+  // Lola's voice, and hangs up — no AI, no booking. Fails open if the billing module isn't there.
+  if(firstTurn){
+    const gate = await serviceGate(tenant);
+    if(!gate.ok){
+      const say = gate.say || `Thanks for calling ${tenant.name || 'the salon'}. The salon's line is not taking requests right now — please text or call back later. Goodbye!`;
+      try{ await logUsage(tenant.id, 'voice_paused', 1, { reason: gate.reason || null }); }catch(_){}
+      const xml = texmlSayAndGather({ say, playUrl: await speakCached(say), hangupAfter: true });
+      res.setHeader('Content-Type', 'application/xml');
+      return res.status(200).send(xml);
+    }
+  }
   if(silence > 0){
     if(silence === 1){
       // One gentle re-prompt before letting anyone go — a human
@@ -261,13 +312,10 @@ export default async function handler(req, res){
       ? `No worries — I'll text you so you can book whenever suits you. Bye for now!`
       : `No worries — have a great day, and call us back any time. Bye for now!`;
     if(fromN && textbackEnabled){
+      // The one missed-call sender: STOP line, once per caller per day, not after they just booked.
       try{
-        const textback = missedCallTextbackText(tenant.name);
-        const r = await sendSMS({ from: toN, to: fromN, text: textback, tenantId: tenant.id });
-        if(!r?.skipped){
-          await logUsage(tenant.id, 'sms_sent', 1, { source: 'missed_call_textback' });
-          await logUsage(tenant.id, 'textback_sent', 1);
-        }
+        const r = await textBackOnce(supabase, tenant, { from: fromN, to: toN, source: 'silent_caller' });
+        if(r.sent) await logUsage(tenant.id, 'sms_sent', 1, { source: 'missed_call_textback' });
       }catch(e){ console.error('[VOICE] textback failed:', e.message); }
     }
     const xml = texmlSayAndGather({ say: bye, playUrl: await speakCached(bye), hangupAfter: true });
@@ -289,6 +337,9 @@ export default async function handler(req, res){
   }catch{}
 
   let speech = String(payload.speechResult || '').trim();
+  // Keypad (Telnyx <Gather input="dtmf speech">): callers can press keys as well as talk —
+  // a phone number typed in, 1 for yes / 2 for no, 0 to reach the salon. Lola hears it as words.
+  if(!speech && payload.digits) speech = keypadWords(payload.digits);
   let reply = '';
   let actions = [];
 
@@ -365,9 +416,10 @@ export default async function handler(req, res){
 - Say numbers like a person: "three ninety-five", "two thirty tomorrow afternoon".
 - Never sound like a list or a menu: weave options into one flowing sentence.
 - When they ask for a person, take a message for the team (take_message) and say someone will call them back.
+- Callers can also use the keypad; their keys arrive as "(pressed …)" / "(typed on the keypad) …". If you asked a yes/no question you may say "or press 1 for yes" — once, not every turn.
 - Caller's mood right now: ${mood || 'neutral'}; what they seem to want: ${intent || 'unclear'}.`;
     try{
-      const mmsResult = getInCallMmsResult(payload.callControlId);
+      const mmsResult = await getInCallMmsResult(payload.callControlId);   // async: a pending Promise used to read as a result
       if(mmsResult) extra += '\n' + buildMmsVisionPromptBlock(mmsResult);
     }catch{}
     try{
@@ -407,8 +459,9 @@ export default async function handler(req, res){
           await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: speech });
         }
         await logMessage({ conversationId: conversation.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: reply });
-        await logUsage(tenant.id, 'voice_call', 1, { call_control_id: payload.callControlId || '', call_sid: payload.callSid || '' });
-        await logUsage(tenant.id, 'ai_token', 1, { source: 'voice' });
+        // One voice_call per CALL (its greeting), not one per turn.
+        if(!speech) await logUsage(tenant.id, 'voice_call', 1, { call_control_id: payload.callControlId || '', call_sid: payload.callSid || '' });
+        else await logUsage(tenant.id, 'ai_token', 1, { source: 'voice' });
         // keep the call record alive: rolling transcript + outcome upgrades
         try{
           if(telnyxCallId && speech){
@@ -432,16 +485,10 @@ export default async function handler(req, res){
 
   // clean for the mouth: no markdown, no newlines, spoken-length cap
   reply = String(reply).replace(/[*_#`]/g,'').replace(/\s*\n+\s*/g,' ').slice(0, 420).trim();
-  if(!elevenLabsConfigured()){
-    const missing = [];
-    if(!process.env.ELEVENLABS_API_KEY) missing.push('ELEVENLABS_API_KEY');
-    if(!process.env.ELEVENLABS_VOICE_ID) missing.push('ELEVENLABS_VOICE_ID');
-    console.warn(`[VOICE] ElevenLabs not configured. Missing: ${missing.join(', ')}`);
-  }
   const [playUrl] = await Promise.all([speakCached(reply), bookkeeping]);
   if(!playUrl && fromN){
     // Her voice is down: the caller still gets Lola — by text, from the salon's own number.
-    try{ await sendSMS({ from: toN, to: fromN, text: `Hi, it's Lola at ${tenant.name || 'the salon'} — sorry, our line dropped. Text me here what you need and I'll take care of it right away.`, tenantId: tenant.id }); }catch(_){}
+    try{ await sendSMS({ from: toN, to: fromN, text: withStopLine(`Hi, it's Lola at ${tenant.name || 'the salon'} — sorry, our line dropped. Text me here what you need and I'll take care of it right away.`), tenantId: tenant.id }); }catch(_){}
   }
 
   const xml = texmlSayAndGather({ say: reply, playUrl, hints: buildHints(tenant) });

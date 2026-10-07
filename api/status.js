@@ -1,5 +1,6 @@
 /**
  * GET /api/status — "why isn't it working?" in one call, safe to open publicly.
+ * Public callers get the redacted view (publicStatus); an ADMIN_EMAILS Bearer gets everything below.
  * Only yes/no answers and plain-language fixes: never a key, number or secret.
  *   release   which LolaDesk update is live (so we know the deploy landed)
  *   settings  each required Vercel variable: set or missing
@@ -11,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-full';
+export const RELEASE = 'lola-fixall';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -53,6 +54,17 @@ export async function buildStatus() {
   const fixes = [];
   // Database
   try { const c = db(); const { error } = c ? await c.from('tenants').select('id').limit(1) : { error: { message: 'not configured' } }; live.database = !error; } catch (_) { live.database = false; }
+  // October fixes (atomic holds, one-trial-per-salon, client notes): self-applied when possible,
+  // otherwise one SQL script for the owner to run.
+  if (live.database) {
+    try {
+      const { ensureBookingIntegritySchema } = await import('./lib/booking-integrity.js');
+      await Promise.race([ensureBookingIntegritySchema(), new Promise((r) => setTimeout(r, 4000))]);
+      const c = db();
+      const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1)]);
+      live.october_sql = probes.every((p) => !p?.error);
+    } catch (_) { live.october_sql = null; }
+  }
   // Telnyx key + AI brain
   if (settings.TELNYX_API_KEY) {
     const bal = await tget('/balance');
@@ -140,6 +152,33 @@ export async function buildStatus() {
       live.phone_assistants_in_lola_voice = voices.lola;
       live.phone_greeting = !!String(a.greeting || '').trim();
       const brainApp = a.telephony_settings?.default_texml_app_id || null;
+      // LolaBrain's own call app must point at LolaBrain (Telnyx's assistant URL). A Voice URL typed over by hand
+      // ("LolaBrain") makes every call fail: repair it from the URL pattern of the account's other assistant apps.
+      if (brainApp) {
+        try {
+          const got = (await tget('/texml_applications/' + encodeURIComponent(brainApp))).j?.data;
+          const app = got && !Array.isArray(got) && got.id ? got : null;
+          if (!app) throw new Error('call app not readable');
+          const vu = String(app?.voice_url || '');
+          live.lolabrain_call_app = /^https:\/\//.test(vu) && vu.includes(a.id.replace(/^assistant-/, ''));
+          if (app && !live.lolabrain_call_app) {
+            const list = (await tget('/texml_applications?page[size]=50')).j?.data || [];
+            let pattern = null;
+            for (const x of list) {
+              const m = /(assistant-[0-9a-f-]{36})/i.exec(String(x.friendly_name || x.application_name || ''));
+              const u = String(x.voice_url || '');
+              if (m && x.id !== brainApp && /^https:\/\//.test(u) && u.includes(m[1])) { pattern = u.split(m[1]).join('{ID}'); break; }
+              if (m && x.id !== brainApp && /^https:\/\//.test(u) && u.includes(m[1].replace(/^assistant-/, ''))) { pattern = u.split(m[1].replace(/^assistant-/, '')).join('{RAW}'); break; }
+            }
+            if (pattern) {
+              const fixed = pattern.replace('{ID}', a.id).replace('{RAW}', a.id.replace(/^assistant-/, ''));
+              const { telnyxRequest } = await import('./lib/telnyx-client.js');
+              try { await telnyxRequest('/texml_applications/' + encodeURIComponent(brainApp), { method: 'PATCH', body: { voice_url: fixed, voice_method: app.voice_method || 'post' }, timeoutMs: 8000 }); live.lolabrain_call_app = true; healed.push('LolaBrain’s call app pointed back at LolaBrain (its Voice URL had been changed) — calls reach her again.'); }
+              catch (e) { live.lolabrain_call_app_error = clip(e); }
+            }
+          }
+        } catch (_) {}
+      }
       const good = new Set([brainApp, process.env.TELNYX_VOICE_APP_ID].filter(Boolean));
       const salon = new Set();
       try { const c = db(); const [{ data: tn }, { data: tt }] = await Promise.all([c.from('tenant_numbers').select('phone_number,status').limit(1000), c.from('tenants').select('phone_number').limit(1000)]);
@@ -165,7 +204,13 @@ export async function buildStatus() {
       live.phone_tools_ok = unsignedTools === 0;
       live.salon_details_ok = varsSigned;
       live.website_calls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
-      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls;
+      // Booking honesty: she collects first + last name, mobile and email, and never says "booked" unless it is.
+      const { BOOKING_MARK } = await import('./lib/assistant-wiring.js');
+      const bookTool = (Array.isArray(a.tools) ? a.tools : []).find((t) => /^book_appointment$/i.test(String(t?.webhook?.name || '')));
+      const bookProps = bookTool?.webhook?.body_parameters?.properties || {};
+      live.booking_rules = String(a.instructions || '').includes(BOOKING_MARK) || !a.instructions;
+      live.booking_asks_details = !bookTool || !!(bookProps.client_email && bookProps.client_phone && bookProps.client_name);
+      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls || !live.booking_rules || !live.booking_asks_details;
       const rewire = found.source !== 'env' || wiringOff;   // a different assistant than Vercel's id, or wiring that drifted: re-wire
       // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
       const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
@@ -188,8 +233,10 @@ export async function buildStatus() {
             const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true });
             if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
             if (w.healed && !w.error && dups.length) { healed.push(`Removed ${dups.length} duplicate tool${dups.length > 1 ? 's' : ''} from Lola’s Telnyx assistant (${dups.slice(0, 4).join(', ')}) — Telnyx accepts changes to her again.`); delete live.duplicate_tools; }
+            if (w.healed && !w.error && (!live.booking_rules || !live.booking_asks_details)) { healed.push('Lola now asks every client for first and last name, mobile and email before booking — and only says “booked” when it really is.'); live.booking_rules = true; live.booking_asks_details = true; }
             if (w.healed && !w.error && wiringOff) {
-              healed.push(`Lola’s phone wiring secured: ${[unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean).join(', ')}.`);
+              const secured = [unsignedTools ? `${unsignedTools} tool${unsignedTools > 1 ? 's' : ''} signed` : '', !varsSigned ? 'salon details signed' : '', !live.website_calls ? 'salon websites can now talk to her' : ''].filter(Boolean);
+              if (secured.length) healed.push(`Lola’s phone wiring secured: ${secured.join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
@@ -264,6 +311,7 @@ export async function buildStatus() {
   if (live.assistant && live.assistant_source === 'discovered') healed.unshift(`Lola’s phone assistant found on your Telnyx account: “${live.assistant_name || 'Lola'}” (${live.assistant_id}) — LolaDesk now uses it everywhere. To make it permanent: Vercel → TELNYX_LOLA_BRAIN_ID = ${live.assistant_id} → Redeploy.`);
   else if (live.assistant && live.assistant_source === 'env_fixed') healed.unshift(`The assistant id in Vercel was missing “assistant-” — using ${live.assistant_id}.`);
   if (live.phone_assistants > live.phone_assistants_in_lola_voice && !optedOut && live.voice_key && live.voice_id) vfix.push(`${live.phone_assistants - live.phone_assistants_in_lola_voice} of ${live.phone_assistants} phone assistants still use a different voice${live.phone_voice_error ? ' (Telnyx said: ' + live.phone_voice_error + ')' : ''}. Telnyx → AI → Assistants → each one → Voice: ElevenLabs, Lola’s voice → Save.`);
+  if (live.lolabrain_call_app === false) vfix.push(`LolaBrain’s call app doesn’t point at LolaBrain, so calls can’t reach her${live.lolabrain_call_app_error ? ' (Telnyx said: ' + live.lolabrain_call_app_error + ')' : ''} — Telnyx → Voice → Programmable Voice → TeXML Applications → the row named ai-assistant-${String(live.assistant_id || process.env.TELNYX_LOLA_BRAIN_ID || '').replace(/^assistant-/, '')} → Voice URL: copy the URL format from another ai-assistant row and put LolaBrain’s id in it → Save.`);
   if (live.phone_greeting === false) vfix.push('Lola’s assistant has no greeting, so callers hear silence first — Telnyx → AI → Assistants → Lola → Greeting: {{lola_greeting}} → Save.');
   if (live.salon_numbers > 0 && live.salon_numbers_ringing_lola < live.salon_numbers) vfix.push(phoneMode === 'assistant'
     ? `${live.salon_numbers - live.salon_numbers_ringing_lola} of ${live.salon_numbers} salon numbers don’t ring Lola — Telnyx → Numbers → each number → Voice: connection = Lola’s assistant app → Save.`
@@ -280,6 +328,7 @@ export async function buildStatus() {
       live.signup = !!(r && r.ok);
     } else live.signup = false;
   } catch (_) { live.signup = false; }
+  if (!has('SENDGRID_API_KEY') && !(has('AWS_SES_REGION') && has('AWS_ACCESS_KEY_ID')) && !(has('MAILGUN_API_KEY') && has('MAILGUN_DOMAIN'))) fixes.push('Booking confirmation emails can’t go out yet (texts do) — add SENDGRID_API_KEY in Vercel (SendGrid → Settings → API Keys; verify the sender lola@loladesk.com, or set EMAIL_FROM to your verified address), then Redeploy.');
   if (live.signup === false) fixes.push('New salons can’t sign up: Supabase refuses the service key for accounts — Vercel: check SUPABASE_URL and SUPABASE_SERVICE_KEY (Supabase → Project Settings → API → service_role), then Redeploy.');
   if (!live.database) fixes.push('LolaDesk can’t reach its database — Vercel → Settings → Environment Variables: check SUPABASE_URL and SUPABASE_SERVICE_KEY, then Redeploy.');
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');
@@ -300,6 +349,7 @@ export async function buildStatus() {
   if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
+  if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check and double-booking protection.');
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
   if (relayUrl && live.voice_relay_secret === false) fixes.push('Add LOLA_VOICE_SECRET in Vercel — the SAME long word as on the Railway relay — then Redeploy. Until then the app uses her direct voice.');
@@ -307,10 +357,41 @@ export async function buildStatus() {
   return { ok: fixes.length === 0, release: RELEASE, settings, live, healed, fixes, checked_at: new Date().toISOString() };
 }
 
+// Public view: release, yes/no probes, healed and fixes in plain words — no env-variable map, no
+// assistant/app/number ids, no balance or credit figures, no raw provider error strings.
+// The full report is for a signed-in platform admin (ADMIN_EMAILS) only.
+const scrub = (t) => String(t || '')
+  .replace(/assistant-[0-9a-f-]{8,}/gi, 'assistant-…')
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '…')
+  .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
+  .replace(/\b\d{12,}\b/g, '…')
+  .replace(/\s*\((?:Telnyx said: )?[^()]*(?:error|refused|HTTP|status|\d{3})[^()]*\)/gi, '');
+export function publicStatus(full) {
+  const live = {};
+  for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
+  return {
+    ok: !!full?.ok, release: full?.release || RELEASE, live,
+    healed: (full?.healed || []).map(scrub), fixes: (full?.fixes || []).map(scrub),
+    checked_at: full?.checked_at || new Date().toISOString(),
+    ...(full?.error ? { error: 'status_check_failed' } : {}),
+  };
+}
+async function isAdminRequest(req) {
+  try {
+    const { getUserFromToken, bearer, isAdminEmail } = await import('./lib/auth.js');
+    const tok = bearer(req); if (!tok) return false;
+    const u = await getUserFromToken(tok).catch(() => null);
+    return !!(u && isAdminEmail(u.email));
+  } catch (_) { return false; }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (cache && Date.now() - cache.at < 60e3) return res.status(200).json(cache.body);
-  const body = await buildStatus().catch((e) => ({ ok: false, release: RELEASE, error: String(e?.message || e) }));
-  cache = { at: Date.now(), body };
-  return res.status(200).json(body);
+  let body;
+  if (cache && Date.now() - cache.at < 60e3) body = cache.body;
+  else {
+    body = await buildStatus().catch((e) => ({ ok: false, release: RELEASE, error: String(e?.message || e) }));
+    cache = { at: Date.now(), body };
+  }
+  return res.status(200).json((await isAdminRequest(req)) ? body : publicStatus(body));
 }

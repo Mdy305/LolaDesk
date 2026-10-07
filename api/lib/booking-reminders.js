@@ -16,8 +16,14 @@
  * 
  * Two bands, one ledger:
  *   • '24h' — the day-before confirmation (23–25h window)
- *   • '2h'  — the "radar" heads-up (2–4h window), each salon-gated by
- *             booking_settings.radar_sms (default ON).
+ *   • '2h'  — the "radar" heads-up (1h45–2h15 before — really ~2 hours),
+ *             salon-gated by booking_settings.radar_sms (default ON). Skips
+ *             bookings made in the last 3 hours (they just got their
+ *             confirmation). Needs a ≤15-minute cron to catch every booking.
+ *
+ * Due rows are paged in start_time order and already-reminded ones are
+ * skipped BEFORE the per-run cap, so a backlog can never starve new reminders.
+ * A reminder is marked 'sent' only when Telnyx accepted it.
  *
  * The sender is injectable for tests (`runReminders(now, { send })`); the
  * cron uses the real Telnyx sender by default.
@@ -25,32 +31,52 @@
 
 import { db } from './db.js';
 import { sendSMS } from '../telnyx-sms.js';
-import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist } from './booking-repository.js';
+import { findWaitlistMatches, markWaitlistOffered, removeFromWaitlist, smsSent, smsFailReason } from './booking-repository.js';
 import { reminderText, waitlistOfferText, radarText } from './lola-persona.js';
 import { salonTz, fmtSalon } from './salon-time.js';
 
-// Bands: [claim lane, hours-before start, band span, settings gate].
-// With an hourly cron each band catches every due booking exactly once (each
-// span is wider than the 1h tick; the unique constraint absorbs overlap).
+// Bands: claim lane, window start (ms before the appointment), span, settings gate.
+// The unique (booking_id, reminder_for, band) constraint absorbs tick overlap.
 const BANDS = [
   { id: '24h', hours: 23, spanMs: 2 * 3600e3, gate: 'reminder_sms' },
-  { id: '2h', hours: 2, spanMs: 2 * 3600e3, gate: 'radar_sms' }
+  { id: '2h', hours: 1.75, spanMs: 0.5 * 3600e3, gate: 'radar_sms', freshMs: 3 * 3600e3 }
 ];
+export const REMINDER_BANDS = BANDS;
 const MAX_PER_RUN = 100;
+const PAGE = 500, MAX_PAGES = 20;
 
-export async function findDueBookings(now = new Date(), client = null, band = BANDS[0]) {
+export async function findDueBookings(now = new Date(), client = null, band = BANDS[0], { limit = MAX_PER_RUN } = {}) {
   const c = client || db();
   if (!c) throw new Error('database not configured');
   const start = new Date(now.getTime() + band.hours * 3600e3).toISOString();
   const end = new Date(now.getTime() + band.hours * 3600e3 + band.spanMs).toISOString();
-  const { data, error } = await c.from('bookings')
-    .select('id,tenant_id,client_id,service_id,staff_id,start_time')
-    .eq('status', 'confirmed')
-    .gte('start_time', start)
-    .lt('start_time', end)
-    .limit(MAX_PER_RUN);
-  if (error) throw error;
-  return data || [];
+  const out = [], seen = new Set();
+  let cursor = start;
+  for (let page = 0; page < MAX_PAGES && out.length < limit; page++) {
+    const { data, error } = await c.from('bookings')
+      .select('id,tenant_id,client_id,service_id,staff_id,start_time,created_at')
+      .eq('status', 'confirmed')
+      .gte('start_time', cursor)
+      .lt('start_time', end)
+      .order('start_time', { ascending: true })
+      .limit(PAGE);
+    if (error) throw error;
+    const rows = (data || []).filter((b) => !seen.has(b.id));
+    rows.forEach((b) => seen.add(b.id));
+    // Just booked (the confirmation text is minutes old) → no radar ping.
+    const fresh = band.freshMs ? rows.filter((b) => !b.created_at || now.getTime() - new Date(b.created_at).getTime() >= band.freshMs) : rows;
+    // Already reminded in this band for this exact appointment time → skip before capping.
+    let done = new Set();
+    if (fresh.length) {
+      const { data: rem } = await c.from('booking_reminders').select('booking_id,reminder_for,band')
+        .in('booking_id', fresh.map((b) => b.id)).eq('band', band.id);
+      done = new Set((rem || []).map((r) => r.booking_id + '|' + new Date(r.reminder_for).getTime()));
+    }
+    for (const b of fresh) if (!done.has(b.id + '|' + new Date(b.start_time).getTime())) out.push(b);
+    if ((data || []).length < PAGE || !rows.length) break;
+    cursor = rows[rows.length - 1].start_time;
+  }
+  return out.slice(0, limit);
 }
 
 // Attach tenant / client / service / booking_settings rows in batch queries
@@ -228,7 +254,7 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
       if (!row) { result.skipped++; result[band.id].skipped++; continue; }
 
       try {
-        await send({
+        const r = await send({
           from: b.tenant.phone_number,
           to: b.client.phone,
           text: buildReminderText(b, band.id),
@@ -236,6 +262,14 @@ export async function runReminders(now = new Date(), { send = sendSMS } = {}) {
           type: channel === 'whatsapp' ? 'WHATSAPP' : 'SMS',
           ...(plan && plan.template ? { template: plan.template } : {})
         });
+        // Telnyx rejections (opt-out, bad number, 4xx) come back as a value,
+        // not a throw — those are NOT sent. (An injected sender that returns
+        // nothing is treated as delivered.)
+        if (r !== undefined && r !== null && !smsSent(r)) {
+          await mark(client, row.id, 'failed', smsFailReason(r));
+          result.failed++;
+          continue;
+        }
         await mark(client, row.id, 'sent');
         result.sent++;
         result[channel]++;

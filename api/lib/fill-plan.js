@@ -20,6 +20,7 @@
  * the owner's one-tap approval — unless Autopilot is on.
  * Table: lola_fill_plans (sql/revenue-engine.sql).
  */
+import { serviceAllowed } from './service-gate.js';
 import { chat } from './llm.js';
 import { bookingLinkFor as sharedBookingLink } from './booking-link.js';
 import { getBookingSettings, listStaff, getStaffSchedules } from './booking-repository.js';
@@ -325,6 +326,8 @@ export async function runFillPlans(c, { now = new Date(), budgetMs = 45000, llm 
     if (Date.now() > deadline - 5000) break;
     const { data: tenant } = await c.from('tenants').select('*').eq('id', plan.tenant_id).maybeSingle();
     if (!tenant) continue;
+    // Service off (canceled / unpaid / trial over / suspended) → no campaigns, no rebuilds.
+    if (!(await serviceAllowed(tenant)).ok) { out.paused = (out.paused || 0) + 1; continue; }
     out.plans++;
     // Weekly roll: fresh numbers, the next 30 days always covered.
     if (now.getTime() - Date.parse(plan.created_at) > 7 * DAY) {

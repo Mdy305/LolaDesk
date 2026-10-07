@@ -1,3 +1,4 @@
+import { cronAuthorized } from './lib/cron-auth.js';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL || 'https://mock.supabase.co';
@@ -11,8 +12,9 @@ export default async function handler(req, res) {
   }
 
   // Security check: verify this is run by Vercel cron or holds a secret
-  const authHeader = req.headers.authorization;
-  if (req.method === 'GET' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Every method (GET from Vercel Cron, POST by hand) needs `Authorization: Bearer ${CRON_SECRET}`;
+  // no CRON_SECRET configured → refused (never "Bearer undefined").
+  if (!cronAuthorized(req)) {
     console.warn('[cron] Unauthorized weekly report attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }

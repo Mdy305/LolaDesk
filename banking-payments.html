@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Payments — LolaDesk</title>
+<title>Payments · LolaDesk</title>
 <meta name="description" content="Every charge, tip, deposit and refund Lola handles — searchable, refundable, one place."/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="app.css"/>
@@ -175,7 +175,7 @@ function paymentDetailHtml(p){
       ${p.booking_id ? `<div class="detail-line"><span>Booking</span><b><a href="bookings.html?id=${LolaBank.esc(p.booking_id)}" style="color:var(--accent);text-decoration:none">Open →</a></b></div>` : ''}
       <div class="detail-actions">
         ${canRefund ? `<button class="detail-btn danger" onclick="refundPayment('${LolaBank.esc(p.id)}', event)">Refund…</button>` : ''}
-        ${canResend ? `<button class="detail-btn primary" onclick="resendPaymentLink('${LolaBank.esc(p.id)}', event)">Send payment link via SMS</button>` : ''}
+        ${canResend ? `<button class="detail-btn primary" onclick="resendPaymentLink('${LolaBank.esc(p.id)}', event)">Text payment link</button>` : ''}
         ${p.receipt_url ? `<a class="detail-btn" href="${LolaBank.esc(p.receipt_url)}" target="_blank" rel="noopener">Open Stripe receipt →</a>` : ''}
         ${p.client_phone ? `<button class="detail-btn" onclick="textClient('${LolaBank.esc(p.client_phone)}', event)">Text client</button>` : ''}
       </div>
@@ -239,13 +239,14 @@ async function resendPaymentLink(id, ev){
   if(ev) ev.stopPropagation();
   const status = $('refstatus-' + id);
   const setStatus = (msg, ok) => { if(status){ status.className = 'refund-status ' + (ok===false?'err':'ok'); status.textContent = msg; } };
-  setStatus('Sending payment link via SMS…', true);
+  setStatus('Texting the payment link…', true);
   const { ok, data } = await LolaBank.api(`/api/stripe/payments/${encodeURIComponent(id)}/send-link`, { method:'POST' });
   if(ok){
-    setStatus(`Payment link sent to ${data?.sent_to || 'client'}. Lola will follow up if it isn't paid in 24h.`, true);
+    setStatus(`Payment link texted to ${data?.sent_to || 'the client'} from your salon number.`, true);
     if(typeof window.lolaPulse === 'function') window.lolaPulse('Payment link sent');
   } else {
-    setStatus(data?.error || "Couldn't send payment link. Check the client's phone on file.", false);
+    // The server says exactly why (no link, no salon number, opted out, or a wrong client number).
+    setStatus(data?.error || "Couldn't send the payment link just now. Please try again.", false);
   }
 }
 

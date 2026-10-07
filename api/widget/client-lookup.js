@@ -6,7 +6,7 @@
 import { corsPublic, jsonBody } from '../lib/cors.js';
 import { db } from '../lib/db.js';
 import { resolveTenantFromRequest } from '../lib/widget-tenant.js';
-import { limitPublic } from '../lib/public-rate-limit.js';
+import { limitPublicShared } from '../lib/public-rate-limit.js';
 
 export default async function handler(req, res) {
   if (corsPublic(req, res)) return;
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
     const { phone } = jsonBody(req);
     if (!phone) return res.status(400).json({ ok: false, error: 'missing_phone' });
-    if (!limitPublic(req, 'client_lookup', tenant.id)) return res.status(429).json({ ok: false, error: 'rate_limited' });
+    if (!(await limitPublicShared(req, 'client_lookup', tenant.id))) return res.status(429).json({ ok: false, error: 'rate_limited' });
 
     const c = db();
     const { data } = await c.from('clients')

@@ -1,14 +1,44 @@
 /**
  * POST /api/auth/signup
  * { email, password, name, salonName, location, hours, plan, websiteUrl }
- * Creates the auth user + a tenant + starts a 14-day trial.
- * Returns { session, tenant }.
+ * Creates the auth user + a tenant + starts a 14-day trial (no card).
+ * Returns { session, tenant, trial }.
+ *
+ * One free trial per salon (lib/trial-guard.js): a salon phone / owner mobile /
+ * Google place / website domain already used by another workspace — or an IP
+ * past its 30-day trial allowance — still gets an account, but no new trial
+ * (trial_ends_at = now) and a clear message. Per-IP sign-ups are also braked
+ * in the database (signup_attempts), not only in memory.
+ * No Lola number is attached here: numbers are assigned after the email is
+ * confirmed / on the owner's first real login, or from the setup wizard.
  */
 import { createUser } from '../lib/auth.js';
 import { provisionTenantForUser, db } from '../lib/db.js';
 import { TERMS_VERSION, acceptanceFrom, recordAcceptance } from '../lib/legal.js';
 import { confirmationRequired, createConfirmedUser, signInLettingStuckOwnersIn, allowSignup } from '../lib/auth-direct.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
+import { trialCheck, endTrial, ipAllowed, recordSignupAttempt } from '../lib/trial-guard.js';
+
+export const TRIAL_USED_MESSAGE = 'Welcome back! This salon has already used its free LolaDesk trial, so your account is ready but the trial won’t restart. Pick a plan in Billing to turn Lola on.';
+
+/** Decide the trial for a brand-new workspace. Never throws. → { trial, reason? } */
+async function decideTrial(c, tenant, b, ipGate){
+  try{
+    const fields = { ...tenant,
+      website_url: b.websiteUrl || b.website_url || tenant.website_url || '',
+      operator_phone: b.ownerPhone || b.owner_phone || b.operator_phone || tenant.operator_phone || null,
+      salon_phone: b.salonPhone || b.salon_phone || null,
+      place_id: b.placeId || b.place_id || null };
+    // Keep what the owner told us so later checks (setup) see it too.
+    const patch = {};
+    if(fields.operator_phone && !tenant.operator_phone) patch.operator_phone = fields.operator_phone;
+    if(Object.keys(patch).length){ try{ await c.from('tenants').update(patch).eq('id', tenant.id); }catch(_){} }
+    const dup = await trialCheck(c, fields, { excludeId: tenant.id });
+    const reason = dup.duplicate ? dup.reason : (ipGate && ipGate.trial === false ? 'ip_trial_limit' : null);
+    if(reason){ await endTrial(c, tenant, reason); return { trial: false, reason }; }
+    return { trial: true };
+  }catch(_){ return { trial: true }; }
+}
 
 // Auto-assignment must never slow down or break signup. Cap it at 6s (the
 // parallel Telnyx links usually finish in ~2s, but cold starts need margin);
@@ -53,6 +83,8 @@ export default async function handler(req, res){
     if(!confirmationRequired()){
       const ip = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
       if(!allowSignup(ip)) return res.status(429).json({ error: 'Too many sign-ups from this connection — try again in an hour.', code: 'rate_limited' });
+      const ipGate = await ipAllowed(db(), ip);
+      if(!ipGate.allowed) return res.status(429).json({ error: 'Too many sign-ups from this connection today — try again tomorrow, or email hello@loladesk.com.', code: 'rate_limited' });
       const cleanEmail = String(email).trim().toLowerCase();
       let user = null, existing = false;
       try{
@@ -70,28 +102,29 @@ export default async function handler(req, res){
       }
       user = sess.user || user;
       let tenant = existing ? await resolveTenantForUser(user).catch(() => null) : null;
+      let trial = null;
       if(!tenant){
         tenant = await withBudget(provisionTenantForUser(user, { name, salonName, location, hours, plan, websiteUrl, businessMode, activationStatus: 'active' }), 'workspace');
         if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
+        trial = await decideTrial(db(), tenant, b, ipGate);
+        await recordSignupAttempt(db(), ip, { email: cleanEmail, tenant_id: tenant.id, trial: trial.trial });
       }
       // A workspace left "pending email" by the old flow goes live now.
       try{ const { activateTenant } = await import('../lib/db.js'); if(tenant.activation_status === 'pending_email') await activateTenant(db(), tenant); }catch(_){}
       await recordAcceptance(db(), { ...acceptance, user_id: user.id, tenant_id: tenant.id });
-      // Lola's number from the numbers LolaDesk already owns, if one is free (never blocks sign-up).
-      let autoProvisioned = null;
-      if(!tenant.phone_number){
-        try{
-          const { autoAssignOwnedNumber } = await import('../lib/telnyx-provision.js');
-          autoProvisioned = await Promise.race([autoAssignOwnedNumber(tenant), new Promise(r => setTimeout(() => r(null), 6000))]);
-        }catch(_){ autoProvisioned = null; }
-      }
+      // No number at sign-up: an unverified address must never burn a Lola line.
+      // The owner gets one from the setup wizard (trial → the free pool only),
+      // or on first confirmed login.
+      const autoProvisioned = null;
       return res.status(200).json({
         ok: true, existing,
         token: sess.session?.access_token || '',
         session: sess.session,
         user: { id: user.id, email: user.email },
         tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name },
-        autoProvisioned: autoProvisioned && autoProvisioned.assigned ? { assigned: true, phoneNumber: autoProvisioned.phoneNumber } : null
+        trial: trial ? trial.trial : undefined,
+        ...(trial && !trial.trial ? { trial_used: true, trial_reason: trial.reason, message: TRIAL_USED_MESSAGE } : {}),
+        autoProvisioned
       });
     }
 
@@ -113,9 +146,14 @@ export default async function handler(req, res){
     }), 'workspace');
     if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
     await recordAcceptance(db(), { ...acceptance, user_id: user.id, tenant_id: tenant.id });
+    const ip2 = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+    const trial2 = await decideTrial(db(), tenant, b, await ipAllowed(db(), ip2));
+    await recordSignupAttempt(db(), ip2, { email, tenant_id: tenant.id, trial: trial2.trial });
 
     return res.status(200).json({
       ok: true,
+      trial: trial2.trial,
+      ...(trial2.trial ? {} : { trial_used: true, trial_reason: trial2.reason, message: TRIAL_USED_MESSAGE }),
       requires_email_confirmation: true,
       // Truthful signal from Supabase: confirmation_sent_at is set the moment
       // the mailer dispatches the link, so the page can tell "on its way in
