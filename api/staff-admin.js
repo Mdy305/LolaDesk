@@ -11,7 +11,8 @@ import { cors, jsonBody } from './lib/cors.js';
 import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
-import { tolerantWrite, replaceStaffServices } from './lib/setup-store.js';
+import { tolerantWrite, replaceStaffServices, fillMissingStaffHours } from './lib/setup-store.js';
+import { getBookingSettings } from './lib/booking-repository.js';
 
 const FIELDS = [
   'first_name', 'last_name', 'name', 'role', 'phone', 'email',
@@ -58,6 +59,8 @@ export default async function handler(req, res) {
       const { data, error } = await tolerantWrite(p => c.from('staff').insert(p).select().single(), row, { required: ['name', 'tenant_id'] });
       if (error) throw error;
       if (Array.isArray(body.services)) await replaceStaffServices(c, tenant.id, data.id, body.services);
+      // A new stylist starts with the salon's opening hours (bookable right away).
+      await fillMissingStaffHours(c, tenant.id, data.id, await getBookingSettings(tenant.id).catch(() => null));
       return res.json({ ok: true, staff: data });
     }
 

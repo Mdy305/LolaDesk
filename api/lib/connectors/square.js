@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-export const META = { name:'Square', description:'Bookings, payments, and customers from Square.', status:'available', docs:'https://developer.squareup.com/reference/square' };
+export const META = { name:'Square', description:'Bookings, payments, and customers from Square.', status:'available', docs:'https://developer.squareup.com/reference/square',
+  // LIVE: Lola asks Square itself for open times and books inside Square, then reads the booking back (lib/live-booking.js).
+  live: true };
 const ENV = (process.env.SQUARE_ENV || 'sandbox').toLowerCase();
 const API_BASE = ENV === 'production' ? 'https://connect.squareup.com' : 'https://connect.squareupsandbox.com';
 const SCOPES = ['APPOINTMENTS_READ','APPOINTMENTS_WRITE','CUSTOMERS_READ','CUSTOMERS_WRITE','ITEMS_READ','MERCHANT_PROFILE_READ'].join('+');
@@ -17,14 +19,31 @@ export async function refreshToken(refresh_token){
   const r = await fetch(`${API_BASE}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':'2024-12-18'}, body: JSON.stringify({ client_id:process.env.SQUARE_APP_ID, client_secret:process.env.SQUARE_APP_SECRET, refresh_token, grant_type:'refresh_token' }) });
   return r.json();
 }
+/** Renew an expired Square token in place (and in the integrations row). Never throws. */
+async function renewToken(integration){
+  try{
+    const t = await refreshToken(integration.refresh_token);
+    if(!t?.access_token) return false;
+    integration.access_token = t.access_token;
+    if(t.refresh_token) integration.refresh_token = t.refresh_token;
+    if(integration.id){
+      const [{ db }, { encrypt }] = await Promise.all([import('../db.js'), import('../crypto.js')]);
+      const c = db();
+      if(c) await c.from('integrations').update({ access_token: encrypt(t.access_token), ...(t.refresh_token ? { refresh_token: encrypt(t.refresh_token) } : {}), ...(t.expires_at ? { expires_at: t.expires_at } : {}) }).eq('id', integration.id);
+    }
+    return true;
+  }catch(_){ return false; }
+}
 function authHeaders(i){ return { 'Content-Type':'application/json','Square-Version':'2024-12-18','Authorization':`Bearer ${i.access_token}` }; }
 
 // One Square call. Non-2xx THROWS (with .status) — an outage or an expired
 // token must never look like "no appointments" (booking-sync would then wipe
 // the salon's busy time and Lola would double-book it).
-async function sq(integration, path, { method = 'GET', body } = {}){
+async function sq(integration, path, { method = 'GET', body } = {}, retried = false){
   const r = await fetch(`${API_BASE}${path}`, { method, headers: authHeaders(integration), ...(body ? { body: JSON.stringify(body) } : {}) });
   const data = await r.json().catch(() => ({}));
+  // Square access tokens expire after 30 days: renew once with the refresh token and keep the new one.
+  if(r.status === 401 && !retried && integration?.refresh_token && await renewToken(integration)) return sq(integration, path, { method, body }, true);
   if(!r.ok){
     const e = new Error(`Square ${method} ${path.split('?')[0]} ${r.status || ''}: ${data?.errors?.[0]?.detail || data?.errors?.[0]?.code || 'request failed'}`.trim());
     e.status = r.status; e.code = data?.errors?.[0]?.code || null;
@@ -174,4 +193,149 @@ export async function listClients(integration, { limit=100 } = {}){
   const data = await r.json();
   if(!r.ok) return [];
   return (data.customers||[]).map(c => ({ id:c.id, name:[c.given_name,c.family_name].filter(Boolean).join(' ')||'Unknown', phone:c.phone_number||null, email:c.email_address||null, raw:c }));
+}
+
+
+// ══ LIVE: Lola checks and books inside Square (same contract as Boulevard — lib/live-booking.js) ══
+const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const STOP = new Set(['a','an','the','and','with','for','my','i','want','like','get','some','please','appointment','service']);
+const words = (x) => norm(x).split(' ').filter((w) => w && !STOP.has(w));
+
+/** The salon's bookable Square services: [{ variationId, version, name, durationMin }]. */
+async function squareServices(integration){
+  const out = [];
+  let cursor = null, pages = 0;
+  do{
+    const data = await sq(integration, '/v2/catalog/search-catalog-items', { method:'POST', body:{ product_types:['APPOINTMENTS_SERVICE'], limit: 100, ...(cursor ? { cursor } : {}) } });
+    for(const item of data.items || []){
+      const vars = item.item_data?.variations || [];
+      for(const v of vars){
+        const vd = v.item_variation_data || {};
+        if(vd.available_for_booking === false) continue;
+        const name = vars.length > 1 && vd.name && norm(vd.name) !== norm(item.item_data?.name) ? `${item.item_data?.name} – ${vd.name}` : (item.item_data?.name || vd.name || 'Service');
+        out.push({ variationId: v.id, version: v.version, name, durationMin: Math.round((Number(vd.service_duration) || 3600000) / 60000) });
+      }
+    }
+    cursor = data.cursor || null;
+  }while(cursor && ++pages < 10);
+  return out;
+}
+/** Best service for what the caller said ("balayage", "women's cut"). null when nothing fits. */
+export function matchService(list, said){
+  const want = words(said);
+  if(!want.length) return null;
+  let best = null, bestScore = 0;
+  for(const s of list){
+    const have = new Set(words(s.name));
+    let score = want.filter((w) => have.has(w) || [...have].some((h) => h.startsWith(w) || w.startsWith(h))).length / want.length;
+    if(norm(s.name) === norm(said)) score = 2;
+    if(score > bestScore){ best = s; bestScore = score; }
+  }
+  return bestScore >= 0.5 ? best : null;
+}
+async function bookableStaff(integration, locId){
+  try{
+    const q = new URLSearchParams({ bookable_only: 'true', location_id: locId, limit: '100' });
+    const data = await sq(integration, `/v2/bookings/team-member-booking-profiles?${q}`);
+    return (data.team_member_booking_profiles || []).filter((p) => p.is_bookable !== false).map((p) => ({ id: p.team_member_id, name: p.display_name || '' }));
+  }catch(_){ return []; }
+}
+function dayBounds(date, tz){
+  // The salon's local midnight → UTC instants for one calendar day.
+  const at = (d, h) => { const x = new Date(`${d}T${h}:00Z`); const off = new Date(x.toLocaleString('en-US', { timeZone: 'UTC' })) - new Date(x.toLocaleString('en-US', { timeZone: tz })); return new Date(x.getTime() + off); };
+  const next = new Date(Date.parse(date + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10);
+  return { start: at(date, '00:00'), end: at(next, '00:00') };
+}
+const localDay = (iso, tz) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz });
+async function searchTimes(integration, { locId, svc, staffIds, from, to }){
+  const start = new Date(Math.max(from.getTime(), Date.now() + 5 * 60e3));
+  if(start >= to) return [];
+  const data = await sq(integration, '/v2/bookings/availability/search', { method:'POST', body:{ query:{ filter:{
+    start_at_range:{ start_at: start.toISOString(), end_at: to.toISOString() }, location_id: locId,
+    segment_filters:[{ service_variation_id: svc.variationId, ...(staffIds?.length ? { team_member_id_filter:{ any: staffIds } } : {}) }] } } } });
+  return (data.availabilities || []).map((a) => ({ startTime: a.start_at, teamMemberId: a.appointment_segments?.[0]?.team_member_id || null }));
+}
+function pick(times, wantAt, n = 3){
+  const list = [...times];
+  if(wantAt) list.sort((a, b) => Math.abs(Date.parse(a.startTime) - Date.parse(wantAt)) - Math.abs(Date.parse(b.startTime) - Date.parse(wantAt)));
+  else if(list.length > n){ const step = list.length / n; return Array.from({ length: n }, (_, i) => list[Math.floor(i * step)]); }
+  return list.slice(0, n).sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
+}
+async function resolve(integration, { service, stylist }){
+  const locId = await locationId(integration);
+  const [list, staff] = await Promise.all([squareServices(integration), bookableStaff(integration, locId)]);
+  const svc = matchService(list, service);
+  const nameOf = (id) => staff.find((x) => x.id === id)?.name || null;
+  let staffIds = null, staffName = null, staffMissing = false;
+  if(stylist){
+    const w = norm(stylist).split(' ')[0];
+    const hit = staff.find((x) => norm(x.name).split(' ').includes(w));
+    if(hit){ staffIds = [hit.id]; staffName = hit.name; } else staffMissing = true;
+  }
+  return { locId, svc, list, staffIds, staffName, staffMissing, nameOf };
+}
+
+/** Live only when this Square account really takes appointments (a POS-only Square stays on LolaDesk's calendar). */
+const readyCache = new Map();
+export async function liveReady(integration){
+  const key = integration?.id || integration?.tenant_id || 'x';
+  const hit = readyCache.get(key);
+  if(hit && Date.now() - hit.at < 10 * 60e3) return hit.ok;
+  let ok = false;
+  try{ ok = (await squareServices(integration)).length > 0; }catch(_){ ok = false; }
+  readyCache.set(key, { ok, at: Date.now() });
+  return ok;
+}
+
+export async function liveAvailability(integration, { service, date, wantAt = null, stylist = null, tz = 'America/New_York' } = {}){
+  tz = integration?.metadata?.tz || tz;
+  const r = await resolve(integration, { service, stylist });
+  if(!r.svc) return { ok: false, error: 'service_not_found', menu: r.list.map((x) => x.name).slice(0, 8) };
+  const { start, end } = dayBounds(date, tz);
+  const times = await searchTimes(integration, { locId: r.locId, svc: r.svc, staffIds: r.staffIds, from: start, to: end });
+  const exact = wantAt ? times.find((t) => Math.abs(Date.parse(t.startTime) - Date.parse(wantAt)) < 60e3) || null : null;
+  let nextDate = null, nextTimes = [];
+  if(!times.length){
+    const later = await searchTimes(integration, { locId: r.locId, svc: r.svc, staffIds: r.staffIds, from: end, to: new Date(end.getTime() + 14 * 864e5) }).catch(() => []);
+    if(later.length){ nextDate = localDay(later[0].startTime, tz); nextTimes = later.filter((t) => localDay(t.startTime, tz) === nextDate); }
+  }
+  return { ok: true, service: r.svc.name, duration: r.svc.durationMin, staffName: r.staffName || (exact ? r.nameOf(exact.teamMemberId) : null), staffMissing: r.staffMissing,
+    exact, times, nextDate, nextTimes };
+}
+
+/** Book in Square, then read it back. Throws .code 'conflict' (+ .offers) / 'service_not_found' (+ .menu) / 'card_required'. */
+export async function liveCreate(integration, p){
+  const tz = p.timezone || integration?.metadata?.tz || 'America/New_York';
+  const date = p.date || localDay(p.starts_at, tz);
+  const r = await resolve(integration, { service: p.service, stylist: p.stylist });
+  if(!r.svc){ const e = new Error('service not on the Square menu'); e.code = 'service_not_found'; e.menu = r.list.map((x) => x.name).slice(0, 8); throw e; }
+  const { start, end } = dayBounds(date, tz);
+  const times = await searchTimes(integration, { locId: r.locId, svc: r.svc, staffIds: r.staffIds, from: start, to: end });
+  const slot = times.find((t) => Math.abs(Date.parse(t.startTime) - Date.parse(p.starts_at)) < 60e3);
+  if(!slot){ const e = new Error('that time is no longer open in Square'); e.code = 'conflict'; e.offers = pick(times, p.starts_at); throw e; }
+  const name = String(p.client?.name || [p.client?.first_name, p.client?.last_name].filter(Boolean).join(' ') || '').trim();
+  const customerId = await findOrCreateCustomer(integration, { client_name: name, client_phone: p.client?.phone || null, client: { email: p.client?.email || null, name } });
+  const idempotency_key = 'lola-live-' + stableKey(integration.tenant_id, slot.startTime, r.svc.variationId, p.client?.phone || name);
+  let data;
+  try{
+    data = await sq(integration, '/v2/bookings', { method:'POST', body:{ idempotency_key, booking:{
+      start_at: slot.startTime, location_id: r.locId, ...(customerId ? { customer_id: customerId } : {}),
+      customer_note: p.notes || 'Booked by Lola (LolaDesk)',
+      appointment_segments:[{ duration_minutes: r.svc.durationMin, service_variation_id: r.svc.variationId, team_member_id: slot.teamMemberId,
+        ...(r.svc.version != null ? { service_variation_version: r.svc.version } : {}) }] } } });
+  }catch(err){
+    const why = String(err.code || '') + ' ' + String(err.message || '');
+    if(/card/i.test(why)){ const e = new Error('Square needs a card on file'); e.code = 'card_required'; throw e; }
+    if(/unavailable|conflict|not available|taken/i.test(why)){ const e = new Error('that time was just taken in Square'); e.code = 'conflict'; e.offers = pick(times.filter((t) => t !== slot), p.starts_at); throw e; }
+    throw err;
+  }
+  const id = data.booking?.id;
+  if(!id) throw new Error('Square returned no booking');
+  // Verify: read it back from Square before anyone hears "booked".
+  let check = null;
+  try{ check = (await sq(integration, `/v2/bookings/${encodeURIComponent(id)}`)).booking || null; }catch(_){ check = null; }
+  if(check && /CANCELLED|DECLINED|NO_SHOW/.test(String(check.status || ''))){ const e = new Error('Square shows that booking as ' + check.status); e.code = 'not_confirmed'; throw e; }
+  const b = check || data.booking;
+  const dur = (b.appointment_segments || []).reduce((t, x) => t + (Number(x.duration_minutes) || 0), 0) || r.svc.durationMin;
+  return { id, external_id: id, verified: !!check, starts_at: b.start_at, ends_at: new Date(Date.parse(b.start_at) + dur * 60000).toISOString(), service: r.svc.name, staff: r.nameOf(slot.teamMemberId) || r.staffName, state: b.status };
 }

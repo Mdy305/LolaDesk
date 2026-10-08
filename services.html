@@ -300,13 +300,16 @@ function priceFmt(s){
 function isPremium(s){ return Number(s.price||0) >= 250; }
 function activeList(){ return SVCS.filter(s => s.is_active !== false); }
 
-// Same rule as the availability engine: a stylist with picks does only those
-// services; a stylist with no picks does everything. Only active stylists
-// with weekly hours can actually be booked.
+// Same rule as the availability engine (staffForService): a stylist with
+// picks does only those services; a stylist with no picks does everything; a
+// service nobody picked goes to the whole team when there's one stylist or
+// "any available" is on. Only active stylists with weekly hours can be booked.
 function bookableStylists(s){
   if(!SETUP || !Array.isArray(SETUP.staff)) return null;
-  return SETUP.staff.filter(m => m.is_active !== false && m.has_hours &&
-    (!(m.services||[]).length || (m.services||[]).includes(s.id)));
+  const team = SETUP.staff.filter(m => m.is_active !== false);
+  let who = team.filter(m => !(m.services||[]).length || (m.services||[]).includes(s.id));
+  if(!who.length && team.length && (team.length === 1 || SETUP.allow_any_staff !== false)) who = team;
+  return who.filter(m => m.has_hours);
 }
 function setupHint(s){
   const who = bookableStylists(s);

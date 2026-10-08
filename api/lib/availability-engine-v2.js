@@ -34,17 +34,27 @@ function activeSegments(startIso, phases, allowProcessingOverlap){
 //  • a stylist with picks takes only the services they picked;
 //  • a stylist with no picks does everything ("If none picked, Lola offers
 //    this staff for every service").
-// Links to removed services are ignored. No links at all → everyone does everything.
-async function eligibleStaff(tenantId,serviceId,requestedStaffId,activeServiceIds=null){
-  const staff=await listStaff(tenantId);
-  const all=await getStaffServices(tenantId);
-  const links=activeServiceIds?all.filter(x=>activeServiceIds.has(x.service_id)):all;
-  const specialised=new Set(links.map(x=>x.staff_id));
-  const serviceLinks=links.filter(x=>x.service_id===serviceId);
+// Links to removed services (or from stylists no longer active) are ignored.
+// No links at all → everyone does everything. A service NOBODY can take
+// (every stylist picked other services) is still bookable by the whole team
+// when the salon has a single stylist or offers "any available" — a new
+// service must never silently vanish from the booking page.
+export function staffForService({staff=[],links=[],serviceId,activeServiceIds=null,allowAny=true}){
+  const ids=new Set(staff.map(x=>x.id));
+  const live=links.filter(x=>ids.has(x.staff_id) && (!activeServiceIds || activeServiceIds.has(x.service_id)));
+  const specialised=new Set(live.map(x=>x.staff_id));
+  const serviceLinks=live.filter(x=>x.service_id===serviceId);
   const allowed=new Set(serviceLinks.map(x=>x.staff_id));
   let out=staff.filter(x=>allowed.has(x.id) || !specialised.has(x.id));
-  if(requestedStaffId) out=out.filter(x=>x.id===requestedStaffId);
+  if(!out.length && staff.length && (staff.length===1 || allowAny)) out=staff.slice();
   return {staff:out,links:serviceLinks};
+}
+async function eligibleStaff(tenantId,serviceId,requestedStaffId,activeServiceIds=null,settings=null){
+  const staff=await listStaff(tenantId);
+  const all=await getStaffServices(tenantId);
+  const res=staffForService({staff,links:all,serviceId,activeServiceIds,allowAny:settings?.allow_any_staff!==false});
+  if(requestedStaffId) res.staff=res.staff.filter(x=>x.id===requestedStaffId);
+  return res;
 }
 
 // ── Salon hours (booking-settings.html): business_hours {mon..sun:{open,close,closed}}
@@ -163,7 +173,7 @@ export async function getAvailability({tenantId,serviceId,date,staffId=null,limi
     start:b.start_time?zonedLocalToUtc(dateKey,b.start_time,timeZone):from,
     end:b.end_time?zonedLocalToUtc(dateKey,b.end_time,timeZone):to
   }));
-  const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId,new Set(services.map(x=>x.id)));
+  const {staff,links}=await eligibleStaff(tenantId,serviceId,staffId,new Set(services.map(x=>x.id)),settings);
   const existing=await listBookings(tenantId,from,to);
   const holds=await listActiveHolds(tenantId,from,to);
   const external=await listExternalBusy(tenantId,from,to,existing);
