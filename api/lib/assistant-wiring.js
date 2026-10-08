@@ -295,7 +295,21 @@ export async function wireAssistant({ heal = false } = {}) {
     const core = Object.fromEntries(Object.entries(patch).filter(([k]) => !OPTIONAL.includes(k)));
     const extras = OPTIONAL.filter((k) => k in patch);
     try { if (Object.keys(core).length) await updateAssistant(id, core); healed = true; }
-    catch (e) { error = 'Telnyx refused the update: ' + String(e?.message || e); }
+    catch (e) {
+      // Refused as a whole: send each part on its own, so one setting Telnyx dislikes can't block the
+      // rest (the empty-value cleanup first), and name the part it refused.
+      const firstErr = String(e?.message || e);
+      const ORDER = ['dynamic_variables', 'greeting', 'instructions', 'tools', 'tool_ids', 'dynamic_variables_webhook_url'];
+      const keys = [...ORDER.filter((k) => k in core), ...Object.keys(core).filter((k) => !ORDER.includes(k))];
+      const refused = [];
+      for (const k of keys) {
+        const part = k === 'greeting' && core.dynamic_variables ? { greeting: core.greeting, dynamic_variables: core.dynamic_variables } : { [k]: core[k] };
+        try { await updateAssistant(id, part); healed = true; }
+        catch (e2) { refused.push(k + ': ' + String(e2?.message || e2).slice(0, 220)); }
+      }
+      if (refused.length) error = 'Telnyx refused ' + refused.join(' | ');
+      else if (!healed) error = 'Telnyx refused the update: ' + firstErr;
+    }
     for (const k of extras) {
       try { await updateAssistant(id, { [k]: patch[k] }); healed = healed || !error; }
       catch (e) {

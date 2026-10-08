@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-fixall';
+export const RELEASE = 'lola-why';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -366,9 +366,19 @@ const scrub = (t) => String(t || '')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…')
   .replace(/\s*\((?:Telnyx said: )?[^()]*(?:error|refused|HTTP|status|\d{3})[^()]*\)/gi, '');
+// Provider error text (Telnyx / ElevenLabs validation messages) is what tells the owner exactly what to
+// fix, so it stays — ids, numbers and anything key-shaped are scrubbed first.
+const scrubDetail = (t) => String(t || '')
+  .replace(/assistant-[0-9a-f-]{8,}/gi, 'assistant-…')
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '…')
+  .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
+  .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
+  .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
+const PUBLIC_DETAIL = ['wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
+  for (const k of PUBLIC_DETAIL) if (typeof full?.live?.[k] === 'string' && full.live[k]) live[k] = scrubDetail(full.live[k]);
   return {
     ok: !!full?.ok, release: full?.release || RELEASE, live,
     healed: (full?.healed || []).map(scrub), fixes: (full?.fixes || []).map(scrub),
