@@ -65,15 +65,20 @@ const toolName = (t) => norm(t?.webhook?.name || t?.function?.name || t?.name ||
  * attached shared tool share a name. Keep the inline one (LolaDesk wires and signs it) and detach the
  * shared copy — detach only, the shared tool itself is never deleted. Returns null when nothing collides.
  */
-export async function sharedToolCollisions(assistant, inlineTools) {
+/** The names Telnyx lists in "names must be unique, the following are not unique: a, b, c". */
+export function duplicateNamesFrom(e) {
+  const m = errText(e).match(/not unique:?\s*([^"\]\}\n]+)/i);
+  return m ? m[1].split(',').map((x) => norm(x.replace(/[.'"]/g, ''))).filter(Boolean) : [];
+}
+export async function sharedToolCollisions(assistant, inlineTools, alsoNames = []) {
   const ids = Array.isArray(assistant?.tool_ids) ? assistant.tool_ids.filter(Boolean) : [];
   if (!ids.length) return null;
-  const inline = new Set((Array.isArray(inlineTools) ? inlineTools : []).map(toolName).filter(Boolean));
+  const inline = new Set([...(Array.isArray(inlineTools) ? inlineTools : []).map(toolName), ...alsoNames].filter(Boolean));
   const named = await Promise.all(ids.map(async (id) => {
     try {
       const t = telnyxData(await telnyxRequest('/ai/tools/' + encodeURIComponent(id), { timeoutMs: 8000 })) || {};
-      const d = t.tool_definition || t;
-      return { id, name: norm(d?.webhook?.name || d?.function?.name || t.display_name || '') };
+      const d = t.tool_definition || t.definition || t;
+      return { id, name: norm(d?.webhook?.name || d?.function?.name || d?.name || t.name || t.display_name || '') };
     } catch (_) { return { id, name: '' }; }
   }));
   const seen = new Set(), keep = [], detached = [];
@@ -81,6 +86,12 @@ export async function sharedToolCollisions(assistant, inlineTools) {
     if (x.name && (inline.has(x.name) || seen.has(x.name))) { detached.push(x.name); continue; }
     if (x.name) seen.add(x.name);
     keep.push(x.id);
+  }
+  // Telnyx named duplicates but no shared tool's name could be read: detach the unreadable ones (never deleted —
+  // they stay in Telnyx → AI → Tools), since Lola's own copies of those skills are already inline.
+  if (!detached.length && alsoNames.length && named.some((x) => !x.name)) {
+    const unknown = named.filter((x) => !x.name).map((x) => x.id);
+    return { tool_ids: keep.filter((id) => !unknown.includes(id)), detached: unknown.map(() => 'unnamed shared tool') };
   }
   return detached.length ? { tool_ids: keep, detached } : null;
 }
@@ -120,7 +131,7 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
     const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
-    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools).catch(() => null) : null;
+    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, duplicateNamesFrom(e)).catch(() => null) : null;
     return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) });
   }
 }
@@ -236,7 +247,13 @@ export async function wireAssistant({ heal = false } = {}) {
   const dv = parse(a.dynamic_variables_webhook_url);
   const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname) && toolKeyOk(dv.searchParams.get('k'), 'variables');
   // Tools every Lola must have (added once, never duplicated).
-  const REQUIRED = [{ name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } }];
+  const REQUIRED = [
+    { name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } },
+    { name: 'list_services', description: 'The salon menu. Call when someone asks what services you offer, before recommending or booking anything you are unsure exists.', props: {} },
+    { name: 'confirm_booking', description: 'Read back the caller\u2019s upcoming appointment (day, time, service, stylist). Call when they ask \u201cwhen is my appointment?\u201d or want to confirm it.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' } } },
+    { name: 'cancel_appointment', description: 'Cancel the caller\u2019s own upcoming appointment. Confirm which appointment first and say the salon\u2019s cancellation policy if there is one.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' }, booking_id: { type: 'string', description: 'Only if you already have it' } } },
+    { name: 'capture_lead', description: 'Save someone who is interested but not booking now (a question, a quote, a callback), so the salon follows up.', props: { client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number' }, service_requested: { type: 'string', description: 'What they are interested in' } } },
+  ];
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
   const bookingParams = [];
   for (let i = 0; i < next.length; i++) { const u = withBookingParams(next[i]); if (u) { next[i] = u; bookingParams.push(u.webhook.name); } }
@@ -299,11 +316,14 @@ export async function wireAssistant({ heal = false } = {}) {
       // Refused as a whole: send each part on its own, so one setting Telnyx dislikes can't block the
       // rest (the empty-value cleanup first), and name the part it refused.
       const firstErr = String(e?.message || e);
-      const ORDER = ['dynamic_variables', 'greeting', 'instructions', 'tools', 'tool_ids', 'dynamic_variables_webhook_url'];
-      const keys = [...ORDER.filter((k) => k in core), ...Object.keys(core).filter((k) => !ORDER.includes(k))];
+      // tools + tool_ids travel together: a shared copy is detached in the same save that keeps the inline one.
+      const ORDER = ['dynamic_variables', 'greeting', 'instructions', 'tools', 'dynamic_variables_webhook_url'];
+      const keys = [...ORDER.filter((k) => k in core), ...Object.keys(core).filter((k) => !ORDER.includes(k) && k !== 'tool_ids')];
+      if (!('tools' in core) && 'tool_ids' in core) keys.push('tool_ids');
       const refused = [];
       for (const k of keys) {
-        const part = k === 'greeting' && core.dynamic_variables ? { greeting: core.greeting, dynamic_variables: core.dynamic_variables } : { [k]: core[k] };
+        const part = k === 'greeting' && core.dynamic_variables ? { greeting: core.greeting, dynamic_variables: core.dynamic_variables }
+          : k === 'tools' && 'tool_ids' in core ? { tools: core.tools, tool_ids: core.tool_ids } : { [k]: core[k] };
         try { await updateAssistant(id, part); healed = true; }
         catch (e2) { refused.push(k + ': ' + String(e2?.message || e2).slice(0, 220)); }
       }
