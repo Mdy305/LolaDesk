@@ -91,6 +91,34 @@ export function normalizeHours(input){
   return [...byDay.values()].sort((a, b) => a.day_of_week - b.day_of_week);
 }
 
+/**
+ * The salon's opening hours (booking_settings.business_hours, or its metadata
+ * copy) as staff_schedules rows — the week a stylist gets when nobody set
+ * theirs. null when the salon has no usable hours.
+ */
+export function salonWeekRows(settings){
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const md = isObj(settings?.metadata) ? settings.metadata : {};
+  const bh = isObj(settings?.business_hours) ? settings.business_hours : (isObj(md.business_hours) ? md.business_hours : null);
+  if(!bh) return null;
+  try{ const rows = normalizeHours(bh); return rows.length ? rows : null; }catch{ return null; }
+}
+
+/**
+ * Give a stylist with NO schedule rows at all the salon's hours (fallback:
+ * 09:00–19:00 every day, the booking seed's default). A stylist with any
+ * row — including the "off every day" marker — is the owner's choice and is
+ * never touched. Returns the rows written ([] when nothing was missing).
+ */
+export async function fillMissingStaffHours(c, tenantId, staffId, settings){
+  const { data: have, error } = await c.from('staff_schedules').select('staff_id').eq('tenant_id', tenantId).eq('staff_id', staffId).limit(1);
+  if(error || (have || []).length) return [];
+  const week = salonWeekRows(settings) || [0, 1, 2, 3, 4, 5, 6].map(d => ({ day_of_week: d, start_time: '09:00', end_time: '19:00' }));
+  const ins = await c.from('staff_schedules').insert(week.map(r => ({ tenant_id: tenantId, staff_id: staffId, ...r })));
+  if(ins?.error) throw ins.error;
+  return week;
+}
+
 /** Working rows only (a 00:00–00:00 row is the "fully off" marker). */
 export function workingRows(rows){
   return (rows || []).filter(r => {

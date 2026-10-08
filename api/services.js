@@ -16,6 +16,7 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 import { ensureBookingSetupSchema } from './lib/migrate.js';
 import { tolerantWrite, loadSetup, workingRows } from './lib/setup-store.js';
+import { getBookingSettings } from './lib/booking-repository.js';
 
 const FIELDS = [
   'name', 'category', 'description', 'duration_minutes', 'price', 'currency',
@@ -88,7 +89,9 @@ export default async function handler(req, res) {
             has_hours: workingRows(s.schedules.filter(r => r.staff_id === m.id)).length > 0,
             services: s.links.filter(l => l.staff_id === m.id).map(l => l.service_id)
           })),
-          links: s.links.map(l => ({ staff_id: l.staff_id, service_id: l.service_id, custom_price: l.custom_price ?? null, custom_duration_minutes: l.custom_duration_minutes ?? null }))
+          links: s.links.map(l => ({ staff_id: l.staff_id, service_id: l.service_id, custom_price: l.custom_price ?? null, custom_duration_minutes: l.custom_duration_minutes ?? null })),
+          // the engine's rule for a service nobody picked (staffForService)
+          allow_any_staff: (await getBookingSettings(tenant.id).catch(() => null))?.allow_any_staff !== false
         };
       } catch (_) { /* hints are optional */ }
       const services = (data || []).map(s => ({ ...s, is_active: s.is_active !== false && s.active !== false }));

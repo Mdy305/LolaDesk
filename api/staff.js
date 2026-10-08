@@ -16,7 +16,8 @@ import { bearer, getUserFromToken } from './lib/auth.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 import { ensureBookingSetupSchema } from './lib/migrate.js';
-import { tolerantWrite, loadSetup, decorateStaff, replaceSchedule, replaceStaffServices, normalizeHours } from './lib/setup-store.js';
+import { tolerantWrite, loadSetup, decorateStaff, replaceSchedule, replaceStaffServices, normalizeHours, fillMissingStaffHours } from './lib/setup-store.js';
+import { getBookingSettings } from './lib/booking-repository.js';
 
 const OPTIONAL = ['first_name', 'last_name', 'phone', 'email', 'color', 'photo_url'];
 
@@ -64,6 +65,10 @@ export default async function handler(req,res){
       if(links) await replaceStaffServices(c,tenant.id,staffId,links);
       if(b.hours!=null){
         await replaceSchedule(c,tenant.id,staffId,b.hours);
+      }else{
+        // No hours sent and none on file → the salon's opening hours, so a new
+        // stylist is bookable right away (never touches hours the owner set).
+        await fillMissingStaffHours(c,tenant.id,staffId,await getBookingSettings(tenant.id).catch(()=>null));
       }
       const setup=await loadSetup(c,tenant.id);
       const fresh=setup.staff.find(s=>s.id===staffId)||data;

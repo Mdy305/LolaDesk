@@ -799,6 +799,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       <div class="setup-actions" id="setupActions"></div>
     </section>
 
+    <!-- Your booking page (booking-ready.js): shown only until clients can
+         book online — hours, services, team, team hours, online booking. -->
+    <div data-booking-ready data-mode="setup" hidden></div>
+
     <div class="grid-main">
       <section class="lola-panel">
         <div id="usageBanner" style="display:none"></div>
@@ -1004,6 +1008,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 <script src="lola-data.js"></script>
 <script src="lola-live-conversation.js"></script>
 <script src="/lola-setup-card.js" defer></script>
+<script src="/booking-ready.js" defer></script>
 <script>window.__LOLADESK_API__="/api/lola";</script>
 <script>
 (async function(){

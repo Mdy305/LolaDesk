@@ -1,4 +1,6 @@
 // GET  /api/booking-settings → the salon's booking rules (tenant-scoped)
+// GET  /api/booking-settings?action=readiness → is the salon's booking page live?
+//      { ready, steps:[{id,done,label,detail,href}], next, booking_url } (lib/booking-readiness.js)
 // POST /api/booking-settings → save them (PATCH works too)
 //
 // Salon hours are real: business_hours {mon..sun:{open:'HH:MM',close,closed}},
@@ -13,6 +15,7 @@ import { authenticatedTenant } from './lib/tenant-context.js';
 import { getBookingSettings } from './lib/booking-repository.js';
 import { ensureBookingSetupSchema } from './lib/migrate.js';
 import { missingColumn, clockToMinutes, minutesToClock } from './lib/setup-store.js';
+import { bookingReadiness } from './lib/booking-readiness.js';
 
 const WRITABLE=new Set([
   'timezone','slot_interval_minutes','minimum_notice_minutes','booking_horizon_days','cancellation_window_hours',
@@ -62,6 +65,10 @@ export default async function handler(req,res){
     const tenant=await authenticatedTenant(req);
     if(!tenant?.id) return res.status(401).json({ok:false,error:'not_authenticated'});
     await ensureBookingSetupSchema();
+    if(req.method==='GET' && String(req.query?.action||'')==='readiness'){
+      res.setHeader('Cache-Control','no-store');
+      return res.json({ok:true,...(await bookingReadiness(tenant))});
+    }
     if(req.method==='GET') return res.json({ok:true,settings:flattenSettings(await getBookingSettings(tenant.id))});
     if(req.method==='POST' || req.method==='PATCH'){
       const c=db();

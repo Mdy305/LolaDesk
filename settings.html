@@ -247,10 +247,13 @@
     <div class="msg" id="bookMsg"></div>
   </div>
 
-  <div class="card">
-    <h3>Your booking page</h3>
-    <div class="desc">Share this link on your website, Instagram bio, and Google profile.</div>
-    <div class="copy-box"><span id="bookLink">Loading...</span><button onclick="copyLink()">Copy</button></div>
+  <div class="card" id="bookingPageCard">
+    <!-- booking-ready.js: setup steps until the page is live, then the link (Copy + Open) -->
+    <div data-booking-ready data-bare>
+      <h3>Your booking page</h3>
+      <div class="desc">Share this link on your website, Instagram bio, and Google profile.</div>
+      <div class="copy-box"><span id="bookLink">Loading...</span><button onclick="copyLink()">Copy</button></div>
+    </div>
   </div>
 
   <div class="card" id="lolaWidgetCard">
@@ -404,7 +407,7 @@
 </div>
 
 </main></div>
-<script src="auth-guard.js"></script><script src="sidebar.js"></script>
+<script src="auth-guard.js"></script><script src="sidebar.js"></script><script src="/booking-ready.js" defer></script>
 <script>
 let TENANT=null,SETTINGS={},selectedNumber='',STORED_DEPOSITS={};
 function token(){return window.LolaAuth?.token||localStorage.getItem('loladesk_token')||'';}

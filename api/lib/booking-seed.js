@@ -31,6 +31,11 @@
  */
 
 import { db } from './db.js';
+import { salonWeekRows, tolerantWrite } from './setup-store.js';
+
+// The stand-in stylist a brand-new salon gets so Lola can book on day one.
+// Retired (is_active=false) as soon as a real stylist with hours exists.
+export const PLACEHOLDER_STAFF = 'Any available team member';
 
 // Default availability week, Monday (1) .. Sunday (0). Sun=0, Mon=1, ... Sat=6.
 const WEEK = [1,2,3,4,5,6,0];
@@ -72,7 +77,7 @@ export async function ensureBookingBaseline(tenantId){
   // Gate: every baseline piece must be present, or we seed the missing ones.
   // booking_settings
   const { data: existingSettings } = await c.from('booking_settings')
-    .select('tenant_id').eq('tenant_id', tenantId).maybeSingle();
+    .select('*').eq('tenant_id', tenantId).maybeSingle();   // '*': older DBs may lack business_hours
   if(!existingSettings){
     const { error: settingsErr } = await c.from('booking_settings').insert({ tenant_id: tenantId });
     if(settingsErr) reject(settingsErr);
@@ -110,11 +115,11 @@ export async function ensureBookingBaseline(tenantId){
   // schedule (e.g. added after provisioning) would otherwise render the
   // availability engine slotless, so this heals partial/missing schedules too.
   const { data: staffRows } = await c.from('staff')
-    .select('id').eq('tenant_id', tenantId);
+    .select('id,name,is_active').eq('tenant_id', tenantId);
   let staffIds = (staffRows || []).map(s => s.id);
   if(!staffIds.length){
     const { data: staff, error: staffErr } = await c.from('staff').insert({
-      tenant_id: tenantId, name: 'Any available team member', role: 'Stylist', is_active: true
+      tenant_id: tenantId, name: PLACEHOLDER_STAFF, role: 'Stylist', is_active: true
     }).select().single();
     if(staffErr) reject(staffErr);
     staffIds = [staff.id];
@@ -122,9 +127,13 @@ export async function ensureBookingBaseline(tenantId){
     hasAllPieces = false;
   }
 
+  // A stylist with no hours gets the salon's opening hours (when the salon
+  // has them), else the 09:00–19:00 default week.
+  const salonWeek = salonWeekRows(existingSettings);
+  let schedRows = [];
   if(staffIds.length){
-    const { data: schedRows } = await c.from('staff_schedules')
-      .select('staff_id,day_of_week').in('staff_id', staffIds);
+    ({ data: schedRows } = await c.from('staff_schedules')
+      .select('staff_id,day_of_week,start_time,end_time').in('staff_id', staffIds));
     const have = new Map();
     for(const r of (schedRows || [])){
       if(!have.has(r.staff_id)) have.set(r.staff_id, new Set());
@@ -136,15 +145,37 @@ export async function ensureBookingBaseline(tenantId){
       // A day the owner removed (e.g. Sunday closed) must stay closed — it
       // used to be re-added on every calendar load.
       if(have.has(sid)) continue;
-      const days = new Set();
+      if(salonWeek){
+        for(const r of salonWeek) rows.push({ tenant_id: tenantId, staff_id: sid, day_of_week: r.day_of_week, start_time: r.start_time + ':00', end_time: r.end_time + ':00' });
+        continue;
+      }
       for(const day of WEEK){
-        if(!days.has(day)) rows.push({ tenant_id: tenantId, staff_id: sid, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' });
+        rows.push({ tenant_id: tenantId, staff_id: sid, day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' });
       }
     }
     if(rows.length){
       const { error: schedErr } = await c.from('staff_schedules').insert(rows);
       if(schedErr) reject(schedErr);
       seeded.push('staff_schedules');
+      schedRows = [...(schedRows || []), ...rows];
+    }
+  }
+
+  // The stand-in stylist steps aside once a real stylist with weekly hours
+  // exists (unless clients are already booked with it), so the public page
+  // and Lola stop offering a stylist who doesn't exist.
+  const placeholders = (staffRows || []).filter(s => s.name === PLACEHOLDER_STAFF && s.is_active !== false);
+  if(placeholders.length){
+    const working = new Set((schedRows || []).filter(r => String(r.end_time || '') > String(r.start_time || '') && !/^00:00/.test(String(r.end_time || ''))).map(r => r.staff_id));
+    const realReady = (staffRows || []).some(s => s.name !== PLACEHOLDER_STAFF && s.is_active !== false && working.has(s.id));
+    if(realReady){
+      for(const p of placeholders){
+        const { data: upcoming } = await c.from('bookings').select('id,status')
+          .eq('tenant_id', tenantId).eq('staff_id', p.id).gt('start_time', new Date().toISOString());
+        if((upcoming || []).some(b => !/^(cancel|no[-_ ]?show)/i.test(String(b.status || '')))) continue;
+        const { error } = await tolerantWrite(x => c.from('staff').update(x).eq('id', p.id).eq('tenant_id', tenantId), { is_active: false, active: false }, { required: ['is_active'] });
+        if(!error) seeded.push('retired_placeholder_staff');
+      }
     }
   }
 
