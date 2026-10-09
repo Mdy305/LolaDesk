@@ -67,7 +67,7 @@ const toolName = (t) => norm(t?.webhook?.name || t?.function?.name || t?.name ||
  */
 /** The names Telnyx lists in "names must be unique, the following are not unique: a, b, c". */
 export function duplicateNamesFrom(e) {
-  const m = errText(e).match(/not unique:?\s*([^"\]\}\n]+)/i);
+  const m = errText(e).match(/not unique:?\s*([A-Za-z0-9_\- ,]+)/i);
   return m ? m[1].split(',').map((x) => norm(x.replace(/[.'"]/g, ''))).filter(Boolean) : [];
 }
 export async function sharedToolCollisions(assistant, inlineTools, alsoNames = []) {
@@ -94,6 +94,31 @@ export async function sharedToolCollisions(assistant, inlineTools, alsoNames = [
     return { tool_ids: keep.filter((id) => !unknown.includes(id)), detached: unknown.map(() => 'unnamed shared tool') };
   }
   return detached.length ? { tool_ids: keep, detached } : null;
+}
+
+/**
+ * An MCP server attached to Lola (Telnyx → AI → Assistants → MCP Servers) brings its own tools; when one shares a
+ * name with Lola's signed inline tools Telnyx refuses every tools save. Detach only the server(s) that collide
+ * (or whose tool list can't be read) — the MCP server itself is never deleted and can be re-attached any time.
+ */
+export let lastMcpDetached = [];
+export async function mcpCollisions(assistant, names = []) {
+  const list = Array.isArray(assistant?.mcp_servers) ? assistant.mcp_servers : [];
+  if (!list.length || !names.length) return null;
+  const want = new Set(names.map(norm));
+  const keep = [], detached = [];
+  for (const m of list) {
+    const id = typeof m === 'string' ? m : (m?.id || m?.mcp_server_id || null);
+    let allowed = Array.isArray(m?.allowed_tools) && m.allowed_tools.length ? m.allowed_tools : null;
+    let name = (m && typeof m === 'object' && m.name) || null;
+    if (id && (!allowed || !name)) {
+      try { const sv = telnyxData(await telnyxRequest('/ai/mcp_servers/' + encodeURIComponent(id), { timeoutMs: 8000 })) || {}; if (!allowed && Array.isArray(sv.allowed_tools) && sv.allowed_tools.length) allowed = sv.allowed_tools; name = name || sv.name || null; } catch (_) {}
+    }
+    const hits = allowed ? allowed.map(norm).filter((n) => want.has(n)) : null;   // null: it exposes every tool it has
+    if (hits && !hits.length) keep.push(m);
+    else detached.push('MCP server ' + (name || id || '?') + (hits ? ' (' + hits.join(', ') + ')' : ''));
+  }
+  return detached.length ? { mcp_servers: keep, detached } : null;
 }
 
 /**
@@ -131,8 +156,19 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
     const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
-    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, duplicateNamesFrom(e)).catch(() => null) : null;
-    return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) });
+    const dupNames = dupTools(e) ? duplicateNamesFrom(e) : [];
+    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
+    const retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) };
+    try { return await send(retry); }
+    catch (e2) {
+      // Still not unique: the other copy lives in an attached MCP server. Detach that server (never deleted).
+      if (!dupTools(e2)) throw e2;
+      const mcp = await mcpCollisions(cur, duplicateNamesFrom(e2).length ? duplicateNamesFrom(e2) : dupNames).catch(() => null);
+      if (!mcp) throw e2;
+      const out = await send({ ...retry, mcp_servers: mcp.mcp_servers });
+      lastMcpDetached = mcp.detached;
+      return out;
+    }
   }
 }
 
@@ -305,6 +341,7 @@ export async function wireAssistant({ heal = false } = {}) {
     if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
   } catch (_) { voice = null; }
   let healed = false, error = null;
+  lastMcpDetached = [];
   if (heal && Object.keys(patch).length) {
     // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
     // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
@@ -346,7 +383,7 @@ export async function wireAssistant({ heal = false } = {}) {
     ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: duplicateTools,
+    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached],
     booking: { rules: bookingRules || (healed && !error && !!patch.instructions), asks_full_details: !bookingParams.length || (healed && !error) },
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
