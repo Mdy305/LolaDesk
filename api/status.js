@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-why';
+export const RELEASE = 'lola-tools2';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -243,7 +243,14 @@ export async function buildStatus() {
             if (w.error) {
               live.wiring_error = clip(w.error);
               // Still refused for duplicate names: show exactly what Telnyx holds, so it can be fixed in one look.
-              if (/unique/i.test(String(w.error))) live.tools_inventory = { inline: (Array.isArray(a.tools) ? a.tools : []).map((t) => t?.webhook?.name || t?.function?.name || t?.type).filter(Boolean), shared_ids: Array.isArray(a.tool_ids) ? a.tool_ids : [] };
+              if (/unique/i.test(String(w.error))) {
+                live.tools_inventory = { inline: (Array.isArray(a.tools) ? a.tools : []).map((t) => t?.webhook?.name || t?.function?.name || t?.type).filter(Boolean), shared_ids: Array.isArray(a.tool_ids) ? a.tool_ids : [] };
+                // In plain words for the check: every tool Telnyx holds on Lola, and where it comes from.
+                const shared = await Promise.all(live.tools_inventory.shared_ids.slice(0, 20).map(async (tid) => {
+                  try { const { telnyxRequest, telnyxData } = await import('./lib/telnyx-client.js'); const t = telnyxData(await telnyxRequest('/ai/tools/' + encodeURIComponent(tid), { timeoutMs: 5000 })) || {}; const d = t.tool_definition || t.definition || t; return 'shared:' + (d?.webhook?.name || d?.function?.name || d?.name || t.name || t.display_name || t.type || '?'); } catch (e) { return 'shared:? (' + String(e?.status || e?.message || '').slice(0, 30) + ')'; }
+                }));
+                live.tools_list = [...live.tools_inventory.inline.map((n) => 'inline:' + n), ...shared, 'keys:' + Object.keys(a).filter((k) => /tool|integration|mcp|workflow|mission/i.test(k)).join('+')].join(', ').slice(0, 900);
+              }
             }
           } catch (_) {}
         }
@@ -374,7 +381,7 @@ const scrubDetail = (t) => String(t || '')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
-const PUBLIC_DETAIL = ['wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_DETAIL = ['tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
