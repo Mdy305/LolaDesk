@@ -40,6 +40,7 @@
     {"path":"/api/cron/telecom-sync","schedule":"*/30 * * * *"},
     {"path":"/api/cron/conversation-reports","schedule":"*/5 * * * *"},
     {"path":"/api/cron/release-numbers","schedule":"41 6 * * *"},
-    {"path":"/api/cron/no-show-scan","schedule":"*/15 * * * *"}
+    {"path":"/api/cron/no-show-scan","schedule":"*/15 * * * *"},
+    {"path":"/api/cron/studio-followup","schedule":"17 * * * *"}
   ]
 }

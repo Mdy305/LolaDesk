@@ -26,6 +26,7 @@
 import { db } from './lib/db.js';
 import { stripe as stripeClient, stripeApi, stripeRefund, deactivatePaymentLink } from './lib/stripe.js';
 import { planFromPrice, normalizePlan } from './lib/plans.js';
+import { studioDepositPaid } from './lib/studio-server.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -291,6 +292,10 @@ async function handleConnectEvent(c, event) {
   if (connectedAccountId) {
     const { data: acct } = await c.from('stripe_connect_accounts').select('tenant_id').eq('stripe_account_id', connectedAccountId).maybeSingle();
     tenantId = acct?.tenant_id || null;
+  }
+  // MMA Studio: a $500 hair deposit paid on the salon's own account (the tenant must match the account).
+  if (event.type === 'checkout.session.completed' && obj.metadata?.source === 'mma-studio' && tenantId && obj.metadata.tenant_id === tenantId) {
+    await studioDepositPaid(c, obj).catch((e) => console.error('[studio] deposit paid', e.message));
   }
     switch (event.type) {
       // ── Payment lifecycle ──────────────────────────────────

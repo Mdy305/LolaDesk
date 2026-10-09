@@ -19,7 +19,7 @@ export { sendSms as sendSMS };
 
 async function _sendSmsCore({
   from, to, text, profileId, tenantId,
-  skipOptOut = false, type = 'SMS', channel = 'sms',
+  skipOptOut = false, type = 'SMS', channel = 'sms', mediaUrls = null,
 } = {}) {
   const isWhatsApp = String(type || channel || '').toUpperCase() === 'WHATSAPP';
   if (!skipOptOut) {
@@ -40,6 +40,9 @@ async function _sendSmsCore({
   } else {
     payload.text = text;
     if (profileId) payload.messaging_profile_id = profileId;
+    // Picture message (MMS): Telnyx fetches each public https URL.
+    const media = (Array.isArray(mediaUrls) ? mediaUrls : []).filter(u => /^https:\/\//.test(String(u || ''))).slice(0, 10);
+    if (media.length) { payload.media_urls = media; payload.type = 'MMS'; }
   }
 
   const r = await fetch(isWhatsApp ? 'https://api.telnyx.com/v2/messages/whatsapp' : 'https://api.telnyx.com/v2/messages', {
