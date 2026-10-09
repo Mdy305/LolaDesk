@@ -10,10 +10,13 @@
  * The secret's identifier carries a short fingerprint of the key, so rotating the ElevenLabs key
  * in Vercel links the new one automatically (the key itself is never logged or returned).
  *   LOLA_PHONE_ELEVEN_MODEL   optional, defaults to eleven_multilingual_v2 (Telnyx's documented model)
- *   VOICE_PROVIDER=telnyx     the owner's explicit opt-out: assistants are then left alone
+ *   VOICE_PROVIDER=telnyx     the owner chose Telnyx: her ONE voice is then the Telnyx voice (LOLA_TELNYX_VOICE,
+ *                             default Telnyx.Ultra.Clara) — the app, every assistant and the calls we place.
  */
 import crypto from 'node:crypto';
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
+import { telnyxVoice } from './elevenlabs.js';
+const telnyxMode = () => process.env.VOICE_PROVIDER === 'telnyx';
 
 // ── Calls we place (demo, owner bridge, forwarding test): Telnyx plays HER voice, rendered by
 // /api/speak-lola (the same ElevenLabs voice as the app). Signed, so Telnyx's fetch is never
@@ -36,7 +39,7 @@ export const phoneModel = () => process.env.LOLA_PHONE_ELEVEN_MODEL || 'eleven_m
 
 /** Her phone voice id for Telnyx, or null when it can't be set (no ElevenLabs key / voice, or opted out). */
 export function lolaPhoneVoice() {
-  if (process.env.VOICE_PROVIDER === 'telnyx') return null;
+  if (telnyxMode()) return process.env.TELNYX_API_KEY ? telnyxVoice() : null;
   if (!process.env.ELEVENLABS_API_KEY || !voiceId()) return null;
   return `ElevenLabs.${phoneModel()}.${voiceId()}`;
 }
@@ -66,6 +69,7 @@ export async function ensureElevenSecret() {
 
 /** Is this assistant speaking with Lola's one voice? */
 export function voiceIsLola(vs) {
+  if (telnyxMode()) return String(vs?.voice || '') === telnyxVoice();
   const want = voiceId();
   const v = String(vs?.voice || '');
   return !!want && /^ElevenLabs\./i.test(v) && v.split('.').pop() === want && !!vs?.api_key_ref;
@@ -75,6 +79,7 @@ export function voiceIsLola(vs) {
 export async function lolaVoiceSettings(current = {}) {
   const voice = lolaPhoneVoice();
   if (!voice) return null;
+  if (telnyxMode()) { const { api_key_ref, ...rest } = (current && typeof current === 'object') ? current : {}; return { ...rest, voice }; }
   return { ...(current && typeof current === 'object' ? current : {}), voice, api_key_ref: await ensureElevenSecret() };
 }
 
@@ -82,6 +87,7 @@ export async function lolaVoiceSettings(current = {}) {
 export async function lolaSpeakVoice() {
   const voice = lolaPhoneVoice();
   if (!voice) return null;
+  if (telnyxMode()) return { voice };
   try { return { voice, voice_settings: { type: 'elevenlabs', api_key_ref: await ensureElevenSecret() } }; } catch (_) { return null; }
 }
 

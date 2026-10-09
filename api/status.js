@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-tools3';
+export const RELEASE = 'lola-voice';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
