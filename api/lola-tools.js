@@ -693,7 +693,10 @@ async function waitlist_add(tenant, body){
   if(phone.replace(/\D/g, '').length < 10) return { speak: "What's the best mobile number to text you when a spot opens?", waitlisted: false, needs: ['mobile number'] };
   const yes = (v) => v === true || /^(true|yes|y)$/i.test(String(v || ''));
   const { waitlistAdd } = await import('./lib/booking-brain.js');
-  const r = await waitlistAdd(tenant, { service: body.service || null, client_name: body.client_name || null, client_phone: phone, date: body.date || null, time: body.time || null, staff_id: null, notes: body.stylist ? `Prefers ${body.stylist}` : null, sms_consent: yes(body.sms_consent ?? true) }, { channel: 'lola' });
+  // Texts only with a clear yes — and on a call, only to the caller's own line (nobody signs up someone else).
+  const d10 = (v) => String(v || '').replace(/\D/g, '').slice(-10);
+  const consent = yes(body.sms_consent) && (!body.caller_line || d10(body.caller_line) === d10(phone));
+  const r = await waitlistAdd(tenant, { service: body.service || null, client_name: body.client_name || null, client_phone: phone, date: body.date || null, time: body.time || null, staff_id: null, notes: body.stylist ? `Prefers ${body.stylist}` : null, sms_consent: consent }, { channel: 'lola' });
   try{ await logUsage(tenant.id, 'waitlist', 1, { service: body.service || null }); }catch(_){}
   return { speak: r.speak, waitlisted: !!r.ok };
 }
@@ -949,6 +952,9 @@ export default async function handler(req, res){
       }
       body.client_phone = callerId;
     }
+
+    // The waitlist texts only the caller's own line (website visitors have none).
+    if(tool === 'waitlist_add') body.caller_line = callerId || null;
 
     // Special Memory Injection Skill requested by Telnyx to start a call
     if (tool === 'inject_memory') {

@@ -52,6 +52,11 @@ ok(r.offer_waitlist && /priority waitlist/.test(r.speak) && !r.slots.length, 'no
 T.blocked_slots = []; for (const s of ['meddy', 'nia']) for (let d = 0; d < 7; d++) T.staff_schedules.push({ tenant_id: TID, staff_id: s, day_of_week: d, start_time: '09:00', end_time: '18:00' });
 r = await SKILLS.waitlist_add(tenant, { service: 'Cut', client_name: 'Sofia Reyes', client_phone: '+13055550177', sms_consent: true });
 ok(r.waitlisted && T.booking_waitlist.length === 1 && T.booking_waitlist[0].sms_consent === true && /waitlist/.test(r.speak), 'waitlist_add puts her on it for real: ' + r.speak);
+r = await SKILLS.waitlist_add(tenant, { service: 'Cut', client_name: 'Someone Else', client_phone: '+13055550999', sms_consent: true, caller_line: '+13055550177' });
+ok(T.booking_waitlist[1]?.sms_consent === false, 'a caller can’t sign someone else’s number up for texts');
+r = await SKILLS.waitlist_add(tenant, { service: 'Cut', client_name: 'No Answer', client_phone: '+13055550998' });
+ok(T.booking_waitlist[2]?.sms_consent === false, 'no clear yes → no texts');
+T.booking_waitlist = T.booking_waitlist.slice(0, 1);
 T.clients.push({ id: 'cl-j', tenant_id: TID, name: 'Jade Lin', first_name: 'Jade', last_name: 'Lin', phone: '+13055550188' });
 T.bookings.push({ id: 'bk-j', tenant_id: TID, client_id: 'cl-j', staff_id: 'nia', service_id: 'cut', start_time: at('15:00'), end_time: at('16:00'), status: 'confirmed' });
 r = await SKILLS.cancel_appointment(tenant, { client_phone: '+13055550188' });
@@ -69,7 +74,10 @@ ok(r.service === 'Cut' && r.cycle_days === 42 && first > Date.now() + 20 * DAY &
 
 // ── The rebooking text turns on with the owner's setting, timed per service ──
 const { resolvePolicy } = await import(P + 'lib/rebooking.js');
-ok(resolvePolicy({ metadata: { rebook_followup_days: 28 } })?.interval_days === 28 && resolvePolicy({ metadata: { rebook_followup_days: 0 } }) === null && resolvePolicy({ metadata: { rebooking: { enabled: false }, rebook_followup_days: 28 } }) === null, 'Settings → "Follow-up rebook nudge" switches the rebooking text on (Off = off; an explicit off wins)');
+ok(resolvePolicy({ metadata: { rebook_followup_days: 28 } }) === null && resolvePolicy({ metadata: { rebooking: { enabled: true, interval_days: 28 } } })?.interval_days === 28 && resolvePolicy({ metadata: { rebooking: { enabled: false } } }) === null, 'the rebooking text is opt-in: a default value never texts clients; the owner switching it on does');
+const html = (await import('node:fs')).readFileSync(new URL('../../booking-settings.html', import.meta.url), 'utf8');
+ok(/dirty\.has\('rebook_followup_days'\)/.test(html) && /rebooking: \{ enabled: n > 0/.test(html) && /rebook_followup_days \?\? 28/.test(html), 'the settings page writes the switch only when the owner changes it, and "Off" stays off');
+ok(['Haircut & Style', 'Color & Style', 'Wash, Cut & Blowdry'].every((n) => rebookIntervalDays({ name: n }) === 42) && rebookIntervalDays({ name: 'Brazilian Blowout' }) === 90, 'a cut "& Style" is a 6-week cut, not a 1-week blowout; a Brazilian Blowout is a smoothing treatment');
 
 // ── Every booking path offers the same smart order ──
 T.bookings.push({ id: 'b-a', tenant_id: TID, staff_id: 'nia', service_id: 'cut', start_time: at('12:00'), end_time: at('13:00'), status: 'confirmed' });
@@ -77,4 +85,18 @@ const brain = await import(P + 'lib/booking-brain.js');
 const av = await brain.checkAvailability(tenant, { service: 'Cut', date: day });
 const top = av.slots[0];
 ok(av.ok && top && (top.reasons || []).length > 0, 'the dashboard / Telnyx tool path now gets ranked times too (not earliest-first): ' + (top?.reasons || []).join(', '));
+// ── A deposit the owner asks for later never auto-releases a confirmed appointment ──
+{
+  const H = 3600e3, now = Date.now();
+  T.booking_settings[0].metadata = { ...T.booking_settings[0].metadata, deposits: { enabled: true, percent: 20, hold_minutes: 30 } };
+  T.bookings.push({ id: 'dep-old', tenant_id: TID, client_id: 'cl-m', staff_id: 'nia', service_id: 'cut', start_time: new Date(now + 72 * H).toISOString(), end_time: new Date(now + 73 * H).toISOString(), status: 'confirmed', created_at: new Date(now - 48 * H).toISOString() });
+  T.bookings.push({ id: 'dep-new', tenant_id: TID, client_id: 'cl-j', staff_id: 'nia', service_id: 'cut', start_time: new Date(now + 96 * H).toISOString(), end_time: new Date(now + 97 * H).toISOString(), status: 'confirmed', created_at: new Date(now - 2 * H).toISOString() });
+  T.deposits.push({ id: 'd1', tenant_id: TID, booking_id: 'dep-old', amount: 16, status: 'pending', created_at: new Date(now - 1 * H).toISOString() });
+  T.deposits.push({ id: 'd2', tenant_id: TID, booking_id: 'dep-new', amount: 16, status: 'pending', created_at: new Date(now - 2 * H + 60e3).toISOString() });
+  const { runDepositSweep } = await import(P + 'lib/deposits.js');
+  await runDepositSweep(new Date(), { send: async () => ({ data: { id: 'x' } }), refund: async () => ({}) });
+  const st = (id) => T.bookings.find((b) => b.id === id).status;
+  ok(st('dep-old') === 'confirmed' && T.deposits.find((d) => d.id === 'd1').status === 'pending', 'owner asked for a deposit days after booking → the appointment stays confirmed');
+  ok(st('dep-new') === 'cancelled' && T.deposits.find((d) => d.id === 'd2').status === 'expired', 'a deposit asked at booking and unpaid past the window still releases the time (salon policy)');
+}
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

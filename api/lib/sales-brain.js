@@ -13,16 +13,16 @@ import { db } from './db.js';
 
 // Natural refresh cycles (days), first match wins. The salon's own setting is the fallback.
 const CYCLES = [
-  [/blow ?out|blowdry|style|updo|wash/i, 7],
   [/brow|lash lift|wax/i, 28],
   [/mani|pedi|nail|gel/i, 21],
   [/facial|peel|hydra/i, 35],
   [/extension|tape|i-?tip|weft/i, 56],
   [/balayage|highlight|ombre|babylight|foil/i, 84],
-  [/keratin|botox|smooth|relax|brazilian/i, 90],
+  [/keratin|botox|smooth|relax|brazilian|express blow ?out/i, 90],
   [/root|colou?r|toner|gloss|grey|gray/i, 42],
   [/cut|trim|shape|fade|clipper/i, 42],
   [/treatment|mask|scalp|olaplex|k18/i, 28],
+  [/^\s*(signature |express |classic )?(blow ?out|blow ?dry|updo|wash (&|and) style|style)\s*$/i, 7],   // a plain blowout only
 ];
 /** Days until this service is due again (the service's own setting first, then its nature, then the salon default). */
 export function rebookIntervalDays(service, fallback = 42) {

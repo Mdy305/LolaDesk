@@ -29,13 +29,9 @@ export const REBOOK_DEFAULTS = Object.freeze({ interval_days: 42, window_days: 7
 // Parse the salon's policy from booking_settings.metadata.rebooking,
 // tolerating bad types. Returns null when rebooking offers are off.
 export function resolvePolicy(settings){
-  let raw = settings && settings.metadata && settings.metadata.rebooking;
-  // Settings → Booking → "Follow-up rebook nudge" (rebook_followup_days, 0 = Off) is the owner's switch
-  // whenever the older metadata.rebooking block was never written.
-  if(!raw || raw.enabled === undefined){
-    const days = Math.round(Number(settings?.metadata?.rebook_followup_days ?? settings?.rebook_followup_days));
-    if(Number.isFinite(days) && days > 0) raw = { enabled: true, interval_days: days, window_days: raw?.window_days };
-  }
+  // Only the owner's explicit choice turns it on (Settings → Booking → "Follow-up rebook nudge" writes
+  // metadata.rebooking when they change it). A default value never texts anyone's clients.
+  const raw = settings && settings.metadata && settings.metadata.rebooking;
   if(!raw || raw.enabled !== true) return null;
   const interval = Math.round(Number(raw.interval_days));
   const windowDays = Math.round(Number(raw.window_days));

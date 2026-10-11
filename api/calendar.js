@@ -67,6 +67,41 @@ function lengthMin(b){
   return Number.isFinite(m) && m>0 ? m : null;
 }
 
+// ── public booking page: branding, images, add-ons ──
+// Only https images (or site-relative paths) ever reach a client's browser.
+function safeImg(u){
+  const s=String(u||'').trim();
+  if(!s || s.length>2000) return null;
+  return /^https:\/\//i.test(s) || /^\/(?!\/)/.test(s) ? s : null;
+}
+function shortText(v,n){
+  const s=String(v||'').replace(/\s+/g,' ').trim();
+  return s.length>n ? s.slice(0,n-1).replace(/\s+\S*$/,'')+'…' : s;
+}
+const HEX=/^#[0-9a-f]{6}$/i;
+const obj=(v)=>v && typeof v==='object' && !Array.isArray(v) ? v : {};
+// The salon's look on its booking page — whatever the salon has stored (tenant
+// columns, tenant.branding, business_profile, booking_settings[.metadata]).
+// Nothing stored → nothing sent: the page falls back to its neutral look.
+// The Google rating is shown only when it was read from Google (never invented).
+function publicBranding(tenant,settings){
+  const t=obj(tenant), s=obj(settings), md=obj(s.metadata), br={...obj(t.branding),...obj(md.branding)}, bp=obj(t.business_profile);
+  const logo=[t.logo_url,br.logo_url,br.logo,bp.logo_url,s.logo_url,md.logo_url].map(safeImg).find(Boolean)||null;
+  const cover=[t.cover_url,br.cover_url,bp.cover_url,s.cover_url,md.cover_url].map(safeImg).find(Boolean)||null;
+  const accent=[t.brand_color,t.accent_color,br.accent,br.accent_color,br.color,bp.brand_color,s.brand_color,s.accent_color,md.brand_color,md.accent_color]
+    .map(x=>String(x||'').trim()).find(x=>HEX.test(x))||null;
+  const rv=Number(bp.gmb_avg_rating ?? t.google_rating), rc=Number(bp.gmb_review_count ?? t.google_review_count);
+  const rating=Number.isFinite(rv) && rv>=1 && rv<=5 && Number.isFinite(rc) && rc>0 ? { value:Math.round(rv*10)/10, count:Math.round(rc), source:'Google' } : null;
+  return { slug:t.slug||null, logo_url:logo, cover_url:cover, accent, rating };
+}
+// Real menu add-ons the held stylist can do right after (with each one's deposit).
+async function publicAddons(tenantId,settings,hold){
+  const services=await listServices(tenantId);
+  const addons=await addonsAfter({ tenantId, services, serviceId:hold.service_id, staffId:hold.staff_id, endsAt:hold.ends_at });
+  const dp=resolvePolicy(settings);
+  return addons.map(a=>({ ...a, deposit_cents:serviceDepositCents(a.price,dp) }));
+}
+
 function normPhone(p){
   let d=String(p||'').replace(/\D/g,'');
   if(d.length===11 && d[0]==='1') d=d.slice(1);
@@ -108,18 +143,19 @@ export default async function handler(req,res){
       if(!(await limitPublicShared(req,action,tenant.id))) return res.status(429).json({ ok:false, error:'rate_limited', message:'Too many tries from this device — please wait a few minutes and try again.' });
       pubSettings=(await getBookingSettings(tenant.id).catch(()=>null))||{};
       rules=bookingRules(pubSettings);
-      if(!rules.enabled && ['availability','hold','book','reschedule','waitlist_add','open_days','deposit_quote','addons'].includes(action)){
+      if(!rules.enabled && ['availability','hold','book','reschedule','waitlist_add','open_days','deposit_quote','addons','next_open'].includes(action)){
         return res.status(200).json({ ok:false, error:'booking_disabled', booking_disabled:true, message:disabledMessage(tenant), salon_phone:tenant.phone_number||null });
       }
       // The salon decides whether clients may pick a stylist.
-      if(!rules.allow_staff_choice && ['availability','hold','book','open_days'].includes(action)) delete body.staff_id;
+      if(!rules.allow_staff_choice && ['availability','hold','book','open_days','next_open'].includes(action)) delete body.staff_id;
     }
     // Trial over and unpaid (BILLING_ENFORCE): the website widget stops taking
     // new bookings, offers the waitlist, and the owner is texted once.
-    if(req.__publicBooking===true && (action==='availability'||action==='hold'||action==='book') && gateNewBooking(tenant)){
+    if(req.__publicBooking===true && (action==='availability'||action==='hold'||action==='book'||action==='next_open') && gateNewBooking(tenant)){
       // availability → no times, so the widget offers its waitlist (a lead the
       // salon keeps); hold/book → the widget shows this sentence as-is.
       if(action==='availability') return res.status(200).json({ ok:true, slots:[], blocked:true, message:WIDGET_LINE });
+      if(action==='next_open') return res.status(200).json({ ok:true, earliest:null, staff:[], days:[], blocked:true, message:WIDGET_LINE });
       await turnedAway(db(), tenant, { channel:'widget', caller: body.client_phone||'' });
       return res.status(200).json({ ok:false, error:WIDGET_LINE, blocked:true });
     }
@@ -139,12 +175,15 @@ export default async function handler(req,res){
           deposit_policy: dp ? { enabled:true, type:dp.type, amount:dp.type==='fixed'?(dp.fixed_cents||0)/100:dp.percent, min_amount:(dp.min_cents||0)/100,
             premium_threshold:dp.premium_value>0?dp.premium_threshold:null, who:dp.who, collects } : null,
           salon:{ name:tenant.name||'', location:tenant.location||'', phone:tenant.phone_number||'', hours:tenant.hours||'', timezone:rules.timezone,
-            cancellation_window_hours:settings?.cancellation_window_hours??null, deposit_required:!!(collects && dp.who==='everyone'), deposit_may_apply:collects },
+            cancellation_window_hours:settings?.cancellation_window_hours??null, deposit_required:!!(collects && dp.who==='everyone'), deposit_may_apply:collects,
+            ...publicBranding(tenant,settings) },
           booking:{ enabled:rules.enabled, allow_any_staff:rules.allow_any_staff, allow_staff_choice:rules.allow_staff_choice, require_email:rules.require_email,
             cancellation_window_hours:rules.cancellation_window_hours, message:rules.enabled?null:disabledMessage(tenant) },
           services:rules.enabled?services.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,description:x.description||'',price:x.price,duration_minutes:x.duration_minutes,category:x.category||null,
-            deposit_cents:serviceDepositCents(x.price,dp)})):[],
-          staff:rules.enabled&&rules.allow_staff_choice?staff.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,role:x.role||''})):[] });
+            deposit_cents:serviceDepositCents(x.price,dp), photo_url:safeImg(x.photo_url)})):[],
+          // Photo + a short bio (when the salon stored one) — never phones/emails.
+          staff:rules.enabled&&rules.allow_staff_choice?staff.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,role:x.role||'',
+            photo_url:safeImg(x.photo_url), bio:shortText(x.bio||x.headline||x.about||'',160)})):[] });
       }
       return res.json({ ok:true,services,staff });
     }
@@ -274,10 +313,38 @@ export default async function handler(req,res){
       // After a time is held: real menu add-ons the same stylist can do right after.
       const hold=body.hold_token?await getHold(tenant.id,body.hold_token):null;
       if(!hold || hold.status!=='active') return res.json({ ok:true, addons:[] });
-      const services=await listServices(tenant.id);
-      const addons=await addonsAfter({ tenantId:tenant.id, services, serviceId:hold.service_id, staffId:hold.staff_id, endsAt:hold.ends_at });
-      const dp=resolvePolicy(pubSettings);
-      return res.json({ ok:true, addons:addons.map(a=>({ ...a, deposit_cents:serviceDepositCents(a.price,dp) })) });
+      return res.json({ ok:true, addons:await publicAddons(tenant.id,pubSettings,hold) });
+    }
+
+    if(isPublic && action==='next_open'){
+      // The booking page's "Next: Tue 2:30 PM": for one service, the earliest
+      // open time overall and per stylist, plus which of the next (up to) 14
+      // salon days have any opening — the same engine and rules as
+      // 'availability' (salon hours, closures, shifts, notice, holds, buffers).
+      if(!body.service_id) return res.json({ ok:false, error:'service_id_required' });
+      const tz=rules.timezone;
+      const today=localDateKey(new Date(),tz);
+      const from=/^\d{4}-\d{2}-\d{2}$/.test(String(body.from||''))&&String(body.from)>=today?String(body.from):today;
+      const n=Math.max(1,Math.min(14,Number(body.days)||14));
+      const keys=Array.from({length:n},(_,i)=>addDaysKey(from,i));
+      const now=Date.now();
+      const results=await Promise.all(keys.map(key=>getAvailability({tenantId:tenant.id,serviceId:body.service_id,date:key,staffId:body.staff_id||null,limit:5000}).catch(()=>null)));
+      if(results.some(av=>av && av.ok===false && av.error==='service_not_found')) return res.json({ ok:false, error:'service_not_found' });
+      const per=new Map(); const days=[]; let earliest=null;
+      results.forEach((av,i)=>{
+        const slots=(av?.slots||[]).filter(x=>new Date(x.starts_at).getTime()>=now);
+        days.push({ date:keys[i], open:slots.length>0 });
+        for(const x of slots){
+          if(!earliest || new Date(x.starts_at)<new Date(earliest.starts_at)) earliest={ starts_at:x.starts_at, date:keys[i], ...(rules.allow_staff_choice?{ staff_id:x.staff_id }:{}) };
+          const cur=per.get(x.staff_id);
+          if(!cur || new Date(x.starts_at)<new Date(cur.starts_at)) per.set(x.staff_id,{ staff_id:x.staff_id, starts_at:x.starts_at, date:keys[i], days:cur?.days||new Set() });
+          per.get(x.staff_id).days.add(keys[i]);
+        }
+      });
+      // Stylists stay private when the salon doesn't let clients choose one.
+      const staff=rules.allow_staff_choice?[...per.values()].map(p=>({ staff_id:p.staff_id, starts_at:p.starts_at, date:p.date, open_days:[...p.days].sort() }))
+        .sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)):[];
+      return res.json({ ok:true, time_zone:tz, service_id:body.service_id, from, earliest, staff, days });
     }
 
     if(action==='release_hold'){
@@ -428,7 +495,13 @@ export default async function handler(req,res){
         // the hold token/time/stylist back, never internal rows.
         if(!held.ok) return res.status(200).json({ok:false,conflict:!!held.conflict,error:held.error||'slot_unavailable'});
         noteHold(requester,held.hold);
-        return res.json({ok:true,hold:publicHold(held.hold,held.slot)});
+        const out={ok:true,hold:publicHold(held.hold,held.slot)};
+        // with_addons: the add-ons that fit right after ride along, saving the
+        // page a second round trip (the 'addons' action stays for older embeds).
+        if(body.with_addons===true || ['1','true'].includes(String(body.with_addons||''))){
+          out.addons=await publicAddons(tenant.id,pubSettings,held.hold).catch(()=>[]);
+        }
+        return res.json(out);
       }
       return res.json(held);
     }

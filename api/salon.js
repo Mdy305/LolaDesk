@@ -532,17 +532,62 @@ export default async function handler(req,res){
       return res.json({ok:true,appointment:booking,booking});
     }
 
+    // Blocked time. staff_id empty/null = the whole salon (everyone).
+    // Create: {date, start_time?, end_time?, reason, staff_id?, repeat_weeks?:1..52}
+    //   repeat_weeks N writes N rows, same weekday and times, one week apart (lunch breaks).
+    // Update: {action:'update', id, staff_id?, date?, start_time?, end_time?, reason?}
+    // Delete: {action:'delete', id, scope?:'following'}  'following' also removes the
+    //   later weekly copies (same stylist, times, reason and weekday).
     if(resource==='block'){
+      const timeOk=v=>v==null||v===''||/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(v));
+      const dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
+      const tKey=v=>v?String(v).slice(0,5).padStart(5,'0'):null;
+      const staffOk=async sid=>{if(!sid)return true;const {data:s}=await c.from('staff').select('id').eq('tenant_id',T).eq('id',sid).maybeSingle();return !!s;};
       if(action==='delete'){
-        const { error }=await c.from('blocked_slots').delete().eq('id',body.id).eq('tenant_id',T);
-        if(error)return res.status(500).json({ok:false,error:'Could not remove block: '+(error.message||JSON.stringify(error))});
-        return res.json({ok:true});
+        const {data:cur}=await c.from('blocked_slots').select('*').eq('id',body.id||'').eq('tenant_id',T).maybeSingle();
+        if(!cur)return res.status(404).json({ok:false,error:'Block not found'});
+        let ids=[cur.id];
+        if(String(body.scope||'')==='following'){
+          const {data:later}=await c.from('blocked_slots').select('*').eq('tenant_id',T).gt('blocked_date',String(cur.blocked_date));
+          const dow=k=>new Date(String(k).slice(0,10)+'T12:00:00Z').getUTCDay();
+          ids=ids.concat((later||[]).filter(b=>(b.staff_id||null)===(cur.staff_id||null)&&tKey(b.start_time)===tKey(cur.start_time)&&tKey(b.end_time)===tKey(cur.end_time)
+            &&String(b.reason||'')===String(cur.reason||'')&&dow(b.blocked_date)===dow(cur.blocked_date)).map(b=>b.id));
+        }
+        for(const id of ids){
+          const { error }=await c.from('blocked_slots').delete().eq('id',id).eq('tenant_id',T);
+          if(error)return res.status(500).json({ok:false,error:'Could not remove block: '+(error.message||JSON.stringify(error))});
+        }
+        return res.json({ok:true,deleted:ids.length});
       }
-      const {data,error}=await c.from('blocked_slots').insert({tenant_id:T,staff_id:body.staff_id||null,
-        blocked_date:body.date,start_time:body.start_time||null,end_time:body.end_time||null,
-        reason:body.reason||''}).select().single();
-      if(error)throw error;
-      return res.json({ok:true,blocked_slot:data});
+      if(action==='update'){
+        const {data:cur}=await c.from('blocked_slots').select('*').eq('id',body.id||'').eq('tenant_id',T).maybeSingle();
+        if(!cur)return res.status(404).json({ok:false,error:'Block not found'});
+        const patch={};
+        if('staff_id' in body){if(!(await staffOk(body.staff_id)))return res.status(404).json({ok:false,error:'Stylist not found'});patch.staff_id=body.staff_id||null;}
+        if(body.date!==undefined){if(!dateOk(body.date))return res.status(400).json({ok:false,error:'Pick a valid date.'});patch.blocked_date=body.date;}
+        if('start_time' in body){if(!timeOk(body.start_time))return res.status(400).json({ok:false,error:'Invalid start time.'});patch.start_time=body.start_time||null;}
+        if('end_time' in body){if(!timeOk(body.end_time))return res.status(400).json({ok:false,error:'Invalid end time.'});patch.end_time=body.end_time||null;}
+        if(body.reason!==undefined)patch.reason=String(body.reason||'');
+        const s=('start_time' in patch)?patch.start_time:cur.start_time,e=('end_time' in patch)?patch.end_time:cur.end_time;
+        if(s&&e&&toMin(e)<=toMin(s))return res.status(400).json({ok:false,error:'End time must be after start time.'});
+        const {data,error}=await c.from('blocked_slots').update(patch).eq('id',cur.id).eq('tenant_id',T).select().maybeSingle();
+        if(error)throw error;
+        return res.json({ok:true,blocked_slot:data||{...cur,...patch}});
+      }
+      if(!dateOk(body.date))return res.status(400).json({ok:false,error:'Pick a valid date.'});
+      if(!timeOk(body.start_time)||!timeOk(body.end_time))return res.status(400).json({ok:false,error:'Invalid time.'});
+      if(body.start_time&&body.end_time&&toMin(body.end_time)<=toMin(body.start_time))return res.status(400).json({ok:false,error:'End time must be after start time.'});
+      if(!(await staffOk(body.staff_id)))return res.status(404).json({ok:false,error:'Stylist not found'});
+      const weeks=Math.min(52,Math.max(1,parseInt(body.repeat_weeks,10)||1));
+      const rows=[];
+      for(let n=0;n<weeks;n++){
+        const {data,error}=await c.from('blocked_slots').insert({tenant_id:T,staff_id:body.staff_id||null,
+          blocked_date:addDaysKey(String(body.date),7*n),start_time:body.start_time||null,end_time:body.end_time||null,
+          reason:body.reason||''}).select().single();
+        if(error)throw error;
+        rows.push(data);
+      }
+      return res.json({ok:true,blocked_slot:rows[0],blocked_slots:rows,count:rows.length});
     }
 
     return res.status(400).json({ok:false,error:'Unknown resource: '+resource});
