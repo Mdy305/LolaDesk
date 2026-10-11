@@ -28,6 +28,8 @@ export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
 export const BOOKING_MARK = '[LolaDesk booking]';
 export const BOOKING_RULES = `\n\n${BOOKING_MARK}\n- Before booking anyone, get their FIRST AND LAST name, their MOBILE number (on a phone call you already have it — just confirm it) and their EMAIL for the confirmation (they may skip the email). Read back the service, day, time, name and number, and get a yes.\n- Pass them to book_appointment as client_name (first and last), client_phone and client_email — or no_email: true if they skipped it.\n- Only say an appointment is booked when book_appointment answers booked: true. If it answers booked: false, do exactly what its speak and instruction say — never say "you're booked", "all set" or "confirmed" otherwise.\n- After a real booking, tell them the confirmation text is on its way (and the email, if they gave one).`;
+export const SALES_MARK = '[LolaDesk sales]';
+export const SALES_RULES = `\n\n${SALES_MARK}\n- Offer at most 3 times, in the order check_availability gives them (they keep the salon's day full) — never read a long list.\n- When nothing is open, offer the priority waitlist and use waitlist_add when they say yes.\n- After a real booking, if book_appointment returns an upsell, offer it once in one sentence; if they say no, drop it.\n- When a returning client is booked or calls about their appointment, offer to pre-book their next visit with rebook_next_visit.\n- Quote prices exactly as get_pricing says, including a stylist's own price.`;
 // What book_appointment must collect (merged into whatever the tool already declares in Telnyx).
 export const BOOKING_PARAMS = {
   client_name: { type: 'string', description: "The client's FIRST AND LAST name" },
@@ -48,7 +50,8 @@ function withBookingParams(t) {
 }
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
-  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message']);
+  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message',
+  'waitlist_add', 'rebook_next_visit']);
 // Dedicated endpoints that are also fine for a tool to call directly.
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
@@ -288,6 +291,8 @@ export async function wireAssistant({ heal = false } = {}) {
     { name: 'list_services', description: 'The salon menu. Call when someone asks what services you offer, before recommending or booking anything you are unsure exists.', props: {} },
     { name: 'confirm_booking', description: 'Read back the caller\u2019s upcoming appointment (day, time, service, stylist). Call when they ask \u201cwhen is my appointment?\u201d or want to confirm it.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' } } },
     { name: 'cancel_appointment', description: 'Cancel the caller\u2019s own upcoming appointment. Confirm which appointment first and say the salon\u2019s cancellation policy if there is one.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' }, booking_id: { type: 'string', description: 'Only if you already have it' } } },
+    { name: 'waitlist_add', description: 'Put the client on the priority waitlist when nothing fits; they get a text the moment a matching spot opens. Ask first, and only call it after they say yes.', props: { service: { type: 'string', description: 'The service they want' }, client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number for the text' }, date: { type: 'string', description: 'Preferred day, if any' }, time: { type: 'string', description: 'Preferred time, if any' }, stylist: { type: 'string', description: 'Preferred stylist, if any' }, sms_consent: { type: 'boolean', description: 'true when they agreed to be texted' } } },
+    { name: 'rebook_next_visit', description: 'Find the right time for a returning client\u2019s NEXT visit (same service and stylist, at its natural cycle) so they can pre-book it.', props: { service: { type: 'string', description: 'Only if they want a different service than last time' } } },
     { name: 'capture_lead', description: 'Save someone who is interested but not booking now (a question, a quote, a callback), so the salon follows up.', props: { client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number' }, service_requested: { type: 'string', description: 'What they are interested in' } } },
   ];
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
@@ -322,6 +327,7 @@ export async function wireAssistant({ heal = false } = {}) {
   if (!disclosure.rules && instr) instr += COMPLIANCE_RULES;
   const bookingRules = instr.includes(BOOKING_MARK);
   if (!bookingRules && instr) instr += BOOKING_RULES;
+  if (instr && !instr.includes(SALES_MARK)) instr += SALES_RULES;
   if (instr && instr !== String(a.instructions || '')) patch.instructions = instr;
   if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
   // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.

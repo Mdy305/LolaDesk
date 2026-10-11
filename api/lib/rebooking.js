@@ -29,7 +29,13 @@ export const REBOOK_DEFAULTS = Object.freeze({ interval_days: 42, window_days: 7
 // Parse the salon's policy from booking_settings.metadata.rebooking,
 // tolerating bad types. Returns null when rebooking offers are off.
 export function resolvePolicy(settings){
-  const raw = settings && settings.metadata && settings.metadata.rebooking;
+  let raw = settings && settings.metadata && settings.metadata.rebooking;
+  // Settings → Booking → "Follow-up rebook nudge" (rebook_followup_days, 0 = Off) is the owner's switch
+  // whenever the older metadata.rebooking block was never written.
+  if(!raw || raw.enabled === undefined){
+    const days = Math.round(Number(settings?.metadata?.rebook_followup_days ?? settings?.rebook_followup_days));
+    if(Number.isFinite(days) && days > 0) raw = { enabled: true, interval_days: days, window_days: raw?.window_days };
+  }
   if(!raw || raw.enabled !== true) return null;
   const interval = Math.round(Number(raw.interval_days));
   const windowDays = Math.round(Number(raw.window_days));
@@ -71,7 +77,14 @@ export async function offerRebooking({ tenantId, booking, policy = null, send = 
   const { data: existing } = await c.from('rebooking_offers').select('id').eq('tenant_id', tenantId).eq('booking_id', booking.id).limit(1);
   if(existing && existing.length) return { ok: true, skipped: true, reason: 'already_offered' };
 
-  const target = computeTargetDate(booking.completed_at, policy.interval_days);
+  // Each service at its natural cycle (a cut ~6 weeks, balayage ~12 — lib/sales-brain.js); the salon's
+  // setting for anything else.
+  let intervalDays = policy.interval_days;
+  try{
+    const { data: svc } = await c.from('services').select('name,metadata').eq('id', booking.service_id).maybeSingle();
+    if(svc){ const { rebookIntervalDays } = await import('./sales-brain.js'); intervalDays = rebookIntervalDays(svc, policy.interval_days); }
+  }catch(_){}
+  const target = computeTargetDate(booking.completed_at, intervalDays);
 
   try{
     // One concrete slot from the real engine on the target date. Slots in the

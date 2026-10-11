@@ -85,36 +85,7 @@ async function findServiceById(tenant, id){
 // grow the ticket on every call — "Since you're coming in for a balayage,
 // I'd add our restorative gloss…". No client identity is fine (pairing is
 // service-driven); no base service is a clean no-op.
-const UPSELL_PAIRS = [
-  { match: /balayage|highlight|color|gloss|toner|root/i, addons: [
-    { name: 'Restorative Gloss', price: 60, vip: false, pitch: 'it makes the color pop and keeps the tone fresh twice as long' },
-    { name: 'Bond-Building Treatment', price: 45, vip: true, pitch: 'it protects your hair during the lightening process' }
-  ] },
-  { match: /cut|trim|shape/i, addons: [
-    { name: 'Signature Blowout', price: 40, vip: false, pitch: 'it finishes the cut with a bouncy, salon-perfect style' },
-    { name: 'Scalp Ritual', price: 35, vip: true, pitch: 'it relaxes the scalp and stimulates healthy growth' }
-  ] },
-  { match: /botox|keratin|smooth|relax/i, addons: [
-    { name: 'Maintenance Gloss', price: 45, vip: false, pitch: 'it stretches your smoothing results by weeks' },
-    { name: 'Leave-In Repair Serum', price: 28, vip: true, pitch: 'it defends the hair from heat and humidity daily' }
-  ] },
-  { match: /extension/i, addons: [
-    { name: 'Extension Care Kit', price: 55, vip: false, pitch: 'it keeps the bonds secure and the hair silky between visits' },
-    { name: 'Bond Touch-Up', price: 40, vip: true, pitch: 'it refreshes the attachment points so everything stays invisible' }
-  ] },
-  { match: /treatment|repair|condition|mask/i, addons: [
-    { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it doubles the repair power of the treatment' },
-    { name: 'Scalp Therapy', price: 45, vip: true, pitch: 'it targets the root cause of stress-related thinning' }
-  ] },
-  { match: /blowout|style|updo/i, addons: [
-    { name: 'Finishing Product Set', price: 30, vip: false, pitch: 'it recreates the look at home in minutes' },
-    { name: 'Luxury Shine Mist', price: 25, vip: true, pitch: 'it adds that red-carpet reflection' }
-  ] }
-];
-const DEFAULT_ADDONS = [
-  { name: 'Deep Conditioning Mask', price: 35, vip: false, pitch: 'it leaves the hair feeling incredible' }
-];
-
+// The add-ons come from the salon's REAL menu at their real prices (lib/sales-brain.js) — never invented.
 function spendTier(client, ltv){
   if(client?.is_vip || String(client?.status||'').toLowerCase() === 'vip') return 'vip';
   if(ltv != null && Number(ltv) >= 1000) return 'vip';
@@ -145,11 +116,13 @@ async function detect_upsell_opportunity(tenant, body){
   }
   const tier = spendTier(client, ltv);
 
-  // 3. Deterministic pairing, gated by tier.
-  const name = String(base.name || '').toLowerCase();
-  const pair = UPSELL_PAIRS.find(p => p.match.test(name)) || null;
-  const addons = (pair?.addons || DEFAULT_ADDONS);
-  const recommended = addons.filter(a => (a.vip ? tier === 'vip' : true)).slice(0, 2);
+  // 3. Real add-ons the salon sells, paired to the service; a VIP hears the most premium first.
+  let menu = [];
+  try{ const { listServices } = await import('./lib/booking-repository.js'); menu = await listServices(tenant.id); }catch(_){}
+  if(!menu.length) menu = (tenant.services || []).map((x, i) => ({ id: x.id || 'json-' + i, name: x.name, price: Number(x.price) || 0, duration_minutes: parseDurationMin(x.durationMin ?? x.duration, 0) || null, category: x.category }));
+  const { realAddons } = await import('./lib/sales-brain.js');
+  const recommended = realAddons(menu, base, { n: 2 });
+  if(tier !== 'vip' && recommended.length > 1) recommended.reverse();   // regulars hear the gentler price first
 
   // 4. Speak it the way the blueprint's pitch example reads.
   let speak;
@@ -157,10 +130,10 @@ async function detect_upsell_opportunity(tenant, body){
     const top = recommended[0];
     speak = `Since you're coming in for ${base.name}, I'd suggest adding our ${top.name} for $${top.price} — ${top.pitch}. Should I add that on?`;
   } else {
-    speak = `I don't have an add-on pairing for ${base.name} yet, but I can recommend something the moment you pick your time.`;
+    speak = null;   // nothing on the menu pairs with it: Lola says nothing rather than invent an add-on
   }
   try{ await logUsage(tenant.id, 'upsell_detected', 1, { service: base.name, tier, client_id: client?.id || null }); }catch{}
-  return { speak, base_service: base.name, tier, client_known: !!client, ltv: ltv ?? null, recommended };
+  return { speak: speak || `No add-on to suggest for ${base.name} — carry on with the booking.`, base_service: base.name, tier, client_known: !!client, ltv: ltv ?? null, recommended, ...(speak ? {} : { instruction: 'Do not offer an add-on.' }) };
 }
 
 // ── SKILL: list everything offered ──
@@ -172,12 +145,23 @@ function list_services(tenant){
 }
 
 // ── SKILL: pricing for a service ──
-function get_pricing(tenant, { service }){
+async function get_pricing(tenant, { service, stylist }){
   const s = findService(tenant, service);
   if(!s) return { speak: `I want to quote you exactly right — let me check on ${service||'that'} and confirm.`, found:false };
+  // A senior stylist may charge their own price (Team → services): quote it, never just the menu.
+  let byStylist = [];
+  try{
+    const { resolveServiceId } = await import('./lib/calendar-engine.js');
+    const sid = await resolveServiceId(tenant.id, s.name);
+    if(sid){ const { stylistPrices } = await import('./lib/sales-brain.js'); byStylist = await stylistPrices(tenant.id, sid, s.price); }
+  }catch(_){}
+  const first = (n) => String(n || '').split(' ')[0];
+  const asked = stylist ? byStylist.find((x) => first(x.name).toLowerCase() === first(stylist).toLowerCase()) : null;
+  const base = `${s.name} is ${s.price?`$${s.price}`:'priced at consultation'}${s.duration?`, about ${s.duration}`:''}`;
+  const extra = asked ? ` — with ${first(asked.name)} it's $${asked.price}` : byStylist.length ? ` — ${orList(byStylist.slice(0, 3).map((x) => `$${x.price} with ${first(x.name)}`))}` : '';
   return {
-    speak: `${s.name} is ${s.price?`$${s.price}`:'priced at consultation'}${s.duration?`, about ${s.duration}`:''}.`,
-    found:true, name:s.name, price:s.price, duration:s.duration
+    speak: `${base}${extra}.`,
+    found:true, name:s.name, price:asked ? asked.price : s.price, duration:s.duration, ...(byStylist.length ? { stylist_prices: byStylist.map(({ name, price }) => ({ name, price })) } : {})
   };
 }
 
@@ -280,7 +264,7 @@ async function check_availability_live(tenant, lp, body){
     const offers = pickTimes(r.nextTimes, null);
     return { speak: `${note}That day is fully booked — the next openings are ${dayWord(offers[0].startTime, tz)}: ${orList(offers.map((t) => spokenTime(t.startTime, tz)))}. Which works?`, slots: offers.map((t) => t.startTime), service: r.service, rolled_days: 1, source: lp.provider };
   }
-  return { speak: `I don't see any openings for ${r.service} in the next few weeks. Want me to have the salon text you when something opens?`, slots: [], service: r.service, source: lp.provider };
+  return { speak: `I don't see any openings for ${r.service} in the next few weeks. Want me to put you on the priority waitlist? I'll text you the moment a spot opens.`, slots: [], service: r.service, source: lp.provider, offer_waitlist: true, instruction: 'If they say yes, call waitlist_add with the service, their name and mobile, and sms_consent: true.' };
 }
 async function book_appointment_live(tenant, lp, body, who){
   const { service, date, time, stylist } = body;
@@ -355,10 +339,11 @@ async function check_availability(tenant, body){
     const spokenSlots = smart.slots.slice(0, 3).map(s => fmtSalon(s, tz, 'time'));
     return { speak: `I can offer ${orList(spokenSlots)}${service ? ` for ${service}` : ''}. Which one do you want?`, slots: smart.slots };
   }
-  // No invented times: offer to text real openings instead.
+  // No invented times: the priority waitlist, for real (waitlist_add texts them the moment something opens).
   return {
-    speak: `Let me find the best ${service||'appointment'} time for you${date?` around ${date}`:''}. I can text you our next openings — what number should I use?`,
-    slots: [], needs_callback: true
+    speak: `I don't have an opening for ${service||'that'} in the next two weeks. Want me to put you on the priority waitlist? I'll text you the moment a spot opens.`,
+    slots: [], offer_waitlist: true,
+    instruction: 'If they say yes, call waitlist_add with the service, their name and mobile, any day/time they prefer, and sms_consent: true.'
   };
 }
 
@@ -673,6 +658,7 @@ async function reschedule_appointment(tenant, { booking_id, client_phone, new_da
     return { speak:'I could not reschedule that just now. Please give me one moment and we can retry.', rescheduled:false };
   }
   await zapNotice(tenant, bookingId, 'booking.rescheduled');
+  freedSlot(tenant, bk);
   const was = sayWhen(bk.start_time, tz), now = sayWhen(out.booking?.start_time || targetIso, tz);
   return { speak:`Done — your ${svcName(bk)}${was ? ` from ${was}` : ''} is moved to ${now}.`, rescheduled:true, booking:out.booking };
 }
@@ -688,8 +674,58 @@ async function cancel_appointment(tenant, { booking_id, client_phone }){
   const out = await cancelBookingSafe({ tenantId: tenant.id, bookingId });
   if(!out.ok) return { speak:'I could not cancel that right now. Please give me one moment and retry.', cancelled:false };
   await zapNotice(tenant, bookingId, 'booking.cancelled');
+  freedSlot(tenant, bk);
   const when = sayWhen(bk.start_time, await salonTz(tenant.id));
   return { speak:`Done — your ${svcName(bk)}${when ? ` on ${when}` : ''} is cancelled. Do you want me to find you a new time?`, cancelled:true };
+}
+
+// A time a client just gave up is offered to the first consenting client on the waitlist (after the reply).
+function freedSlot(tenant, bk){
+  if(!bk?.start_time || Date.parse(bk.start_time) < Date.now()) return;
+  const job = import('./lib/booking-reminders.js').then(({ offerFreedSlot }) => offerFreedSlot({ tenantId: tenant.id, serviceId: bk.service_id || null, serviceName: svcName(bk), freedAt: bk.start_time })).catch(() => {});
+  import('./lib/booking-outbox.js').then(({ afterResponse }) => afterResponse(job)).catch(() => {});
+}
+
+// ── SKILL: the priority waitlist (nothing open → the first opening is theirs) ──
+async function waitlist_add(tenant, body){
+  await normalizeDate(tenant, body);
+  const phone = String(body.client_phone || body.from || '').trim();
+  if(phone.replace(/\D/g, '').length < 10) return { speak: "What's the best mobile number to text you when a spot opens?", waitlisted: false, needs: ['mobile number'] };
+  const yes = (v) => v === true || /^(true|yes|y)$/i.test(String(v || ''));
+  const { waitlistAdd } = await import('./lib/booking-brain.js');
+  const r = await waitlistAdd(tenant, { service: body.service || null, client_name: body.client_name || null, client_phone: phone, date: body.date || null, time: body.time || null, staff_id: null, notes: body.stylist ? `Prefers ${body.stylist}` : null, sms_consent: yes(body.sms_consent ?? true) }, { channel: 'lola' });
+  try{ await logUsage(tenant.id, 'waitlist', 1, { service: body.service || null }); }catch(_){}
+  return { speak: r.speak, waitlisted: !!r.ok };
+}
+
+// ── SKILL: pre-book the next visit (same service, same stylist, at its natural cycle) ──
+async function rebook_next_visit(tenant, body){
+  const phone = String(body.client_phone || '').trim();
+  if(!phone) return { speak: "I can set up your next visit from the number on your appointments — are you calling from it?" };
+  const client = await getClientByPhone(tenant.id, phone).catch(() => null);
+  if(!client) return { speak: "I don't see past visits under this number yet — what would you like to book?", found: false };
+  const sb = await import('./lib/sales-brain.js');
+  const last = await sb.lastVisit(tenant.id, client.id);
+  let svc = null;
+  try{ const { listServices } = await import('./lib/booking-repository.js'); const menu = await listServices(tenant.id);
+    svc = body.service ? (menu.find((x) => String(x.name).toLowerCase() === String(body.service).toLowerCase()) || menu.find((x) => String(x.name).toLowerCase().includes(String(body.service).toLowerCase()))) : menu.find((x) => x.id === last?.service_id); }catch(_){}
+  if(!svc) return { speak: "Which service would you like for your next visit?", found: false };
+  let fallback = 42;
+  try{ const { data } = await db().from('booking_settings').select('rebook_followup_days,metadata').eq('tenant_id', tenant.id).maybeSingle(); fallback = Number(data?.metadata?.rebooking?.interval_days || data?.rebook_followup_days) || 42; }catch(_){}
+  const days = sb.rebookIntervalDays(svc, fallback);
+  const tz = await salonTz(tenant.id);
+  const from = Math.max(Date.now() + 86400000, (last?.start_time ? Date.parse(last.start_time) : Date.now()) + days * 86400000);
+  const target = new Date(from).toLocaleDateString('en-CA', { timeZone: tz });
+  const { findSmartSlots } = await import('./lib/smart-slots.js');
+  const r = await findSmartSlots({ tenantId: tenant.id, serviceId: svc.id, date: target, staffId: last?.staff_id && last.service_id === svc.id ? last.staff_id : null, clientId: client.id, tz });
+  if(!r?.ok || !r.offers?.length) return { speak: `Your next ${svc.name} is due around ${dayWord(target + 'T16:00:00Z', tz)}, but that stretch is full. Want me to put you on the waitlist for it?`, offer_waitlist: true };
+  const who = r.offers[0].staff_name ? ` with ${String(r.offers[0].staff_name).split(' ')[0]}` : '';
+  const times = orList(r.offers.map((x) => spokenTime(x.starts_at, tz)));
+  return {
+    speak: `Your ${svc.name} is due again around ${dayWord(r.offers[0].starts_at, tz)} — I can do ${times}${who}. Want me to lock one in so you keep your spot?`,
+    service: svc.name, slots: r.offers.map((x) => x.starts_at), stylist: r.offers[0].staff_name || null, cycle_days: days,
+    instruction: 'If they pick one, call book_appointment with this service, that date and time, the stylist, and their name, mobile and email.'
+  };
 }
 
 // ── SKILL: capture a lead ──
@@ -825,7 +861,7 @@ async function recall_client(tenant, { client_phone }){
   return { speak: welcomeBack(story, { salon: tenant.name }) || `Got you, ${story.first || 'welcome back'}! What can I do for you today?`, known: true, brief: story.brief };
 }
 
-const WRITE_SKILLS = new Set(['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'capture_lead']);
+const WRITE_SKILLS = new Set(['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'capture_lead', 'waitlist_add']);
 const GATED_SKILLS = new Set(['book_appointment', 'reschedule_appointment']);
 
 export const SKILLS = {
@@ -836,7 +872,8 @@ export const SKILLS = {
   'take-message': takeMessage, // Telnyx's LolaBrain tool name
   'take_message': takeMessage, // older alias seen on some shared tools
   confirm_booking, reschedule_appointment, cancel_appointment,
-  detect_upsell_opportunity // Yield Engine: pair add-ons to the booked service by spend tier
+  detect_upsell_opportunity, // real add-ons from the salon's menu, paired to the booked service
+  waitlist_add, rebook_next_visit
 };
 
 // A tool call without a valid signature means the assistant's wiring drifted: re-sign it now (at most every
@@ -894,7 +931,7 @@ export default async function handler(req, res){
     const tool = req.query?.tool || body.tool || body.function || body.function_name || body.skill;
     
     // Private skills act on a client's own bookings and history: only for the verified caller line.
-    const PRIVATE = new Set(['cancel_appointment','reschedule_appointment','confirm_booking','recall_client','inject_memory']);
+    const PRIVATE = new Set(['cancel_appointment','reschedule_appointment','confirm_booking','recall_client','inject_memory','rebook_next_visit']);
     const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
     if(PRIVATE.has(String(tool))){
       if(!callerId){
