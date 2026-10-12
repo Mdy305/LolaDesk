@@ -105,6 +105,7 @@ export async function sharedToolCollisions(assistant, inlineTools, alsoNames = [
  * (or whose tool list can't be read) — the MCP server itself is never deleted and can be re-attached any time.
  */
 export let lastMcpDetached = [];
+export let lastDupKept = [];
 export async function mcpCollisions(assistant, names = []) {
   const list = Array.isArray(assistant?.mcp_servers) ? assistant.mcp_servers : [];
   if (!list.length || !names.length) return null;
@@ -166,10 +167,21 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     catch (e2) {
       // Still not unique: the other copy lives in an attached MCP server. Detach that server (never deleted).
       if (!dupTools(e2)) throw e2;
-      const mcp = await mcpCollisions(cur, duplicateNamesFrom(e2).length ? duplicateNamesFrom(e2) : dupNames).catch(() => null);
-      if (!mcp) throw e2;
-      const out = await send({ ...retry, mcp_servers: mcp.mcp_servers });
-      lastMcpDetached = mcp.detached;
+      const names = duplicateNamesFrom(e2).length ? duplicateNamesFrom(e2) : dupNames;
+      const mcp = await mcpCollisions(cur, names).catch(() => null);
+      let last = e2;
+      if (mcp) {
+        try { const out = await send({ ...retry, mcp_servers: mcp.mcp_servers }); lastMcpDetached = mcp.detached; return out; }
+        catch (e3) { if (!dupTools(e3)) throw e3; last = e3; }
+      }
+      // Telnyx still holds another copy of these names somewhere we can't edit: keep ITS copy and send
+      // ours without them, so every other tool, the booking rules and the cleanup still land.
+      const skip = new Set((duplicateNamesFrom(last).length ? duplicateNamesFrom(last) : names).map(norm));
+      if (!skip.size || !Array.isArray(retry.tools)) throw last;
+      const kept = retry.tools.filter((t) => !skip.has(toolName(t)));
+      if (kept.length === retry.tools.length) throw last;
+      const out = await send({ ...retry, tools: kept });
+      lastDupKept = [...skip];
       return out;
     }
   }
@@ -342,12 +354,13 @@ export async function wireAssistant({ heal = false } = {}) {
   let voice = null;
   try {
     const ov = await import('./one-voice.js');
+    await ov.readyVoice();
     const isLola = ov.voiceIsLola(a.voice_settings);
     voice = { current: a.voice_settings?.voice || null, ok: isLola, possible: !!ov.lolaPhoneVoice(), error: null };
     if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
   } catch (_) { voice = null; }
   let healed = false, error = null;
-  lastMcpDetached = [];
+  lastMcpDetached = []; lastDupKept = [];
   if (heal && Object.keys(patch).length) {
     // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
     // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
@@ -378,6 +391,10 @@ export async function wireAssistant({ heal = false } = {}) {
       catch (e) {
         // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
         if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
+        if (k === 'voice_settings' && voice && process.env.VOICE_PROVIDER === 'telnyx' && /not found|valid/i.test(String(e?.message || ''))) {
+          // That voice isn't available to assistants: the next real Telnyx voice, once.
+          try { const el = await import('./elevenlabs.js'); el.markBadVoice(patch.voice_settings?.voice); await el.resolveTelnyxVoice({ force: true }); const ov = await import('./one-voice.js'); const vs2 = await ov.lolaVoiceSettings(a.voice_settings); if (vs2) { await updateAssistant(id, { voice_settings: vs2 }); patch.voice_settings = vs2; continue; } } catch (e2) { voice.error = String(e2?.message || e2); continue; }
+        }
         if (k === 'voice_settings' && voice) voice.error = String(e?.message || e);
         else if (k === 'telephony_settings') webCallsError = String(e?.message || e).slice(0, 160);
       }
@@ -389,7 +406,7 @@ export async function wireAssistant({ heal = false } = {}) {
     ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached],
+    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached], dup_kept_in_telnyx: [...lastDupKept],
     booking: { rules: bookingRules || (healed && !error && !!patch.instructions), asks_full_details: !bookingParams.length || (healed && !error) },
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },

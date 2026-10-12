@@ -58,6 +58,8 @@ export default async function handler(req, res) {
         }
       } catch (_) { /* the brief never blocks learning */ }
     }
+    // What's ready to take bookings now (hours, services, team…), straight from the booking checklist.
+    if (out.ok) { try { const { bookingReadiness } = await import('../lib/booking-readiness.js'); const r = await bookingReadiness(tenant.id); out.readiness = { ready: !!r.ready, steps: (r.steps || []).map(s => ({ id: s.id, label: s.label, done: !!s.done, href: s.href })), booking_url: r.booking_url || null }; } catch (_) {} }
     return res.status(out.ok ? 200 : 422).json(out);
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e?.message || e), say: 'Something went wrong while I was reading. Try again in a moment.' });

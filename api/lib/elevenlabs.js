@@ -44,17 +44,71 @@ export function isConfigured(){
 //   LOLA_TELNYX_VOICE  optional, e.g. Telnyx.KokoroTTS.af_heart (default)
 //   VOICE_PROVIDER     optional: 'telnyx' to always speak through Telnyx
 // Her Telnyx voice — ONE id for the app, the phone assistants and calls we place (Telnyx Ultra: natural, expressive, en-US female).
-export const DEFAULT_TELNYX_VOICE = 'Telnyx.Ultra.Clara';
-export function telnyxVoice(){ return String(process.env.LOLA_TELNYX_VOICE || process.env.TELNYX_TTS_VOICE || DEFAULT_TELNYX_VOICE).trim(); }
+// The voice is never guessed: it is picked from the voices Telnyx itself lists for this account (a young,
+// natural en-US female first; Ultra → NaturalHD → Kokoro), or the owner's LOLA_TELNYX_VOICE when Telnyx
+// knows it. A voice Telnyx refuses is dropped and the next real one is used.
+export const DEFAULT_TELNYX_VOICE = 'Telnyx.KokoroTTS.af_heart';
+const envVoice = () => String(process.env.LOLA_TELNYX_VOICE || process.env.TELNYX_TTS_VOICE || '').trim();
+let resolvedVoice = null, resolvedAt = 0, voiceCandidates = [];
+const badVoices = new Set();
+export function telnyxVoice(){ return resolvedVoice || (envVoice() && !badVoices.has(envVoice()) ? envVoice() : DEFAULT_TELNYX_VOICE); }
+export function markBadVoice(v){ if (v) { badVoices.add(String(v)); if (resolvedVoice === v) { resolvedVoice = null; resolvedAt = 0; } } }
+export function _resetVoiceCache(){ resolvedVoice = null; resolvedAt = 0; voiceCandidates = []; badVoices.clear(); }
+function voiceId(v){
+  const raw = String(v?.voice_id || v?.id || v?.name || '').trim();
+  if (!raw) return '';
+  if (raw.includes('.')) return raw;
+  const prov = v?.provider ? String(v.provider)[0].toUpperCase() + String(v.provider).slice(1) : 'Telnyx';
+  if (v?.model) return `${prov}.${v.model}.${raw}`;
+  return /^a[fm]_/.test(raw) ? `Telnyx.KokoroTTS.${raw}` : `Telnyx.NaturalHD.${raw}`;
+}
+export async function telnyxVoiceList({ fetchImpl = fetch } = {}){
+  const key = process.env.TELNYX_API_KEY; if (!key) return [];
+  for (const q of ['?provider=telnyx', '']) {
+    try {
+      const r = await fetchImpl('https://api.telnyx.com/v2/text-to-speech/voices' + q, { headers: { Authorization: 'Bearer ' + key, Accept: 'application/json' } });
+      if (!r.ok) continue;
+      const j = await r.json().catch(() => null);
+      const list = Array.isArray(j?.voices) ? j.voices : Array.isArray(j?.data) ? j.data : [];
+      if (list.length) return list;
+    } catch (_) {}
+  }
+  return [];
+}
+/** Lola's Telnyx voice, checked against Telnyx's own list (cached 6h). */
+export async function resolveTelnyxVoice({ force = false, fetchImpl = fetch } = {}){
+  if (!force && resolvedVoice && Date.now() - resolvedAt < 6 * 3600e3) return resolvedVoice;
+  const list = await telnyxVoiceList({ fetchImpl });
+  const english = list.filter((v) => /^en/i.test(String(v.language || v.locale || 'en-US')));
+  const pool = english.length ? english : list;
+  const female = (v) => /female|woman/i.test(String(v.gender || '')) || /^af_|clara|callie|heart|bella|nova|sky|sarah|astra|luna|aria|jenny|joanna|salli|kore|stella|emma|olivia/i.test(String(v.voice_id || v.name || ''));
+  const tier = (id) => /\.Ultra\./i.test(id) ? 3 : /\.NaturalHD\./i.test(id) ? 2 : /KokoroTTS/i.test(id) ? 1 : 0;
+  const young = (v) => /young|bright|upbeat|energetic|friendly|cheerful/i.test(String(v.description || v.accent || v.age || ''));
+  voiceCandidates = pool.map((v) => ({ id: voiceId(v), v })).filter((x) => x.id)
+    .sort((a, b) => (female(b.v) - female(a.v)) || (young(b.v) - young(a.v)) || (tier(b.id) - tier(a.id)))
+    .map((x) => x.id);
+  const known = new Set(voiceCandidates);
+  const want = envVoice();
+  resolvedVoice = (want && !badVoices.has(want) && (!known.size || known.has(want))) ? want
+    : (voiceCandidates.find((id) => !badVoices.has(id)) || (badVoices.has(DEFAULT_TELNYX_VOICE) ? null : DEFAULT_TELNYX_VOICE));
+  resolvedAt = Date.now();
+  return resolvedVoice || DEFAULT_TELNYX_VOICE;
+}
+async function ttsPost(text, voice, signal){
+  return fetch('https://api.telnyx.com/v2/text-to-speech/speech', {
+    method: 'POST', signal,
+    headers: { Authorization: 'Bearer ' + process.env.TELNYX_API_KEY, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    body: JSON.stringify({ text: String(text).slice(0, 2500), voice, output_type: 'binary_output' })
+  });
+}
 export async function telnyxSpeech(text, { signal } = {}) {
   const key = process.env.TELNYX_API_KEY;
   if (!key) throw new Error('Missing TELNYX_API_KEY');
-  const r = await fetch('https://api.telnyx.com/v2/text-to-speech/speech', {
-    method: 'POST', signal,
-    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({ text: String(text).slice(0, 2500), voice: telnyxVoice(), output_type: 'binary_output' })
-  });
-  if (!r.ok) { let d = ''; try { d = await r.text(); } catch {} throw new Error(`Telnyx TTS ${r.status}: ${d.slice(0, 200)}`); }
+  let voice = await resolveTelnyxVoice();
+  let r = await ttsPost(text, voice, signal);
+  // A voice Telnyx doesn't have answers 4xx/500: drop it, take the next real voice, try once more.
+  if (!r.ok && [400, 404, 422, 500].includes(r.status)) { markBadVoice(voice); voice = await resolveTelnyxVoice({ force: true }); r = await ttsPost(text, voice, signal); }
+  if (!r.ok) { let d = ''; try { d = await r.text(); } catch {} throw new Error(`Telnyx TTS ${r.status} (voice ${voice}): ${d.slice(0, 200)}`); }
   const ct = String(r.headers.get('content-type') || '');
   if (ct.includes('json')) {                       // base64 answer, just in case
     const j = await r.json(); const b64 = j.base64_audio || j.data?.base64_audio;

@@ -313,6 +313,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
           <div class="srow" id="l-plan"><span class="dot"></span><div class="scopy"><b>Planning your next 30 days</b><small>Open chairs, who's due back, the campaigns to fill them</small></div></div>
           <div class="srow" id="l-grow"><span class="dot"></span><div class="scopy"><b>Building your growth plan</b><small>Where you stand on the map, and the moves worth the most</small></div></div>
         </div>
+        <div class="strategy" id="learnSetup" style="display:none" aria-live="polite"></div>
         <div class="strategy" id="learnStrategy" style="display:none" aria-live="polite"></div>
         <p class="sub" id="learnSay" style="display:none;margin-bottom:22px"></p>
         <div class="actions" id="learnDone" style="display:none;gap:10px;flex-wrap:wrap">
@@ -653,8 +654,7 @@ async function runActivation(){
     mark('s-biz','running');
     // Only ingest when the owner actually gave us a website — an empty URL
     // 400s server-side and only adds console noise to an otherwise clean flow.
-    if(S.website) try{await fetch('/api/onboarding/step2-ingest',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({websiteUrl:S.website})});}catch(e){}
-    mark('s-biz','done','Business profile loaded');
+    mark('s-biz','done','Next: Lola reads your website and Google listing');
     document.getElementById('doneNum').textContent=fmtPhone(d.phoneNumber);
     document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
     renderEmbed();
@@ -786,10 +786,12 @@ async function learnNow(){
   sub('l-read',[d.source&&d.source.website?d.source.website.replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,''):'',gg&&gg.rating?'Google Maps '+Number(gg.rating).toFixed(1)+'★ · '+Number(gg.reviews_count||0).toLocaleString()+' reviews':'',gr&&gr.instagram&&gr.instagram.followers?'@'+gr.instagram.handle+' · '+Number(gr.instagram.followers).toLocaleString()+' followers':''].filter(Boolean).join(' · ')||'Your menu');
   sub('l-grow',gr?(gg&&gg.rank?'#'+gg.rank+' of '+gg.of+' salons around you'+(gr.moves&&gr.moves[0]?' · first move: '+gr.moves[0].title:''):(gr.moves&&gr.moves[0]?'First move: '+gr.moves[0].title:'Ready in Marketing')):'Ready in Marketing');
   sub('l-menu',(p.services||[]).length?(p.services.length+' services'+((p.services||[]).slice(0,3).map(x=>x.name).length?' · '+p.services.slice(0,3).map(x=>x.name).join(', '):'')):'None found yet — add them in Services');
-  sub('l-team',[(p.team||[]).length?p.team.slice(0,4).map(x=>x.name.split(' ')[0]).join(', '):'',p.hours_text||''].filter(Boolean).join(' · ')||'Add them in Team');
+  const rep=d.report||{};
+  sub('l-team',[(p.team||[]).length?p.team.slice(0,4).map(x=>x.name.split(' ')[0]).join(', '):'',rep.hours?('Hours set from '+(rep.hours_source==='google'?'Google':'your website')):(p.hours_text||'')].filter(Boolean).join(' · ')||'Add them in Team');
   sub('l-brand',[p.positioning,p.tone].filter(Boolean).join(' · ')||'Warm and professional');
   const fp=d.fill_plan;
   sub('l-plan',fp&&fp.headline?(fp.headline+(fp.campaigns?' '+fp.campaigns+' campaigns scheduled'+(fp.projected_bookings?' · ~'+fp.projected_bookings+' bookings':'')+'.':'')):(p.marketing&&p.marketing.first_campaign?p.marketing.first_campaign.message:'Ready when you are'));
+  renderSetup(d);
   renderStrategy(p.marketing||null, fp, filesMsg, gr);
   document.getElementById('learnTitle').textContent='She knows your salon.';
   document.getElementById('learnLabel').textContent='Lola learned';
@@ -875,6 +877,39 @@ function renderStrategy(m,fp,filesMsg,gr){
     ${fc?`<div class="msg"><small>First campaign · ${esc(fc.name||'')} · ${fc.segment==='vip'?'VIP clients':fc.segment==='all'?'Everyone':'Clients who haven’t been back'}</small>${esc(fc.message)}</div>`:''}
     <div class="note">Nothing is sent until you approve it in Marketing. Your full growth plan is in Marketing → Growth plan.${filesMsg?' '+esc(filesMsg)+'.':''}</div>`;
   box.style.display='block';
+}
+// ── What Lola set up from the scan, and the one thing she still needs: prices she couldn't find ──
+const DAYS_ORDER=['mon','tue','wed','thu','fri','sat','sun'], DAY_SHORT={mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'};
+function hoursLine(bh){
+  if(!bh) return '';
+  const t=x=>{const [h,m]=String(x).split(':').map(Number);const ap=h>=12?'pm':'am';const hh=((h+11)%12)+1;return hh+(m?':'+String(m).padStart(2,'0'):'')+ap;};
+  const groups=[]; for(const d of DAYS_ORDER){const v=bh[d]||{};const k=v.closed?'closed':t(v.open)+'–'+t(v.close);const g=groups[groups.length-1];if(g&&g.k===k)g.to=d;else groups.push({from:d,to:d,k});}
+  return groups.map(g=>DAY_SHORT[g.from]+(g.to!==g.from?'–'+DAY_SHORT[g.to]:'')+' '+(g.k==='closed'?'closed':g.k)).join(' · ');
+}
+function renderSetup(d){
+  const box=document.getElementById('learnSetup'); if(!box) return;
+  const rep=d.report||{}, rd=d.readiness||null, need=Array.isArray(rep.needs_price)?rep.needs_price.filter(x=>x&&x.id):[];
+  const steps=rd&&Array.isArray(rd.steps)?rd.steps:[];
+  if(!steps.length&&!rep.hours&&!need.length){box.style.display='none';return;}
+  const done=steps.filter(s=>s.done).length;
+  box.innerHTML=`<h3>Ready to take bookings${steps.length?` · ${done} of ${steps.length}`:''}</h3>
+    ${rep.hours?`<div class="who">Opening hours from ${rep.hours_source==='google'?'Google':'your website'}: ${esc(hoursLine(rep.business_hours))}</div>`:''}
+    ${steps.length?`<ul style="list-style:none;padding:0;margin:10px 0">${steps.map(s=>`<li style="padding:3px 0;${s.done?'':'color:var(--muted)'}">${s.done?'✓':'○'}&nbsp; ${esc(s.label)}${s.done?'':` — <a href="${esc(s.href||'#')}" style="color:inherit;text-decoration:underline">set up</a>`}</li>`).join('')}</ul>`:''}
+    ${need.length?`<div class="msg"><small>Your website doesn’t show these prices — add them so Lola can quote and book them</small>
+      ${need.slice(0,12).map(x=>`<label style="display:flex;gap:10px;align-items:center;margin:8px 0"><span style="flex:1">${esc(x.name)}</span><span>$</span><input class="input" style="width:110px" inputmode="decimal" data-price-id="${esc(x.id)}" placeholder="0"/></label>`).join('')}
+      <button class="btn-p" type="button" id="savePrices" style="margin-top:8px">Save prices</button><div class="error" id="errPrices"></div></div>`:''}
+    ${rd&&rd.ready&&rd.booking_url?`<div class="note">Your booking page is live: <a href="${esc(rd.booking_url)}" target="_blank" rel="noopener">${esc(rd.booking_url.replace(/^https?:\/\//,''))}</a></div>`:''}`;
+  box.style.display='block';
+  const btn=document.getElementById('savePrices');
+  if(btn) btn.onclick=async()=>{
+    btn.disabled=true; btn.textContent='Saving…'; let ok=0, bad=0;
+    for(const inp of box.querySelectorAll('[data-price-id]')){
+      const n=Number(String(inp.value).replace(/[^\d.]/g,'')); if(!(n>0)) continue;
+      try{ const r=await fetch('/api/services?id='+encodeURIComponent(inp.dataset.priceId),{method:'PATCH',headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.token},body:JSON.stringify({price:n})}); if(r.ok) ok++; else bad++; }catch(e){bad++;}
+    }
+    btn.disabled=false; btn.textContent=ok?'Saved ✓':'Save prices';
+    document.getElementById('errPrices').textContent=bad?bad+' could not be saved — set them in Services.':'';
+  };
 }
 function learnAgain(){document.getElementById('learnWork').style.display='none';document.getElementById('learnForm').style.display='block';setOrb('idle');}
 function skipLearn(){

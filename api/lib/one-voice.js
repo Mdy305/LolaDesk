@@ -15,7 +15,9 @@
  */
 import crypto from 'node:crypto';
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
-import { telnyxVoice } from './elevenlabs.js';
+import { telnyxVoice, resolveTelnyxVoice, markBadVoice } from './elevenlabs.js';
+/** In Telnyx mode, make sure the voice is one Telnyx really has before it is set anywhere. */
+export async function readyVoice(){ if (process.env.VOICE_PROVIDER === 'telnyx' && process.env.TELNYX_API_KEY) { try { await resolveTelnyxVoice(); } catch (_) {} } }
 const telnyxMode = () => process.env.VOICE_PROVIDER === 'telnyx';
 
 // ── Calls we place (demo, owner bridge, forwarding test): Telnyx plays HER voice, rendered by
@@ -77,6 +79,7 @@ export function voiceIsLola(vs) {
 
 /** voice_settings that make an assistant sound like Lola (keeps its other settings). */
 export async function lolaVoiceSettings(current = {}) {
+  await readyVoice();
   const voice = lolaPhoneVoice();
   if (!voice) return null;
   if (telnyxMode()) { const { api_key_ref, ...rest } = (current && typeof current === 'object') ? current : {}; return { ...rest, voice }; }
@@ -85,6 +88,7 @@ export async function lolaVoiceSettings(current = {}) {
 
 /** Speak-command fields for Call Control (the demo call's first sentence). */
 export async function lolaSpeakVoice() {
+  await readyVoice();
   const voice = lolaPhoneVoice();
   if (!voice) return null;
   if (telnyxMode()) return { voice };
@@ -96,6 +100,7 @@ export async function lolaSpeakVoice() {
  * heal:false only reports.
  */
 export async function unifyAssistantVoices({ heal = false } = {}) {
+  await readyVoice();
   const out = { possible: !!lolaPhoneVoice(), total: 0, lola: 0, fixed: [], others: [], errors: [] };
   let list = [];
   try { list = telnyxData(await telnyxRequest('/ai/assistants', { query: { 'page[size]': 100 }, timeoutMs: 9000 })) || []; }
@@ -107,9 +112,16 @@ export async function unifyAssistantVoices({ heal = false } = {}) {
     const was = String(a?.voice_settings?.voice || 'none');
     if (!heal || !out.possible) { out.others.push({ name: a.name || 'assistant', voice: was }); continue; }
     try {
-      const vs = await lolaVoiceSettings(a.voice_settings);
+      let vs = await lolaVoiceSettings(a.voice_settings);
       const { updateAssistant } = await import('./assistant-wiring.js');
-      await updateAssistant(a.id, { voice_settings: vs });
+      try { await updateAssistant(a.id, { voice_settings: vs }); }
+      catch (e) {
+        // Telnyx doesn't have that voice for assistants: drop it and use the next real one (once).
+        if (!/not found|invalid|valid/i.test(String(e?.message || '')) || process.env.VOICE_PROVIDER !== 'telnyx') throw e;
+        markBadVoice(vs.voice); await resolveTelnyxVoice({ force: true });
+        vs = await lolaVoiceSettings(a.voice_settings);
+        await updateAssistant(a.id, { voice_settings: vs });
+      }
       out.fixed.push({ name: a.name || 'assistant', from: was });
       out.lola++;
     } catch (e) {

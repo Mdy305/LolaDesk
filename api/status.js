@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-cards';
+export const RELEASE = 'lola-onboard';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -239,6 +239,7 @@ export async function buildStatus() {
               if (secured.length) healed.push(`Lola’s phone wiring secured: ${secured.join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
+            if (Array.isArray(w.dup_kept_in_telnyx) && w.dup_kept_in_telnyx.length) healed.push(`Lola’s tools saved. Telnyx keeps its own copy of ${w.dup_kept_in_telnyx.join(', ')} (it holds a second tool with that name), so LolaDesk left those three as they are.`);
             if (Array.isArray(w.mcp_detached) && w.mcp_detached.length) healed.push(`Lola’s tools saved: detached ${w.mcp_detached.join(', ')} — its tools had the same names as hers. It is kept in Telnyx → AI → MCP Servers.`);
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
             if (w.error) {
@@ -250,8 +251,9 @@ export async function buildStatus() {
                 const shared = await Promise.all(live.tools_inventory.shared_ids.slice(0, 20).map(async (tid) => {
                   try { const { telnyxRequest, telnyxData } = await import('./lib/telnyx-client.js'); const t = telnyxData(await telnyxRequest('/ai/tools/' + encodeURIComponent(tid), { timeoutMs: 5000 })) || {}; const d = t.tool_definition || t.definition || t; return 'shared:' + (d?.webhook?.name || d?.function?.name || d?.name || t.name || t.display_name || t.type || '?'); } catch (e) { return 'shared:? (' + String(e?.status || e?.message || '').slice(0, 30) + ')'; }
                 }));
+                if (a.mcp_servers && !Array.isArray(a.mcp_servers)) live.tools_list_mcp_shape = typeof a.mcp_servers;
                 const mcp = (Array.isArray(a.mcp_servers) ? a.mcp_servers : []).slice(0, 10).map((m) => 'mcp:' + (typeof m === 'string' ? m : (m?.name || m?.id || '?')) + (Array.isArray(m?.allowed_tools) && m.allowed_tools.length ? '(' + m.allowed_tools.join('/') + ')' : ''));
-                live.tools_list = [...live.tools_inventory.inline.map((n) => 'inline:' + n), ...shared, ...mcp, 'keys:' + Object.keys(a).filter((k) => /tool|integration|mcp|workflow|mission/i.test(k)).join('+')].join(', ').slice(0, 900);
+                live.tools_list = [...live.tools_inventory.inline.map((n) => 'inline:' + n), ...shared, ...mcp, 'keys:' + Object.keys(a).filter((k) => /tool|integration|mcp|workflow|mission/i.test(k)).map((k) => k + '=' + (Array.isArray(a[k]) ? a[k].length : typeof a[k])).join('+')].join(', ').slice(0, 900);
               }
             }
           } catch (_) {}
