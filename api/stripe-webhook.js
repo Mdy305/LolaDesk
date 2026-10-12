@@ -163,7 +163,19 @@ async function handleAccountEvent(c, event) {
         // A missed-appointment fee link (cron/no-show-scan) was paid: the salon's Payments row → succeeded.
         try { await c.from('payments').update({ status: 'succeeded', at_risk: false }).eq('stripe_id', obj.payment_link).eq('sub_kind', 'no_show_fee'); } catch (_) {}
         await deactivatePaymentLink(obj.payment_link);
-      } else if (obj.payment_link) await depositPaid(c, obj);
+      } else if (obj.payment_link) {
+        await depositPaid(c, obj);
+        // The deposit link also saved the card (the salon holds bookings with a card on file).
+        const { cardFromDepositPayment } = await import('./lib/card-on-file.js');
+        const saved = await cardFromDepositPayment(obj, c).catch((e) => ({ ok: false, reason: String(e?.message || e) }));
+        if (!saved.ok && !saved.skipped) throw new Error('card from deposit not saved: ' + saved.reason);   // 500 → Stripe redelivers
+      }
+      // A client added a card to hold their appointment (Checkout, setup mode).
+      if (obj.mode === 'setup' && obj.metadata?.kind === 'card_on_file') {
+        const { cardSetupCompleted } = await import('./lib/card-on-file.js');
+        const r = await cardSetupCompleted(obj, c).catch((e) => ({ ok: false, reason: String(e?.message || e) }));
+        if (!r.ok && !r.skipped) throw new Error('card on file not saved: ' + r.reason);   // 500 → Stripe redelivers
+      }
       const tid = tenantIdFrom(obj);
       if (tid && (obj.mode === 'subscription' || obj.subscription)) {
         const { data: t } = await c.from('tenants').select('*').eq('id', tid).maybeSingle();

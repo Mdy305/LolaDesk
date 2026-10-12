@@ -1368,6 +1368,7 @@ async function loadClientCard(b){
   const dep=d.deposit,depLive=dep&&/^(pending|paid|kept|captured|succeeded)$/i.test(String(dep.status||''));
   const canDep=CTX.deposits_enabled&&upcoming&&!depLive&&!/paid|kept|captured|succeeded/.test(String(b.deposit_status||'').toLowerCase());
   el().innerHTML='<div class="cc-stats">'+tile(s.visits||0,'Visits')+tile(esc(last),'Last visit')+tile(fmtMoney(s.lifetime_spend),'Lifetime')+tile(s.no_shows||0,'No-shows',s.no_shows?'warn':'')+'</div>'
+    +(d.card?'<div class="cc-next"><em>Card</em><span>'+esc(String(d.card.brand||'Card').replace(/^./,(m)=>m.toUpperCase()))+(d.card.last4?' ending '+esc(d.card.last4):'')+' on file</span></div>':'')
     +'<div class="cc-next"><em>Next</em><span>'+(nx?esc(fmtWhen(nx.start_time))+(nx.service_name?' · '+esc(nx.service_name):'')+(nx.staff_name?' with '+esc(nx.staff_name):''):'Nothing else booked')+'</span></div>'
     +'<div class="cc-acts"><a href="'+href+'">Client profile →</a>'
     +(canDep?'<button id="ccDep" onclick="requestDepositFor(\''+esc(b.id)+'\')">Request deposit</button>':'')

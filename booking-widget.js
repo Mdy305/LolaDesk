@@ -969,6 +969,14 @@
         (result.texted ? ' We also texted you the link.' : '') + '</div>' +
         '<a class="lw-btn" href="' + esc(pay) + '" id="lwPay" target="_top" rel="noopener">Pay ' + amt + ' deposit to confirm</a></div>';
     }
+    // The salon holds appointments with a card on file (no deposit due): one calm, clear step.
+    var cardUrl = !pay && result.card_url && /^https:\/\//.test(result.card_url) ? result.card_url : '';
+    if (cardUrl) {
+      payHtml = '<div class="lw-pay"><div class="lw-pay-t">Hold it with a card</div>' +
+        '<div class="lw-pay-s">' + esc(c.tenant_name || 'The salon') + ' holds every appointment with a card on file. It isn’t charged now — only under the no-show policy. Secure by Stripe.' +
+        (result.texted ? ' We also texted you the link.' : '') + '</div>' +
+        '<a class="lw-btn" href="' + esc(cardUrl) + '" id="lwCard" target="_top" rel="noopener">Add a card</a></div>';
+    }
     var g = gcalHref(what + (c.tenant_name ? ' · ' + c.tenant_name : ''), start, endOf(start, b.end_time, items),
       (staffName ? 'With ' + staffName + '. ' : '') + (code ? 'Confirmation code: ' + code + '.' : ''), c.location || c.tenant_name || '');
     w.render(

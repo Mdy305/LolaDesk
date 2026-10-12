@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-booking3';
+export const RELEASE = 'lola-cards';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -61,7 +61,7 @@ export async function buildStatus() {
       const { ensureBookingIntegritySchema } = await import('./lib/booking-integrity.js');
       await Promise.race([ensureBookingIntegritySchema(), new Promise((r) => setTimeout(r, 4000))]);
       const c = db();
-      const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1)]);
+      const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1), c.from('client_cards').select('id').limit(1)]);
       live.october_sql = probes.every((p) => !p?.error);
     } catch (_) { live.october_sql = null; }
   }
@@ -359,7 +359,7 @@ export async function buildStatus() {
   if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
-  if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check and double-booking protection.');
+  if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check, double-booking protection and cards on file.');
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
   if (relayUrl && live.voice_relay_secret === false) fixes.push('Add LOLA_VOICE_SECRET in Vercel — the SAME long word as on the Railway relay — then Redeploy. Until then the app uses her direct voice.');

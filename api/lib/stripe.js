@@ -140,7 +140,11 @@ async function stripeRest(path, method='POST', body, headers={}){
     body: body && method !== 'GET' ? form(body) : undefined
   });
   const data = await r.json().catch(() => ({}));
-  if(!r.ok) throw new Error(data?.error?.message || `Stripe ${r.status}`);
+  if(!r.ok){
+    const err = new Error(data?.error?.message || `Stripe ${r.status}`);
+    err.status = r.status; err.code = data?.error?.code || null; err.type = data?.error?.type || null; err.decline_code = data?.error?.decline_code || null;
+    throw err;
+  }
   return data;
 }
 
@@ -292,10 +296,10 @@ export async function connectedDestination(tenantId){
   }catch(_){ return null; }
 }
 
-export async function createPaymentLink({ amountCents, description, successUrl, tenantId = null, destination = undefined, metadata = {} }){
+export async function createPaymentLink({ amountCents, description, successUrl, tenantId = null, destination = undefined, metadata = {}, saveCard = false, saveCardNote = '' }){
   if(!Number.isFinite(amountCents) || amountCents <= 0) throw new Error('deposit amount must be positive');
   const dest = destination === undefined ? await connectedDestination(tenantId) : destination;
-  const md = { kind: 'deposit', ...(tenantId ? { tenant_id: tenantId } : {}), ...(metadata || {}) };
+  const md = { kind: 'deposit', ...(tenantId ? { tenant_id: tenantId } : {}), ...(metadata || {}), ...(saveCard ? { save_card: '1' } : {}) };
   const body = {
     line_items: [{
       quantity: 1,
@@ -307,7 +311,9 @@ export async function createPaymentLink({ amountCents, description, successUrl, 
     }],
     restrictions: { completed_sessions: { limit: 1 } },
     metadata: md,
-    payment_intent_data: { metadata: md },
+    payment_intent_data: { metadata: md, ...(saveCard ? { setup_future_usage: 'off_session' } : {}) },
+    // The salon holds bookings with a card (no-show policy): paying the deposit also keeps the card on file.
+    ...(saveCard ? { customer_creation: 'always', ...(saveCardNote ? { custom_text: { submit: { message: String(saveCardNote).slice(0, 1150) } } } : {}) } : {}),
     after_completion: { type: 'redirect', redirect: { url: successUrl || `${process.env.APP_URL || 'https://www.loladesk.com'}/paid` } }
   };
   if(dest){

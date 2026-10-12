@@ -68,11 +68,32 @@ export default async function handler(req, res) {
         if (claimErr || !claim?.id) { results.push({ booking_id: b.id, action: 'skipped', reason: 'claim_failed' }); continue; }
         try {
           if (!process.env.STRIPE_SECRET_KEY) throw new Error('stripe_not_configured');
+          const first = String(client.name || '').split(' ')[0] || 'there';
+          // The card the client put on file to hold this appointment: charge it (the policy they agreed to).
+          // If the bank wants approval or declines, they get the pay link below instead.
+          const { chargeSavedCard } = await import('../lib/card-on-file.js');
+          const charged = await chargeSavedCard({ tenantId, clientId: client.id, amountCents: cents,
+            description: `Missed appointment fee — ${tenant.name || 'the salon'}`, metadata: { booking_id: String(b.id), kind: 'no_show_fee' },
+            idempotencyKey: `noshow_${b.id}` }, c);
+          if (charged.ok) {
+            await c.from('payments').update({ status: 'succeeded', stripe_id: charged.id }).eq('id', claim.id);
+            const { sendSMS } = await import('../lib/sms.js');
+            await sendSMS({ from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
+              text: `Hi ${first}, we missed you at ${tenant.name || 'the salon'}. Per the booking policy you agreed to, the $${(cents / 100).toFixed(2)} missed-appointment fee was charged to your card${charged.last4 ? ' ending ' + charged.last4 : ''}. Reply here to rebook anytime. Reply STOP to opt out.` }).catch(() => {});
+            results.push({ booking_id: b.id, action: 'fee_charged_card', fee_cents: cents });
+            continue;
+          }
+          if (charged.uncertain) {
+            // Stripe didn't answer clearly: the charge may have gone through. Flag it for the salon — never a
+            // pay link on top (the next scan skips it: the claim row exists).
+            await c.from('payments').update({ status: 'review', at_risk: true, stripe_id: charged.id || null }).eq('id', claim.id).then(() => {}, () => {});
+            results.push({ booking_id: b.id, action: 'charge_uncertain', reason: charged.reason });
+            continue;
+          }
           const { createPaymentLink } = await import('../lib/stripe.js');
           const link = await createPaymentLink({ amountCents: cents, description: `Missed appointment fee — ${tenant.name || 'the salon'}`, tenantId, metadata: { booking_id: String(b.id), kind: 'no_show_fee' } });
           await c.from('payments').update({ stripe_id: link.id }).eq('id', claim.id);
           const { sendSMS } = await import('../lib/sms.js');
-          const first = String(client.name || '').split(' ')[0] || 'there';
           await sendSMS({ from: tenant.phone_number, to: client.phone, tenantId, type: 'SMS',
             text: `Hi ${first}, we missed you at ${tenant.name || 'the salon'}. Per our booking policy there's a $${(cents / 100).toFixed(2)} missed-appointment fee — you can pay it securely here: ${link.url}  Reply here to rebook anytime. Reply STOP to opt out.` });
           results.push({ booking_id: b.id, action: 'fee_link_sent', fee_cents: cents });

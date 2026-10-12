@@ -645,7 +645,7 @@ export default async function handler(req,res){
       }
       if(!isPublic) return res.json({ok:true,status:'confirmed',booking_id:booking.id,booking,bookings:extraBookings.length?[booking,...extraBookings]:undefined,external:externalRef,upstream});
 
-      let texted=false, payment_link=null, deposit=null;
+      let texted=false, payment_link=null, deposit=null, card_url=null;
       try{ const t=await sendConfirmationSMS({tenantId:tenant.id,clientId,serviceId,startTime:start,confirmationCode:booking.confirmation_code}); texted=!!t?.sent; }
       catch(e){ console.warn('[calendar] confirm text:',e.message); }
       try{
@@ -653,6 +653,7 @@ export default async function handler(req,res){
         if(!(pending||[]).length){
           const d=await requestDeposit({ tenantId:tenant.id, booking:{ ...booking, total_amount:grandTotal } });
           if(d?.ok && !d.skipped && d.amount_cents){ deposit={ amount_cents:d.amount_cents }; payment_link=d.link_url||null; }
+          else if(d?.card?.url) card_url=d.card.url;   // the salon holds bookings with a card on file
         }
       }catch(e){ console.warn('[calendar] deposit:',e.message); }
       const staffRow=(await listStaff(tenant.id).catch(()=>[])).find(x=>x.id===staffId);
@@ -661,7 +662,7 @@ export default async function handler(req,res){
         booking:{ ...booking, staff_name:staffRow?.name||null, service_name:service?.name||null },
         services:[service,...segs.map(x=>x.service)].filter(Boolean).map(x=>({ id:x.id, name:x.name, price:x.price, duration_minutes:x.duration_minutes })),
         add_on_bookings:extraBookings.map(b=>({ confirmation_code:b.confirmation_code, start_time:b.start_time, service_id:b.service_id })),
-        total_amount:grandTotal, texted, payment_link, deposit, upstream,
+        total_amount:grandTotal, texted, payment_link, deposit, card_url, upstream,
         calendar_path:booking.confirmation_code?`/api/calendar.ics?code=${encodeURIComponent(booking.confirmation_code)}&phone=${encodeURIComponent(phoneForLink)}`:null });
     }
 

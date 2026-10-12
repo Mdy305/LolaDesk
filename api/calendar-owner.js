@@ -219,7 +219,8 @@ export async function clientCard(c, tenantId, cl, bookingId = null, now = Date.n
       cancellations: all.filter((b) => st(b).startsWith('cancel')).length,
       upcoming: upcoming.length
     },
-    next: nextOut, deposit
+    next: nextOut, deposit,
+    card: await (async () => { try { const { data } = await c.from('client_cards').select('brand,last4,status,payment_method_id').eq('tenant_id', tenantId).eq('client_id', cl.id).maybeSingle(); return data?.payment_method_id && data.status === 'active' ? { brand: data.brand || null, last4: data.last4 || null } : null; } catch (_) { return null; } })()
   };
 }
 
@@ -336,7 +337,7 @@ export default async function handler(req, res) {
       if (!policy) return res.status(409).json({ ok: false, error: 'Deposits are off — turn them on in Banking → Policies.' });
       if (bk.client_id) { const { data: cl } = await c.from('clients').select('phone').eq('tenant_id', T).eq('id', bk.client_id).maybeSingle(); if (!cl?.phone || String(cl.phone).includes(':')) return res.status(409).json({ ok: false, error: 'This client has no phone number to text.', reason: 'no_client_phone' }); }
       // The owner asked for this one on purpose: no risk tiering.
-      const out = await requestDeposit({ tenantId: T, booking: bk, policy: { ...policy, who: 'everyone' } });
+      const out = await requestDeposit({ tenantId: T, booking: bk, policy: { ...policy, who: 'everyone' }, noCard: true });
       if (!out || !out.ok || out.skipped) {
         const why = { stripe_not_configured: 'Connect Stripe in Banking to take deposits.', no_client_phone: 'This client has no phone number to text.',
           no_from_number: 'Your salon line is not set up yet, so Lola cannot text the link.', zero_amount: 'This appointment has no price, so there is no deposit to take.',

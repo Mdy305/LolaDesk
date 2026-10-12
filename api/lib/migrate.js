@@ -96,6 +96,25 @@ const PLATFORM_SETTINGS_DDL = `create table if not exists public.platform_settin
 // deposits table feeds the no-show protection loop (api/lib/deposits.js);
 // the wiring migration predates the CI applier ever touching production, so
 // self-heal when the deposits cron / booking seam cold-starts.
+// client_cards — a client's card on file at one salon (lib/card-on-file.js): the Stripe customer +
+// saved payment method on LolaDesk's account (never a card number). One row per salon + client.
+const CLIENT_CARDS_DDL = `create table if not exists public.client_cards (
+  id                  uuid primary key default gen_random_uuid(),
+  tenant_id           uuid not null references public.tenants(id) on delete cascade,
+  client_id           uuid not null references public.clients(id) on delete cascade,
+  stripe_customer_id  text not null,
+  payment_method_id   text,
+  brand               text,
+  last4               text,
+  exp_month           integer,
+  exp_year            integer,
+  status              text default 'pending',
+  created_at          timestamptz default now(),
+  updated_at          timestamptz default now(),
+  unique (tenant_id, client_id)
+);
+alter table public.client_cards enable row level security;`;
+
 const DEPOSITS_DDL = `create table if not exists public.deposits (
   id                        uuid primary key default gen_random_uuid(),
   tenant_id                 uuid not null references public.tenants(id) on delete cascade,
@@ -392,6 +411,7 @@ async function runMigrations() {
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
+  await ensureTable(c, 'client_cards', CLIENT_CARDS_DDL, applied);
   await ensureTable(c, 'whatsapp_templates', WHATSAPP_TEMPLATES_DDL, applied);
   // tenant_channels.meta / last_error + tenants.whatsapp_enabled (Messenger + WhatsApp channels).
   try {
