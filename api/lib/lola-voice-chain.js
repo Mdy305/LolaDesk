@@ -127,7 +127,9 @@ export async function telnyxSynthesize(text, { signal } = {}) {
   // Voice ids MUST be Provider.Model.VoiceId (e.g. Telnyx.NaturalHD.astra,
   // Telnyx.KokoroTTS.af_nova). A bare or nonexistent id makes Telnyx
   // return 500, not a clean 4xx.
-  const primary = (await import('./elevenlabs.js')).telnyxVoice();   // the same voice everywhere
+  const el = await import('./elevenlabs.js');
+  try { await el.resolveTelnyxVoice(); } catch (_) {}
+  const primary = el.telnyxVoice();   // the same (real) voice everywhere
   try {
     return await telnyxPost(text, primary, apiKey, signal);
   } catch (e) {
