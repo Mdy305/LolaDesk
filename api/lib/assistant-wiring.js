@@ -130,6 +130,24 @@ export async function mcpCollisions(assistant, names = []) {
  * Keep one tool per name: the one already wired to LolaDesk correctly, else one on our host, else the
  * first. Tools without a name (hangup, transfer…) are always kept.
  */
+const stripShared = (t) => { if (!t || typeof t !== 'object' || !('shared' in t)) return t; const { shared, ...rest } = t; return rest; };
+
+/** The account's Tools Library (shared tools) by name → { id, tool }. */
+export async function libraryTools() {
+  const out = new Map();
+  for (let page = 1; page <= 5; page++) {
+    let list = [];
+    try { list = telnyxData(await telnyxRequest('/ai/tools', { query: { 'page[size]': 100, 'page[number]': page }, timeoutMs: 9000 })) || []; } catch (_) { break; }
+    for (const t of Array.isArray(list) ? list : []) {
+      const d = t.tool_definition || t;
+      const n = norm(d?.webhook?.name || d?.function?.name || t.display_name || '');
+      if (n && t.id && !out.has(n)) out.set(n, { id: t.id, tool: t, def: d });
+    }
+    if (!Array.isArray(list) || list.length < 100) break;
+  }
+  return out;
+}
+
 export function dedupeTools(tools) {
   const list = Array.isArray(tools) ? tools : [];
   const rank = (t) => { const d = diagnoseTool(t); const u = parse(t?.webhook?.url); return !d ? 3 : (u && ourHost(u.hostname)) ? 2 : 1; };
@@ -143,7 +161,9 @@ export function dedupeTools(tools) {
 export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   const path = '/ai/assistants/' + encodeURIComponent(id);
   if (body && body.dynamic_variables && typeof body.dynamic_variables === 'object') body = { ...body, dynamic_variables: telnyxSafeVariables(body.dynamic_variables) };
-  if (body && Array.isArray(body.tools)) body = { ...body, tools: dedupeTools(body.tools).tools };
+  // GET merges Tools-Library tools into `tools` with shared:true; an update must leave them out (they are
+  // managed through tool_ids / PATCH /ai/tools) — sending them back inline is what Telnyx calls "not unique".
+  if (body && Array.isArray(body.tools)) body = { ...body, tools: dedupeTools(body.tools.filter((t) => t?.shared !== true)).tools.map(stripShared) };
   const send = async (b) => {
     try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
     catch (e) {
@@ -159,7 +179,7 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     if (!badVariable(e) && !dupTools(e)) throw e;
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
-    const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
+    const tools = dedupeTools((Array.isArray(body?.tools) ? body.tools : cur.tools || []).filter((t) => t?.shared !== true)).tools.map(stripShared);
     const dupNames = dupTools(e) ? duplicateNamesFrom(e) : [];
     const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
     const retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) };
@@ -174,12 +194,13 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
         try { const out = await send({ ...retry, mcp_servers: mcp.mcp_servers }); lastMcpDetached = mcp.detached; return out; }
         catch (e3) { if (!dupTools(e3)) throw e3; last = e3; }
       }
-      // Telnyx still holds another copy of these names somewhere we can't edit: keep ITS copy and send
-      // ours without them, so every other tool, the booking rules and the cleanup still land.
-      const skip = new Set((duplicateNamesFrom(last).length ? duplicateNamesFrom(last) : names).map(norm));
+      // Still clashing: the other copy is a Tools-Library tool with that name. Drop OUR inline copy of only
+      // those names (the shared one stays and is re-signed through PATCH /ai/tools) — never more than that.
+      const lib = await libraryTools().catch(() => new Map());
+      const skip = new Set((duplicateNamesFrom(last).length ? duplicateNamesFrom(last) : names).map(norm).filter((n) => lib.has(n)));
       if (!skip.size || !Array.isArray(retry.tools)) throw last;
       const kept = retry.tools.filter((t) => !skip.has(toolName(t)));
-      if (kept.length === retry.tools.length) throw last;
+      if (kept.length === retry.tools.length || kept.length < retry.tools.length - skip.size) throw last;
       const out = await send({ ...retry, tools: kept });
       lastDupKept = [...skip];
       return out;
@@ -277,7 +298,12 @@ export async function wireAssistant({ heal = false } = {}) {
   try { a = telnyxData(await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { timeoutMs: 9000 })); }
   catch (e) { return { ok: false, error: 'Could not read the assistant from Telnyx: ' + String(e?.message || e) }; }
   if (!a || typeof a !== 'object') return { ok: false, error: 'Assistant not found in Telnyx' };
-  const allTools = Array.isArray(a.tools) ? a.tools : [];
+  const merged = Array.isArray(a.tools) ? a.tools : [];
+  // Tools-Library (shared) tools come back merged with shared:true — they are fixed in the Library, never inline.
+  const sharedNow = merged.filter((t) => t?.shared === true);
+  const sharedNames = new Set(sharedNow.map(toolName).filter(Boolean));
+  const allTools = merged.filter((t) => t?.shared !== true && !sharedNames.has(toolName(t))).map(stripShared);
+  const droppedInline = merged.filter((t) => t?.shared !== true && sharedNames.has(toolName(t))).length;
   const { tools, removed: duplicateTools } = dedupeTools(allTools);
   const issues = [], fixed = [], unknown = [];
   const next = tools.map((t) => {
@@ -299,6 +325,11 @@ export async function wireAssistant({ heal = false } = {}) {
   const dynOk = !!dv && ourHost(dv.hostname) && DYNVAR_PATHS.has(dv.pathname) && toolKeyOk(dv.searchParams.get('k'), 'variables');
   // Tools every Lola must have (added once, never duplicated).
   const REQUIRED = [
+    { name: 'check_availability', description: 'Check open times for a service. Call before offering or booking any time. Offer at most 3 of the times it returns, in its order.', props: { service: { type: 'string', description: 'The service, as on the menu' }, date: { type: 'string', description: 'The day they want (YYYY-MM-DD or words like Friday)' }, time: { type: 'string', description: 'The time they asked for, if any' }, stylist: { type: 'string', description: 'Only if they asked for someone' } } },
+    { name: 'book_appointment', description: 'Book the appointment once the client chose a time and gave their first and last name, mobile and email (or skipped the email). Only say it is booked when this answers booked: true.', props: { service: { type: 'string', description: 'The service, as on the menu' }, date: { type: 'string', description: 'YYYY-MM-DD' }, time: { type: 'string', description: 'e.g. 3:30pm' }, stylist: { type: 'string', description: 'Only if they asked for someone' }, ...BOOKING_PARAMS } },
+    { name: 'reschedule_appointment', description: 'Move the caller\u2019s own upcoming appointment to a new day and time.', props: { new_date: { type: 'string', description: 'YYYY-MM-DD' }, new_time: { type: 'string', description: 'e.g. 2pm' }, booking_id: { type: 'string', description: 'Only if you already have it' } } },
+    { name: 'get_pricing', description: 'The price of a service (and a stylist\u2019s own price when they charge differently).', props: { service: { type: 'string', description: 'The service' }, stylist: { type: 'string', description: 'Only if they asked about someone' } } },
+    { name: 'take_message', description: 'Take a message for the salon team when the caller needs a person.', props: { message: { type: 'string', description: 'What they need' }, client_name: { type: 'string', description: 'Their name' }, client_phone: { type: 'string', description: 'Callback number' } } },
     { name: 'recall_client', description: 'When a caller or website visitor gives their phone number, look them up to greet a returning client by name and remember their last visit.', props: { client_phone: { type: 'string', description: 'The number they gave' } } },
     { name: 'list_services', description: 'The salon menu. Call when someone asks what services you offer, before recommending or booking anything you are unsure exists.', props: {} },
     { name: 'confirm_booking', description: 'Read back the caller\u2019s upcoming appointment (day, time, service, stylist). Call when they ask \u201cwhen is my appointment?\u201d or want to confirm it.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' } } },
@@ -310,11 +341,27 @@ export async function wireAssistant({ heal = false } = {}) {
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
   const bookingParams = [];
   for (let i = 0; i < next.length; i++) { const u = withBookingParams(next[i]); if (u) { next[i] = u; bookingParams.push(u.webhook.name); } }
-  const have = new Set(next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')));
+  const have = new Set([...next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')), ...sharedNames]);
   const added = [];
   for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
   const patch = {};
-  if (fixed.length || added.length || duplicateTools.length || bookingParams.length) patch.tools = next;
+  if (fixed.length || added.length || duplicateTools.length || bookingParams.length || droppedInline) patch.tools = next;
+  // Shared (Library) copies of Lola's skills: re-sign / re-point them where they live.
+  const sharedFixed = [];
+  if (heal && sharedNow.length) {
+    let lib = null;
+    for (const t of sharedNow) {
+      const d = diagnoseTool(t);
+      if (!d || !d.fixable) continue;
+      lib = lib || await libraryTools().catch(() => new Map());
+      const hit = lib.get(toolName(t));
+      if (!hit) continue;
+      const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(d.tool || t.webhook.name);
+      const webhook = { ...(hit.def?.webhook || t.webhook), url, method: 'POST' };
+      try { await telnyxRequest('/ai/tools/' + encodeURIComponent(hit.id), { method: 'PATCH', body: { type: 'webhook', webhook }, timeoutMs: 9000 }); sharedFixed.push(t.webhook.name); fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem, shared: true }); }
+      catch (e) { unknown.push({ name: t.webhook?.name, url: t.webhook?.url, error: 'library update refused: ' + String(e?.message || e).slice(0, 120) }); }
+    }
+  }
   // A shared (attached) tool with the same name as one of hers blocks every update: detach that copy.
   const shared = await sharedToolCollisions(a, next).catch(() => null);
   if (shared) { patch.tool_ids = shared.tool_ids; duplicateTools.push(...shared.detached.map((n) => n + ' (shared copy)')); }
@@ -406,7 +453,7 @@ export async function wireAssistant({ heal = false } = {}) {
     ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached], dup_kept_in_telnyx: [...lastDupKept],
+    miswired: fixed, added_tools: added, unknown_tools: unknown, shared_tools: [...sharedNames], shared_fixed: sharedFixed, inline_count: next.length, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached], dup_kept_in_telnyx: [...lastDupKept],
     booking: { rules: bookingRules || (healed && !error && !!patch.instructions), asks_full_details: !bookingParams.length || (healed && !error) },
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },
