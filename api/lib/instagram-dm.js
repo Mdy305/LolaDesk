@@ -18,6 +18,7 @@ import { appUrl } from './telnyx-client.js';
 import { encrypt, decrypt } from './crypto.js';
 import { getOrStartConversation, getConversationHistory, logMessage, logUsage, setClientMemory } from './db.js';
 import { answerClient } from './client-brain.js';
+import { linkedClient, linkTurn, linkNote, verifiedChatKey } from './identity-link.js';
 import { holderOf, TAKEN_SAY } from './channel-store.js';
 
 const GRAPH = 'https://graph.instagram.com/v21.0';
@@ -101,15 +102,13 @@ export async function sendDM(token, recipientId, text) {
   return j(`${GRAPH}/me/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ recipient: { id: recipientId }, message: { text: String(text).slice(0, 990) } }) });
 }
 
-/** The person writing in: an Instagram-keyed client (merged with their phone client once they give it). */
+/** The person writing in: an Instagram-keyed client — their phone client only once they proved the number by SMS code. */
 async function igClient(c, tenantId, igsid, token) {
   const key = 'ig:' + String(igsid).slice(0, 60);
   let { data: client } = await c.from('clients').select('*').eq('tenant_id', tenantId).eq('phone', key).maybeSingle();
-  // A linked phone client wins: same person, one memory.
-  if (client?.notes && /^linked:\+\d+$/.test(client.notes)) {
-    const { data: real } = await c.from('clients').select('*').eq('tenant_id', tenantId).eq('phone', client.notes.slice(7)).maybeSingle();
-    if (real) return { client: real, key: real.phone, phone: real.phone };
-  }
+  // A code-verified link wins: same person, one memory. A number merely typed in a DM never does.
+  const linked = client ? await linkedClient(c, tenantId, key) : null;
+  if (linked) return { client: linked.client, key: linked.phone, phone: linked.phone, chatKey: key, chatClient: client };
   if (!client) {
     let name = 'Instagram', handle = null;
     try { const p = await j(`${GRAPH}/${encodeURIComponent(igsid)}?fields=name,username&access_token=${encodeURIComponent(token)}`); name = p.name || p.username || name; handle = p.username || null; } catch (_) {}
@@ -118,11 +117,11 @@ async function igClient(c, tenantId, igsid, token) {
     client = data;
     if (handle) { try { await setClientMemory(tenantId, key, 'instagram', { handle }); } catch (_) {} }
   }
-  return { client, key, phone: null };
+  return { client, key, phone: null, chatKey: key, chatClient: client };
 }
 
 /** One webhook delivery from Meta. send/answer are injectable for tests. */
-export async function handleInstagramEvent(c, event, { answer = answerClient, send = sendDM } = {}) {
+export async function handleInstagramEvent(c, event, { answer = answerClient, send = sendDM, sms = undefined } = {}) {
   const done = [];
   if (!event || event.object !== 'instagram') return done;
   for (const entry of event.entry || []) {
@@ -136,20 +135,17 @@ export async function handleInstagramEvent(c, event, { answer = answerClient, se
       const { data: tenant } = await c.from('tenants').select('*').eq('id', ch.tenant_id).maybeSingle();
       if (!tenant) continue;
       const who = await igClient(c, tenant.id, m.sender.id, token);
-      // They gave their number in the DM → link Instagram to their phone client (one person, one memory).
-      const ph = String(text).match(/(?:\+?1[\s.-]?)?\(?([2-9]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/);
-      if (ph && !who.phone) {
-        const e = `+1${ph[1]}${ph[2]}${ph[3]}`;
-        try {
-          const { data: real } = await c.from('clients').select('*').eq('tenant_id', tenant.id).eq('phone', e).maybeSingle();
-          if (real) { await c.from('clients').update({ notes: 'linked:' + e }).eq('id', who.client.id); who.client = real; who.key = e; }
-          who.phone = e;
-        } catch (_) {}
+      // A typed number is never identity: it's a contact number, and (for a client of this salon) a code
+      // is texted to it. Only the code typed back here links Instagram to their phone client.
+      let link = {};
+      if (!who.phone) {
+        try { link = await linkTurn(c, tenant, { key: who.chatKey, channelClient: who.chatClient, text, send: sms }); } catch (_) { link = {}; }
+        if (link.linked && link.client) { who.client = link.client; who.key = link.linked; who.phone = link.linked; }
       }
       let conv = null, history = [];
       try { conv = await getOrStartConversation(tenant.id, { clientId: who.client?.id, participant: who.client?.id ? undefined : 'ig:' + m.sender.id, channel: 'instagram', agent: 'lola' }); if (conv?.id) history = (await getConversationHistory(conv.id, 10)) || []; } catch (_) {}
       const tz = (await c.from('booking_settings').select('timezone').eq('tenant_id', tenant.id).maybeSingle().then((r) => r.data?.timezone).catch(() => null)) || 'America/New_York';
-      const ans = await answer({ tenant, client: who.client, channel: 'instagram', text, history: history.filter((h) => typeof h.content === 'string'), phone: who.phone, memoryKey: who.key, tz });
+      const ans = await answer({ tenant, client: who.client, channel: 'instagram', text, history: history.filter((h) => typeof h.content === 'string'), phone: who.phone, contactPhone: who.phone ? null : (link.contactPhone || null), memoryKey: who.key, tz, extra: linkNote(link) });
       try { await send(token, m.sender.id, ans.reply); } catch (e) { done.push({ error: String(e?.message || e) }); continue; }
       try {
         if (conv?.id) { await logMessage({ conversationId: conv.id, tenantId: tenant.id, role: 'user', agent: 'lola', content: text }); await logMessage({ conversationId: conv.id, tenantId: tenant.id, role: 'assistant', agent: 'lola', content: ans.reply }); }
@@ -181,7 +177,8 @@ export async function refreshInstagramTokens(c, { now = Date.now() } = {}) {
 export async function replyAsSalon(c, tenantId, clientId, text) {
   const { data: cl } = await c.from('clients').select('id,phone').eq('id', clientId).eq('tenant_id', tenantId).maybeSingle();
   let key = cl && String(cl.phone || '').startsWith('ig:') ? cl.phone : null;
-  if (!key && cl?.phone) { const { data: l } = await c.from('clients').select('phone').eq('tenant_id', tenantId).eq('notes', 'linked:' + cl.phone).maybeSingle(); key = l?.phone || null; }
+  // Only a code-VERIFIED link routes a reply (an old typed-number "linked:" marker never does).
+  if (!key && cl?.phone) key = await verifiedChatKey(c, tenantId, cl.phone, 'ig:');
   if (!key) return { ok: false, error: 'This client hasn’t messaged you on Instagram.' };
   const { data: ch } = await c.from('tenant_channels').select('access_token,status').eq('tenant_id', tenantId).eq('channel', 'instagram').maybeSingle();
   const token = ch && ch.status === 'active' ? open(ch.access_token) : null;

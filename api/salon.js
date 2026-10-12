@@ -26,6 +26,7 @@ import { zonedLocalToUtc, localDateKey, dayBoundsUtc } from './lib/timezone.js';
 import { requestDeposit } from './lib/deposits.js';
 import { writeThrough } from './lib/booking-outbox.js';
 import { stylistClashes, serviceMinutes as serviceMin } from './calendar-owner.js';
+import { createBlocks, deleteBlocks } from './lib/blocks.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -541,23 +542,11 @@ export default async function handler(req,res){
     if(resource==='block'){
       const timeOk=v=>v==null||v===''||/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(v));
       const dateOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
-      const tKey=v=>v?String(v).slice(0,5).padStart(5,'0'):null;
       const staffOk=async sid=>{if(!sid)return true;const {data:s}=await c.from('staff').select('id').eq('tenant_id',T).eq('id',sid).maybeSingle();return !!s;};
       if(action==='delete'){
-        const {data:cur}=await c.from('blocked_slots').select('*').eq('id',body.id||'').eq('tenant_id',T).maybeSingle();
-        if(!cur)return res.status(404).json({ok:false,error:'Block not found'});
-        let ids=[cur.id];
-        if(String(body.scope||'')==='following'){
-          const {data:later}=await c.from('blocked_slots').select('*').eq('tenant_id',T).gt('blocked_date',String(cur.blocked_date));
-          const dow=k=>new Date(String(k).slice(0,10)+'T12:00:00Z').getUTCDay();
-          ids=ids.concat((later||[]).filter(b=>(b.staff_id||null)===(cur.staff_id||null)&&tKey(b.start_time)===tKey(cur.start_time)&&tKey(b.end_time)===tKey(cur.end_time)
-            &&String(b.reason||'')===String(cur.reason||'')&&dow(b.blocked_date)===dow(cur.blocked_date)).map(b=>b.id));
-        }
-        for(const id of ids){
-          const { error }=await c.from('blocked_slots').delete().eq('id',id).eq('tenant_id',T);
-          if(error)return res.status(500).json({ok:false,error:'Could not remove block: '+(error.message||JSON.stringify(error))});
-        }
-        return res.json({ok:true,deleted:ids.length});
+        const out=await deleteBlocks(c,T,{id:body.id,scope:body.scope});
+        if(!out.ok)return res.status(out.status).json({ok:false,error:out.error});
+        return res.json({ok:true,deleted:out.deleted});
       }
       if(action==='update'){
         const {data:cur}=await c.from('blocked_slots').select('*').eq('id',body.id||'').eq('tenant_id',T).maybeSingle();
@@ -574,19 +563,10 @@ export default async function handler(req,res){
         if(error)throw error;
         return res.json({ok:true,blocked_slot:data||{...cur,...patch}});
       }
-      if(!dateOk(body.date))return res.status(400).json({ok:false,error:'Pick a valid date.'});
-      if(!timeOk(body.start_time)||!timeOk(body.end_time))return res.status(400).json({ok:false,error:'Invalid time.'});
-      if(body.start_time&&body.end_time&&toMin(body.end_time)<=toMin(body.start_time))return res.status(400).json({ok:false,error:'End time must be after start time.'});
-      if(!(await staffOk(body.staff_id)))return res.status(404).json({ok:false,error:'Stylist not found'});
-      const weeks=Math.min(52,Math.max(1,parseInt(body.repeat_weeks,10)||1));
-      const rows=[];
-      for(let n=0;n<weeks;n++){
-        const {data,error}=await c.from('blocked_slots').insert({tenant_id:T,staff_id:body.staff_id||null,
-          blocked_date:addDaysKey(String(body.date),7*n),start_time:body.start_time||null,end_time:body.end_time||null,
-          reason:body.reason||''}).select().single();
-        if(error)throw error;
-        rows.push(data);
-      }
+      // Create: the shared block engine (also used by Lola's block_time) — same rules, same messages.
+      const made=await createBlocks(c,T,body);
+      if(!made.ok)return res.status(made.status).json({ok:false,error:made.error});
+      const rows=made.rows;
       return res.json({ok:true,blocked_slot:rows[0],blocked_slots:rows,count:rows.length});
     }
 

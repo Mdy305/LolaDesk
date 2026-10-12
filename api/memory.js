@@ -54,7 +54,8 @@ export default async function handler(req, res){
       if(identity) q = q.eq('client_phone', cleanIdentity('client', identity));
       const { data, error } = await q;
       if(error) throw new Error(error.message);
-      const memories = (data || []).map(row => ({
+      // Security bookkeeping (one-time codes, rate limits) is not a memory — never shown.
+      const memories = (data || []).filter(row => !String(row.client_phone || '').startsWith('otp:') && !/^(otp|link_code|link_try)/.test(String(row.key || ''))).map(row => ({
         scope: row.client_phone === 'owner' ? 'owner' : 'client',
         identity: row.client_phone,
         key: row.key,

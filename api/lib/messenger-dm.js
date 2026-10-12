@@ -29,6 +29,7 @@ import crypto from 'node:crypto';
 import { appUrl } from './telnyx-client.js';
 import { getOrStartConversation, getConversationHistory, logMessage, logUsage, setClientMemory, getClientMemory } from './db.js';
 import { answerClient } from './client-brain.js';
+import { linkedClient, linkTurn, linkNote, verifiedChatKey } from './identity-link.js';
 import { sealToken, openToken, canSeal, saveChannelRow, holderOf, noteChannelError, TAKEN_SAY } from './channel-store.js';
 
 /** The ONE Graph API version LolaDesk uses for Facebook. */
@@ -207,21 +208,20 @@ export async function sendMessage(pageId, token, psid, text, { messagingType = '
   });
 }
 
-/** The person writing in: a Messenger-keyed client (merged with their phone client once they give it). */
+/** The person writing in: a Messenger-keyed client — their phone client only once they proved the number by SMS code. */
 async function fbClient(c, tenantId, psid, token) {
   const key = 'fb:' + String(psid).slice(0, 60);
   let { data: client } = await c.from('clients').select('*').eq('tenant_id', tenantId).eq('phone', key).maybeSingle();
-  if (client?.notes && /^linked:\+\d+$/.test(client.notes)) {
-    const { data: real } = await c.from('clients').select('*').eq('tenant_id', tenantId).eq('phone', client.notes.slice(7)).maybeSingle();
-    if (real) return { client: real, key: real.phone, phone: real.phone, fbClientId: client.id };
-  }
+  // A link made by typing a number (never verified) is NOT identity: only a code-verified link is.
+  const linked = client ? await linkedClient(c, tenantId, key) : null;
+  if (linked) return { client: linked.client, key: linked.phone, phone: linked.phone, fbClientId: client.id, chatKey: key, chatClient: client };
   if (!client) {
     let first = 'Facebook', last = null;
     try { const p = await g(withToken(`${FB_GRAPH}/${encodeURIComponent(psid)}?fields=first_name,last_name`, token)); first = p.first_name || first; last = p.last_name || null; } catch (_) {}
     const { data } = await c.from('clients').insert({ tenant_id: tenantId, phone: key, first_name: first, last_name: last, updated_at: new Date().toISOString() }).select().maybeSingle();
     client = data;
   }
-  return { client, key, phone: null, fbClientId: client?.id || null };
+  return { client, key, phone: null, fbClientId: client?.id || null, chatKey: key, chatClient: client };
 }
 
 /** First time we see this Meta message id? (Meta retries deliveries.) */
@@ -238,7 +238,7 @@ async function firstTime(c, mid) {
 }
 
 /** One webhook delivery from Meta (object 'page'). send/answer are injectable for tests. */
-export async function handleMessengerEvent(c, event, { answer = answerClient, send = sendMessage, now = Date.now() } = {}) {
+export async function handleMessengerEvent(c, event, { answer = answerClient, send = sendMessage, sms = undefined, now = Date.now() } = {}) {
   const done = [];
   if (!event || event.object !== 'page') return done;
   for (const entry of event.entry || []) {
@@ -257,20 +257,17 @@ export async function handleMessengerEvent(c, event, { answer = answerClient, se
       const who = await fbClient(c, tenant.id, psid, token);
       // The 24-hour window opens with every message they send.
       try { await setClientMemory(tenant.id, 'fb:' + psid, 'messenger', { psid, page_id: pageId, last_inbound_at: new Date(m.timestamp || now).toISOString() }); } catch (_) {}
-      // They gave their number → link Messenger to their phone client (one person, one memory).
-      const ph = String(text).match(/(?:\+?1[\s.-]?)?\(?([2-9]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/);
-      if (ph && !who.phone) {
-        const e = `+1${ph[1]}${ph[2]}${ph[3]}`;
-        try {
-          const { data: real } = await c.from('clients').select('*').eq('tenant_id', tenant.id).eq('phone', e).maybeSingle();
-          if (real && who.client?.id) { await c.from('clients').update({ notes: 'linked:' + e }).eq('id', who.client.id).eq('tenant_id', tenant.id); who.client = real; who.key = e; }
-          who.phone = e;
-        } catch (_) {}
+      // A typed number is never identity: it's a contact number, and (for a client of this salon) a code
+      // is texted to it. Only the code typed back here links Messenger to their phone client.
+      let link = {};
+      if (!who.phone) {
+        try { link = await linkTurn(c, tenant, { key: who.chatKey, channelClient: who.chatClient, text, now, send: sms }); } catch (_) { link = {}; }
+        if (link.linked && link.client) { who.client = link.client; who.key = link.linked; who.phone = link.linked; }
       }
       let conv = null, history = [];
       try { conv = await getOrStartConversation(tenant.id, { clientId: who.client?.id, participant: who.client?.id ? undefined : 'fb:' + psid, channel: 'messenger', agent: 'lola' }); if (conv?.id) history = (await getConversationHistory(conv.id, 10)) || []; } catch (_) {}
       const tz = (await c.from('booking_settings').select('timezone').eq('tenant_id', tenant.id).maybeSingle().then((r) => r.data?.timezone).catch(() => null)) || 'America/New_York';
-      const ans = await answer({ tenant, client: who.client, channel: 'messenger', text, history: history.filter((h) => typeof h.content === 'string'), phone: who.phone, memoryKey: who.key, tz });
+      const ans = await answer({ tenant, client: who.client, channel: 'messenger', text, history: history.filter((h) => typeof h.content === 'string'), phone: who.phone, contactPhone: who.phone ? null : (link.contactPhone || null), memoryKey: who.key, tz, extra: linkNote(link) });
       const reply = String(ans?.reply || '').trim() || 'Thanks for your message! What can I help you book?';
       try { await send(pageId, token, psid, reply, { messagingType: 'RESPONSE' }); }
       catch (e) {
@@ -308,7 +305,8 @@ export async function replyAsSalon(c, tenantId, clientId, text, { now = Date.now
   const { data: cl } = await c.from('clients').select('id,phone').eq('id', clientId).eq('tenant_id', tenantId).maybeSingle();
   let key = cl && String(cl.phone || '').startsWith('fb:') ? cl.phone : null;
   if (!key && cl?.phone) {
-    try { const { data: l } = await c.from('clients').select('phone,notes').eq('tenant_id', tenantId).eq('notes', 'linked:' + cl.phone); key = ((l || []).find((x) => String(x.phone || '').startsWith('fb:')) || {}).phone || null; } catch (_) {}
+    // Only a code-VERIFIED link routes a reply (an old typed-number "linked:" marker never does).
+    key = await verifiedChatKey(c, tenantId, cl.phone, 'fb:', now);
   }
   if (!key) return { ok: false, error: 'This client hasn’t messaged you on Facebook.' };
   const { data: ch } = await c.from('tenant_channels').select('account_id,access_token,status').eq('tenant_id', tenantId).eq('channel', 'messenger').eq('status', 'active').maybeSingle();

@@ -22,6 +22,8 @@ import { learnBusiness, parseKnowledge } from './business-learn.js';
 import { SEGMENTS, audience, createCampaign, startCampaign, campaignsWithStats, inSendingHours } from './marketing.js';
 import { buildFillPlan, latestPlan, setPlanStatus } from './fill-plan.js';
 import { askToConfirm, confirmationStatus } from './appointment-confirm.js';
+import { revenueFor, resolvePeriod } from './owner-money.js';
+import { planBlock, applyBlock, planUnblock, applyUnblock } from './blocks.js';
 // Setup through Lola: the salon's line (new number / forwarding / moving a number), business-texting
 // registration, and channels (Instagram, Facebook Messenger, WhatsApp) — she does it all by conversation.
 import * as telecomSetup from './setup/telecom-tools.js';
@@ -43,7 +45,17 @@ const fn = (name, description, properties = {}, required = []) => ({
 
 export const OWNER_TOOLS = [
   fn('today_brief', "Summarize a day for the owner: bookings (who, when, what), open gaps, and today's calls. Use for 'catch me up', 'what's today', 'how's my day'.", { date: dateArg }),
-  fn('revenue_report', 'Booked revenue for a period compared with the previous one.', { period: { type: 'string', enum: ['today', 'week', 'month'] } }),
+  fn('revenue_report', "Booked revenue for a period. today / week (last 7 days) / month (month to date) compare with the previous period. For revenue LOCKED IN ahead or any other range use next_week, this_week, tomorrow, weekend, next_month, last_week, last_month, or from/to dates: total, by day, by stylist, deposits collected.", {
+    period: { type: 'string', enum: ['today', 'week', 'month', 'tomorrow', 'this_week', 'next_week', 'last_week', 'weekend', 'next_weekend', 'this_month', 'next_month', 'last_month'] },
+    from: { type: 'string', description: 'YYYY-MM-DD (salon day), with to.' }, to: { type: 'string', description: 'YYYY-MM-DD (salon day), inclusive.' },
+  }),
+  fn('block_time', "Block off time so nobody can book it (maintenance, a meeting, lunch, a day off). No staff = the whole salon. Lists clients already booked then and never cancels them. Use for 'block off Thursday afternoon', 'block Ana's Friday morning', 'close Saturday'.", {
+    staff: { type: 'string', description: 'Stylist name; leave empty for the whole salon.' }, date: dateArg,
+    part: { type: 'string', enum: ['morning', 'afternoon', 'evening', 'all day'], description: 'morning = opening to 12pm, afternoon = 12pm to close, evening = 5pm to close.' },
+    start: { type: 'string', description: 'Explicit start, e.g. 2pm.' }, end: { type: 'string', description: 'Explicit end, e.g. 4pm.' },
+    reason: { type: 'string' }, repeat_weeks: { type: 'integer', description: 'Repeat weekly for N weeks (1-52).' }, confirmed: confirmedArg,
+  }, ['date']),
+  fn('unblock_time', "Remove blocked time so clients can book it again. Use for 'remove the Thursday block', 'unblock Friday'.", { date: dateArg, staff: { type: 'string' }, reason: { type: 'string' }, confirmed: confirmedArg }),
   fn('find_client', 'Look up a client: phone, last visit, next booking.', { client: clientArg }, ['client']),
   fn('list_bookings', "List bookings for a day, or a client's upcoming bookings.", { date: dateArg, client: clientArg }),
   fn('text_client', 'Text one client from the salon line.', { client: clientArg, message: { type: 'string' }, confirmed: confirmedArg }, ['client', 'message']),
@@ -79,7 +91,7 @@ export const OWNER_TOOLS = [
 for (const m of SETUP_MODULES) for (const t of m.SETUP_TOOLS || []) if (!OWNER_TOOLS.some((x) => x.function.name === t.function.name)) OWNER_TOOLS.push(t);
 const setupModuleFor = (name) => SETUP_MODULES.find((m) => (m.SETUP_TOOLS || []).some((t) => t.function.name === name)) || null;
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
-const NEEDS_CONFIRM = new Set(['confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
+const NEEDS_CONFIRM = new Set(['block_time', 'unblock_time', 'confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
   calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
@@ -88,13 +100,22 @@ const PAGES = {
 };
 
 // ── owner-command detection: these skip the caller fast-paths in the brain ──
-const OWNER_VERBS = /\b(text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup|what did i miss|did i miss|while i was|alerts?|notify me|alert me|learn|read my|my website|my site|grow|campaign|marketing|promot\w*)\b/i;
+const OWNER_VERBS = /\b(block|unblock|blocked|locked in|text|sms|message|call|ring|phone|cancel|move|reschedule|push|no[- ]?show|didn'?t show|waitlist|fill|revenue|sales|made|brief|catch me up|summary|how'?s my|what'?s (on )?(today|tomorrow)|who'?s (coming|booked)|open the|go to|show me|find|look up|lookup|what did i miss|did i miss|while i was|alerts?|notify me|alert me|learn|read my|my website|my site|grow|campaign|marketing|promot\w*)\b/i;
 export function isOwnerCommand(text) { return OWNER_VERBS.test(String(text || '')); }
 
 const YES = /^\s*(yes|yeah|yep|yup|sure|ok(ay)?|do it|send( it)?|go( ahead)?|confirm(ed)?|please do|absolutely|correct|that'?s right)\b[\s.!]*$/i;
-const NO = /^\s*(no|nope|don'?t|cancel that|stop|never ?mind|wait|hold on|not now)\b/i;
+// The WHOLE message must be the "no" — "No, but street parking is free" is a reply, not a cancel.
+const NO = /^\s*(no|nope|don'?t|cancel|cancel that|stop|stop that|never ?mind|wait|hold on|not now)[\s.!]*$/i;
 export function isAffirmative(t) { return YES.test(String(t || '')); }
 export function isNegative(t) { return NO.test(String(t || '')); }
+// Off-app (owner texting from their cell) only a bare one-word answer confirms: no "ok", no "sure".
+const bare = (t) => String(t || '').trim().toLowerCase()
+  .replace(/^[\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0f\s]+/u, '').replace(/[\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0f\s]+$/u, '');
+export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do it)$/.test(bare(t)); }
+export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
+
+/** Tools that only read — the only ones an UNVERIFIED channel may run. */
+export const OWNER_READ_TOOLS = new Set(['today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -105,7 +126,8 @@ export async function ownerSystemPrompt(tenant) {
     `Today is ${wd} ${today} (salon timezone ${tz}).`,
     'When the owner asks you to do something, call the matching tool. Never claim you did something unless a tool result says it happened.',
     'Keep spoken replies short: one or two sentences, warm and plain.',
-    'For texts, calls, cancellations, moves, no-shows and gap fills, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
+    'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
+    'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
     'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
     'You are also their marketing manager: when they ask how to grow, give 2-3 specific moves for THIS business (who to text, what offer, when), then offer to send the text with text_clients_segment.',
     marketingBrief(tenant),
@@ -156,16 +178,25 @@ async function claimPending(tenantId) {
   return v;
 }
 
-/** Called by the brain before anything else: a bare "yes"/"no" resolves the parked action. */
-export async function takePendingAction({ tenant, text, req }) {
-  if (!isAffirmative(text) && !isNegative(text)) return null;
+/**
+ * Called by the brain before anything else: a bare "yes"/"no" resolves the parked action.
+ * origin {channel:'sms', sender} (owner texting): only a bare YES/NO, and only for an action that
+ * was parked by THAT sender over SMS. No origin (the app): only actions parked in the app.
+ */
+export async function takePendingAction({ tenant, text, req, origin = null }) {
+  const sms = origin && origin.channel === 'sms';
+  const yes = sms ? isBareYes(text) : isAffirmative(text);
+  const no = sms ? isBareNo(text) : isNegative(text);
+  if (!yes && !no) return null;
   const pending = await getPending(tenant.id);
   if (!pending) return null;
+  const from = pending.origin || null;
+  if (sms ? !(from && from.channel === 'sms' && from.sender === origin.sender) : (from && from.channel === 'sms')) return null;
   const claimed = await claimPending(tenant.id);
   // Someone else's "yes" already took it (or it just expired): never run it a second time.
-  if (!claimed) return { ok: true, say: isNegative(text) ? "Okay, I won't." : "That one's already been handled.", duplicate: true };
-  if (isNegative(text)) return { ok: true, say: "Okay, I won't.", cancelled: true };
-  return runOwnerTool({ tenant, name: claimed.name, args: { ...claimed.args, confirmed: true }, req });
+  if (!claimed) return { ok: true, say: no ? "Okay, I won't." : "That one's already been handled.", duplicate: true };
+  if (no) return { ok: true, say: "Okay, I won't.", cancelled: true };
+  return runOwnerTool({ tenant, name: claimed.name, args: { ...claimed.args, confirmed: true }, req, origin });
 }
 
 // ── helpers ──
@@ -281,7 +312,16 @@ function park(tenantId, name, args, say) {
 }
 
 // ── the tools ──
-export async function runOwnerTool({ tenant, name, args = {}, req }) {
+/** origin {channel, sender}: where the owner is talking from — a parked action remembers it. */
+export async function runOwnerTool({ tenant, name, args = {}, req, origin = null }) {
+  const out = await runOwnerToolInner({ tenant, name, args, req });
+  if (out && out.needs_confirmation && origin && origin.channel) {
+    try { const p = await getPending(tenant.id); if (p && p.name === name) await setPending(tenant.id, { name: p.name, args: p.args, origin: { channel: origin.channel, sender: origin.sender || null } }); } catch { /* best effort */ }
+  }
+  return out;
+}
+
+async function runOwnerToolInner({ tenant, name, args = {}, req }) {
   const c = db();
   if (!c) return { ok: false, say: "My database isn't connected right now." };
   const tz = await tenantTz(tenant.id);
@@ -426,6 +466,11 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
       }
 
       case 'revenue_report': {
+        // Any range beyond the classic three: locked-in revenue with day / stylist / deposit breakdown.
+        if ((args.from && args.to) || (args.period && !['today', 'week', 'month'].includes(args.period) && resolvePeriod(args.period, tz))) {
+          const r = await revenueFor(c, tenant.id, args.from && args.to ? { from: args.from, to: args.to } : args.period, tz);
+          if (r) return { ok: true, say: r.say, period: args.period || 'range', from: r.from, to: r.to, booked_total: r.total, bookings: r.count, by_day: r.by_day, by_stylist: r.by_stylist, deposits_collected: r.deposits_collected };
+        }
         const period = ['today', 'week', 'month'].includes(args.period) ? args.period : 'month';
         const todayKey = localDateKey(new Date(), tz);
         const [y, m, d] = todayKey.split('-').map(Number);
@@ -449,6 +494,22 @@ export async function runOwnerTool({ tenant, name, args = {}, req }) {
         const say = `${label}: ${fmt(now.total)} booked across ${now.count} appointment${now.count === 1 ? '' : 's'}` +
           (delta === null ? '.' : `, ${delta >= 0 ? 'up' : 'down'} ${Math.abs(delta)}% from ${cmp} (${fmt(prev.total)}).`);
         return { ok: true, say, period, booked_total: now.total, bookings: now.count, previous_total: prev.total, change_pct: delta };
+      }
+
+      case 'block_time': {
+        // Confirmed: write exactly what was previewed (the parked plan), never re-parse words.
+        if (confirmed && args.plan) return { ...(await applyBlock(c, tenant.id, args.plan, { tz })), ui: { refresh: 'bookings' } };
+        const p = await planBlock(c, tenant, args, { tz });
+        if (!p.ok) return { ok: false, say: p.say };
+        // Always previewed first, even if the model claims it's confirmed: the owner's "yes" runs the parked plan.
+        return park(tenant.id, name, { plan: p.plan }, `${p.say}${p.clashes.length ? '' : ' Go ahead?'}`);
+      }
+
+      case 'unblock_time': {
+        if (confirmed && Array.isArray(args.ids)) return { ...(await applyUnblock(c, tenant.id, args.ids)), ui: { refresh: 'bookings' } };
+        const p = await planUnblock(c, tenant, args, { tz });
+        if (!p.ok) return { ok: false, say: p.say };
+        return park(tenant.id, name, { ids: p.ids }, p.say);
       }
 
       case 'find_client': {

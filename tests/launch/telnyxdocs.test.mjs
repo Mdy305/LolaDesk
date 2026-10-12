@@ -39,7 +39,7 @@ ok(r.verified === false && T.bookings.find((b) => b.id === 'nxt').status === 'co
 r = await run('lola-tools.js', { query: { tool: 'confirm_booking', to: '+13055550100', from: '+17865550000', ch: 'phone_call', k: K }, body: { client_phone: '+13055554444' } });
 ok(r.verified === false, 'a caller can’t look up someone else’s booking from another phone');
 r = await run('lola-tools.js', { query: { tool: 'recall_client', salon: '+13055550100', ch: 'web_call', k: K }, body: { client_phone: '(305) 555-4444' } });
-ok(/^Hey Sarah, welcome back/.test(r.speak) && !/PPD|Ash|blonde|last/i.test(JSON.stringify(r)), 'a website visitor gets a warm first-name welcome, never the client’s history: ' + r.speak);
+ok(!/Sarah/.test(r.speak) && r.known === undefined && !/PPD|Ash|blonde|last/i.test(JSON.stringify(r)), 'a website visitor typing a number learns nothing about whose it is (no name, no history): ' + r.speak);
 r = await run('lola-tools.js', { query: { tool: 'list_services', to: '+13055550100' }, body: {} });
 ok(/Blowout/.test(JSON.stringify(r)), 'public skills keep working while the assistant waits to be re-signed');
 

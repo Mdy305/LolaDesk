@@ -71,9 +71,10 @@ function buildTools(tenant){
     webhookTool('whats_my_day', "Read the appointments on the books for a given day.",
       dateProp, [], slug),
 
-    webhookTool('find_revenue', "Total booked revenue for a period.",
-      { range: { type: 'string', enum: ['today', 'week', 'month'], description: 'Period to total.' },
-        date: { type: 'string', description: 'A specific day instead of a range (YYYY-MM-DD).' } },
+    webhookTool('find_revenue', "Total booked (locked-in) revenue for a period, with a by-day and by-stylist breakdown and deposits collected. week/month = to date; next_week = Monday-Sunday of next week.",
+      { range: { type: 'string', enum: ['today', 'week', 'month', 'tomorrow', 'this_week', 'next_week', 'last_week', 'weekend', 'next_weekend', 'this_month', 'next_month', 'last_month'], description: 'Period to total.' },
+        date: { type: 'string', description: 'A specific day instead of a range (YYYY-MM-DD).' },
+        from: { type: 'string', description: 'Range start YYYY-MM-DD (with to).' }, to: { type: 'string', description: 'Range end YYYY-MM-DD, inclusive.' } },
       [], slug),
 
     webhookTool('who_is_due', "List clients overdue for a rebooking.",
@@ -100,6 +101,20 @@ function buildTools(tenant){
         message: { type: 'string', description: 'The exact message to send.' },
         confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
       ['message'], slug),
+
+    webhookTool('block_time',
+      "Block off time so nobody can book it (no staff = whole salon). Lists clients already booked then; never cancels them. CHANGE: preview first, then confirm=true + confirm_token + PIN.",
+      { staff: { type: 'string', description: 'Stylist name; empty = whole salon.' }, date: { type: 'string', description: 'thursday, tomorrow, or YYYY-MM-DD.' },
+        part: { type: 'string', enum: ['morning', 'afternoon', 'evening', 'all day'] }, start: { type: 'string', description: 'e.g. 2pm' }, end: { type: 'string', description: 'e.g. 4pm' },
+        reason: { type: 'string' }, repeat_weeks: { type: 'integer' },
+        confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
+      ['date'], slug),
+
+    webhookTool('unblock_time',
+      "Remove blocked time so clients can book it again. CHANGE: preview first, then confirm=true + confirm_token + PIN.",
+      { date: { type: 'string' }, staff: { type: 'string' }, reason: { type: 'string' },
+        confirm: { type: 'boolean' }, confirm_token: { type: 'string' }, pin: { type: 'string' } },
+      [], slug),
 
     webhookTool('book_for_client', "Add a booking for a client.",
       { client_name: { type: 'string' }, client_phone: { type: 'string' }, service: { type: 'string' },
@@ -191,3 +206,4 @@ export default async function handler(req, res){
     return res.status(500).json({ ok: false, error: String(e) });
   }
 }
+export { buildTools }; // for tests

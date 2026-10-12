@@ -29,6 +29,8 @@ import {
   getOrStartConversation, logMessage
 } from './lib/db.js';
 import { OPERATOR_SKILLS } from './operator-tools.js';
+import { parseBlockCommand } from './lib/owner-intents.js';
+import { periodFromText } from './lib/owner-money.js';
 import { answerOwner, briefingLine } from './lib/owner-brain.js';
 import { getConversationHistory, db } from './lib/db.js';
 import { synthesize, isConfigured as elevenLabsConfigured } from './lib/elevenlabs.js';
@@ -69,6 +71,10 @@ export function parseOperatorIntent(text){
      LAST — "rebook", "book jane", and "cancel X's appointment" all
      contain schedule-ish words and must not fall into whats_my_day. */
 
+  // block / unblock time — before "cancel", so "cancel the thursday block" never cancels a client
+  const blk = parseBlockCommand(t);
+  if(blk) return { tool: blk.tool, args: blk.args };
+
   // cancel NAME ['s] [appointment] [on DATE]
   if((m = t.match(new RegExp(`^cancel\\s+([a-z ]+?)(?:'s)?(?:\\s+appointment)?(?:\\s+(?:on\\s+)?(${DATE_WORD}))?$`))))
     return { tool:'cancel_appointment', args:{ client_name: m[1].trim(), date: m[2] || '' } };
@@ -92,7 +98,12 @@ export function parseOperatorIntent(text){
     return { tool:'who_is_due', args:{} };
 
   // revenue
-  if(/revenue|sales|earnings|how much (?:did|have) (?:we|i)|money (?:did|have)/.test(t)){
+  if(/revenue|sales|earnings|how much (?:did|have) (?:we|i)|money (?:did|have)|locked in|on the books/.test(t) || (/how much/.test(t) && /\bbooked\b/.test(t))){
+    // "next week" / "this weekend" / "tomorrow" / "next month" / "last week" are real ranges — checked
+    // BEFORE the generic /week/ (which means week-to-date).
+    const p = periodFromText(t);
+    if(p && typeof p === 'object') return { tool:'find_revenue', args:{ from: p.from, to: p.to } };
+    if(p && !['today', 'this_week', 'this_month'].includes(p) && !/^(?:next |on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day$|^\d{4}-/.test(p)) return { tool:'find_revenue', args:{ range: p } };
     const range = /month/.test(t) ? 'month' : /week/.test(t) ? 'week' : '';
     const date = (!range && (t.match(new RegExp(`(${DATE_WORD})`))||[])[1]) || '';
     return { tool:'find_revenue', args:{ range, date } };
@@ -115,7 +126,7 @@ export function parsePinConfirm(text){
   return digits.length >= 3 ? digits : null;
 }
 
-const HINTS = 'schedule, revenue, this week, this month, rebook, overdue, cancel, move, reschedule, appointment, text my VIPs, confirm, today, tomorrow';
+const HINTS = 'schedule, revenue, locked in, next week, this week, this month, rebook, overdue, cancel, move, reschedule, appointment, block, unblock, afternoon, morning, text my VIPs, confirm, today, tomorrow';
 
 function texml({ say, playUrl, state = null, hangup = false }){
   // ONE LOLA, ONE VOICE — no Polly, ever. Fail loudly if her voice can't play.

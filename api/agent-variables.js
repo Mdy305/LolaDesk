@@ -159,16 +159,25 @@ export default async function handler(req, res){
     try{
       if(tenant?.id && fromNumber && mayRemember){
         const [client, mem] = await Promise.all([getClientByPhone(tenant.id, fromNumber), getClientMemory(tenant.id, fromNumber).catch(() => [])]);
-        try{ story = client ? await clientStory(db(), tenant, client) : null; }catch(_){}
         // Resolve the stylist's NAME from preferred_staff_id (the canonical
-        // schema has no preferred_stylist text column).
-        if(client?.preferred_staff_id){
-          const c2 = db();
-          const { data: st } = await c2.from('staff').select('name').eq('id', client.preferred_staff_id).maybeSingle();
-          if(st?.name) client.preferred_stylist = st.name;
+        // schema has no preferred_stylist text column) — this salon's staff only.
+        if(client?.preferred_staff_id && !client.preferred_stylist){
+          try{
+            const { data: st } = await db().from('staff').select('name,tenant_id').eq('id', client.preferred_staff_id).maybeSingle();
+            if(st?.name && (!st.tenant_id || String(st.tenant_id) === String(tenant.id))) client.preferred_stylist = st.name;
+          }catch(_){}
         }
+        // The same story every channel tells (visits, last + next visit, usual stylist, spend,
+        // formulas, saved memories), merged over the card basics — nothing the card knew is lost.
+        try{ story = client ? await clientStory(db(), tenant, client) : null; }catch(_){}
         memory = callerMemory(client);
-        if(story?.brief){ memory.caller_known = 'true'; memory.caller_brief = story.brief + '.'; }
+        if(story?.brief){
+          memory.caller_known = 'true';
+          if(story.name) memory.caller_name = story.name;
+          memory.caller_brief = story.brief + '.';
+          if(!memory.caller_stylist && story.stylist) memory.caller_stylist = story.stylist;
+          if(client?.is_vip) memory.caller_vip = 'true';
+        }
         // ── LOLA REMEMBERS: fold the caller's LAST call memory (written by
         // the post-call insights pipeline, keyed 'last_call') into the brief
         // so the next call repeats what happened — "last call you booked a

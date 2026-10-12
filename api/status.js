@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-onboard';
+export const RELEASE = 'lola-memory';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -239,7 +239,9 @@ export async function buildStatus() {
               if (secured.length) healed.push(`Lola’s phone wiring secured: ${secured.join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
-            if (Array.isArray(w.dup_kept_in_telnyx) && w.dup_kept_in_telnyx.length) healed.push(`Lola’s tools saved. Telnyx keeps its own copy of ${w.dup_kept_in_telnyx.join(', ')} (it holds a second tool with that name), so LolaDesk left those three as they are.`);
+            if (Array.isArray(w.shared_fixed) && w.shared_fixed.length) healed.push(`Lola’s ${w.shared_fixed.length} tool${w.shared_fixed.length > 1 ? 's' : ''} in your Telnyx Tools Library (${w.shared_fixed.join(', ')}) re-signed where they live.`);
+            if (Array.isArray(w.dup_kept_in_telnyx) && w.dup_kept_in_telnyx.length) healed.push(`Lola’s tools saved — ${w.dup_kept_in_telnyx.join(', ')} ${w.dup_kept_in_telnyx.length > 1 ? 'stay' : 'stays'} in your Telnyx Tools Library.`);
+            if (w.inline_count != null) live.lola_tools = `${w.inline_count + (w.shared_tools || []).length} tools on Lola (${(w.shared_tools || []).length} from the Telnyx Tools Library)`;
             if (Array.isArray(w.mcp_detached) && w.mcp_detached.length) healed.push(`Lola’s tools saved: detached ${w.mcp_detached.join(', ')} — its tools had the same names as hers. It is kept in Telnyx → AI → MCP Servers.`);
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
             if (w.error) {
@@ -386,7 +388,7 @@ const scrubDetail = (t) => String(t || '')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
-const PUBLIC_DETAIL = ['tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_DETAIL = ['lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
