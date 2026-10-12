@@ -3,10 +3,10 @@ import calendarHandler from './calendar.js';
 // Public booking uses the exact same calendar core as Lola/Telnyx.
 // Only a narrow set of actions is exposed so the website cannot mutate arbitrary state.
 // client_lookup returns a returning visitor's FIRST name only (rate limited);
-// deposit_quote / open_days / addons are read-only; release_hold frees the
-// visitor's own 5-minute hold by its token.
+// deposit_quote / open_days / addons / next_open are read-only; release_hold
+// frees the visitor's own 5-minute hold by its token.
 const ALLOWED = new Set(['catalog','availability','hold','release_hold','book','cancel','reschedule','lookup','waitlist_add',
-  'client_lookup','deposit_quote','open_days','addons']);
+  'client_lookup','deposit_quote','open_days','addons','next_open']);
 
 export default async function handler(req,res){
   if(req.method==='OPTIONS') return calendarHandler(req,res);

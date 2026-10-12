@@ -324,7 +324,17 @@ export async function checkAvailability(tenant, params){
   });
   if(!av.ok) return { ok: false, error: av.error, speak: "I couldn't check that right now." };
   const tz = await salonTz(tenant.id);
-  const names = av.slots.slice(0, 4).map(s => `${timeLabel(s.starts_at, tz)}${s.staff_name ? ` with ${first(s.staff_name)}` : ''}`);
+  // LolaDesk's own calendar: the same smart order Lola speaks on calls (packs the day, no unsellable
+  // holes, the client's usual stylist) — not earliest-first. A salon's external system keeps its order.
+  let spoken = av.slots;
+  if(av.slots.length && !av.slots.some(s => s.provider)){
+    try{
+      const { findSmartSlots, pickOffers } = await import('./smart-slots.js');
+      const r = await findSmartSlots({ tenantId: tenant.id, serviceId: resolved.service.id, date: params.date || params.starts_at || null, staffId: params.staff_id || resolved.staff?.id || null, clientId: params.client_id || null, days: 0, tz });
+      if(r.ok && r.ranked?.length){ av.slots = r.ranked.slice(0, Number(params.limit || 12)); spoken = pickOffers(r.ranked, 4); }
+    }catch(e){ console.warn('[booking-brain] smart order skipped:', e?.message || e); }
+  }
+  const names = spoken.slice(0, 4).map(s => `${timeLabel(s.starts_at, tz)}${s.staff_name ? ` with ${first(s.staff_name)}` : ''}`);
   const speak = av.slots.length
     ? `I have ${av.slots.length} opening${av.slots.length === 1 ? '' : 's'}${names.length ? `: ${names.join(', ')}` : ''}.`
     : `That day looks full — want me to try a different day?`;

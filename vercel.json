@@ -4,6 +4,10 @@
     {
       "source": "/api/calendar.ics",
       "destination": "/api/calendar-ics"
+    },
+    {
+      "source": "/b/:slug",
+      "destination": "/book.html"
     }
   ],
   "outputDirectory": ".",

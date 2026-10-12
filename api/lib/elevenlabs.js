@@ -43,7 +43,9 @@ export function isConfigured(){
 // so the dashboard and the phone line sound like one Lola.
 //   LOLA_TELNYX_VOICE  optional, e.g. Telnyx.KokoroTTS.af_heart (default)
 //   VOICE_PROVIDER     optional: 'telnyx' to always speak through Telnyx
-export function telnyxVoice(){ return process.env.LOLA_TELNYX_VOICE || 'Telnyx.KokoroTTS.af_heart'; }
+// Her Telnyx voice — ONE id for the app, the phone assistants and calls we place (Telnyx Ultra: natural, expressive, en-US female).
+export const DEFAULT_TELNYX_VOICE = 'Telnyx.Ultra.Clara';
+export function telnyxVoice(){ return String(process.env.LOLA_TELNYX_VOICE || process.env.TELNYX_TTS_VOICE || DEFAULT_TELNYX_VOICE).trim(); }
 export async function telnyxSpeech(text, { signal } = {}) {
   const key = process.env.TELNYX_API_KEY;
   if (!key) throw new Error('Missing TELNYX_API_KEY');

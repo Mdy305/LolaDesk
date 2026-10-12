@@ -232,6 +232,77 @@
 .macts.wrap button,.macts.wrap .btn-link{flex:1 1 calc(33% - 10px);min-width:110px}
 .macts .btn-link{display:inline-flex;align-items:center;justify-content:center;padding:13px;border-radius:12px;font-size:14px;font-weight:650;text-decoration:none;background:transparent;border:.5px solid var(--border);color:var(--text2)}
 @media(max-width:760px){.cal-grid{min-width:0}.cal-head{padding:12px 10px}.stf-filter{max-width:none;flex:1}.macts.wrap button,.macts.wrap .btn-link{flex:1 1 calc(50% - 10px)}}
+
+/* ── Calendar 2: color modes, week time grid, touch lift, client card, block sheet ── */
+@supports (background:color-mix(in srgb,red 10%,transparent)){
+  .appt{background:linear-gradient(180deg,color-mix(in srgb,var(--svc) 20%,rgba(20,20,22,.55)),color-mix(in srgb,var(--svc) 9%,rgba(20,20,22,.55)))}
+  .appt .st{background:rgba(0,0,0,.28)}
+}
+.appt{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.appt.lifted{transform:scale(1.035);box-shadow:0 18px 44px rgba(0,0,0,.6);z-index:40;transition:transform .16s var(--spring),box-shadow .16s var(--spring)}
+.cal-sub{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+.cal-sub:empty{display:none}
+.chips{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1 1 auto;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip-s{flex:none;display:inline-flex;align-items:center;gap:7px;border:.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;font-weight:600;padding:7px 12px;border-radius:999px;min-height:32px;font-family:inherit;cursor:pointer;transition:all .18s var(--spring)}
+.chip-s:hover{color:var(--text);border-color:var(--border2)}
+.chip-s.on{background:rgba(242,242,244,.1);color:var(--text);border-color:rgba(242,242,244,.4)}
+.chip-s i{width:8px;height:8px;border-radius:50%;background:var(--c,var(--accent));flex:none}
+.seg{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:.5px solid var(--border);border-radius:999px;padding:3px;flex:none;margin-left:auto}
+.seg span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:700;padding:0 8px 0 9px}
+.seg button{border:0;background:transparent;color:var(--text2);font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:999px;cursor:pointer;font-family:inherit;transition:all .18s var(--spring)}
+.seg button.on{background:rgba(242,242,244,.14);color:var(--text)}
+.cal-head.wk-h{cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:10px 12px}
+.cal-head.wk-h .wd{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);font-weight:650}
+.cal-head.wk-h .wn{font-size:19px;font-weight:300;letter-spacing:-.02em;color:var(--text);display:flex;align-items:baseline;gap:7px}
+.cal-head.wk-h .wn small{font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0}
+.cal-head.wk-h:hover .wn{color:var(--accent)}
+.cal-head.wk-h.today .wn b{background:var(--danger);color:#fff;font-weight:600;border-radius:999px;padding:0 7px;font-size:16px;line-height:24px;display:inline-block}
+.day-col.today{background:rgba(242,242,244,.018)}
+.appt.wk .svc{font-size:11px;margin:1px 0 0}
+.appt.wk .cli{font-size:10px}
+.appt.compact{padding:4px 7px}
+.appt.compact .at{display:none}
+.appt.wk{padding:6px 8px}
+.appt.wk .at{white-space:nowrap;overflow:hidden}
+.appt.wk .svc,.appt.wk .cli{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.appt.wk .svc .tm{font-weight:500;color:var(--text3);font-size:9.5px;margin-right:4px}
+.appt.wk.tiny .cli{display:none}
+.appt.wk.narrow .at .st{display:none}
+.cal-grid{-webkit-user-select:none;user-select:none}
+.appt .sd{width:6px;height:6px;border-radius:50%;background:var(--sc,var(--text3));flex:none;display:inline-block;margin-right:5px;vertical-align:1px}
+.cal-block.salon{left:0!important;right:0!important;width:auto!important;border-radius:0;border-left:0;border-right:0;z-index:2;opacity:.9}
+.cal-block .bk-who{font-weight:500;color:var(--text3)}
+.now-line{box-shadow:0 0 8px rgba(255,90,77,.45)}
+.cc{margin:2px 0 12px;border:.5px solid var(--border);border-radius:16px;background:var(--surface);padding:12px}
+.cc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cc-stats div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cc-stats b{font-size:15px;font-weight:650;color:var(--text);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-stats b.warn{color:var(--danger)}
+.cc-stats span{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:650}
+.cc-next{margin-top:10px;padding-top:10px;border-top:.5px solid rgba(255,255,255,.06);font-size:12.5px;color:var(--text2);display:flex;gap:8px;align-items:baseline}
+.cc-next em{font-style:normal;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);font-weight:650;flex:none}
+.cc-acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.cc-acts a,.cc-acts button{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:8px 12px;border-radius:10px;border:.5px solid var(--border);background:transparent;color:var(--text);text-decoration:none;cursor:pointer;font-family:inherit}
+.cc-acts a:hover,.cc-acts button:hover{border-color:var(--border2)}
+.cc-acts button:disabled{opacity:.5;cursor:default}
+.cc-skel{height:38px;border-radius:10px;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.07),rgba(255,255,255,.03));background-size:200% 100%;animation:ccSk 1.2s linear infinite}
+@keyframes ccSk{to{background-position:-200% 0}}
+.cli-link{color:inherit;text-decoration:none}
+.cli-link:hover{text-decoration:underline;text-underline-offset:3px}
+.tog{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);cursor:pointer;margin:-4px 0 14px}
+.tog input{accent-color:var(--accent);width:16px;height:16px}
+.fld input:disabled{opacity:.4}
+.chips:empty{display:none}
+@media(max-width:760px){
+  .seg{margin-left:0}.seg span{display:none}.cc-stats b{font-size:14px}
+  .cal-head.wk-h .wn small{display:none}
+  .appt.wk .at .st{display:none}
+  .cal-nav{width:100%}
+  .cal-nav>span{display:none}
+  .view-switch{flex:1 1 auto}.view-switch button{flex:1;padding:7px 8px}
+  .stf-filter{flex:1 1 100%}
+}
 </style>
 </head>
 <body data-page="bookings"><div class="app"><main class="main">
@@ -239,14 +310,14 @@
   <div style="display:flex;align-items:center;gap:18px"><div id="lolaAnchor" data-inline aria-hidden="true" style="width:84px;height:84px;flex:none;margin:-10px 0 -10px -4px"></div><div><div class="cal-date" id="calDate" style="font-size:26px;font-weight:560;letter-spacing:-.02em">Calendar</div><div style="font-size:12px;color:var(--text3);margin-top:2px" id="calSub">Loading...</div></div></div>
   <div class="cal-nav" style="display:flex;gap:6px;align-items:center">
     <div class="view-switch" id="viewSwitch">
-      <button data-v="week" class="on">Week</button>
-      <button data-v="day">Day</button>
-      <button data-v="agenda">Agenda</button>
+      <button data-v="week" class="on" title="Week (W)">Week</button>
+      <button data-v="day" title="Day (D)">Day</button>
+      <button data-v="agenda" title="Agenda (A)">Agenda</button>
     </div>
     <span style="width:1px;height:22px;background:var(--border);margin:0 6px"></span>
-    <button onclick="nav(-1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8249;</button>
-    <button onclick="goToday()" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">Today</button>
-    <button onclick="nav(1)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8250;</button>
+    <button onclick="nav(-1)" title="Previous (←)" aria-label="Previous" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8249;</button>
+    <button onclick="goToday()" title="Today (T)" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">Today</button>
+    <button onclick="nav(1)" title="Next (→)" aria-label="Next" style="height:36px;padding:0 14px;border:.5px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">&#8250;</button>
     <select id="stfFilter" class="stf-filter" aria-label="Show stylist" onchange="setStaffFilter(this.value)" style="display:none"><option value="">All stylists</option></select>
   </div>
   <div class="cal-links" style="display:flex;gap:8px;align-items:center">
@@ -266,6 +337,8 @@
   <div class="kpi"><div class="kpi-val pink" id="kUtil">—</div><div class="kpi-label">Utilization</div></div>
 </div>
 <div class="stf-switch" id="stfSwitch" role="tablist" aria-label="Stylist"></div>
+<div class="cal-sub" id="calSubBar"><div class="chips" id="wkChips" role="group" aria-label="Show stylist"></div>
+  <div class="seg" id="colorSeg" role="group" aria-label="Color appointments by"><span>Color</span><button data-c="service">Service</button><button data-c="stylist">Stylist</button><button data-c="status">Status</button></div></div>
 <div class="cal-wrap"><div class="cal-grid" id="calGrid"><div class="empty-cal">Loading calendar...</div></div></div>
 </main></div>
 <div class="mw" id="modal"><div class="modal"><div class="grab"></div><div id="mHead"></div><div id="mBody"></div></div></div>
@@ -315,6 +388,34 @@ function toMin(t){const[h,m]=String(t).split(':').map(Number);return h*60+(m||0)
 function blockLabel(b){const allDay=!b.start_time&&!b.end_time;const t=b.start_time&&b.end_time?(' · '+b.start_time.slice(0,5)+'–'+b.end_time.slice(0,5)):'';return (allDay?'Day off':(b.reason||'Blocked'))+t;}
 function initials(name){return String(name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();}
 function svcColor(id){if(!id)return 'var(--accent)';const pal=['var(--accent)','var(--info)','var(--warning)','#bf5af2','var(--danger)','#30d158','#64d2ff','var(--warning)'];let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return pal[h%pal.length];}
+// Color by: service (default hue per service) · stylist (staff.color when set) · status.
+let COLOR_MODE=(()=>{try{const v=localStorage.getItem('lola_cal_color');return ['service','stylist','status'].includes(v)?v:'stylist';}catch(e){return 'stylist';}})();
+const STAFF_PAL=['#64d2ff','#bf5af2','#ff9f0a','#30d158','#ff6482','#5e5ce6','#ffd60a','#ac8e68','#66d4cf','#ff453a'];
+const STATUS_COLOR={pending:'var(--warning)',confirmed:'#64d2ff',checked_in:'#30d158',in_progress:'#5e5ce6',completed:'#8e8e93',no_show:'var(--danger)',cancelled:'var(--danger)'};
+function okColor(v){v=String(v||'').trim();if(!v)return '';try{return window.CSS&&CSS.supports&&CSS.supports('color',v)?v:'';}catch(e){return '';}}
+// Stylists without their own color get palette colors nobody else uses.
+let STAFF_CMAP={key:'',map:new Map()};
+function staffColorMap(){
+  const key=STATE.staff.map(s=>s.id+':'+(s.color||'')).join('|');
+  if(STAFF_CMAP.key===key)return STAFF_CMAP.map;
+  const map=new Map(),used=new Set();
+  STATE.staff.forEach(s=>{const c=okColor(s.color);if(c){map.set(s.id,c);used.add(c.toLowerCase());}});
+  let i=0;
+  STATE.staff.forEach(s=>{if(map.has(s.id))return;let tries=0;while(used.has(STAFF_PAL[i%STAFF_PAL.length])&&tries++<STAFF_PAL.length)i++;const c=STAFF_PAL[i%STAFF_PAL.length];map.set(s.id,c);used.add(c);i++;});
+  STAFF_CMAP={key,map};return map;
+}
+function staffColor(id){
+  if(!id)return '#8e8e93';
+  const m=staffColorMap();if(m.has(id))return m.get(id);
+  let h=0;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return STAFF_PAL[h%STAFF_PAL.length];
+}
+function apptColor(b){
+  if(!b)return 'var(--accent)';
+  if(COLOR_MODE==='stylist')return staffColor(b.staff_id);
+  if(COLOR_MODE==='status')return STATUS_COLOR[stClass(b.status)]||'var(--accent)';
+  return okColor(b.service&&b.service.color)||svcColor(b.service_id);
+}
+function setColorMode(m){if(!['service','stylist','status'].includes(m))return;COLOR_MODE=m;try{localStorage.setItem('lola_cal_color',m);}catch(e){}renderSubBar();render();}
 function toast(msg,type){if(window.LolaUX)window.LolaUX.toast(msg,{type:type||'success',duration:type==='error'?5200:3600});}
 function clientName(c){if(!c)return 'Client';return c.name||[c.first_name,c.last_name].filter(Boolean).join(' ')||'Client';}
 function clientPhone(c){if(!c)return '';const p=c.phone||c.phone_number||'';return String(p).includes(':')?'':p;}
@@ -397,7 +498,10 @@ function workMinutesFor(staffId,key){
 function render(){
   const {bookings,staff}=STATE;
   const sub=document.getElementById('calSub');
+  document.querySelectorAll('#viewSwitch button').forEach(x=>x.classList.toggle('on',x.dataset.v===VIEW));
   renderWeekStrip();
+  renderSubBar();
+  document.getElementById('calDate').textContent=VIEW==='week'?weekTitle(STATE.start||mondayOf(curKey())):fmtKey(curKey(),{weekday:'long',month:'long',day:'numeric'});
   const active=bookings.filter(b=>isLive(b)&&b.status!=='no_show'&&passesFilter(b.staff_id));
   const rev=active.reduce((s,b)=>s+Number(b.total_amount||0),0);
   const mins=active.reduce((s,b)=>s+spanMin(b),0);
@@ -427,7 +531,25 @@ function renderWeekStrip(){
       +'<div class="wn">'+Number(k.slice(8))+'</div><div class="wc">'+fmtKey(k,{month:'short'})+(count?' · '+count:'')+'</div></div>';
   }
   strip.innerHTML=html;
-  strip.style.display='flex';
+  // Week view: the grid's own day headers do this job.
+  strip.style.display=VIEW==='week'?'none':'flex';
+}
+function weekTitle(start){
+  const end=addDaysKey(start,6);
+  const sm=fmtKey(start,{month:'short'}),em=fmtKey(end,{month:'short'});
+  return sm+' '+Number(start.slice(8))+' – '+(em!==sm?em+' ':'')+Number(end.slice(8))+', '+end.slice(0,4);
+}
+// Stylist chips (week view: filter + color legend) and the Color-by toggle.
+function renderSubBar(){
+  const chips=document.getElementById('wkChips'),seg=document.getElementById('colorSeg');
+  if(seg)seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.c===COLOR_MODE));
+  if(!chips)return;
+  const showChips=VIEW!=='day'&&STATE.staff.length>1;
+  if(!showChips){chips.innerHTML='';return;}
+  const cur=STAFF_FILTER&&STATE.staff.some(s=>s.id===STAFF_FILTER)?STAFF_FILTER:'';
+  chips.innerHTML='<button class="chip-s'+(cur?'':' on')+'" data-s="">Everyone</button>'
+    +STATE.staff.map(s=>'<button class="chip-s'+(s.id===cur?' on':'')+'" data-s="'+esc(s.id)+'" style="--c:'+esc(staffColor(s.id))+'"><i></i>'+esc(s.name)+'</button>').join('');
+  chips.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.s;const sel=document.getElementById('stfFilter');if(sel)sel.value=v;setStaffFilter(v);});
 }
 function renderStaffFilter(){
   const sel=document.getElementById('stfFilter');if(!sel)return;
@@ -443,6 +565,7 @@ function setView(v){
   load();
 }
 document.querySelectorAll('#viewSwitch button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+document.querySelectorAll('#colorSeg button').forEach(b=>b.onclick=()=>setColorMode(b.dataset.c));
 
 /* ── Day view: stylist columns on the salon's own clock ── */
 let DAYCOLS=[];
@@ -452,8 +575,9 @@ function dayItems(){
   const ex=(STATE.external||[]).filter(x=>localDayKey(new Date(x.starts_at))===key);
   return {bk,ex};
 }
-function itemSpan(startIso,endIso){
-  const p=salonParts(startIso),s=p.key===curKey()?p.min:0;
+function itemSpan(startIso,endIso){return itemSpanOn(startIso,endIso,curKey());}
+function itemSpanOn(startIso,endIso,key){
+  const p=salonParts(startIso),s=p.key===key?p.min:0;
   const e=Math.min(24*60,s+Math.max(5,Math.round((new Date(endIso)-new Date(startIso))/60000)));
   return {s,e};
 }
@@ -503,8 +627,7 @@ function renderDay(){
   let re=sch.length?Math.max(...sch.map(s=>toMin(s.end_time))):(CTX.hours?.end_min??1260);
   const spans=[...bk.map(b=>itemSpan(b.start_time,b.end_time)),...ex.map(x=>itemSpan(x.starts_at,x.ends_at))];
   spans.forEach(sp=>{rs=Math.min(rs,sp.s);re=Math.max(re,sp.e);});
-  const nowP=salonParts(new Date());
-  if(nowP.key===key){rs=Math.min(rs,nowP.min);re=Math.max(re,nowP.min+30);}
+  // The red now-line shows only inside the working range (no 2 AM rows of empty grid).
   rs=Math.max(0,Math.floor(rs/60)*60);re=Math.min(24*60,Math.ceil(re/60)*60);if(re-rs<120)re=Math.min(24*60,rs+120);
   RANGE={s:rs,e:re};START=rs/60;END=re/60;
   const hours=(re-rs)/60,H=hours*SLOT_H;
@@ -554,7 +677,7 @@ function renderDay(){
       const allDay=!b.start_time&&!b.end_time;
       el.innerHTML='<div class="bk-t">'+(allDay?'Day off':'Blocked')+'<span class="bk-x" title="Remove block">✕</span></div><div class="bk-n">'+esc(b.reason||'No reason')+'</div>';
       el.title=blockLabel(b)+(b.staff_id?(' — '+((staffById(b.staff_id)||{}).name||'')):' — everyone');
-      el.onclick=ev=>{ev.stopPropagation();deleteBlock(b);};
+      el.onclick=ev=>{ev.stopPropagation();openBlockEdit(b);};
       col.appendChild(el);
     });
   });
@@ -574,7 +697,7 @@ function renderDay(){
         el.onclick=ev=>{ev.stopPropagation();toast(provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
         col.appendChild(el);return;
       }
-      const b=it.b,color=svcColor(b.service_id),dur=it.e-it.s;
+      const b=it.b,color=apptColor(b),dur=it.e-it.s;
       const el=document.createElement('div');
       el.className='appt '+stClass(b.status);el.dataset.bookingId=b.id||'';el.dataset.start=b.start_time||'';
       el.style.cssText='top:'+top(it.s)+'px;height:'+h+'px;--svc:'+color;placeLane(el,it);
@@ -600,9 +723,7 @@ function renderDay(){
       quickBook(col.dataset.col===UNASSIGNED?'':col.dataset.col,m);
     });
   });
-  if(nowP.key===key&&nowP.min>rs&&nowP.min<re){
-    g.querySelectorAll('.day-col').forEach(col=>{const nl=document.createElement('div');nl.className='now-line';nl.style.top=top(nowP.min)+'px';col.appendChild(nl);});
-  }
+  placeNowLines();
 }
 
 /* ── Drag to move (time + stylist) and drag to resize, salon-time aware ── */
@@ -614,26 +735,46 @@ function dragTip(text,bad,x,y){
   if(text==null){t.remove();return;}
   t.textContent=text;t.classList.toggle('bad',!!bad);t.style.left=(x+14)+'px';t.style.top=(y+14)+'px';
 }
-function clashesIn(colId,s,e,selfId){
-  if(colId===UNASSIGNED)return [];
-  const key=curKey();
+function clashesIn(colId,s,e,selfId){return clashAt(colId,curKey(),s,e,selfId);}
+function clashAt(colId,key,s,e,selfId){
+  if(!colId||colId===UNASSIGNED)return [];
   const out=[];
-  STATE.bookings.forEach(b=>{if(b.id===selfId||!isLive(b)||b.status==='no_show'||b.staff_id!==colId||localDayKey(new Date(b.start_time))!==key)return;const sp=itemSpan(b.start_time,b.end_time);if(sp.s<e&&s<sp.e)out.push(clientName(b.client));});
-  (STATE.external||[]).forEach(x=>{if(x.staff_id!==colId||localDayKey(new Date(x.starts_at))!==key)return;const sp=itemSpan(x.starts_at,x.ends_at);if(sp.s<e&&s<sp.e)out.push(x.provider||'platform');});
+  STATE.bookings.forEach(b=>{if(b.id===selfId||!isLive(b)||b.status==='no_show'||b.staff_id!==colId||localDayKey(new Date(b.start_time))!==key)return;const sp=itemSpanOn(b.start_time,b.end_time,key);if(sp.s<e&&s<sp.e)out.push(clientName(b.client));});
+  (STATE.external||[]).forEach(x=>{if(x.staff_id!==colId||localDayKey(new Date(x.starts_at))!==key)return;const sp=itemSpanOn(x.starts_at,x.ends_at,key);if(sp.s<e&&s<sp.e)out.push(x.provider||'platform');});
   return out;
 }
-function attachDrag(el,b,it,colId){
+// mode 'day': columns are stylists (drag changes time + stylist).
+// mode 'week': columns are salon dates (drag changes day + time; stylist kept).
+const LONG_PRESS=350;
+function attachDrag(el,b,it,colId,mode){
+  const week=mode==='week';
+  const dayOf=()=>week?colId:curKey();
+  let press=null;
+  const cancelPress=()=>{if(press){clearTimeout(press.t);press=null;}};
+  const start=(x,y,pid,resize)=>{
+    const col=el.parentElement;if(!col)return;
+    DRAG={el,b,resize,x0:x,y0:y,s0:it.s,dur:it.e-it.s,col0:colId,colRect:col.getBoundingClientRect(),moved:false,target:colId,ns:it.s,nd:it.e-it.s};
+    try{el.setPointerCapture(pid);}catch(e){}
+  };
   el.addEventListener('pointerdown',ev=>{
     if(ev.button!==0||b.status==='cancelled')return;
     const resize=ev.target.classList.contains('rs-h');
-    // Touch: a tap opens the sheet and a swipe scrolls; the resize handle still drags.
-    if(ev.pointerType==='touch'&&!resize)return;
-    const col=el.parentElement;
-    DRAG={el,b,resize,x0:ev.clientX,y0:ev.clientY,s0:it.s,dur:it.e-it.s,col0:colId,colRect:col.getBoundingClientRect(),moved:false,target:colId,ns:it.s,nd:it.e-it.s};
-    try{el.setPointerCapture(ev.pointerId);}catch(e){}
+    // Touch: a tap opens the sheet and a swipe scrolls; a ~350 ms long-press
+    // lifts the card so it can be dragged. The resize handle drags at once.
+    if(ev.pointerType==='touch'&&!resize){
+      cancelPress();
+      const x=ev.clientX,y=ev.clientY,pid=ev.pointerId;
+      press={x,y,t:setTimeout(()=>{press=null;start(x,y,pid,false);if(!DRAG)return;DRAG.armed=true;el.classList.add('lifted');try{navigator.vibrate&&navigator.vibrate(12);}catch(e){}},LONG_PRESS)};
+      return;
+    }
+    start(ev.clientX,ev.clientY,ev.pointerId,resize);
     ev.preventDefault();
   });
+  // Once lifted, the finger drags the card instead of scrolling the page.
+  el.addEventListener('touchmove',ev=>{if(DRAG&&DRAG.el===el&&ev.cancelable)ev.preventDefault();},{passive:false});
+  el.addEventListener('contextmenu',ev=>{if(press||(DRAG&&DRAG.el===el))ev.preventDefault();});
   el.addEventListener('pointermove',ev=>{
+    if(press){if(Math.hypot(ev.clientX-press.x,ev.clientY-press.y)>8)cancelPress();return;}
     const D=DRAG;if(!D||D.el!==el)return;
     const dx=ev.clientX-D.x0,dy=ev.clientY-D.y0;
     if(!D.moved&&Math.hypot(dx,dy)<4)return;
@@ -642,7 +783,7 @@ function attachDrag(el,b,it,colId){
     if(D.resize){
       D.nd=Math.max(15,Math.min(RANGE.e-D.s0,D.dur+dMin));
       el.style.height=Math.max(26,D.nd/60*SLOT_H-5)+'px';
-      const bad=clashesIn(D.col0,D.s0,D.s0+D.nd,b.id);
+      const bad=week?clashAt(b.staff_id,dayOf(),D.s0,D.s0+D.nd,b.id):clashesIn(D.col0,D.s0,D.s0+D.nd,b.id);
       el.classList.toggle('drag-bad',bad.length>0);
       dragTip('Ends '+minLabel(D.s0+D.nd)+' · '+fmtDur(D.nd)+(bad.length?' · overlaps '+bad[0]:''),bad.length,ev.clientX,ev.clientY);
       return;
@@ -652,30 +793,32 @@ function attachDrag(el,b,it,colId){
     const hit=(document.elementsFromPoint?document.elementsFromPoint(ev.clientX,ev.clientY):[]).find(n=>n.classList&&n.classList.contains('day-col'));
     if(hit){target=hit.dataset.col;tRect=hit.getBoundingClientRect();}
     D.target=target;
-    el.style.transform='translate('+(tRect.left-D.colRect.left)+'px,'+((D.ns-D.s0)/60*SLOT_H)+'px)';
-    const bad=clashesIn(target,D.ns,D.ns+D.dur,b.id);
+    el.style.transform='translate('+(tRect.left-D.colRect.left)+'px,'+((D.ns-D.s0)/60*SLOT_H)+'px)'+(D.armed?' scale(1.035)':'');
+    const bad=week?clashAt(b.staff_id,target,D.ns,D.ns+D.dur,b.id):clashesIn(target,D.ns,D.ns+D.dur,b.id);
     el.classList.toggle('drag-bad',bad.length>0);
-    const who=target===UNASSIGNED?'Unassigned':((staffById(target)||{}).name||'');
+    const who=week?fmtKey(target,{weekday:'short',month:'short',day:'numeric'}):(target===UNASSIGNED?'Unassigned':((staffById(target)||{}).name||''));
     dragTip(minLabel(D.ns)+(who?' · '+who:'')+(bad.length?' · overlaps '+bad[0]:''),bad.length,ev.clientX,ev.clientY);
   });
   const finish=async(ev,cancelled)=>{
+    cancelPress();
     const D=DRAG;if(!D||D.el!==el)return;
-    DRAG=null;dragTip(null);
-    if(!D.moved)return;
-    DRAG_JUST_ENDED=true;setTimeout(()=>{DRAG_JUST_ENDED=false;},0);
+    DRAG=null;dragTip(null);el.classList.remove('lifted');
+    if(!D.moved){if(D.armed){el.style.transform='';DRAG_JUST_ENDED=true;setTimeout(()=>{DRAG_JUST_ENDED=false;},350);}return;}
+    DRAG_JUST_ENDED=true;setTimeout(()=>{DRAG_JUST_ENDED=false;},D.armed?350:0);
     if(cancelled){render();return;}
     const payload={action:'move',booking_id:b.id};
     if(D.resize){
       if(D.nd===D.dur){render();return;}
-      Object.assign(payload,{date:curKey(),time:hhmm(D.s0),duration_min:D.nd});
+      Object.assign(payload,{date:dayOf(),time:hhmm(D.s0),duration_min:D.nd});
     }else{
       if(D.ns===D.s0&&D.target===D.col0){render();return;}
-      Object.assign(payload,{date:curKey(),time:hhmm(D.ns),staff_id:D.target===UNASSIGNED?null:D.target});
+      if(week)Object.assign(payload,{date:D.target,time:hhmm(D.ns)});
+      else Object.assign(payload,{date:curKey(),time:hhmm(D.ns),staff_id:D.target===UNASSIGNED?null:D.target});
     }
     el.classList.add('saving');
     const d=await ownerPost(payload,{confirmTitle:'Overlap another appointment?'});
     if(!d.ok){if(!d.dismissed)toast(d.error||'Could not move the appointment.','error');render();return;}
-    toast(D.resize?'Now ends '+minLabel(D.s0+D.nd)+'.':'Moved to '+minLabel(D.ns)+(D.target!==D.col0?' with '+((staffById(D.target)||{}).name||'Unassigned'):'')+'.');
+    toast(D.resize?'Now ends '+minLabel(D.s0+D.nd)+'.':(week?'Moved to '+fmtKey(D.target,{weekday:'short',month:'short',day:'numeric'})+' at '+minLabel(D.ns)+'.':'Moved to '+minLabel(D.ns)+(D.target!==D.col0?' with '+((staffById(D.target)||{}).name||'Unassigned'):'')+'.'));
     if(d.warnings&&d.warnings.length)setTimeout(()=>toast('Heads up: '+d.warnings.join(' ')),400);
     await load();
   };
@@ -683,41 +826,159 @@ function attachDrag(el,b,it,colId){
   el.addEventListener('pointercancel',ev=>finish(ev,true));
 }
 
-/* ── Week view ── */
+/* ── Week view: a real time grid — 7 salon days × hours, every stylist (or one) ── */
+function weekRange(keys,staffIds,spans){
+  const days=new Set(keys.map(keyDow));
+  const sch=(CTX.schedules||[]).filter(s=>days.has(Number(s.day_of_week))&&(!staffIds||staffIds.includes(s.staff_id)));
+  let rs=sch.length?Math.min(...sch.map(s=>toMin(s.start_time))):(CTX.hours?.start_min??480);
+  let re=sch.length?Math.max(...sch.map(s=>toMin(s.end_time))):(CTX.hours?.end_min??1260);
+  spans.forEach(sp=>{rs=Math.min(rs,sp.s);re=Math.max(re,sp.e);});
+  rs=Math.max(0,Math.floor(rs/60)*60);re=Math.min(24*60,Math.ceil(re/60)*60);if(re-rs<120)re=Math.min(24*60,rs+120);
+  return {rs,re};
+}
+// Who to preselect when the owner clicks an empty week slot: the filtered
+// stylist, else the first one scheduled that day and free at that time.
+function freeStylistAt(key,min){
+  if(STAFF_FILTER&&staffById(STAFF_FILTER))return STAFF_FILTER;
+  const sch=(CTX.schedules||[]).filter(s=>Number(s.day_of_week)===keyDow(key));
+  const ok=STATE.staff.find(s=>{
+    const w=sch.find(x=>x.staff_id===s.id);
+    if((CTX.schedules||[]).length&&(!w||min<toMin(w.start_time)||min>=toMin(w.end_time)))return false;
+    return !clashAt(s.id,key,min,min+30,null).length;
+  });
+  return ok?ok.id:'';
+}
 function renderWeek(){
-  const {bookings}=STATE;
   const g=document.getElementById('calGrid');
   document.getElementById('stfSwitch').style.display='none';
-  const base=mondayOf(curKey()),today=todayKey();
-  const labels=['MON','TUE','WED','THU','FRI','SAT','SUN'];
-  g.style.gridTemplateColumns='repeat(7,1fr)';g.style.minWidth='';
-  let html='';
-  for(let i=0;i<7;i++){
-    const iso=addDaysKey(base,i);
-    const dayBk=bookings.filter(b=>isLive(b)&&passesFilter(b.staff_id)&&localDayKey(new Date(b.start_time))===iso);
-    const dayEx=(STATE.external||[]).filter(x=>passesFilter(x.staff_id)&&localDayKey(new Date(x.starts_at))===iso);
-    const dayBlocks=(STATE.blocked_slots||[]).filter(b=>String(b.blocked_date)===iso&&(!b.staff_id||passesFilter(b.staff_id)));
-    html+='<div class="wk-day'+(iso===today?' today':'')+'" onclick="pickDay(\''+iso+'\')">'
-      +'<div class="wk-day-head"><div class="wd">'+labels[i]+'</div><div class="wn">'+Number(iso.slice(8))+'</div></div>'
-      +(dayBlocks.length?'<div class="wk-block" onclick="event.stopPropagation();loadDayWithBlocks(\''+iso+'\')" title="Blocked time on this day">⏱ '+dayBlocks.length+' block'+(dayBlocks.length===1?'':'s')+'</div>':'')
-      +'<div class="wk-empty">'+(dayBk.length||dayEx.length?'':'No bookings')+'</div>';
-    const rows=[...dayBk.map(b=>({t:new Date(b.start_time).getTime(),b})),...dayEx.map(x=>({t:new Date(x.starts_at).getTime(),x}))].sort((a,b)=>a.t-b.t);
-    rows.forEach(r=>{
-      if(r.x){
-        html+='<div class="wk-appt ext" onclick="event.stopPropagation()" title="Read-only — booked on '+esc(r.x.provider||'their platform')+'"><div class="t">'+fmtT(r.x.starts_at)+' · '+fmtDur(Math.round((new Date(r.x.ends_at)-new Date(r.x.starts_at))/60000))+'</div><div class="n">'+esc(provName(r.x.provider))+'</div><div class="c">'+esc((staffById(r.x.staff_id)||{}).name||'Unassigned')+'</div></div>';
-        return;
-      }
-      const b=r.b,color=svcColor(b.service_id);
-      html+='<div class="wk-appt '+stClass(b.status)+'" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" style="--svc:'+color+'" onclick="event.stopPropagation();showDetail(\''+esc(b.id)+'\')">'
-        +'<div class="t">'+fmtT(b.start_time)+' · '+fmtDur(spanMin(b))+' '+stPill(b.status)+'</div>'
-        +'<div class="n">'+esc(b.service?.name||'Appointment')+'</div>'
-        +'<div class="c">'+esc(clientName(b.client))+' · '+esc(b.staff?.name||'Unassigned')+'</div>'
-        +'<div class="badges">'+srcBadge(b)+depPill(b)+'</div></div>';
-    });
+  const base=STATE.start||mondayOf(curKey()),today=todayKey();
+  const keys=Array.from({length:7},(_,i)=>addDaysKey(base,i));
+  const filt=STAFF_FILTER&&staffById(STAFF_FILTER)?STAFF_FILTER:'';
+  const many=!filt&&STATE.staff.length>1;
+  const per=new Map(keys.map(k=>[k,[]]));
+  STATE.bookings.forEach(b=>{if(!isLive(b)||!passesFilter(b.staff_id))return;const k=localDayKey(new Date(b.start_time));if(per.has(k))per.get(k).push({kind:'b',b,...itemSpanOn(b.start_time,b.end_time,k)});});
+  (STATE.external||[]).forEach(x=>{if(!passesFilter(x.staff_id))return;const k=localDayKey(new Date(x.starts_at));if(per.has(k))per.get(k).push({kind:'x',x,...itemSpanOn(x.starts_at,x.ends_at,k)});});
+  const salonBlocks=[];
+  (STATE.blocked_slots||[]).forEach(bl=>{
+    const k=String(bl.blocked_date).slice(0,10);if(!per.has(k))return;
+    if(bl.staff_id&&!passesFilter(bl.staff_id))return;
+    const s=bl.start_time?toMin(bl.start_time):null,e=bl.end_time?toMin(bl.end_time):null;
+    if(!bl.staff_id){salonBlocks.push({bl,k,s,e});return;}
+    per.get(k).push({kind:'k',bl,s:s==null?-1:s,e:e==null?24*60:e});
+  });
+  const spans=[];per.forEach(items=>items.forEach(it=>{if(it.kind!=='k')spans.push(it);}));
+  const {rs,re}=weekRange(keys,filt?[filt]:null,spans);
+  RANGE={s:rs,e:re};START=rs/60;END=re/60;
+  // All-day blocks span the visible range.
+  per.forEach(items=>items.forEach(it=>{if(it.kind==='k'){if(it.s<0)it.s=rs;it.e=Math.min(it.e,re);}}));
+  const hours=(re-rs)/60,H=hours*SLOT_H;
+  g.style.gridTemplateColumns='56px repeat(7,minmax('+(MQ.matches?'92px':'118px')+',1fr))';
+  g.style.minWidth=MQ.matches?'700px':'';
+  let html='<div class="cal-corner"></div>';
+  keys.forEach(k=>{
+    const n=(per.get(k)||[]).filter(it=>it.kind==='b').length;
+    html+='<div class="cal-head wk-h'+(k===today?' today':'')+'" data-day="'+k+'" title="Open '+esc(fmtKey(k,{weekday:'long',month:'short',day:'numeric'}))+'"><div class="wd">'+fmtKey(k,{weekday:'short'})+'</div><div class="wn"><b>'+Number(k.slice(8))+'</b>'+(n?'<small>'+n+' appt'+(n===1?'':'s')+'</small>':'')+'</div></div>';
+  });
+  html+='<div class="cal-times">';
+  for(let h=0;h<hours;h++)html+='<div class="cal-time">'+minLabel(rs+h*60)+'</div>';
+  html+='</div>';
+  keys.forEach(k=>{
+    html+='<div class="day-col wk-col'+(k===today?' today':'')+'" data-col="'+k+'" style="height:'+H+'px">';
+    for(let h=0;h<hours;h++)html+='<div class="cal-slot" data-hour="'+(rs/60+h)+'"></div>';
     html+='</div>';
-  }
+  });
   g.innerHTML=html;
+  g.querySelectorAll('.wk-h').forEach(h=>h.onclick=()=>pickDay(h.dataset.day));
+  const colEl=k=>g.querySelector('.day-col[data-col="'+k+'"]');
+  const top=m=>(m-rs)/60*SLOT_H;
+  const shade=(col,a,b,label)=>{a=Math.max(rs,a);b=Math.min(re,b);if(b<=a)return;const el=document.createElement('div');el.className='off-hours';el.style.top=top(a)+'px';el.style.height=(b-a)/60*SLOT_H+'px';if(label)el.innerHTML='<span>'+esc(label)+'</span>';col.appendChild(el);};
+  // Closed hours: outside every (filtered) stylist's hours that weekday.
+  if((CTX.schedules||[]).length)keys.forEach(k=>{
+    const col=colEl(k);if(!col)return;
+    const sch=CTX.schedules.filter(s=>Number(s.day_of_week)===keyDow(k)&&(!filt||s.staff_id===filt));
+    if(!sch.length){shade(col,rs,re,filt?'Off':'Closed');return;}
+    shade(col,rs,Math.min(...sch.map(s=>toMin(s.start_time))));
+    shade(col,Math.max(...sch.map(s=>toMin(s.end_time))),re);
+  });
+  if(filt)(CTX.time_off||[]).filter(t=>t.staff_id===filt).forEach(t=>{
+    const a=salonParts(t.start_time),b=salonParts(t.end_time);
+    keys.forEach(k=>{
+      const s=a.key<k?rs:(a.key===k?a.min:null),e=b.key>k?re:(b.key===k?b.min:null);
+      if(s==null||e==null||e<=s)return;const col=colEl(k);if(col)shade(col,s,e,t.reason||'Time off');
+    });
+  });
+  // Whole-salon blocks: full-width bands under the appointments.
+  salonBlocks.forEach(({bl,k,s,e})=>{
+    const col=colEl(k);if(!col)return;
+    const a=s==null?rs:Math.max(rs,s),z=e==null?re:Math.min(re,e);if(z<=a)return;
+    const el=document.createElement('div');el.className='cal-block salon';
+    el.style.cssText='top:'+top(a)+'px;height:'+Math.max(22,(z-a)/60*SLOT_H-2)+'px';
+    el.innerHTML='<div class="bk-t">'+(s==null&&e==null?'Closed':'Salon')+'</div><div class="bk-n">'+esc(bl.reason||'Blocked')+'</div>';
+    el.title=blockLabel(bl)+' — everyone';
+    el.onclick=ev=>{ev.stopPropagation();openBlockEdit(bl);};
+    col.appendChild(el);
+  });
+  per.forEach((items,k)=>{
+    const col=colEl(k);if(!col)return;
+    layoutLanes(items).forEach(it=>{
+      const h=Math.max(22,(it.e-it.s)/60*SLOT_H-4);
+      if(it.kind==='k'){
+        const bl=it.bl,el=document.createElement('div');
+        el.className='cal-block';el.style.top=top(it.s)+'px';el.style.height=h+'px';placeLane(el,it);
+        const nm=(staffById(bl.staff_id)||{}).name||'';
+        el.innerHTML='<div class="bk-t">'+(!bl.start_time&&!bl.end_time?'Day off':'Blocked')+'</div><div class="bk-n">'+esc(bl.reason||'Blocked')+(many&&nm?' <span class="bk-who">· '+esc(nm)+'</span>':'')+'</div>';
+        el.title=blockLabel(bl)+(nm?' — '+nm:'');
+        el.onclick=ev=>{ev.stopPropagation();openBlockEdit(bl);};
+        col.appendChild(el);return;
+      }
+      if(it.kind==='x'){
+        const x=it.x,el=document.createElement('div');
+        el.className='ext-appt';el.style.top=top(it.s)+'px';el.style.height=h+'px';placeLane(el,it);
+        el.title=(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
+        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+'</div><div class="ex-p">'+esc(provName(x.provider))+'</div>';
+        el.onclick=ev=>{ev.stopPropagation();toast(provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
+        col.appendChild(el);return;
+      }
+      const b=it.b,color=apptColor(b),dur=it.e-it.s;
+      const el=document.createElement('div');
+      el.className='appt wk '+stClass(b.status)+(dur<50?' compact':'')+(dur<=35?' tiny':'')+((it.lanes||1)>1?' narrow':'');el.dataset.bookingId=b.id||'';el.dataset.start=b.start_time||'';
+      el.style.cssText='top:'+top(it.s)+'px;height:'+h+'px;--svc:'+color;placeLane(el,it);
+      const who=many&&COLOR_MODE!=='stylist'&&b.staff_id?'<span class="sd" style="--sc:'+esc(staffColor(b.staff_id))+'" title="'+esc((staffById(b.staff_id)||{}).name||'')+'"></span>':'';
+      el.innerHTML='<div class="at">'+fmtT(b.start_time)+(COLOR_MODE==='status'?'':' '+stPill(b.status))+'</div>'
+        +'<div class="svc">'+who+(dur<50?'<span class="tm">'+fmtT(b.start_time).replace(/\s?[AP]M$/,'')+'</span>':'')+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★</span>':'')+'</div>'
+        +'<div class="cli"><span class="cn">'+esc(b.service?.name||'Appointment')+(many&&b.staff?.name?' · '+esc(b.staff.name):'')+'</span></div>'
+        +'<div class="rs-h" title="Drag to change the end time"></div>';
+      el.title=fmtT(b.start_time)+'–'+fmtT(b.end_time)+' · '+clientName(b.client)+' · '+(b.service?.name||'Appointment')+(b.staff?.name?' · '+b.staff.name:'')+' · '+(STATUS_LABEL[stClass(b.status)]||'');
+      el.onclick=ev=>{ev.stopPropagation();if(DRAG_JUST_ENDED)return;showDetail(b);};
+      attachDrag(el,b,it,k,'week');
+      col.appendChild(el);
+    });
+  });
+  // Click empty space → book that day at that quarter hour (salon time).
+  g.querySelectorAll('.day-col').forEach(col=>{
+    col.addEventListener('click',ev=>{
+      if(ev.target.closest('.appt,.cal-block,.ext-appt'))return;
+      const y=ev.clientY-col.getBoundingClientRect().top;
+      const m=rs+Math.floor(y/SLOT_H*60/15)*15;
+      const k=col.dataset.col;
+      quickBook(freeStylistAt(k,m),m,k);
+    });
+  });
+  placeNowLines();
+  // Phone: the week scrolls sideways inside the card — bring today into view.
+  if(MQ.matches){const tc=colEl(today),wrap=g.parentElement;if(tc&&wrap)wrap.scrollLeft=Math.max(0,tc.offsetLeft-56);}
 }
+// The red "now" line (day + week grids), kept current every minute.
+function placeNowLines(){
+  const g=document.getElementById('calGrid');if(!g)return;
+  g.querySelectorAll('.now-line').forEach(n=>n.remove());
+  if(VIEW==='agenda')return;
+  const p=salonParts(new Date());
+  if(!(p.min>RANGE.s&&p.min<RANGE.e))return;
+  const cols=VIEW==='week'?[g.querySelector('.day-col[data-col="'+p.key+'"]')].filter(Boolean):(p.key===curKey()?[...g.querySelectorAll('.day-col')]:[]);
+  cols.forEach(col=>{const nl=document.createElement('div');nl.className='now-line';nl.style.top=((p.min-RANGE.s)/60*SLOT_H)+'px';col.appendChild(nl);});
+}
+setInterval(()=>{if(!DRAG)placeNowLines();},60000);
 /* ── Agenda ── */
 function renderAgenda(){
   const {bookings}=STATE;
@@ -740,7 +1001,7 @@ function renderAgenda(){
         +'<div class="ag-cli"><div class="ag-av" style="--svc:#6b6b73">⧉</div><div><div class="ag-name">'+esc(provName(x.provider))+' appointment</div><div class="ag-meta">Read-only · '+esc((staffById(x.staff_id)||{}).name||'Unassigned')+'</div></div></div></div>';
       return;
     }
-    const b=r.b,color=svcColor(b.service_id);
+    const b=r.b,color=apptColor(b);
     html+='<div class="ag-item" data-booking-id="'+esc(b.id)+'" data-start="'+esc(b.start_time)+'" onclick="showDetail(\''+esc(b.id)+'\')">'
       +'<div class="ag-t">'+fmtT(b.start_time)+'<small>'+fmtDur(spanMin(b))+'</small></div>'
       +'<div class="ag-cli"><div class="ag-av" style="--svc:'+color+'">'+esc(initials(clientName(b.client)))+'</div>'
@@ -802,7 +1063,7 @@ async function removeWaitlist(id){
 /* ── New booking sheet: client picker, services, salon-time date/time, suggested times ── */
 const REPEAT_OPTS='<option value="1">Does not repeat</option><optgroup label="Every week"><option value="w4">Weekly · 4 occurrences</option><option value="w6">Weekly · 6</option><option value="w8">Weekly · 8</option><option value="w12">Weekly · 12</option><option value="w26">Weekly · 26</option><option value="w52">Weekly · 52</option></optgroup><optgroup label="Every 2 weeks"><option value="b4">Bi-weekly · 4</option><option value="b8">Bi-weekly · 8</option><option value="b12">Bi-weekly · 12</option></optgroup><optgroup label="Monthly"><option value="m3">Monthly · 3</option><option value="m6">Monthly · 6</option><option value="m12">Monthly · 12</option></optgroup>';
 let BK={client:null,walkIn:false};
-function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub=''}={}){
+function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub='',date=null}={}){
   BK={client:null,walkIn:false};
   const t=min!=null?hhmm(min):'10:00';
   openModal(title,sub||'Lola will confirm this client by text when you save.',
@@ -810,7 +1071,7 @@ function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub=
     +'<div class="fld"><label for="bkPhone">Phone</label><input id="bkPhone" type="tel" placeholder="(555) 555-5555"/></div>'
     +'<div class="fld"><label id="bkSvcLbl">Services <span style="color:var(--text3);font-weight:400">— pick one or more</span></label><div id="bkSvcList" class="svc-list" role="group" aria-labelledby="bkSvcLbl"></div><div id="bkSvcSummary" class="svc-summary">Pick one or more services</div></div>'
     +'<div class="row2"><div class="fld"><label for="bkStaff">Staff</label><select id="bkStaff"></select></div>'
-    +'<div class="fld"><label for="bkDate">Date</label><input id="bkDate" type="date" value="'+curKey()+'"/></div></div>'
+    +'<div class="fld"><label for="bkDate">Date</label><input id="bkDate" type="date" value="'+(date||curKey())+'"/></div></div>'
     +'<div class="row2"><div class="fld"><label for="bkTime">Time <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">· salon time</span></label><input id="bkTime" type="time" step="300" value="'+t+'"/></div>'
     +'<div class="fld"><label for="bkRepeat">Repeat</label><select id="bkRepeat">'+REPEAT_OPTS+'</select></div></div>'
     +'<div class="fld"><label id="bkSuggestLbl">Open times</label><div id="bkSuggest" class="sugg" role="group" aria-labelledby="bkSuggestLbl"><span class="sugg-empty">Pick a service to see open times</span></div></div>'
@@ -832,9 +1093,10 @@ function bookingSheet({staffId='',min=null,prefill=null,title='New booking',sub=
   }
 }
 function openNew(prefill){bookingSheet({prefill,sub:prefill&&prefill.client_name?('Offer the freed slot to '+prefill.client_name):''});}
-function quickBook(staffId,min){
+function quickBook(staffId,min,date){
   const nm=staffId?((staffById(staffId)||{}).name||''):'';
-  bookingSheet({staffId,min,sub:'Book '+(nm||'a client')+' at '+minLabel(min)+' on '+fmtKey(curKey(),{weekday:'short',month:'short',day:'numeric'})+' (salon time).'});
+  const key=date||curKey();
+  bookingSheet({staffId,min,date:key,sub:'Book '+(nm||'a client')+' at '+minLabel(min)+' on '+fmtKey(key,{weekday:'short',month:'short',day:'numeric'})+' (salon time).'});
 }
 function hydrateForm(){
   const list=document.getElementById('bkSvcList');
@@ -937,34 +1199,89 @@ async function saveBooking(){
   finally{if(btn)btn.disabled=false;}
 }
 /* ── Blocked time (lunch, breaks, days off) ── */
+// One sheet for new and existing blocks. Stylist "" = Everyone (whole salon).
+function blockStaffOpts(sel){
+  return '<option value=""'+(sel===''?' selected':'')+'>Everyone (whole salon)</option>'
+    +STATE.staff.map(s=>'<option value="'+esc(s.id)+'"'+(s.id===sel?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+}
+const BLOCK_REPEAT='<option value="1">Does not repeat</option><option value="2">Weekly · 2 weeks</option><option value="4">Weekly · 4 weeks</option><option value="8">Weekly · 8 weeks</option><option value="12">Weekly · 12 weeks</option><option value="26">Weekly · 26 weeks</option><option value="52">Weekly · 52 weeks</option>';
+function blockForm({staff,date,start,end,reason,allDay,repeat}){
+  return '<div class="fld"><label for="bkBlockStaff">Who</label><select id="bkBlockStaff">'+blockStaffOpts(staff)+'</select></div>'
+    +(repeat?'<div class="row2">':'')+'<div class="fld"><label for="bkBlockDate">Date</label><input id="bkBlockDate" type="date" value="'+esc(date)+'"/></div>'
+    +(repeat?'<div class="fld"><label for="bkBlockRepeat">Repeat</label><select id="bkBlockRepeat">'+BLOCK_REPEAT+'</select></div></div>':'')
+    +'<label class="tog"><input type="checkbox" id="bkBlockAllDay"'+(allDay?' checked':'')+'/> All day</label>'
+    +'<div class="row2"><div class="fld"><label for="bkBlockStart">Start time</label><input id="bkBlockStart" type="time" step="300" value="'+esc(start||'')+'"'+(allDay?' disabled':'')+'/></div>'
+    +'<div class="fld"><label for="bkBlockEnd">End time</label><input id="bkBlockEnd" type="time" step="300" value="'+esc(end||'')+'"'+(allDay?' disabled':'')+'/></div></div>'
+    +'<div class="fld"><label for="bkBlockReason">Reason</label><input id="bkBlockReason" value="'+esc(reason||'')+'" placeholder="Lunch, training, meeting, day off…"/></div>';
+}
+function wireBlockForm(){
+  const ad=document.getElementById('bkBlockAllDay'),s=document.getElementById('bkBlockStart'),e=document.getElementById('bkBlockEnd');
+  ad.addEventListener('change',()=>{s.disabled=e.disabled=ad.checked;if(!ad.checked&&!s.value){s.value='12:00';e.value='13:00';}});
+  s.addEventListener('change',()=>{const r=document.getElementById('bkBlockReason');if(r&&!r.value.trim())r.value='Lunch';});
+}
+function readBlockForm(st){
+  const allDay=document.getElementById('bkBlockAllDay').checked;
+  const out={staff_id:document.getElementById('bkBlockStaff').value||null,date:document.getElementById('bkBlockDate').value,
+    start_time:allDay?null:(document.getElementById('bkBlockStart').value||null),end_time:allDay?null:(document.getElementById('bkBlockEnd').value||null),
+    reason:document.getElementById('bkBlockReason').value.trim()||(allDay?'Day off':'Blocked')};
+  if(!out.date){st.textContent='Pick a date.';st.className='mstatus err';return null;}
+  if(!allDay&&(!out.start_time||!out.end_time)){st.textContent='Pick a start and end time — or turn on All day.';st.className='mstatus err';return null;}
+  if(out.start_time&&out.end_time&&toMin(out.end_time)<=toMin(out.start_time)){st.textContent='End time must be after start time.';st.className='mstatus err';return null;}
+  return out;
+}
 function openBlock(){
-  const stfOpts=STATE.staff.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>').join('');
-  openModal('Block time','Mark lunch, a break, or a day off — Lola and the calendar will treat the slot as unavailable.','<div class="fld"><label for="bkBlockStaff">Staff</label><select id="bkBlockStaff">'+stfOpts+'</select></div>'
-    +'<div class="fld"><label for="bkBlockDate">Date</label><input id="bkBlockDate" type="date" value="'+curKey()+'"/></div>'
-    +'<div class="row2"><div class="fld"><label for="bkBlockStart">Start time</label><input id="bkBlockStart" type="time" value="12:00"/></div>'
-    +'<div class="fld"><label for="bkBlockEnd">End time</label><input id="bkBlockEnd" type="time" value="13:00"/></div></div>'
-    +'<div class="fld"><label for="bkBlockReason">Reason</label><input id="bkBlockReason" placeholder="Lunch, training, meeting, day off…"/></div>'
-    +'<div class="fld"><label class="bk-day-off">All day (leave times empty)</label></div>'
-    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" onclick="saveBlock()">Block this time</button></div>'
+  const def=STAFF_FILTER&&staffById(STAFF_FILTER)?STAFF_FILTER:(STATE.staff[0]?.id||'');
+  openModal('Block time','Lunch, a break, a meeting or a day off — Lola and the calendar treat it as unavailable.',
+    blockForm({staff:def,date:curKey(),start:'12:00',end:'13:00',reason:'',allDay:false,repeat:true})
+    +'<div class="macts"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="bkBlockSave" onclick="saveBlock()">Block this time</button></div>'
     +'<div class="mstatus" id="mstatus"></div>');
-  document.getElementById('bkBlockStart').value='12:00';
-  document.getElementById('bkBlockEnd').value='13:00';
-  document.getElementById('bkBlockStart').addEventListener('change',()=>{if(!document.getElementById('bkBlockReason').value.trim())document.getElementById('bkBlockReason').value='Lunch';});
+  wireBlockForm();
 }
 async function saveBlock(){
   const st=document.getElementById('mstatus');st.textContent='Blocking…';st.className='mstatus';
-  const staffId=document.getElementById('bkBlockStaff').value;
-  const date=document.getElementById('bkBlockDate').value;
-  const start=document.getElementById('bkBlockStart').value;
-  const end=document.getElementById('bkBlockEnd').value;
-  const reason=document.getElementById('bkBlockReason').value.trim()||'Blocked';
-  if(!date){st.textContent='Pick a date.';st.className='mstatus err';return;}
-  if(start&&end&&toMin(end)<=toMin(start)){st.textContent='End time must be after start time (or leave both empty for an all-day block).';st.className='mstatus err';return;}
+  const f=readBlockForm(st);if(!f)return;
+  const weeks=parseInt((document.getElementById('bkBlockRepeat')||{}).value||'1',10)||1;
+  const btn=document.getElementById('bkBlockSave');if(btn)btn.disabled=true;
   try{
-    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',staff_id:staffId,date,start_time:start||null,end_time:end||null,reason})});
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',...f,repeat_weeks:weeks})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    closeModal();toast('Time blocked.');await load();
+    closeModal();
+    toast((f.staff_id?'Time blocked':'Blocked for the whole salon')+(weeks>1?' — every week for '+weeks+' weeks.':'.'));
+    await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+  finally{if(btn)btn.disabled=false;}
+}
+function openBlockEdit(b){
+  if(!b||!b.id)return;
+  const nm=b.staff_id?((staffById(b.staff_id)||{}).name||'Stylist'):'Everyone';
+  const allDay=!b.start_time&&!b.end_time;
+  window.__EDIT_BLOCK=b;
+  openModal(b.reason||'Blocked time',nm+' · '+fmtKey(String(b.blocked_date).slice(0,10),{weekday:'long',month:'short',day:'numeric'})+(allDay?' · all day':' · '+(b.start_time?minLabel(toMin(b.start_time)):'open')+' – '+(b.end_time?minLabel(toMin(b.end_time)):'close')),
+    blockForm({staff:b.staff_id||'',date:String(b.blocked_date).slice(0,10),start:b.start_time?String(b.start_time).slice(0,5):'',end:b.end_time?String(b.end_time).slice(0,5):'',reason:b.reason||'',allDay,repeat:false})
+    +'<div class="macts wrap"><button class="danger" onclick="removeBlock(\'this\')">Remove</button><button class="danger" onclick="removeBlock(\'following\')" title="Also removes the same block in later weeks">Remove + later weeks</button><button class="primary" id="bkBlockSave" onclick="updateBlock()">Save</button></div>'
+    +'<div class="mstatus" id="mstatus"></div>');
+  wireBlockForm();
+}
+async function updateBlock(){
+  const b=window.__EDIT_BLOCK;if(!b)return;
+  const st=document.getElementById('mstatus');st.textContent='Saving…';st.className='mstatus';
+  const f=readBlockForm(st);if(!f)return;
+  try{
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',action:'update',id:b.id,...f})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    closeModal();toast('Block updated.');await load();
+  }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
+}
+async function removeBlock(scope){
+  const b=window.__EDIT_BLOCK;if(!b)return;
+  const st=document.getElementById('mstatus');st.textContent='Removing…';st.className='mstatus';
+  try{
+    const r=await fetch('/api/salon',{method:'POST',headers:hdr(),body:JSON.stringify({resource:'block',action:'delete',id:b.id,scope})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    closeModal();toast(d.deleted>1?d.deleted+' blocks removed — those times are bookable again.':'Block removed — the time is bookable again.');await load();
   }catch(e){st.textContent=e.message||'Something went wrong.';st.className='mstatus err';}
 }
 async function deleteBlock(b){
@@ -986,7 +1303,7 @@ function actBtn(label,fn,cls){return '<button class="'+(cls||'ghost')+'" onclick
 function showDetail(idOrBk){
   const b=typeof idOrBk==='string'?findBooking(idOrBk):idOrBk;
   if(!b)return;
-  const color=svcColor(b.service_id);
+  const color=apptColor(b);
   const st=stClass(b.status);
   const recurTag=/\[recurring series (\d+)\/(\d+)\]/.exec(b.notes||'');
   const seriesRule=b.series_rule||null;
@@ -1008,9 +1325,10 @@ function showDetail(idOrBk){
     when+' · '+fmtDur(spanMin(b)),
     '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">'
     +'<div class="detail-av" style="background:linear-gradient(135deg,'+color+',#2a2a2a)">'+esc(initials(clientName(b.client)))+'</div>'
-    +'<div><div style="font-size:16px;font-weight:650">'+esc(clientName(b.client))+(b.client?.is_vip?' <span style="color:var(--accent)">★ VIP</span>':'')+'</div>'
+    +'<div><div style="font-size:16px;font-weight:650">'+(b.client_id?'<a class="cli-link" href="client.html?id='+encodeURIComponent(b.client_id)+'">'+esc(clientName(b.client))+'</a>':esc(clientName(b.client)))+(b.client?.is_vip?' <span style="color:var(--accent)">★ VIP</span>':'')+'</div>'
     +'<div style="font-size:12px;color:var(--text3)">'+esc(clientPhone(b.client)||'no phone on file')+'</div></div>'
     +'<div style="margin-left:auto" class="appt-st">'+stPill(b.status)+'</div></div>'
+    +(b.client_id?'<div class="cc" id="clientCard"><div class="cc-skel"></div></div>':'')
     +'<div class="detail-row"><div class="dr-l">Service</div><div class="dr-v">'+esc(b.service?.name||'—')+(b.service?.price?' · $'+Number(b.service.price).toLocaleString():'')+'</div></div>'
     +'<div id="bkLineItems"></div>'
     +'<div class="detail-row"><div class="dr-l">Staff</div><div class="dr-v">'+esc(b.staff?.name||'Unassigned')+'</div></div>'
@@ -1028,6 +1346,43 @@ function showDetail(idOrBk){
     +'<div class="mstatus" id="mstatus"></div>');
   loadNotes(b.id);
   loadLineItems(b.id);
+  if(b.client_id)loadClientCard(b);
+}
+// Client at a glance: visits, last visit, lifetime spend, no-shows, next visit,
+// profile link — and "Request deposit" when the salon takes deposits.
+let CC_SEQ=0;
+function fmtMoney(n){n=Number(n||0);return '$'+(n>=10000?Math.round(n/1000)+'k':n.toLocaleString(undefined,{maximumFractionDigits:n%1?2:0}));}
+async function loadClientCard(b){
+  const seq=++CC_SEQ;
+  const el=()=>document.getElementById('clientCard');
+  let d=null;
+  try{d=await getJSON('/api/calendar-owner?action=client_card&client_id='+encodeURIComponent(b.client_id)+'&booking_id='+encodeURIComponent(b.id));}catch(e){}
+  if(seq!==CC_SEQ||!el())return;
+  const href='client.html?id='+encodeURIComponent(b.client_id);
+  if(!d||!d.ok){el().innerHTML='<div class="cc-acts" style="margin-top:0"><a href="'+href+'">Open client profile →</a></div>';return;}
+  const s=d.stats||{};
+  const last=s.last_visit?fmtKey(localDayKey(new Date(s.last_visit)),{month:'short',day:'numeric'}):'—';
+  const tile=(v,l,cls)=>'<div><b'+(cls?' class="'+cls+'"':'')+'>'+v+'</b><span>'+l+'</span></div>';
+  const nx=d.next;
+  const upcoming=b.status!=='cancelled'&&b.status!=='completed'&&b.status!=='no_show'&&new Date(b.start_time).getTime()>Date.now();
+  const dep=d.deposit,depLive=dep&&/^(pending|paid|kept|captured|succeeded)$/i.test(String(dep.status||''));
+  const canDep=CTX.deposits_enabled&&upcoming&&!depLive&&!/paid|kept|captured|succeeded/.test(String(b.deposit_status||'').toLowerCase());
+  el().innerHTML='<div class="cc-stats">'+tile(s.visits||0,'Visits')+tile(esc(last),'Last visit')+tile(fmtMoney(s.lifetime_spend),'Lifetime')+tile(s.no_shows||0,'No-shows',s.no_shows?'warn':'')+'</div>'
+    +'<div class="cc-next"><em>Next</em><span>'+(nx?esc(fmtWhen(nx.start_time))+(nx.service_name?' · '+esc(nx.service_name):'')+(nx.staff_name?' with '+esc(nx.staff_name):''):'Nothing else booked')+'</span></div>'
+    +'<div class="cc-acts"><a href="'+href+'">Client profile →</a>'
+    +(canDep?'<button id="ccDep" onclick="requestDepositFor(\''+esc(b.id)+'\')">Request deposit</button>':'')
+    +(depLive?'<span class="dep '+(/pending/i.test(dep.status)?'due':'ok')+'" style="align-self:center">'+(/pending/i.test(dep.status)?'Deposit requested':'Deposit paid')+(dep.amount?' · $'+Number(dep.amount).toLocaleString():'')+'</span>':'')
+    +'</div>';
+}
+async function requestDepositFor(id){
+  const btn=document.getElementById('ccDep');if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  try{
+    const r=await fetch('/api/calendar-owner',{method:'POST',headers:hdr(),body:JSON.stringify({action:'request_deposit',booking_id:id})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Could not request the deposit.');
+    toast('Deposit link texted'+(d.amount_cents?' — $'+(d.amount_cents/100).toFixed(2):'')+'.');
+    const b=findBooking(id);if(b)loadClientCard(b);
+  }catch(e){toast(e.message||'Could not request the deposit.','error');if(btn){btn.disabled=false;btn.textContent='Request deposit';}}
 }
 async function loadLineItems(bookingId){
   const el=document.getElementById('bkLineItems');if(!el)return;
@@ -1159,8 +1514,14 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&!document.querySelector('.lola-dialog-layer'))closeModal();
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((e.target&&e.target.tagName)||'');
   if(typing||document.querySelector('.mw.open')||e.metaKey||e.ctrlKey)return;
+  if(e.altKey)return;
   if(e.key==='ArrowRight')nav(1);
-  if(e.key==='ArrowLeft')nav(-1);
+  else if(e.key==='ArrowLeft')nav(-1);
+  else if(e.key==='t'||e.key==='T')goToday();
+  else if(e.key==='d'||e.key==='D'){if(VIEW!=='day')setView('day');}
+  else if(e.key==='w'||e.key==='W'){if(VIEW!=='week')setView('week');}
+  else if(e.key==='a'||e.key==='A'){if(VIEW!=='agenda')setView('agenda');}
+  else if(e.key==='n'||e.key==='N'){e.preventDefault();openNew();}
 });
 (MQ.addEventListener?MQ.addEventListener.bind(MQ):(t,f)=>MQ.addListener&&MQ.addListener(f))('change',()=>{if(VIEW==='day')render();});
 (async()=>{

@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-tools2';
+export const RELEASE = 'lola-booking3';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -239,6 +239,7 @@ export async function buildStatus() {
               if (secured.length) healed.push(`Lola’s phone wiring secured: ${secured.join(', ')}.`);
               live.phone_tools_ok = true; live.salon_details_ok = true; live.website_calls = w.web_calls !== false;
             }
+            if (Array.isArray(w.mcp_detached) && w.mcp_detached.length) healed.push(`Lola’s tools saved: detached ${w.mcp_detached.join(', ')} — its tools had the same names as hers. It is kept in Telnyx → AI → MCP Servers.`);
             if (w.web_calls_error) { live.website_calls = false; live.website_calls_error = clip(w.web_calls_error); }
             if (w.error) {
               live.wiring_error = clip(w.error);
@@ -249,7 +250,8 @@ export async function buildStatus() {
                 const shared = await Promise.all(live.tools_inventory.shared_ids.slice(0, 20).map(async (tid) => {
                   try { const { telnyxRequest, telnyxData } = await import('./lib/telnyx-client.js'); const t = telnyxData(await telnyxRequest('/ai/tools/' + encodeURIComponent(tid), { timeoutMs: 5000 })) || {}; const d = t.tool_definition || t.definition || t; return 'shared:' + (d?.webhook?.name || d?.function?.name || d?.name || t.name || t.display_name || t.type || '?'); } catch (e) { return 'shared:? (' + String(e?.status || e?.message || '').slice(0, 30) + ')'; }
                 }));
-                live.tools_list = [...live.tools_inventory.inline.map((n) => 'inline:' + n), ...shared, 'keys:' + Object.keys(a).filter((k) => /tool|integration|mcp|workflow|mission/i.test(k)).join('+')].join(', ').slice(0, 900);
+                const mcp = (Array.isArray(a.mcp_servers) ? a.mcp_servers : []).slice(0, 10).map((m) => 'mcp:' + (typeof m === 'string' ? m : (m?.name || m?.id || '?')) + (Array.isArray(m?.allowed_tools) && m.allowed_tools.length ? '(' + m.allowed_tools.join('/') + ')' : ''));
+                live.tools_list = [...live.tools_inventory.inline.map((n) => 'inline:' + n), ...shared, ...mcp, 'keys:' + Object.keys(a).filter((k) => /tool|integration|mcp|workflow|mission/i.test(k)).join('+')].join(', ').slice(0, 900);
               }
             }
           } catch (_) {}
@@ -335,7 +337,8 @@ export async function buildStatus() {
       live.signup = !!(r && r.ok);
     } else live.signup = false;
   } catch (_) { live.signup = false; }
-  if (!has('SENDGRID_API_KEY') && !(has('AWS_SES_REGION') && has('AWS_ACCESS_KEY_ID')) && !(has('MAILGUN_API_KEY') && has('MAILGUN_DOMAIN'))) fixes.push('Booking confirmation emails can’t go out yet (texts do) — add SENDGRID_API_KEY in Vercel (SendGrid → Settings → API Keys; verify the sender lola@loladesk.com, or set EMAIL_FROM to your verified address), then Redeploy.');
+  // Email is optional: Lola confirms every booking by TEXT over Telnyx. An email provider (SendGrid, Mailgun or SES) only adds a copy by email.
+  live.booking_emails = has('SENDGRID_API_KEY') || (has('AWS_SES_REGION') && has('AWS_ACCESS_KEY_ID')) || (has('MAILGUN_API_KEY') && has('MAILGUN_DOMAIN'));
   if (live.signup === false) fixes.push('New salons can’t sign up: Supabase refuses the service key for accounts — Vercel: check SUPABASE_URL and SUPABASE_SERVICE_KEY (Supabase → Project Settings → API → service_role), then Redeploy.');
   if (!live.database) fixes.push('LolaDesk can’t reach its database — Vercel → Settings → Environment Variables: check SUPABASE_URL and SUPABASE_SERVICE_KEY, then Redeploy.');
   if (!settings.TELNYX_API_KEY) fixes.push('Add TELNYX_API_KEY in Vercel (Telnyx → API Keys), then Redeploy — without it Lola can’t think, speak, call or text.');

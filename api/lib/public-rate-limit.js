@@ -45,6 +45,7 @@ export const PUBLIC_LIMITS = {
   client_lookup: [8, 10 * 60e3],
   deposit_quote: [40, 10 * 60e3],
   waitlist_add: [10, 10 * 60e3],
+  next_open: [30, 10 * 60e3],
 };
 
 export function limitPublic(req, action, tenantKey = ''){

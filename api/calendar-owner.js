@@ -26,7 +26,9 @@
  * GET  ?action=context&date=YYYY-MM-DD&days=1..14        schedules, hours range, time off, external
  * GET  ?action=clients&q=ann                             client picker (name / phone)
  * GET  ?action=suggest&service_ids=a,b&date=…&staff_id=  free times for the picked services
- * POST {action:'book',   service_ids, staff_id, date, time, client_id|client_name|client_phone,
+ * GET  ?action=client_card&client_id=…&booking_id=…     visits, last visit, spend, no-shows, next appt, deposit
+ * POST {action:'request_deposit', booking_id}           text the client a deposit link for an upcoming booking
+ * POST {action:'book',  service_ids, staff_id, date, time, client_id|client_name|client_phone,
  *       notes, repeat:{rule,count}, override, force, notify}
  * POST {action:'move',   booking_id, date, time, staff_id?, duration_min?|end_time?,
  *       series_scope:'this'|'following', override, force}
@@ -177,6 +179,50 @@ async function describeClashes(c, tenantId, clashes, tz) {
   return clashes.map((x) => ({ ...x, label: (x.kind === 'external' ? (x.provider || 'Platform') + ' appointment' : clientLabel(byId.get(x.client_id))) + ' · ' + fmtSalon(x.start_time, tz, 'time') + '–' + fmtSalon(x.end_time, tz, 'time') }));
 }
 
+/**
+ * One client's numbers for the calendar card, all tenant-scoped:
+ * visits (completed, or past and kept), last visit, lifetime spend (kept visits),
+ * no-shows, cancellations, the next upcoming appointment (other than `bookingId`),
+ * and — when `bookingId` is given — that booking's latest deposit row.
+ */
+export async function clientCard(c, tenantId, cl, bookingId = null, now = Date.now()) {
+  const { data: rows } = await c.from('bookings').select('id,start_time,end_time,status,total_amount,service_id,staff_id')
+    .eq('tenant_id', tenantId).eq('client_id', cl.id).order('start_time', { ascending: false }).limit(1000);
+  const all = rows || [];
+  const st = (b) => String(b.status || '').toLowerCase();
+  const kept = all.filter((b) => st(b) === 'completed' || (ms(b.start_time) < now && !INACTIVE.test(st(b)) && st(b) !== 'pending'))
+    .sort((a, b) => ms(b.start_time) - ms(a.start_time));
+  const upcoming = all.filter((b) => ms(b.start_time) >= now && !INACTIVE.test(st(b)) && st(b) !== 'completed' && b.id !== bookingId)
+    .sort((a, b) => ms(a.start_time) - ms(b.start_time));
+  const next = upcoming[0] || null;
+  let nextOut = null;
+  if (next) {
+    const [{ data: sv }, { data: sf }] = await Promise.all([
+      next.service_id ? c.from('services').select('id,name').eq('tenant_id', tenantId).eq('id', next.service_id).maybeSingle() : Promise.resolve({ data: null }),
+      next.staff_id ? c.from('staff').select('id,name').eq('tenant_id', tenantId).eq('id', next.staff_id).maybeSingle() : Promise.resolve({ data: null })]);
+    nextOut = { id: next.id, start_time: next.start_time, end_time: next.end_time, status: next.status, service_name: sv?.name || null, staff_name: sf?.name || null };
+  }
+  let deposit = null;
+  if (bookingId && all.some((b) => b.id === bookingId)) {
+    const { data: deps } = await c.from('deposits').select('id,status,amount,created_at').eq('tenant_id', tenantId).eq('booking_id', bookingId);
+    deposit = (deps || []).sort((a, b) => ms(b.created_at || 0) - ms(a.created_at || 0))[0] || null;
+  }
+  const money = (n) => Math.round(n * 100) / 100;
+  return {
+    client: { id: cl.id, name: clientLabel(cl), phone: String(cl.phone || '').includes(':') ? '' : (cl.phone || ''), email: cl.email || '', is_vip: !!cl.is_vip, notes: cl.notes || null },
+    stats: {
+      visits: kept.length,
+      last_visit: kept[0]?.start_time || null,
+      first_visit: kept.length ? kept[kept.length - 1].start_time : null,
+      lifetime_spend: money(kept.reduce((t, b) => t + Number(b.total_amount || 0), 0)),
+      no_shows: all.filter((b) => /^no[-_ ]?show/.test(st(b))).length,
+      cancellations: all.filter((b) => st(b).startsWith('cancel')).length,
+      upcoming: upcoming.length
+    },
+    next: nextOut, deposit
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -265,7 +311,40 @@ export default async function handler(req, res) {
       return res.json({ ok: true, timezone: tz, date, slots: out });
     }
 
+    // ── Client card on the calendar: the numbers a front desk wants at a glance ──
+    if (action === 'client_card') {
+      const clientId = String(body.client_id || '');
+      if (!clientId) return res.status(400).json({ ok: false, error: 'client_id required' });
+      const { data: cl } = await c.from('clients').select('*').eq('tenant_id', T).eq('id', clientId).maybeSingle();
+      if (!cl) return res.status(404).json({ ok: false, error: 'Client not found' });
+      return res.json({ ok: true, timezone: tz, ...(await clientCard(c, T, cl, String(body.booking_id || '') || null)) });
+    }
+
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST required' });
+
+    // ── Ask the client for a deposit on one upcoming booking (text with a pay link) ──
+    if (action === 'request_deposit') {
+      const { data: bk } = await c.from('bookings').select('*').eq('tenant_id', T).eq('id', body.booking_id || '').maybeSingle();
+      if (!bk) return res.status(404).json({ ok: false, error: 'Booking not found' });
+      if (INACTIVE.test(String(bk.status || '')) || bk.status === 'completed') return res.status(409).json({ ok: false, error: 'This appointment is not upcoming.' });
+      if (ms(bk.start_time) <= Date.now()) return res.status(409).json({ ok: false, error: 'This appointment has already started.' });
+      const { data: deps } = await c.from('deposits').select('id,status,amount').eq('tenant_id', T).eq('booking_id', bk.id);
+      const live = (deps || []).find((d) => /^(pending|paid|kept|captured|succeeded)$/i.test(String(d.status || '')));
+      if (live) return res.status(409).json({ ok: false, error: /pending/i.test(live.status) ? 'A deposit request is already out for this appointment.' : 'The deposit is already paid.' });
+      const { resolvePolicy } = await import('./lib/deposits.js');
+      const policy = resolvePolicy(settings);
+      if (!policy) return res.status(409).json({ ok: false, error: 'Deposits are off — turn them on in Banking → Policies.' });
+      if (bk.client_id) { const { data: cl } = await c.from('clients').select('phone').eq('tenant_id', T).eq('id', bk.client_id).maybeSingle(); if (!cl?.phone || String(cl.phone).includes(':')) return res.status(409).json({ ok: false, error: 'This client has no phone number to text.', reason: 'no_client_phone' }); }
+      // The owner asked for this one on purpose: no risk tiering.
+      const out = await requestDeposit({ tenantId: T, booking: bk, policy: { ...policy, who: 'everyone' } });
+      if (!out || !out.ok || out.skipped) {
+        const why = { stripe_not_configured: 'Connect Stripe in Banking to take deposits.', no_client_phone: 'This client has no phone number to text.',
+          no_from_number: 'Your salon line is not set up yet, so Lola cannot text the link.', zero_amount: 'This appointment has no price, so there is no deposit to take.',
+          start_passed: 'This appointment has already started.' }[out?.reason] || ('Could not request the deposit' + (out?.reason ? ' — ' + out.reason : '') + '.');
+        return res.status(409).json({ ok: false, error: why, reason: out?.reason || null });
+      }
+      return res.json({ ok: true, deposit: out.deposit || null, amount_cents: out.amount_cents || null, link_url: out.link_url || null });
+    }
 
     // ── Status: always through the canonical update (history, fee void on no-show/cancel) ──
     if (action === 'status') {

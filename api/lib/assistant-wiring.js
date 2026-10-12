@@ -28,6 +28,8 @@ export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
 export const BOOKING_MARK = '[LolaDesk booking]';
 export const BOOKING_RULES = `\n\n${BOOKING_MARK}\n- Before booking anyone, get their FIRST AND LAST name, their MOBILE number (on a phone call you already have it — just confirm it) and their EMAIL for the confirmation (they may skip the email). Read back the service, day, time, name and number, and get a yes.\n- Pass them to book_appointment as client_name (first and last), client_phone and client_email — or no_email: true if they skipped it.\n- Only say an appointment is booked when book_appointment answers booked: true. If it answers booked: false, do exactly what its speak and instruction say — never say "you're booked", "all set" or "confirmed" otherwise.\n- After a real booking, tell them the confirmation text is on its way (and the email, if they gave one).`;
+export const SALES_MARK = '[LolaDesk sales]';
+export const SALES_RULES = `\n\n${SALES_MARK}\n- Offer at most 3 times, in the order check_availability gives them (they keep the salon's day full) — never read a long list.\n- When nothing is open, offer the priority waitlist and use waitlist_add when they say yes.\n- After a real booking, if book_appointment returns an upsell, offer it once in one sentence; if they say no, drop it.\n- When a returning client is booked or calls about their appointment, offer to pre-book their next visit with rebook_next_visit.\n- Quote prices exactly as get_pricing says, including a stylist's own price.`;
 // What book_appointment must collect (merged into whatever the tool already declares in Telnyx).
 export const BOOKING_PARAMS = {
   client_name: { type: 'string', description: "The client's FIRST AND LAST name" },
@@ -48,7 +50,8 @@ function withBookingParams(t) {
 }
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
-  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message']);
+  'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message',
+  'waitlist_add', 'rebook_next_visit']);
 // Dedicated endpoints that are also fine for a tool to call directly.
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
@@ -67,7 +70,7 @@ const toolName = (t) => norm(t?.webhook?.name || t?.function?.name || t?.name ||
  */
 /** The names Telnyx lists in "names must be unique, the following are not unique: a, b, c". */
 export function duplicateNamesFrom(e) {
-  const m = errText(e).match(/not unique:?\s*([^"\]\}\n]+)/i);
+  const m = errText(e).match(/not unique:?\s*([A-Za-z0-9_\- ,]+)/i);
   return m ? m[1].split(',').map((x) => norm(x.replace(/[.'"]/g, ''))).filter(Boolean) : [];
 }
 export async function sharedToolCollisions(assistant, inlineTools, alsoNames = []) {
@@ -94,6 +97,31 @@ export async function sharedToolCollisions(assistant, inlineTools, alsoNames = [
     return { tool_ids: keep.filter((id) => !unknown.includes(id)), detached: unknown.map(() => 'unnamed shared tool') };
   }
   return detached.length ? { tool_ids: keep, detached } : null;
+}
+
+/**
+ * An MCP server attached to Lola (Telnyx → AI → Assistants → MCP Servers) brings its own tools; when one shares a
+ * name with Lola's signed inline tools Telnyx refuses every tools save. Detach only the server(s) that collide
+ * (or whose tool list can't be read) — the MCP server itself is never deleted and can be re-attached any time.
+ */
+export let lastMcpDetached = [];
+export async function mcpCollisions(assistant, names = []) {
+  const list = Array.isArray(assistant?.mcp_servers) ? assistant.mcp_servers : [];
+  if (!list.length || !names.length) return null;
+  const want = new Set(names.map(norm));
+  const keep = [], detached = [];
+  for (const m of list) {
+    const id = typeof m === 'string' ? m : (m?.id || m?.mcp_server_id || null);
+    let allowed = Array.isArray(m?.allowed_tools) && m.allowed_tools.length ? m.allowed_tools : null;
+    let name = (m && typeof m === 'object' && m.name) || null;
+    if (id && (!allowed || !name)) {
+      try { const sv = telnyxData(await telnyxRequest('/ai/mcp_servers/' + encodeURIComponent(id), { timeoutMs: 8000 })) || {}; if (!allowed && Array.isArray(sv.allowed_tools) && sv.allowed_tools.length) allowed = sv.allowed_tools; name = name || sv.name || null; } catch (_) {}
+    }
+    const hits = allowed ? allowed.map(norm).filter((n) => want.has(n)) : null;   // null: it exposes every tool it has
+    if (hits && !hits.length) keep.push(m);
+    else detached.push('MCP server ' + (name || id || '?') + (hits ? ' (' + hits.join(', ') + ')' : ''));
+  }
+  return detached.length ? { mcp_servers: keep, detached } : null;
 }
 
 /**
@@ -131,8 +159,19 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const cur = telnyxData(await telnyxRequest(path, { timeoutMs })) || {};
     const dv = telnyxSafeVariables({ ...((cur.dynamic_variables && typeof cur.dynamic_variables === 'object') ? cur.dynamic_variables : {}), ...((body && body.dynamic_variables) || {}) });
     const tools = dedupeTools(Array.isArray(body?.tools) ? body.tools : cur.tools).tools;
-    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, duplicateNamesFrom(e)).catch(() => null) : null;
-    return send({ ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) });
+    const dupNames = dupTools(e) ? duplicateNamesFrom(e) : [];
+    const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
+    const retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) };
+    try { return await send(retry); }
+    catch (e2) {
+      // Still not unique: the other copy lives in an attached MCP server. Detach that server (never deleted).
+      if (!dupTools(e2)) throw e2;
+      const mcp = await mcpCollisions(cur, duplicateNamesFrom(e2).length ? duplicateNamesFrom(e2) : dupNames).catch(() => null);
+      if (!mcp) throw e2;
+      const out = await send({ ...retry, mcp_servers: mcp.mcp_servers });
+      lastMcpDetached = mcp.detached;
+      return out;
+    }
   }
 }
 
@@ -252,6 +291,8 @@ export async function wireAssistant({ heal = false } = {}) {
     { name: 'list_services', description: 'The salon menu. Call when someone asks what services you offer, before recommending or booking anything you are unsure exists.', props: {} },
     { name: 'confirm_booking', description: 'Read back the caller\u2019s upcoming appointment (day, time, service, stylist). Call when they ask \u201cwhen is my appointment?\u201d or want to confirm it.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' } } },
     { name: 'cancel_appointment', description: 'Cancel the caller\u2019s own upcoming appointment. Confirm which appointment first and say the salon\u2019s cancellation policy if there is one.', props: { client_phone: { type: 'string', description: 'Their mobile number, if they gave a different one' }, booking_id: { type: 'string', description: 'Only if you already have it' } } },
+    { name: 'waitlist_add', description: 'Put the client on the priority waitlist when nothing fits; they get a text the moment a matching spot opens. Ask first, and only call it after they say yes.', props: { service: { type: 'string', description: 'The service they want' }, client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number for the text' }, date: { type: 'string', description: 'Preferred day, if any' }, time: { type: 'string', description: 'Preferred time, if any' }, stylist: { type: 'string', description: 'Preferred stylist, if any' }, sms_consent: { type: 'boolean', description: 'true when they agreed to be texted' } } },
+    { name: 'rebook_next_visit', description: 'Find the right time for a returning client\u2019s NEXT visit (same service and stylist, at its natural cycle) so they can pre-book it.', props: { service: { type: 'string', description: 'Only if they want a different service than last time' } } },
     { name: 'capture_lead', description: 'Save someone who is interested but not booking now (a question, a quote, a callback), so the salon follows up.', props: { client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number' }, service_requested: { type: 'string', description: 'What they are interested in' } } },
   ];
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
@@ -286,6 +327,7 @@ export async function wireAssistant({ heal = false } = {}) {
   if (!disclosure.rules && instr) instr += COMPLIANCE_RULES;
   const bookingRules = instr.includes(BOOKING_MARK);
   if (!bookingRules && instr) instr += BOOKING_RULES;
+  if (instr && !instr.includes(SALES_MARK)) instr += SALES_RULES;
   if (instr && instr !== String(a.instructions || '')) patch.instructions = instr;
   if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
   // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.
@@ -305,6 +347,7 @@ export async function wireAssistant({ heal = false } = {}) {
     if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
   } catch (_) { voice = null; }
   let healed = false, error = null;
+  lastMcpDetached = [];
   if (heal && Object.keys(patch).length) {
     // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
     // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
@@ -346,7 +389,7 @@ export async function wireAssistant({ heal = false } = {}) {
     ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
-    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: duplicateTools,
+    miswired: fixed, added_tools: added, unknown_tools: unknown, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached],
     booking: { rules: bookingRules || (healed && !error && !!patch.instructions), asks_full_details: !bookingParams.length || (healed && !error) },
     disclosure: { ok: disclosure.greeting && (disclosure.rules || !a.instructions), greeting_set_to: patch.greeting ? patch.dynamic_variables.lola_greeting : null, rules_added: !!patch.instructions },
     dynamic_variables: { ok: dynOk && !dvBroken.length, url: a.dynamic_variables_webhook_url || null, set_to: dynOk ? null : patch.dynamic_variables_webhook_url, fixed_values: dvBroken },

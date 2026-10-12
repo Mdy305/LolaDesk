@@ -194,6 +194,10 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
 // status-conditional update (… .eq('status', expected)) BEFORE acting, so two
 // overlapping cron ticks can never double-refund or double-text. Sends and
 // refunds are injectable for tests; individual failures never abort the run.
+// "Pay within N minutes or the time is released" applies to the deposit asked at booking — never to one
+// the owner requests later for an appointment that was already confirmed.
+const atBooking = (d, b) => !b?.created_at || !d?.created_at || (new Date(d.created_at) - new Date(b.created_at)) < 15 * 60000;
+
 export async function runDepositSweep(now = new Date(), { send = sendSMS, refund = refundDepositIntent } = {}){
   // Awaited (memoized): a true cold start must not race its own DDL.
   const migrations = await ensureMigrations();
@@ -224,8 +228,8 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
     const ids = bookingIds.slice(i, i + 300);
     // cancelled_at (20261006) is the real cancellation moment; older schemas
     // fall back to updated_at.
-    let r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,updated_at,cancelled_at').in('id', ids);
-    if(r.error) r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,updated_at').in('id', ids);
+    let r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,created_at,updated_at,cancelled_at').in('id', ids);
+    if(r.error) r = await c.from('bookings').select('id,tenant_id,client_id,service_id,status,start_time,created_at,updated_at').in('id', ids);
     bookings.push(...(r.data || []));
   }
   const bMap = Object.fromEntries(bookings.map(b => [b.id, b]));
@@ -252,7 +256,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
     const st = new Date(b.start_time).getTime();
     const status = String(b.status || '').toLowerCase();
     if(d.status === 'paid') return TERMINAL.includes(status);
-    const hold = resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0;
+    const hold = atBooking(d, b) ? (resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0) : 0;
     if(hold && !TERMINAL.includes(status) && st > nowMs && d.created_at && nowMs - new Date(d.created_at).getTime() > hold * 60000) return true;
     return nowMs >= st - graceMs(d.tenant_id);
   };
@@ -278,7 +282,7 @@ export async function runDepositSweep(now = new Date(), { send = sendSMS, refund
     // ── UNPAID deposits ────────────────────────────────────────────────
     if(unpaid){
       // Pay-within window (opt-in): unpaid after N minutes → the slot goes back on the calendar.
-      const hold = resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0;
+      const hold = atBooking(d, b) ? (resolvePolicy(sMap[d.tenant_id])?.hold_minutes || 0) : 0;
       const live = !['cancelled', 'canceled', 'declined', 'no_show', 'no-show', 'completed', 'arrived', 'in_progress'].includes(status);
       if(hold && live && st > now.getTime() && d.created_at && now.getTime() - new Date(d.created_at).getTime() > hold * 60000){
         const claimed = await setDepositStatus(c, d.id, 'expired', 'pending');

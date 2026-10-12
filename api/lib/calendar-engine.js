@@ -118,7 +118,8 @@ export async function createBookingSafe({ tenant, clientId = null, service, styl
     const r = await bookFromHold(tenantId, held.hold, {
       clientId, serviceId, staffId,
       startTime: held.slot.starts_at, endTime: held.slot.ends_at,
-      status: 'confirmed', totalAmount: Number(price || 0), source, notes,
+      // The stylist's own price (Team → services) when they have one — quoted, booked and deposited.
+      status: 'confirmed', totalAmount: Number(held.slot?.price) > 0 ? Number(held.slot.price) : Number(price || 0), source, notes,
       sendConfirmation, skipDeposit
     });
     if(!r.ok) return { ok: false, conflict: true, error: r.error || 'slot_unavailable' };

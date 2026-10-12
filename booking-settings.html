@@ -376,7 +376,7 @@
               <option value="35">35 days after</option>
               <option value="42">42 days after</option>
             </select>
-            <div class="fine">Configured in Banking → Policies. Set this to match your typical service cycle.</div>
+            <div class="fine">After a visit, Lola texts the client one real open time with the same stylist. She times it per service (a cut ~6 weeks, balayage ~12, a blowout ~1); this is the timing for everything else.</div>
           </div>
         </div>
 
@@ -540,6 +540,8 @@ const LolaBookingSettings = {
       // Some servers return business_hours as string keys, harmonize
       if(!merged.business_hours || typeof merged.business_hours !== 'object') merged.business_hours = this.defaults().business_hours;
       if(!Array.isArray(merged.closures)) merged.closures = [];
+      // The rebooking text shows its REAL state: on only when the owner switched it on.
+      { const rb = merged.metadata && merged.metadata.rebooking; merged.rebook_followup_days = rb && rb.enabled === true ? (Number(rb.interval_days) || 28) : 0; }
       // For UI: allow_processing_overlap is a bool; some backends store as string
       merged.allow_processing_overlap_str = merged.allow_processing_overlap ? 'true' : 'false';
       this.original = JSON.parse(JSON.stringify(merged));
@@ -693,7 +695,12 @@ const LolaBookingSettings = {
       delete body.allow_processing_overlap_str;
     }
     body.reminder_lead_hours = Number(body.reminder_lead_hours || 24);
-    body.rebook_followup_days = Number(body.rebook_followup_days || 28);
+    body.rebook_followup_days = Number(body.rebook_followup_days ?? 28);
+    // The rebooking text is opt-in: only the owner touching this setting turns it on (or off).
+    if(this.dirty.has('rebook_followup_days')){
+      const n = Math.max(0, Math.round(Number(body.rebook_followup_days) || 0));
+      body.metadata = Object.assign({}, body.metadata || {}, { rebooking: { enabled: n > 0, interval_days: n || 42, window_days: 7 } });
+    }
     try{
       const tok = await this.token();
       const r = await fetch('/api/booking-settings', {
