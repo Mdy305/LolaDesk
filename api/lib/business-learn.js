@@ -22,6 +22,7 @@ import { safePublicUrl } from './onboarding-engine.js';
 import { ensureBookingBaseline } from './booking-seed.js';
 import { readMaps } from './google-places.js';
 import { readInstagram, igHandle } from './instagram-read.js';
+import { tolerantWrite, clockToMinutes, minutesToClock } from './setup-store.js';
 
 const PAGES = ['/', '/services', '/menu', '/pricing', '/prices', '/service-menu', '/team', '/stylists', '/staff', '/about', '/faq', '/policies'];
 const DEFAULT_STAFF = 'Any available team member';
@@ -75,7 +76,101 @@ export async function readWebsite(websiteUrl) {
   }
   const title = (home.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').replace(/\s+/g, ' ').trim();
   const instagram = (home.html.match(/instagram\.com\/([A-Za-z0-9_.]{2,30})/i) || [])[1] || null;
-  return { url: home.url, title, instagram, text: parts.join('\n\n').slice(0, 42000), pages: parts.length };
+  const allHtml = [home.html, ...pages.filter(Boolean).map(p => p.html)].join(' ');
+  return { url: home.url, title, instagram, links: siteLinks(allHtml), text: parts.join('\n\n').slice(0, 42000), pages: parts.length };
+}
+
+// Where the salon books today, and its socials — read from the links on its own pages.
+const BOOKING_HOSTS = /(vagaro\.com|booksy\.com|square\.site|squareup\.com\/appointments|book\.squareup\.com|glossgenius\.com|fresha\.com|joinblvd\.com|blvd\.app|mindbodyonline\.com|clients\.mindbodyonline|schedulicity\.com|styleseat\.com|acuityscheduling\.com|calendly\.com|setmore\.com|zenoti\.com|phorest\.com|timely\.com|gettimely\.com|salonbiz|meevo|rosysalonsoftware|saloniq|shedul)/i;
+const SYSTEM_NAMES = [[/vagaro/i, 'Vagaro'], [/booksy/i, 'Booksy'], [/square/i, 'Square'], [/glossgenius/i, 'GlossGenius'], [/fresha|shedul/i, 'Fresha'], [/joinblvd|blvd\.app/i, 'Boulevard'], [/mindbody/i, 'Mindbody'], [/schedulicity/i, 'Schedulicity'], [/styleseat/i, 'StyleSeat'], [/acuity/i, 'Acuity'], [/calendly/i, 'Calendly'], [/setmore/i, 'Setmore'], [/zenoti/i, 'Zenoti'], [/phorest/i, 'Phorest'], [/timely/i, 'Timely'], [/salonbiz/i, 'SalonBiz'], [/meevo/i, 'Meevo'], [/rosy/i, 'Rosy'], [/saloniq/i, 'SalonIQ']];
+const systemName = (url) => (url ? (SYSTEM_NAMES.find(([re]) => re.test(url)) || [null, null])[1] : null);
+export function siteLinks(html) {
+  const hrefs = [...String(html || '').matchAll(/href=["']([^"'#\s]+)["']/gi)].map(m => m[1]).filter(h => /^https?:\/\//i.test(h));
+  const first = (re) => hrefs.find(h => re.test(h)) || null;
+  const tel = (String(html || '').match(/href=["']tel:([+\d\-().\s]{7,20})["']/i) || [])[1] || null;
+  return {
+    booking: first(BOOKING_HOSTS),
+    booking_system: systemName(first(BOOKING_HOSTS)),
+    facebook: first(/facebook\.com\/(?!sharer|share|dialog|plugins|tr\b)[^/?]+/i),
+    tiktok: first(/tiktok\.com\/@[^/?]+/i),
+    youtube: first(/youtube\.com\/(@|c\/|channel\/|user\/)[^/?]+/i),
+    phone: tel ? tel.trim() : null,
+  };
+}
+
+// ── opening hours → the salon's real week (booking_settings.business_hours) ──
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_FROM = (w) => { const k = String(w || '').toLowerCase().slice(0, 3); return DAY_KEYS.includes(k) ? k : ({ tues: 'tue', thur: 'thu', thurs: 'thu' })[String(w).toLowerCase()] || null; };
+const clean = (t) => String(t || '').replace(/[\u202f\u2009\u00a0]/g, ' ').replace(/[–—−]/g, '-').trim();
+/** "10:00 AM - 7:00 PM" / "9 - 6pm" / "10am-7pm" → { open:'10:00', close:'19:00' } (null if unreadable). */
+export function parseRange(text) {
+  const t = clean(text).toLowerCase().replace(/\s+/g, ' ');
+  if (/24 hours/.test(t)) return { open: '00:00', close: '23:59' };
+  const parts = t.split(',').map(x => x.trim()).filter(Boolean);
+  const spans = [];
+  for (const part of parts) {
+    const m = part.match(/^(\d{1,2}(?::\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)?\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)?$/);
+    if (!m) continue;
+    const ap = (x) => (x ? x.replace(/\./g, '') : '');
+    const endAp = ap(m[4]) || 'pm';
+    let endMin = clockToMinutes(m[3] + ' ' + endAp);
+    let startMin = clockToMinutes(m[1] + (ap(m[2]) ? ' ' + ap(m[2]) : ' ' + endAp));
+    if (startMin != null && endMin != null && startMin >= endMin && !m[2]) startMin = clockToMinutes(m[1] + ' am');
+    if (startMin == null || endMin == null || endMin <= startMin) continue;
+    spans.push([startMin, endMin]);
+  }
+  if (!spans.length) return null;
+  return { open: minutesToClock(Math.min(...spans.map(s => s[0]))), close: minutesToClock(Math.max(...spans.map(s => s[1]))) };
+}
+/** Google's weekdayDescriptions ["Monday: 10:00 AM – 7:00 PM", "Sunday: Closed"] → a full week. */
+export function parsePlacesHours(lines) {
+  const week = {};
+  for (const line of (Array.isArray(lines) ? lines : [])) {
+    const m = clean(line).match(/^([A-Za-z]+)\s*:\s*(.+)$/);
+    const day = m && DAY_FROM(m[1]);
+    if (!day) continue;
+    if (/closed/i.test(m[2])) { week[day] = { open: '10:00', close: '19:00', closed: true }; continue; }
+    const r = parseRange(m[2]);
+    if (r) week[day] = { ...r, closed: false };
+  }
+  return Object.keys(week).length >= 5 ? fillWeek(week) : null;
+}
+/** "Tue-Fri 10am-7pm, Sat 9am-5pm, Sun-Mon closed" → a full week (days not named are closed). */
+export function parseHoursText(text) {
+  const t = clean(text);
+  if (!t) return null;
+  const week = {};
+  for (const seg of t.split(/[;\n]|,(?=\s*[A-Za-z]{3})/)) {
+    const m = seg.trim().match(/^([A-Za-z]{3,9})(?:\s*(?:-|to|through|&|and)\s*([A-Za-z]{3,9}))?\.?\s*:?\s*(.+)$/i);
+    if (!m) continue;
+    const a = DAY_FROM(m[1]), b = m[2] ? DAY_FROM(m[2]) : a;
+    if (!a || !b) continue;
+    const ia = DAY_KEYS.indexOf(a), ib = DAY_KEYS.indexOf(b);
+    const days = []; for (let i = ia; ; i = (i + 1) % 7) { days.push(DAY_KEYS[i]); if (i === ib || days.length > 7) break; }
+    if (/closed|off/i.test(m[3])) { days.forEach(d => { week[d] = { open: '10:00', close: '19:00', closed: true }; }); continue; }
+    const r = parseRange(m[3]);
+    if (r) days.forEach(d => { week[d] = { ...r, closed: false }; });
+  }
+  const open = Object.values(week).filter(d => !d.closed).length;
+  return open ? fillWeek(week, true) : null;
+}
+function fillWeek(week, unnamedClosed = true) {
+  const out = {};
+  for (const d of DAY_KEYS) out[d] = week[d] || { open: '10:00', close: '19:00', closed: unnamedClosed };
+  return out;
+}
+/** The AI's structured week, checked like any other source. */
+export function cleanAiHours(bh) {
+  if (!bh || typeof bh !== 'object') return null;
+  const week = {};
+  for (const d of DAY_KEYS) {
+    const x = bh[d] || bh[d[0].toUpperCase() + d.slice(1)];
+    if (!x) continue;
+    if (x.closed === true || /closed/i.test(String(x.open || ''))) { week[d] = { open: '10:00', close: '19:00', closed: true }; continue; }
+    const r = parseRange(`${x.open || ''} - ${x.close || ''}`) || (() => { const o = clockToMinutes(x.open), c = clockToMinutes(x.close); return o != null && c != null && c > o ? { open: minutesToClock(o), close: minutesToClock(c) } : null; })();
+    if (r) week[d] = { ...r, closed: false };
+  }
+  return Object.values(week).filter(d => !d.closed).length && Object.keys(week).length >= 5 ? fillWeek(week) : null;
 }
 
 // ── understanding ────────────────────────────────────────────
@@ -90,6 +185,7 @@ const SHAPE = `{
  "timezone": "IANA timezone for that city, e.g. America/New_York, or null",
  "phone": null,
  "hours_text": "e.g. Tue-Fri 10am-7pm, Sat 9am-5pm, Sun-Mon closed, or null",
+ "business_hours": {"mon": {"open": "10:00", "close": "19:00", "closed": false}, "tue": null, "wed": null, "thu": null, "fri": null, "sat": null, "sun": null},
  "services": [{"name":"", "price": null, "duration_min": null, "category": null, "description": null}],
  "team": [{"name":"", "role": null}],
  "policies": {"cancellation_window_hours": null, "deposit": null, "notes": null},
@@ -156,6 +252,7 @@ export function cleanProfile(p) {
   return {
     summary: str(x.summary, 500), positioning: str(x.positioning, 60), audience: str(x.audience, 200), tone: str(x.tone, 120), usp: str(x.usp, 240),
     address: str(x.address, 200), city: str(x.city, 80), timezone: tz, phone: str(x.phone, 30), hours_text: str(x.hours_text, 200),
+    business_hours: cleanAiHours(x.business_hours),
     services, team,
     policies: { cancellation_window_hours: cw && cw <= 168 ? Math.round(cw) : null, deposit: str(x.policies?.deposit, 200), notes: str(x.policies?.notes, 400) },
     faq: (Array.isArray(x.faq) ? x.faq : []).map(f => ({ q: str(f?.q, 200), a: str(f?.a, 400) })).filter(f => f.q && f.a).slice(0, 8),
@@ -210,19 +307,44 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
   const report = { services_added: 0, team_added: 0, timezone: null, hours: false, notes: [] };
   const { data: fresh } = await q(c.from('tenants').select('*').eq('id', tenant.id).maybeSingle());
   const t = fresh || tenant;
+  const place = source.google?.place || null;
+
+  // 0) Opening hours → the salon's REAL week, where booking reads it (Google first — it's exact —
+  //    then the website). Never over hours the owner set by hand. Stylists still on the starter week
+  //    get the salon's week too.
+  try {
+    const week = (place?.hours?.length ? parsePlacesHours(place.hours) : null) || profile.business_hours || parseHoursText(profile.hours_text);
+    const hoursSource = place?.hours?.length && parsePlacesHours(place.hours) ? 'google' : 'website';
+    const { data: bs0 } = await q(c.from('booking_settings').select('*').eq('tenant_id', t.id).maybeSingle());
+    const md0 = (bs0?.metadata && typeof bs0.metadata === 'object') ? bs0.metadata : {};
+    const ownerSet = md0.hours_confirmed_at && !['website', 'google'].includes(md0.hours_source);
+    if (week && !ownerSet) {
+      const metadata = { ...md0, business_hours: week, hours_confirmed_at: new Date().toISOString(), hours_source: hoursSource };
+      const payload = { tenant_id: t.id, business_hours: week, metadata };
+      const w = await tolerantWrite((pl) => q(c.from('booking_settings').upsert(pl, { onConflict: 'tenant_id' })), payload, { required: ['tenant_id', 'metadata'] });
+      if (!w.error) {
+        report.hours = true; report.hours_source = hoursSource; report.business_hours = week;
+        await refitStarterSchedules(c, t.id, week).then((n) => { if (n) report.schedules_refit = n; }, () => {});
+      } else report.notes.push('hours_write_failed');
+    }
+  } catch (_) { report.notes.push('hours_failed'); }
 
   // 1) The service menu, where booking reads it.
   const { data: svcRows } = await q(c.from('services').select('*').eq('tenant_id', t.id));
   const isPlaceholder = (s) => /^consultation$/i.test(s.name || '') && !Number(s.price);
-  const realServices = (svcRows || []).filter(s => !isPlaceholder(s));
+  const realServices = (svcRows || []).filter(s => !isPlaceholder(s) && s.is_active !== false);
   if (!realServices.length && profile.services.length) {
     const rows = profile.services.map(s => ({
       tenant_id: t.id, name: s.name, description: s.description || '', category: s.category || null,
       duration_minutes: s.duration_min || 60, price: s.price || 0, is_active: true,
     }));
-    const ins = await q(c.from('services').insert(rows).select('id,name,duration_minutes'));
+    // Services the website doesn't price are kept — and Lola asks the owner for those prices.
+    const unpriced = profile.services.filter(s => !s.price).map(s => s.name);
+    if (unpriced.length) report.needs_price = unpriced.slice(0, 30);
+    const ins = await tolerantWrite((pl) => q(c.from('services').insert(pl).select('id,name,duration_minutes')), rows, { required: ['tenant_id', 'name'] });
     if (!ins.error) {
       report.services_added = rows.length;
+      if (report.needs_price) { const want = new Set(report.needs_price.map(n => n.toLowerCase())); report.needs_price = (ins.data || []).filter(r => want.has(String(r.name).toLowerCase())).map(r => ({ id: r.id, name: r.name })); }
       // Processing time for color services (separate update: a database without the phase columns still gets the menu).
       let phased = 0;
       for (const r of ins.data || []) { const ph = phasesFor(r.name, r.duration_minutes); if (ph) { const u = await q(c.from('services').update(ph).eq('id', r.id)); if (!u.error) phased++; } }
@@ -255,7 +377,6 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
   if (!t.location && (profile.address || profile.city)) patch.location = profile.address || profile.city;
   if ((!Array.isArray(t.team) || !t.team.length) && profile.team.length) patch.team = profile.team;
   if (!t.website_url && source.website) patch.website_url = source.website;
-  const place = source.google?.place || null;
   if (place) {
     if (!t.location && place.address) patch.location = place.address;
     if (!t.hours && !patch.hours && place.hours?.length) { patch.hours = place.hours.join('; ').slice(0, 400); report.hours = true; }
@@ -284,6 +405,11 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
     policies: profile.policies,
     marketing: profile.marketing,
     instagram: source.instagram || prior.instagram || null,
+    // How clients reach the salon today (never the Lola line in tenants.phone_number).
+    salon_phone: place?.phone || profile.phone || source.links?.phone || prior.salon_phone || null,
+    booking_link: source.links?.booking || prior.booking_link || null,
+    booking_system: source.links?.booking_system || prior.booking_system || null,
+    socials: { ...(prior.socials || {}), ...Object.fromEntries(['facebook', 'tiktok', 'youtube'].map(k => [k, source.links?.[k] || prior.socials?.[k] || null])) },
     instagram_profile: source.instagram_profile || prior.instagram_profile || null,
     google: place ? {
       place_id: place.id, name: place.name, address: place.address, lat: place.lat, lng: place.lng, rating: place.rating, reviews_count: place.reviews_count,
@@ -323,6 +449,26 @@ export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
   return report;
 }
 
+/** Stylists still on the starter week (09:00–19:00 every day, from the booking seed) take the salon's hours. */
+async function refitStarterSchedules(c, tenantId, week) {
+  const { data: staff } = await q(c.from('staff').select('id').eq('tenant_id', tenantId));
+  const ids = (staff || []).map(s => s.id);
+  if (!ids.length) return 0;
+  const { data: rows } = await q(c.from('staff_schedules').select('staff_id,day_of_week,start_time,end_time').in('staff_id', ids));
+  const by = new Map(); for (const r of rows || []) { if (!by.has(r.staff_id)) by.set(r.staff_id, []); by.get(r.staff_id).push(r); }
+  const starter = (list) => list.length === 7 && list.every(r => String(r.start_time).slice(0, 5) === '09:00' && String(r.end_time).slice(0, 5) === '19:00');
+  const salonRows = Object.entries(week).filter(([, d]) => !d.closed).map(([k, d]) => ({ day_of_week: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(k), start_time: d.open + ':00', end_time: d.close + ':00' }));
+  let n = 0;
+  for (const [sid, list] of by) {
+    if (!starter(list)) continue;   // the owner shaped this stylist's week — leave it
+    const del = await q(c.from('staff_schedules').delete().eq('staff_id', sid));
+    if (del.error) continue;
+    const ins = await q(c.from('staff_schedules').insert(salonRows.map(r => ({ tenant_id: tenantId, staff_id: sid, ...r }))));
+    if (!ins.error) n++;
+  }
+  return n;
+}
+
 // ── Lola's words ─────────────────────────────────────────────
 /** Where the salon sits on the map among its neighbors (stars × how many vouched). */
 export function mapRank(place, competitors) {
@@ -338,7 +484,8 @@ export function learnedSay(profile, report, source = {}) {
   const bits = [];
   const priced = profile.services.map(s => s.price).filter(Boolean);
   if (profile.services.length) bits.push(`${profile.services.length} service${profile.services.length === 1 ? '' : 's'}${priced.length > 1 ? ` from ${money(Math.min(...priced))} to ${money(Math.max(...priced))}` : ''}`);
-  if (profile.hours_text) bits.push('your hours');
+  if (report.hours) bits.push(`your opening hours (from ${report.hours_source === 'google' ? 'Google' : 'your website'} — they're now your booking hours)`);
+  else if (profile.hours_text) bits.push('your hours');
   if (profile.team.length) bits.push(`your team (${profile.team.slice(0, 3).map(t => t.name.split(' ')[0]).join(', ')}${profile.team.length > 3 ? '…' : ''})`);
   if (profile.faq.length) bits.push(`${profile.faq.length} common question${profile.faq.length === 1 ? '' : 's'}`);
   const place = source.google?.place;
@@ -350,6 +497,8 @@ export function learnedSay(profile, report, source = {}) {
     say += ` On Google Maps you're ${place.rating.toFixed(1)}★ from ${place.reviews_count.toLocaleString('en-US')} reviews${rank ? ` — #${rank.rank} of ${rank.of} salons around you` : ''}.`;
     if (report.reviews_on) say += ' I turned on Google review requests: every happy client gets your review link after their visit.';
   }
+  if (source.links?.booking_system) say += ` I see your clients book in ${source.links.booking_system} — connect it in Settings → Booking and I'll book straight into it.`;
+  if (report.needs_price?.length) say += ` Your website doesn't show prices for ${report.needs_price.length === 1 ? report.needs_price[0].name : report.needs_price.length + ' services'} — add ${report.needs_price.length === 1 ? 'it' : 'them'} below and I can quote and book ${report.needs_price.length === 1 ? 'it' : 'them'}.`;
   if (profile.tone || profile.positioning) say += ` I'll sound like your brand: ${String(profile.tone || profile.positioning).toLowerCase().replace(/\.$/, '')}.`;
   const fc = profile.marketing.first_campaign;
   if (fc) say += ` My first move: text your ${fc.segment === 'all' ? 'clients' : fc.segment === 'vip' ? 'VIP clients' : 'clients who haven’t been in for a while'}. Want to see the message?`;
@@ -383,7 +532,7 @@ export async function learnBusiness(c, tenant, { website, notes, instagram, city
     }
   } else if (instagram) source.instagram_profile = await readInstagram(instagram);
   if (website) {
-    try { const site = await readWebsite(website); source.website = site.url; source.instagram = site.instagram; chunks.push(site.text); }
+    try { const site = await readWebsite(website); source.website = site.url; source.instagram = site.instagram; source.links = site.links || null; chunks.push(site.text); }
     catch (e) { readError = e.message; }
   }
   if (notes && String(notes).trim()) { source.notes = String(notes).slice(0, 20000); chunks.push(`=== MENU / NOTES FROM THE OWNER ===\n${source.notes}`); }

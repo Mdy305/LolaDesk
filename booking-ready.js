@@ -70,8 +70,10 @@
           <button type="button" class="bkr-btn" data-bkr-copy>Copy</button>
           <a class="bkr-btn" href="${esc(d.booking_url)}" target="_blank" rel="noopener">Open</a></div>`;
     }
+    const scan = steps.some((s) => ['hours', 'services'].includes(s.id) && !s.done)
+      ? `<a class="bkr-row" href="/onboarding?learn=1"><span class="bkr-dot" aria-hidden="true">✦</span><span class="bkr-t">Let Lola fill this in<span class="bkr-d">She reads your website and Google listing — hours, services and prices — in about 30 seconds.</span></span><span class="bkr-go" aria-hidden="true">Start ›</span></a>` : '';
     return `${head}
-      <p class="bkr-sub">A few things and clients can book you online — Lola books the same times.</p>
+      <p class="bkr-sub">A few things and clients can book you online — Lola books the same times.</p>${scan}
       ${steps.map((s) => `<a class="bkr-row${s.done ? ' done' : ''}" href="${esc(s.href)}">
         <span class="bkr-dot" aria-hidden="true">${s.done ? '✓' : ''}</span>
         <span class="bkr-t">${esc(s.label)}${s.detail ? `<span class="bkr-d">${esc(s.detail)}</span>` : ''}<span class="bkr-sr">${s.done ? ' — done' : ' — to do'}</span></span>
