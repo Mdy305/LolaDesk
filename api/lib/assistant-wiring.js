@@ -51,7 +51,7 @@ function withBookingParams(t) {
 
 const SKILL_NAMES = new Set(['check_availability', 'book_appointment', 'confirm_booking', 'reschedule_appointment', 'cancel_appointment',
   'capture_lead', 'recall_client', 'get_pricing', 'recommend_service', 'list_services', 'handle_recovery', 'escalate', 'detect_upsell_opportunity', 'inject_memory', 'take_message',
-  'waitlist_add', 'rebook_next_visit']);
+  'waitlist_add', 'rebook_next_visit', 'save_memory']);
 // Dedicated endpoints that are also fine for a tool to call directly.
 const GOOD_PATHS = new Set(['/api/lola-tools', '/api/lola/book-appointment', '/api/lola/check-availability', '/api/lola/get-context',
   '/api/lola/fill-gap', '/api/lola/voice-fill-gap', '/api/lola/waitlist-candidates']);
@@ -337,6 +337,7 @@ export async function wireAssistant({ heal = false } = {}) {
     { name: 'waitlist_add', description: 'Put the client on the priority waitlist when nothing fits; they get a text the moment a matching spot opens. Ask first, and only call it after they say yes.', props: { service: { type: 'string', description: 'The service they want' }, client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number for the text' }, date: { type: 'string', description: 'Preferred day, if any' }, time: { type: 'string', description: 'Preferred time, if any' }, stylist: { type: 'string', description: 'Preferred stylist, if any' }, sms_consent: { type: 'boolean', description: 'true when they agreed to be texted' } } },
     { name: 'rebook_next_visit', description: 'Find the right time for a returning client\u2019s NEXT visit (same service and stylist, at its natural cycle) so they can pre-book it.', props: { service: { type: 'string', description: 'Only if they want a different service than last time' } } },
     { name: 'capture_lead', description: 'Save someone who is interested but not booking now (a question, a quote, a callback), so the salon follows up.', props: { client_name: { type: 'string', description: 'First and last name' }, client_phone: { type: 'string', description: 'Mobile number' }, service_requested: { type: 'string', description: 'What they are interested in' } } },
+    { name: 'save_memory', description: 'Save something worth remembering about the caller: a preference, a formula the stylist mentioned, a note. Every channel (calls, texts, DMs, the website) will know it next time.', props: { fact: { type: 'string', description: 'One short sentence to remember' }, kind: { type: 'string', description: 'preference, formula or note' }, client_phone: { type: 'string', description: 'Leave empty: it is always the caller\u2019s own number' } } },
   ];
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
   const bookingParams = [];

@@ -24,7 +24,7 @@ import { SKILLS } from '../lola-tools.js';
 import { resolveDate } from './operator-db.js';
 import { getOrStartConversation, participantFor, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lola-skills.js';
-import { OWNER_TOOLS, OWNER_TOOL_NAMES, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
+import { OWNER_TOOLS, OWNER_TOOL_NAMES, OWNER_READ_TOOLS, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
 import { routeOwnerIntent, agentFor } from './owner-intents.js';
 import { lolaSelfCheck } from './lola-doctor.js';
 import { getUserFromToken, bearer, isAdminEmail } from './auth.js';
@@ -402,6 +402,8 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
 
     // Owner tools answer in their own words (previews, confirmations, results).
     if (OWNER_TOOL_NAMES.has(funcName)) {
+      // The model can never pre-confirm a change: every change is previewed, only the owner's yes runs it.
+      delete funcArgs.confirmed; delete funcArgs.plan; delete funcArgs.ids;
       const out = await runOwnerTool({ tenant, name: funcName, args: funcArgs, req });
       const say = out.say || 'Done.';
       await remember(say);
@@ -479,4 +481,60 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
       provider: result.provider
     }
   };
+}
+
+/**
+ * The owner's commands from OUTSIDE the app (texting the salon line from their cell) run through
+ * the same hands as the app: a bare YES/NO resolves the parked action, reflexes run instantly, and
+ * an unrouted owner command lets the model pick an owner tool. Anything that changes the book or
+ * reaches a client is previewed first and only runs on the owner's YES.
+ * sender: the owner's E.164 cell (a parked action only confirms from the same sender + channel).
+ * readOnly: the inbound text could not be verified as really from Telnyx → reads only, no changes.
+ * → { say, intent, needs_confirmation } | null (not a command — the caller answers conversationally).
+ */
+export const READ_ONLY_HINT = 'To run commands by text, add TELNYX_PUBLIC_KEY in Vercel.';
+export async function ownerCommandReply({ tenant, text, history = [], channel = 'sms', sender = null, readOnly = false }){
+  const msg = String(text || '').trim();
+  if(!tenant?.id || !msg) return null;
+  const app = String(process.env.APP_URL || 'https://www.loladesk.com').replace(/\/+$/, '');
+  const finish = (out, intent) => {
+    let say = String(out?.say || 'Done.');
+    if(out?.ui?.navigate) say = `${say.replace(/^Opening\s+/i, 'Open ').replace(/[.\s]+$/, '')} in LolaDesk: ${app}${out.ui.navigate}`;
+    if(out?.needs_confirmation && channel === 'sms') say += ' Reply YES to go ahead or NO to skip.';
+    return { say, intent, needs_confirmation: !!out?.needs_confirmation };
+  };
+  const origin = { channel, sender };
+  const refuse = (intent) => ({ say: `I can't make changes from an unverified text. ${READ_ONLY_HINT}`, intent, needs_confirmation: false, read_only: true });
+  if(!readOnly){
+    try{
+      const pend = await takePendingAction({ tenant, text: msg, origin });
+      if(pend) return finish(pend, 'owner_action');
+    }catch{ /* fall through */ }
+  }
+  try{
+    const hit = routeOwnerIntent(msg);
+    if(hit?.navigate) return finish({ say: hit.say, ui: { navigate: hit.navigate } }, 'open_page');
+    if(hit?.self_check){ const chk = await lolaSelfCheck(tenant, { platform: false }); return { say: chk.say, intent: 'self_check', needs_confirmation: false }; }
+    if(hit?.tool){
+      if(readOnly && !OWNER_READ_TOOLS.has(hit.tool)) return refuse(hit.tool);
+      return finish(await runOwnerTool({ tenant, name: hit.tool, args: hit.args, origin }), hit.tool);
+    }
+  }catch{ /* fall through */ }
+  if(!isOwnerCommand(msg)) return null;
+  try{
+    const system = [await ownerSystemPrompt(tenant), channel === 'sms' ? 'The owner is TEXTING you from their cell: reply in at most 2 short plain sentences, no markdown.' : ''].filter(Boolean).join('\n');
+    const prior = (Array.isArray(history) ? history : []).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-8);
+    const r = await chat({ system, messages: [...prior, { role: 'user', content: msg }], tools: OWNER_TOOLS, maxTokens: 300, temperature: 0.3, fast: true, deadlineMs: 12000 });
+    const call = r?.ok && Array.isArray(r.tool_calls) ? r.tool_calls[0] : null;
+    const name = call?.function?.name;
+    if(name && OWNER_TOOL_NAMES.has(name)){
+      let args = {};
+      try{ args = JSON.parse(call.function.arguments || '{}') || {}; }catch{ args = {}; }
+      // Off-app, only the owner's own YES confirms: the model can never pre-confirm a change.
+      delete args.confirmed; delete args.plan; delete args.ids;
+      if(readOnly && !OWNER_READ_TOOLS.has(name)) return refuse(name);
+      return finish(await runOwnerTool({ tenant, name, args, origin }), name);
+    }
+  }catch{ /* the conversational brain answers instead */ }
+  return null;
 }

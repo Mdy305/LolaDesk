@@ -25,12 +25,16 @@ import crypto from 'node:crypto';
  *   cancel_appointment  cancel a booking                (destructive → confirm + PIN)
  *   broadcast_text      text a segment of clients       (destructive → confirm + PIN)
  *   book_for_client     add a booking
+ *   block_time          block off time (whole salon or one stylist) (change → confirm + PIN; clashing clients listed, never cancelled)
+ *   unblock_time        remove a block                  (change → confirm + PIN)
  *
  * Webhook contract:  POST { tool, tenant|to, ...args }  ->  { speak, ... }
  * Never throws at the caller; failures degrade to a graceful spoken line.
  */
 
-import { getTenantBySlug } from './lib/db.js';
+import { getTenantBySlug, db } from './lib/db.js';
+import { resolvePeriod, bookedRevenue, sayRevenue } from './lib/owner-money.js';
+import { planBlock, applyBlock, planUnblock, applyUnblock } from './lib/blocks.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { sendSMS } from './telnyx-sms.js';
 import { runBookingAction } from './lib/booking-brain.js';
@@ -120,11 +124,60 @@ async function whats_my_day(tenant, args){
 }
 
 // ── SKILL: revenue ────────────────────────────────────────────────────────
+// Any range: today / week (to date) / month (to date) / a date / from–to, plus the phrases owners
+// actually say — next_week (Mon–Sun of next week, salon time), this_week, tomorrow, weekend, next_month…
+// Locked-in revenue = confirmed / arrived / completed bookings at the stylist's price (lib/owner-money.js).
 async function find_revenue(tenant, args){
   const tz = await salonTz(tenant.id);
-  const { from, to, label } = rangeFromArgs(args, tz);
-  const { total, count } = await revenueSummary(tenant.id, { from, to, tz });
-  return { speak: `${label}: ${money(total)} booked across ${count} appointment${count === 1 ? '' : 's'}.`, total, count };
+  const named = String(args.period || args.range || '').toLowerCase();
+  let rng = null;
+  if(!(args.from && args.to) && named && !['week', 'month'].includes(named)) rng = resolvePeriod(named, tz);
+  if(!rng){
+    const r = rangeFromArgs(args, tz);
+    rng = { ...r, label: r.label.replace(/^./, (x) => x.toUpperCase()) };
+  }
+  const c = db();
+  if(!c){
+    const { total, count } = await revenueSummary(tenant.id, { from: rng.from, to: rng.to, tz });
+    return { speak: `${rng.label}: ${money(total)} booked across ${count} appointment${count === 1 ? '' : 's'}.`, total, count };
+  }
+  const r = await bookedRevenue(c, tenant.id, { from: rng.from, to: rng.to, tz });
+  const today = localDateKey(new Date(), tz);
+  const future = rng.from > today ? true : rng.to < today ? false : null;
+  return { speak: sayRevenue(r, rng.label, { future }), total: r.total, count: r.count, from: rng.from, to: rng.to,
+    by_day: r.by_day, by_stylist: r.by_stylist, deposits_collected: r.deposits_collected };
+}
+
+// ── SKILL: block off time (change → PIN) ──────────────────────────────────
+async function block_time(tenant, args){
+  const tz = await salonTz(tenant.id);
+  const c = db();
+  if(!c) return { speak: "My calendar isn't connected right now — nothing was changed." };
+  if(args.confirm){
+    const r = await takeConfirm(tenant, 'block_time', args);
+    if(r.error) return { speak: r.error, ...(r.locked ? { locked: true } : {}) };
+    const out = await applyBlock(c, tenant.id, r.k, { tz });
+    return { speak: out.say, blocked: !!out.ok };
+  }
+  const p = await planBlock(c, tenant, args, { tz });
+  if(!p.ok) return { speak: p.say };
+  return { ...needConfirm(tenant, 'block_time', p.plan, `${p.say} Say your PIN and "confirm".`), clashes: p.clashes };
+}
+
+// ── SKILL: remove a block (change → PIN) ──────────────────────────────────
+async function unblock_time(tenant, args){
+  const tz = await salonTz(tenant.id);
+  const c = db();
+  if(!c) return { speak: "My calendar isn't connected right now — nothing was changed." };
+  if(args.confirm){
+    const r = await takeConfirm(tenant, 'unblock_time', args);
+    if(r.error) return { speak: r.error, ...(r.locked ? { locked: true } : {}) };
+    const out = await applyUnblock(c, tenant.id, r.k.ids || []);
+    return { speak: out.say, unblocked: !!out.ok };
+  }
+  const p = await planUnblock(c, tenant, args, { tz });
+  if(!p.ok) return { speak: p.say };
+  return needConfirm(tenant, 'unblock_time', { ids: p.ids }, `${p.say} Say your PIN and "confirm".`);
 }
 
 // ── SKILL: who's due to rebook ────────────────────────────────────────────
@@ -220,7 +273,8 @@ async function book_for_client(tenant, args){
 
 export const OPERATOR_SKILLS = {
   whats_my_day, find_revenue, who_is_due,
-  move_appointment, cancel_appointment, broadcast_text, book_for_client
+  move_appointment, cancel_appointment, broadcast_text, book_for_client,
+  block_time, unblock_time
 };
 
 export default async function handler(req, res){
@@ -254,7 +308,7 @@ export default async function handler(req, res){
 
     if(!tool || !OPERATOR_SKILLS[tool]){
       return res.status(200).json({
-        speak: "I can check your day, find revenue, flag rebookings, move or cancel appointments, or text clients.",
+        speak: "I can check your day, find revenue, flag rebookings, move or cancel appointments, block off time, or text clients.",
         available_tools: Object.keys(OPERATOR_SKILLS)
       });
     }

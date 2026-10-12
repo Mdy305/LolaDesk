@@ -33,6 +33,8 @@ const PAGES = [
   [/^(?:lola|full screen|lola live)$/, '/lola-live', 'full-screen Lola'],
 ];
 
+import { periodFromText } from './owner-money.js';
+
 const PRONOUN = /^(?:me|us|her|him|them|it|back|someone|somebody|everyone|everybody|all|the salon|my clients|clients)$/i;
 const WEEKDAY = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
 
@@ -59,6 +61,44 @@ function dayOf(t) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// ── blocked time: "block off Thursday afternoon for maintenance", "remove the Thursday block" ──
+const NOT_STAFF = new RegExp(`^(?:${WEEKDAY.slice(3, -1)}|today|tomorrow|tonight|the|this|next|that|it|salon|everyone|everybody|week|day|lola|let|what|who|there|here|one|today)$`, 'i');
+const T12 = '((?<![\\d:])\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)?|noon)';
+export function parseBlockCommand(input) {
+  const raw = normalize(input);
+  if (!raw) return null;
+  let t = raw.toLowerCase().replace(/\ba\.m\./g, 'am').replace(/\bp\.m\./g, 'pm');
+  const possessive = () => { const m = t.match(/\b([a-z][a-z-]{1,20})['’]s\b/); return m && !NOT_STAFF.test(m[1]) ? m[1].replace(/^./, (x) => x.toUpperCase()) : null; };
+  const unblock = /^(?:unblock|un-block)\b/.test(t) || (/^(?:remove|delete|clear|lift|undo|cancel|take (?:off|down|away)|get rid of|open up)\b/.test(t) && /\bblock(?:s|ed)?\b/.test(t));
+  if (unblock) {
+    const args = {}; const d = dayOf(t); if (d) args.date = d; const st = possessive(); if (st) args.staff = st;
+    return { tool: 'unblock_time', args };
+  }
+  if (!/^(?:block|close|shut)\b/.test(t)) return null;
+  if (/^(?:close|shut)\b/.test(t) && !(dayOf(t) || /\b(afternoon|morning|evening|all day|whole day)\b/.test(t))) return null;
+  const args = {};
+  let m;
+  if ((m = t.match(/\b(?:every week |weekly )?for (?:the next )?(\d{1,2}) weeks\b/))) { args.repeat_weeks = Number(m[1]); t = t.replace(m[0], ' '); }
+  const d = dayOf(t); if (d) args.date = d;
+  t = t.replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ');   // a date is never a time ("2026-10-20" ≠ 26–10)
+  if ((m = t.match(new RegExp(`(?:from |between )?${T12}\\s*(?:-|–|to|until|till|and)\\s*${T12}`)))) { args.start = m[1].replace(/\s+/g, ''); args.end = m[2].replace(/\s+/g, ''); }
+  else if ((m = t.match(new RegExp(`\\b(?:after|from|starting(?: at)?)\\s+${T12}`)))) args.start = m[1].replace(/\s+/g, '');
+  else if ((m = t.match(new RegExp(`\\b(?:until|till|before)\\s+${T12}`)))) args.end = m[1].replace(/\s+/g, '');
+  else if (/\bafternoon\b/.test(t)) args.part = 'afternoon';
+  else if (/\bmorning\b/.test(t)) args.part = 'morning';
+  else if (/\b(?:evening|tonight)\b/.test(t)) args.part = 'evening';
+  else if (/\b(?:all day|whole day|full day|entire day|day off|the day)\b/.test(t) || /^(?:close|shut)\b/.test(t)) args.part = 'all day';
+  // "block the 3pm for Maria": one time, no span — Lola asks until when instead of blocking the day.
+  else if ((m = t.match(new RegExp(`\\b(?:at |the )?${T12}`))) && /am|pm|noon|:/.test(m[1])) args.at = m[1].replace(/\s+/g, '');
+  const st = possessive(); if (st) args.staff = st;
+  const r = t.match(/\b(?:for|because of|due to|reason:?)\s+(.+)$/);
+  if (r) {
+    const reason = r[1].replace(new RegExp(`\\s*(?:\\b(?:on|this|next|from|at|in the|the)\\s+)?\\b(?:${WEEKDAY.slice(3, -1)}|today|tomorrow|tonight|afternoon|morning|evening|all day)\\b.*$`), '').trim();
+    if (reason && !/^(?:the |a )?(?:whole |entire )?(?:salon|everyone|everybody|team|day|afternoon|morning)$/.test(reason)) args.reason = reason.slice(0, 80);
+  }
+  return { tool: 'block_time', args };
+}
+
 export function routeOwnerIntent(input) {
   const raw = normalize(input);
   if (!raw) return null;
@@ -74,6 +114,10 @@ export function routeOwnerIntent(input) {
   // ── her own health ──
   if (/\b(run (?:a |your )?(?:check|diagnostic|self.?check|test)|diagnose yourself|test yourself|are you (?:ok|okay|working|alright)|is everything working|system check|status check)\b/.test(t)) return { self_check: true };
 
+  // ── blocked time (before "cancel …", so "cancel the Thursday block" never cancels a client) ──
+  const blk = parseBlockCommand(raw);
+  if (blk) return blk;
+
   // ── confirmations ──
   if (/\b(who(?:'?s| has| have)? (?:not |n'?t )?confirmed|who hasn'?t confirmed|confirmation status|any confirmations|how many confirmed)\b/.test(t)) return { tool: 'confirmation_status', args: { date: dayOf(t) || 'tomorrow' } };
   if (/\b(confirm (?:all )?(?:my |the |our )?(?:today'?s |tomorrow'?s )?(?:appointments|bookings|clients|schedule)|send (?:the |out )?confirmations?|ask (?:everyone|clients) to confirm)\b/.test(t)) return { tool: 'confirm_appointments', args: { date: dayOf(t) || 'tomorrow' } };
@@ -86,7 +130,15 @@ export function routeOwnerIntent(input) {
   }
 
   // ── money ──
-  if (/\b(how much (?:did|have|do) (?:we|i) (?:make|made|earn|earned|book|booked|bring in|brought in)|revenue|sales|money (?:today|this week|this month)|how'?s (?:business|revenue|the money))\b/.test(t) && !/\b(campaign|text|send)\b/.test(t)) {
+  const moneyAsk = /\b(how much (?:did|have|do) (?:we|i) (?:make|made|earn|earned|book|booked|bring in|brought in)|revenue|sales|money (?:today|this week|this month)|how'?s (?:business|revenue|the money)|locked in)\b/.test(t)
+    || (/\bhow much\b/.test(t) && /\b(booked|on the books|scheduled|coming in|lined up)\b/.test(t));
+  if (moneyAsk && !/\b(campaign|text|send)\b/.test(t)) {
+    // "locked in for next week", "booked tomorrow", "this weekend", "next month", a weekday or a date: real ranges.
+    const ahead = /\b(locked|on the books|booked (?:for|in)|coming in|lined up|ahead|upcoming)\b/.test(t);
+    const p = periodFromText(t);
+    if (p && typeof p === 'object') return { tool: 'revenue_report', args: { from: p.from, to: p.to } };
+    const legacy = { today: 'today', this_week: 'week', this_month: 'month' };
+    if (p && !(legacy[p] && !ahead)) return { tool: 'revenue_report', args: { period: p } };
     const period = /\bmonth\b/.test(t) ? 'month' : /\bweek\b/.test(t) ? 'week' : 'today';
     return { tool: 'revenue_report', args: { period } };
   }
@@ -142,7 +194,7 @@ export function agentFor(name) {
   if (/booking|no_show|waitlist|fill_gap|list_bookings|check_availability|book_|reschedule|cancel/.test(name)) return { id: 'booking', label: 'Booking' };
   if (/text|call|message/.test(name)) return { id: 'communications', label: 'Communications' };
   if (/campaign|fill_plan|learn|growth/.test(name)) return { id: 'marketing', label: 'Marketing' };
-  if (/revenue|brief|away/.test(name)) return { id: 'operations', label: 'Operations' };
+  if (/revenue|brief|away|block/.test(name)) return { id: 'operations', label: 'Operations' };
   if (/client/.test(name)) return { id: 'crm', label: 'CRM' };
   return { id: 'lola', label: 'Lola' };
 }

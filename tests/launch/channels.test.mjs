@@ -165,7 +165,10 @@ const before = seen.length;
 await fb.handleMessengerEvent(db(), msg('hey', { page: 'PAGE-UNKNOWN' }), { answer: spy, send: send2 });
 ok(seen.length === before, 'a Page no salon owns is ignored');
 await fb.handleMessengerEvent(db(), msg('my number is 305-555-4444', { psid: 'PSID-SARAH' }), { answer: spy, send: send2 });
-ok(T.clients.find((x) => x.phone === 'fb:PSID-SARAH').notes === 'linked:+13055554444' && seen.at(-1).memoryKey === '+13055554444' && seen.at(-1).client.id === 'sarah', 'she shares her number → Messenger Sarah IS phone Sarah: one memory');
+const codeText = telnyx.filter((t) => t.path === '/messages' && t.body?.to === '+13055554444').at(-1)?.body?.text || '';
+ok(!seen.at(-1).phone && seen.at(-1).client.id !== 'sarah' && seen.at(-1).memoryKey === 'fb:PSID-SARAH' && seen.at(-1).contactPhone === '+13055554444' && /code is \d{6}/.test(codeText), 'a typed number proves nothing: no history, just a contact number — and a code is texted to that number');
+await fb.handleMessengerEvent(db(), msg('my code is ' + codeText.match(/\d{6}/)[0], { psid: 'PSID-SARAH' }), { answer: spy, send: send2 });
+ok(T.client_memories.some((m) => m.tenant_id === TID && m.client_phone === 'fb:PSID-SARAH' && m.key === 'verified_link' && m.value.phone === '+13055554444') && seen.at(-1).memoryKey === '+13055554444' && seen.at(-1).client.id === 'sarah' && seen.at(-1).phone === '+13055554444', 'she types the code back → Messenger Sarah IS phone Sarah: one memory');
 
 // ── 6. The owner replies from the inbox (24-hour window respected) ──
 const conv = T.conversations.find((cv) => cv.tenant_id === TID && cv.channel === 'messenger');

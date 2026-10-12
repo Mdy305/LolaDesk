@@ -10,57 +10,35 @@ import { db, e164 } from './db.js';
 import { bookingGateResponse, BLOCKED_BOOKING_ACTIONS } from './billing-gate.js';
 
 /**
- * Fetch a client's long-term memory (LTM) context for Lola.
- * Returns a prompt string that can be injected into Lola's system prompt
- * at the start of a call or text thread.
+ * Fetch a client's long-term memory (LTM) context for Lola — the SAME story every channel uses
+ * (lib/client-brain clientStory): name, visits, last + next visit, usual stylist, spend, formulas,
+ * saved memories. Tenant-scoped; `tenant` may be the tenant row or its id.
  */
-export async function injectCallerMemory(tenantId, clientPhone) {
+export async function injectCallerMemory(tenant, clientPhone) {
   const c = db();
-  if (!c || !tenantId || !clientPhone) return '';
-
+  const t = tenant && typeof tenant === 'object' ? tenant : (tenant ? { id: tenant } : null);
+  if (!c || !t?.id || !clientPhone) return '';
   try {
     const phone = e164(clientPhone);
-    const { data: client } = await c
-      .from('clients')
-      .select('id, name, notes, opted_out')
-      .eq('tenant_id', tenantId)
-      .eq('phone_number', phone)
-      .maybeSingle();
-
-    if (!client) return `Note: First-time caller/texter. Get their name.`;
-    
-    if (client.opted_out) {
-      return `CRITICAL: This client has opted out of SMS. DO NOT send them texts.`;
-    }
-
-    let memoryStr = `Client Name: ${client.name || 'Unknown'}\n`;
-    if (client.notes) {
-      memoryStr += `Permanent Memory Notes: ${client.notes}\n`;
-    }
-
-    // Fetch their last booking to give Lola context
-    const { data: lastBooking } = await c
-      .from('bookings')
-      .select('service:services(name), starts_at:start_time, stylist:staff(name)')
-      .eq('client_id', client.id)
-      .order('start_time', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastBooking) {
-      memoryStr += `Last Visit: ${lastBooking.service} with ${lastBooking.stylist || 'a stylist'} on ${new Date(lastBooking.starts_at).toLocaleDateString()}.\n`;
-    }
-
-    return memoryStr;
+    const { data: client } = await c.from('clients').select('*').eq('tenant_id', t.id).eq('phone', phone).maybeSingle();
+    if (!client) return 'First-time caller/texter. Get their name.';
+    const { clientStory } = await import('./client-brain.js');
+    const story = await clientStory(c, t, client);
+    const lines = [];
+    if (client.opted_out || client.sms_opt_out) lines.push('CRITICAL: This client has opted out of texts. Do not text them.');
+    lines.push(story.brief ? `Client: ${story.brief}.` : `Client: ${story.name || 'name unknown'} (no visits yet).`);
+    if (story.profile?.preferences?.length) lines.push('Preferences: ' + story.profile.preferences.slice(-3).join('; ') + '.');
+    if (story.profile?.allergies?.length) lines.push('Allergies / sensitivities: ' + story.profile.allergies.join('; ') + '.');
+    return lines.join('\n');
   } catch (e) {
-    console.error('[orchestrator] Error injecting memory:', e);
+    console.error('[orchestrator] Error injecting memory:', e?.message || e);
     return '';
   }
 }
 
 /**
  * Extract takeaways from a completed conversation and save them
- * permanently to the client's profile in Supabase.
+ * permanently to the client's profile in Supabase (this salon's client only).
  */
 export async function saveConversationMemory(tenantId, clientPhone, summaryText) {
   const c = db();
@@ -72,18 +50,19 @@ export async function saveConversationMemory(tenantId, clientPhone, summaryText)
       .from('clients')
       .select('id, notes')
       .eq('tenant_id', tenantId)
-      .eq('phone_number', phone)
+      .eq('phone', phone)
       .maybeSingle();
 
     if (!client) return;
 
     // Append new notes to existing notes
     const newNotes = client.notes ? `${client.notes}\n- ${summaryText}` : `- ${summaryText}`;
-    
+
     await c
       .from('clients')
       .update({ notes: newNotes })
-      .eq('id', client.id);
+      .eq('id', client.id)
+      .eq('tenant_id', tenantId);
 
   } catch (e) {
     console.error('[orchestrator] Error saving memory:', e);

@@ -743,6 +743,58 @@ export async function setClientMemory(tenantId, phone, key, value){
   return data;
 }
 
+// ── Facts Lola saved about a client (save_memory, any channel) ──
+// One row per client: key 'facts', value { items: [{ fact, kind, at, channel }] } — newest last,
+// de-duplicated, capped, tenant-scoped like every other memory row.
+const FACTS_MAX = 20;
+const memKey = (phone) => String(phone||'').includes(':') ? String(phone).slice(0,64) : e164(phone);
+export function factsFromMemoryRows(rows){
+  const row = (rows || []).find((r) => r && r.key === 'facts');
+  let v = row && row.value;
+  if(typeof v === 'string'){ try{ v = JSON.parse(v); }catch(_){ v = null; } }
+  return Array.isArray(v?.items) ? v.items.filter((x) => x && x.fact) : [];
+}
+export async function addClientFact(tenantId, phone, { fact, kind = 'note', channel = null } = {}){
+  const text = String(fact || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  if(!tenantId || !phone || !text) return null;
+  const items = factsFromMemoryRows(await getClientMemory(tenantId, phone));
+  const same = (x) => String(x.fact).toLowerCase() === text.toLowerCase();
+  const next = [...items.filter((x) => !same(x)), { fact: text, kind: ['preference','formula','note'].includes(kind) ? kind : 'note', at: new Date().toISOString(), channel }].slice(-FACTS_MAX);
+  return setClientMemory(tenantId, phone, 'facts', { items: next });
+}
+
+// Never copied between identities: per-channel plumbing and the link itself.
+const NO_MERGE = new Set(['messenger', 'instagram', 'link_code', 'verified_link', 'contact_phone']);
+const uniqBy = (list, f) => { const seen = new Set(); return list.filter((x) => { const k = f(x); if(seen.has(k)) return false; seen.add(k); return true; }); };
+/** After a VERIFIED link: what Lola learned under fb:/ig:/web: joins the phone client's memory (same salon only). */
+export async function mergeClientMemories(tenantId, fromKey, toPhone){
+  const c = db(); if(!c || !tenantId || !fromKey || !toPhone) return { merged: 0 };
+  const to = memKey(toPhone), from = memKey(fromKey);
+  if(!to || to === from) return { merged: 0 };
+  const [src, dst] = await Promise.all([getClientMemory(tenantId, from), getClientMemory(tenantId, to)]);
+  const have = new Map((dst || []).map((r) => [r.key, r.value]));
+  let merged = 0;
+  for(const r of src || []){
+    if(!r || NO_MERGE.has(r.key) || r.value == null) continue;
+    const cur = have.get(r.key);
+    let value = r.value;
+    if(r.key === 'facts'){
+      const items = uniqBy([...factsFromMemoryRows([{ key: 'facts', value: cur }]), ...factsFromMemoryRows([r])].sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))), (x) => String(x.fact).toLowerCase()).slice(-FACTS_MAX);
+      value = { items };
+    } else if(r.key === 'profile' && cur && typeof cur === 'object' && typeof value === 'object'){
+      const out = { ...value, ...cur };
+      for(const k of ['preferences','dislikes','allergies','goals','lifeEvents','memorableNotes','recent_feedback']){
+        const a = [...(Array.isArray(cur[k]) ? cur[k] : []), ...(Array.isArray(value[k]) ? value[k] : [])];
+        out[k] = uniqBy(a, (x) => typeof x === 'string' ? x.toLowerCase() : JSON.stringify(x)).slice(-10);
+      }
+      value = out;
+    } else if(cur != null) continue;   // the phone client's own value wins
+    await setClientMemory(tenantId, to, r.key, value);
+    merged++;
+  }
+  return { merged };
+}
+
 // ── Owner memory ──
 // The dashboard/operator side of Lola's memory. Keyed under the literal
 // client_phone 'owner' (one owner memory set per tenant) — deliberately

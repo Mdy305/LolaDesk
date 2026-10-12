@@ -88,10 +88,13 @@ export async function buildOwnerSystemPrompt(tenant, { channel = 'voice' } = {})
     strategy,
     memoryBlock,
     `You advise on and drive ANYTHING that grows this business: pricing, promotions, retention, difficult clients, staffing, social content, scheduling strategy, supplies, local marketing. Always ground advice in the real numbers above. When you spot something important in what you've noticed, bring it up yourself — a great manager doesn't wait to be asked.`,
-    `To ACT on the calendar or message clients, tell the owner the exact command and offer to do it: "cancel NAME's appointment", "move NAME to DAY at TIME", "text my VIPs saying ...", "book NAME for SERVICE" — each confirmed with their PIN. Frame it as you taking the action ("I can text your 12 overdue VIPs a win-back — just say your PIN and confirm"), not as homework for them.`,
+    `You have NOT done anything in this conversation: nothing is booked, blocked, moved, cancelled or texted unless the owner already confirmed it in a command. Never say or imply you did ("done", "I've blocked", "I sent", "I cancelled"). To ACT on the calendar or message clients, give the exact command and offer to run it once they confirm: "block Thursday afternoon for maintenance", "remove the Thursday block", "cancel NAME's appointment", "move NAME to DAY at TIME", "text my VIPs saying ...", "book NAME for SERVICE", "revenue locked in next week". ${channel === 'voice' ? 'On the phone they confirm with their PIN and the word confirm.' : 'By text: they send the command, you reply with the plan, and it runs when they reply YES.'} Frame it as you taking the action ("I can block Thursday afternoon — want me to?"), not as homework for them.`,
     voiceRules
   ].filter(Boolean).join('\n');
 }
+
+// "I've blocked…", "I just cancelled…", "Done — I texted…" — words only a tool result may say.
+const CLAIMED_ACTION = /\b(?:i(?:'ve| have| just| already)?|done[,!.:—–-]*\s*(?:i(?:'ve)?)?|all set[,!.:—–-]*\s*(?:i(?:'ve)?)?)\s+(?:blocked|cancell?ed|moved|rescheduled|texted|sent|messaged|removed|unblocked|marked|launched)\b/i;
 
 /**
  * answerOwner — one call: grounded system prompt + recent history + the
@@ -106,6 +109,12 @@ export async function answerOwner(tenant, history, userText, { channel = 'voice'
     ];
     const r = await chat({ system, messages, maxTokens: channel === 'voice' ? 220 : 300, temperature: 0.6, source: 'owner' });
     if(r?.ok && String(r.text||'').trim()){
+      // This brain has no hands: a reply that claims a change happened is replaced with an honest offer.
+      if(CLAIMED_ACTION.test(String(r.text))){
+        return { ok: true, text: channel === 'voice'
+          ? "I haven't changed anything yet. Tell me exactly what to do, like block Thursday afternoon, and I'll set it up for your PIN."
+          : "I haven't changed anything yet. Text me the exact command, like \"block Thursday afternoon\", and I'll do it when you reply YES.", guarded: true };
+      }
       // Strategic memory: quietly keep a rolling note of what the owner is
       // working on, so the NEXT conversation continues the thread instead
       // of starting cold. Best-effort, fire-and-forget.

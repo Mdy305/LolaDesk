@@ -59,6 +59,40 @@ function extract(raw){
   return { inbound:true, from:raw.From||raw.from||'', to:raw.To||raw.to||'', text:raw.Body||raw.text||'', type: 'SMS', mediaUrls: [] };
 }
 
+/**
+ * The owner texting Lola: real actions, not just advice. Same hands as the app (pending YES/NO,
+ * reflexes, owner tools); anything that changes the book is previewed and waits for "YES".
+ * Open questions fall back to the conversational owner brain. `pre` = a command reply already computed.
+ */
+async function ownerTextTurn(tenant, { text, toN, fromN, type, pre = null, usage = null, signed = false }){
+  let conv=null, hist=[];
+  try{ conv = await getOrStartConversation(tenant.id, { channel:'operator', agent:'jarvis', participant:'owner' }); if(conv?.id) hist = await getConversationHistory(conv.id, 10); }catch{}
+  let cmd = pre;
+  if(!cmd){
+    // Owner ACTIONS by text only when Telnyx's signature was really verified; otherwise reads only.
+    try{ const { ownerCommandReply } = await import('./lib/dashboard-brain.js'); cmd = await ownerCommandReply({ tenant, text, history: hist, channel:'sms', sender: fromN, readOnly: !signed }); }
+    catch(e){ console.warn('[owner-sms] command:', String(e?.message||e).slice(0,120)); }
+  }
+  let reply = cmd && cmd.say ? String(cmd.say) : '';
+  if(!reply){
+    const brain = await answerOwner(tenant, hist, text, { channel:'sms' }).catch(()=>({ ok:false }));
+    reply = brain && brain.ok ? brain.text
+      : "Text me things like \"revenue locked in next week\", \"block Thursday afternoon\", or \"what's tomorrow\" and I'll handle it.";
+  }
+  if(!signed){
+    try{ const { READ_ONLY_HINT } = await import('./lib/dashboard-brain.js'); if(!reply.includes(READ_ONLY_HINT)) reply += ' ' + READ_ONLY_HINT; }catch{}
+  }
+  try{
+    if(conv?.id){
+      await logMessage({ conversationId: conv.id, tenantId: tenant.id, role:'user', agent:'jarvis', content:text });
+      await logMessage({ conversationId: conv.id, tenantId: tenant.id, role:'assistant', agent:'jarvis', content:reply });
+    }
+    if(usage) await logUsage(tenant.id, usage, 1);
+  }catch{}
+  try{ await sendSMS({ from: toN, to: fromN, text: reply, tenantId: tenant.id, skipOptOut:true, type }); }catch{}
+  return { reply, action: cmd?.intent || null, needs_confirmation: !!cmd?.needs_confirmation };
+}
+
 async function markDone(id){
   if(!id) return;
   try{ const c = db(); if(c) await c.from('telnyx_events').update({ kind: 'sms' }).eq('id', String(id)); }catch(_){}
@@ -73,18 +107,19 @@ export default async function handler(req,res){
   // whenever TELNYX_PUBLIC_KEY is set. It used to check JSON only, so a forged form post went through.
   const verified = checkTelnyxSignature(req, incoming);
   if(!verified.ok) return res.status(403).json({ ok:false, error:`invalid telnyx signature: ${verified.reason}` });
-  return handleVerifiedText(incoming.parsed, res);
+  // signed = Telnyx's Ed25519 signature was actually checked (not skipped for a missing key).
+  return handleVerifiedText(incoming.parsed, res, { signed: !!(verified.ok && !verified.skipped) });
 }
 
 /** The texting pipeline for an already-verified Telnyx event (also used by /api/telnyx-webhook). */
-export async function handleVerifiedText(raw, res){
+export async function handleVerifiedText(raw, res, { signed = !!process.env.TELNYX_PUBLIC_KEY } = {}){
   let eventId = null;
-  const out = await handleText(raw || {}, res, (id) => { eventId = id; });   // a crash leaves it 'processing' → Telnyx's retry is answered
+  const out = await handleText(raw || {}, res, (id) => { eventId = id; }, signed);   // a crash leaves it 'processing' → Telnyx's retry is answered
   if(eventId) await markDone(eventId);
   return out;
 }
 
-async function handleText(raw,res,noteEvent){
+async function handleText(raw,res,noteEvent,signed=false){
   const body=extract(raw);
 
   // Delivery receipts (message.sent / message.finalized …) are not texts to answer.
@@ -125,23 +160,8 @@ async function handleText(raw,res,noteEvent){
     const onOwnerLine = routing.status === 'not_found' && (!ownerLine || ownerLine === toN);
     const ownerTenant = onOwnerLine ? await getTenantByOperatorPhone(fromN).catch(()=>null) : null;
     if(ownerTenant?.id){
-      let conv=null, hist=[];
-      try{
-        conv = await getOrStartConversation(ownerTenant.id, { channel:'operator', agent:'jarvis', participant:'owner' });
-        if(conv?.id) hist = await getConversationHistory(conv.id, 10);
-      }catch{}
-      const brain = await answerOwner(ownerTenant, hist, text, { channel:'sms' });
-      const reply = brain.ok ? brain.text
-        : "I can text you your day, revenue, or who's due — or call me on this number to move, cancel, book, or blast by voice.";
-      try{
-        if(conv?.id){
-          await logMessage({ conversationId: conv.id, tenantId: ownerTenant.id, role:'user', agent:'jarvis', content:text });
-          await logMessage({ conversationId: conv.id, tenantId: ownerTenant.id, role:'assistant', agent:'jarvis', content:reply });
-        }
-        await logUsage(ownerTenant.id, 'operator_sms', 1);
-      }catch{}
-      try{ await sendSMS({ from: toN, to: fromN, text: reply, tenantId: ownerTenant.id, skipOptOut:true, type }); }catch{}
-      return res.status(200).json({ ok:true, handled:'owner_chat' });
+      const turn = await ownerTextTurn(ownerTenant, { text, toN, fromN, type, usage: 'operator_sms', signed });
+      return res.status(200).json({ ok:true, handled:'owner_chat', action: turn.action, needs_confirmation: turn.needs_confirmation });
     }
     if(routing.status === 'disabled'){
       try{ await sendSMS({ from: toN, to: fromN, text: 'This number is not active yet. Please contact support.', skipOptOut: true, type }); }catch{}
@@ -161,14 +181,24 @@ async function handleText(raw,res,noteEvent){
   // one-salon rule only guards LolaDesk's shared owner line (above) and the owner voice line.
   const isOwnerText = !!(row.operator_phone && fromN && fromN === e164(row.operator_phone));
   if(isOwnerText){
-    try{ const rel = await relayOwnerReply(db(), row, { text }); if(rel.handled) return res.status(200).json({ ok:true, handled:'owner_relay', sent: rel.sent }); }catch{}
-    let conv=null, hist=[];
-    try{ conv = await getOrStartConversation(row.id, { channel:'operator', agent:'jarvis', participant:'owner' }); if(conv?.id) hist = await getConversationHistory(conv.id, 10); }catch{}
-    const brain = await answerOwner(row, hist, text, { channel:'sms' }).catch(()=>({ ok:false }));
-    const reply = brain && brain.ok ? brain.text : "I can text you your day, revenue, or who's due. When a hot lead comes in, reply to my alert and I'll pass your message on.";
-    try{ if(conv?.id){ await logMessage({ conversationId: conv.id, tenantId: row.id, role:'user', agent:'jarvis', content:text }); await logMessage({ conversationId: conv.id, tenantId: row.id, role:'assistant', agent:'jarvis', content:reply }); } }catch{}
-    try{ await sendSMS({ from: toN, to: fromN, text: reply, tenantId: row.id, skipOptOut:true, type }); }catch{}
-    return res.status(200).json({ ok:true, handled:'owner_chat' });
+    // A bare YES/NO answering Lola's own preview (e.g. "block Thursday afternoon?") is for Lola,
+    // even while a hot-lead relay is open; anything else during a relay still goes to the client.
+    // Only a BARE yes/no ("YES", "N", "do it") answering an action this same cell parked by text;
+    // "No, but street parking is free" or "ok" is a reply and flows on (to the client, during a relay).
+    let pre = null;
+    try{
+      const { isBareYes, isBareNo } = await import('./lib/owner-tools.js');
+      if(signed && (isBareYes(text) || isBareNo(text))){
+        const { ownerCommandReply } = await import('./lib/dashboard-brain.js');
+        const cmd = await ownerCommandReply({ tenant: row, text, channel:'sms', sender: fromN });
+        if(cmd && cmd.intent === 'owner_action') pre = cmd;
+      }
+    }catch{}
+    if(!pre){
+      try{ const rel = await relayOwnerReply(db(), row, { text }); if(rel.handled) return res.status(200).json({ ok:true, handled:'owner_relay', sent: rel.sent }); }catch{}
+    }
+    const turn = await ownerTextTurn(row, { text, toN, fromN, type, pre, signed });
+    return res.status(200).json({ ok:true, handled:'owner_chat', action: turn.action, needs_confirmation: turn.needs_confirmation });
   }
 
   // 10DLC compliance

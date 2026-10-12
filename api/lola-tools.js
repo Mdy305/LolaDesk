@@ -28,7 +28,7 @@
 
 import {
   getTenantByPhone, getTenantBySlug, upsertClient, getClientByPhone,
-  logUsage, getOrStartConversation, getTenantIntegrations, db
+  logUsage, getOrStartConversation, getTenantIntegrations, db, e164, addClientFact
 } from './lib/db.js';
 import { resolveInboundTenant } from './lib/tenant-resolver.js';
 import { executeSkill, injectCallerMemory } from './lib/orchestrator.js';
@@ -872,7 +872,27 @@ async function recall_client(tenant, { client_phone }){
   return { speak: welcomeBack(story, { salon: tenant.name }) || `Got you, ${story.first || 'welcome back'}! What can I do for you today?`, known: true, brief: story.brief };
 }
 
-const WRITE_SKILLS = new Set(['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'capture_lead', 'waitlist_add']);
+// ── SKILL: remember something about the caller (a preference, a formula the stylist mentioned, a note) ──
+// The key is always the caller's own verified identity (the handler / answerClient set it), never a typed number.
+// A formula a client mentions is saved as a labelled note, never as a stylist-facing formula.
+async function save_memory(tenant, { fact, kind, client_phone, channel } = {}){
+  const text = String(fact || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  if(!text) return { saved: false, speak: 'What would you like me to remember?' };
+  if(!client_phone || !tenant?.id) return { saved: false, speak: 'I can only save that for your own number — call or text from the number on your appointments.' };
+  const k = ['preference', 'formula', 'note'].includes(String(kind || '').toLowerCase()) ? String(kind).toLowerCase() : 'note';
+  const namespaced = String(client_phone).includes(':');
+  const key = namespaced ? String(client_phone).slice(0, 64) : e164(client_phone);
+  // Chemical safety: a formula a CLIENT says is never a stylist-facing formula (client_notes kind formula is
+  // written only by staff in the CRM). It is kept as a labelled note the stylist can check.
+  if(k === 'formula'){
+    await addClientFact(tenant.id, key, { fact: ('Client said: ' + text).slice(0, 240), kind: 'note', channel: channel || null });
+    return { saved: true, kind: 'note', where: 'memory', speak: 'Got it — I’ve noted that for your stylist to check.' };
+  }
+  await addClientFact(tenant.id, key, { fact: text, kind: k, channel: channel || null });
+  return { saved: true, kind: k, where: 'memory', speak: 'Got it — I’ll remember that.' };
+}
+
+const WRITE_SKILLS = new Set(['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'capture_lead', 'waitlist_add', 'save_memory']);
 const GATED_SKILLS = new Set(['book_appointment', 'reschedule_appointment']);
 
 export const SKILLS = {
@@ -884,7 +904,8 @@ export const SKILLS = {
   'take_message': takeMessage, // older alias seen on some shared tools
   confirm_booking, reschedule_appointment, cancel_appointment,
   detect_upsell_opportunity, // real add-ons from the salon's menu, paired to the booked service
-  waitlist_add, rebook_next_visit
+  waitlist_add, rebook_next_visit,
+  save_memory // verified caller only (PRIVATE + signed write)
 };
 
 // A tool call without a valid signature means the assistant's wiring drifted: re-sign it now (at most every
@@ -942,20 +963,20 @@ export default async function handler(req, res){
     const tool = req.query?.tool || body.tool || body.function || body.function_name || body.skill;
     
     // Private skills act on a client's own bookings and history: only for the verified caller line.
-    const PRIVATE = new Set(['cancel_appointment','reschedule_appointment','confirm_booking','recall_client','inject_memory','rebook_next_visit']);
+    const PRIVATE = new Set(['cancel_appointment','reschedule_appointment','confirm_booking','recall_client','inject_memory','rebook_next_visit','save_memory']);
     const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
     if(PRIVATE.has(String(tool))){
       if(!callerId){
         if(tool === 'recall_client'){
-          // A website visitor gave a number: a warm first-name welcome, never their history (anyone can type a number).
-          let firstName = '';
-          try{ const t = await resolveTenant(body); const cl = t?.id && body.client_phone ? await getClientByPhone(t.id, body.client_phone) : null; firstName = String(cl?.first_name || '').trim(); }catch(_){}
-          if(firstName && !/^client$/i.test(firstName)) return res.status(200).json({ speak: `Hey ${firstName}, welcome back! What can I do for you today?`, known: true });
-          return res.status(200).json({ speak: "Thanks! I'll use that number for your booking. What can I do for you today?", known: false });
+          // No verified line (website visitor, hidden caller ID, unsigned): a typed number proves nothing, so the
+          // answer is the same for every number — no name, no "known" — or it would tell anyone whose number it is.
+          return res.status(200).json({ speak: "Thanks! I'll use that number for your booking. What can I do for you today?" });
         }
+        if(tool === 'save_memory') return res.status(200).json({ saved: false, verified: false, speak: "I can only save that to your profile when you call from your own number — I'll keep it in mind for this chat." });
         return res.status(200).json({ speak: "For your privacy I can only change a booking when you call from the number it's under. I can text that number a link to manage it — or help you with something else?", verified: false });
       }
-      if(body.client_phone && digits(body.client_phone) !== digits(callerId)){
+      if(tool === 'save_memory'){ body.client_phone = callerId; body.channel = 'voice'; }
+      else if(body.client_phone && digits(body.client_phone) !== digits(callerId)){
         return res.status(200).json({ speak: "I can only look up or change bookings for the number you're calling from. Want me to help with that one?", verified: false });
       }
       body.client_phone = callerId;
@@ -968,7 +989,7 @@ export default async function handler(req, res){
     if (tool === 'inject_memory') {
       const tenant = await resolveTenant(body);
       const clientPhone = callerId;
-      const memoryPrompt = await injectCallerMemory(tenant?.id, clientPhone);
+      const memoryPrompt = await injectCallerMemory(tenant, clientPhone);
       return res.status(200).json({ speak: "Memory loaded.", memory: memoryPrompt });
     }
 

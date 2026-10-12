@@ -50,7 +50,7 @@ ok(/^Hey Sarah, welcome back to MMA Salon!/.test(g) && /may be recorded/.test(g)
 r = await run('agent-variables.js', { url: '/api/agent-variables?k=' + toolKey('variables'), body: { data: { payload: { telnyx_agent_target: '+13055550100', telnyx_end_user_target: '+17865550000' } } } });
 ok(/^Thanks for calling MMA Salon!/.test(r.dynamic_variables.lola_greeting) && /may be recorded/.test(r.dynamic_variables.lola_greeting), 'a new caller → ' + r.dynamic_variables.lola_greeting);
 r = await run('lola-tools.js', { query: { tool: 'recall_client', salon: '+13055550100' }, body: { client_phone: '(305) 555-4444' } });
-ok(/^Hey Sarah, welcome back/.test(r.speak), 'website chat / hidden caller ID: she recognises Sarah from her number');
+ok(!/Sarah/.test(r.speak) && r.known === undefined, 'website chat / hidden caller ID: a typed number never reveals whose it is');
 
 // ── 3. A text: welcome + she REALLY books ──
 const day = new Date(now + 2 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -91,9 +91,15 @@ ok(igc && igc.first_name === 'Sarah' && T.conversations.some(c => c.channel === 
 script = [{ content: 'Got you, Sarah! Welcome back.' }];
 raw = JSON.stringify(dm('my number is 305-555-4444'));
 await run('instagram.js', { url: '/api/instagram', headers: { 'x-hub-signature-256': sig(raw) }, body: raw });
-const lastSys = llmCalls.at(-1).messages[0].content;
-ok(/Ash blonde/.test(lastSys) && /last visit/.test(lastSys), 'she gives her number → Instagram Sarah IS phone Sarah: same memory');
-ok(T.clients.find(c => c.phone === 'ig:IG-SARAH').notes === 'linked:+13055554444', 'linked for good');
+let lastSys = llmCalls.at(-1).messages[0].content;
+const code = (sms.filter(m => m.to === '+13055554444').at(-1)?.text || '').match(/code is (\d{6})/)?.[1];
+ok(code && !/last visit/.test(lastSys) && !/usually sees/.test(lastSys) && !T.client_memories.some(m => m.client_phone === 'ig:IG-SARAH' && m.key === 'verified_link'), 'a number typed in a DM shows no history — a code is texted to that number instead');
+script = [{ content: 'Thanks Sarah, you’re connected!' }];
+raw = JSON.stringify(dm('ok the code is ' + code));
+await run('instagram.js', { url: '/api/instagram', headers: { 'x-hub-signature-256': sig(raw) }, body: raw });
+lastSys = llmCalls.at(-1).messages[0].content;
+ok(/Ash blonde/.test(lastSys) && /last visit/.test(lastSys), 'she types the code → Instagram Sarah IS phone Sarah: same memory');
+ok(T.client_memories.some(m => m.tenant_id === TID && m.client_phone === 'ig:IG-SARAH' && m.key === 'verified_link' && m.value.phone === '+13055554444'), 'linked for good (a verified link record)');
 raw = JSON.stringify({ object: 'instagram', entry: [{ id: 'IG-SALON', messaging: [{ sender: { id: 'IG-SALON' }, recipient: { id: 'IG-SARAH' }, message: { text: 'echo', is_echo: true } }] }] });
 const n = dms.length; await run('instagram.js', { url: '/api/instagram', headers: { 'x-hub-signature-256': sig(raw) }, body: raw });
 ok(dms.length === n, 'her own messages never trigger a reply loop');

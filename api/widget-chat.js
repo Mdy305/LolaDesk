@@ -142,18 +142,31 @@ export default async function handler(req, res){
 
   /* ── identity + memory (web visitors remember like callers do) ── */
   let client = null, conv = null, history = [], profile = null;
+  // A number typed here is never identity (anyone can type anyone's number): it's a contact number,
+  // and for a client of this salon a code is texted to it. Only that code typed back links this
+  // visitor to their phone client — then she knows them like on the phone.
+  const webKey = 'web:' + visitorId;
+  let verified = null, link = {};
   try{
     client = await upsertWebVisitor(tenant.id, visitorId, {});
     conv = await getOrStartConversation(tenant.id, { clientId: client?.id, channel: 'web', agent: 'lola' });
     if(conv?.id) history = await getConversationHistory(conv.id, 10);
-    profile = profileFromMemoryRows(await getClientMemory(tenant.id, 'web:' + visitorId));
   }catch{}
+  try{
+    const { linkedClient, linkTurn } = await import('./lib/identity-link.js');
+    verified = await linkedClient(__db(), tenant.id, webKey);
+    if(!verified){
+      link = await linkTurn(__db(), tenant, { key: webKey, channelClient: client, text: message });
+      if(link.linked && link.client) verified = { client: link.client, phone: link.linked };
+    }
+  }catch{ link = {}; }
+  try{ profile = profileFromMemoryRows(await getClientMemory(tenant.id, verified?.phone || webKey)); }catch{}
 
   try{
     const signals = extractPersonalizationSignals(message);
     if(signals?.hasSignal){
       profile = mergeClientProfile(profile, signals);
-      await setClientMemory(tenant.id, 'web:' + visitorId, 'profile', profile).catch(()=>{});
+      await setClientMemory(tenant.id, verified?.phone || webKey, 'profile', profile).catch(()=>{});
     }
   }catch{}
 
@@ -163,8 +176,10 @@ export default async function handler(req, res){
   let reply = '';
   try{
     const { answerClient } = await import('./lib/client-brain.js');
-    const out = await answerClient({ tenant, client, channel: 'web', text: message, history, phone: null, memoryKey: 'web:' + visitorId,
-      tz: tenant.timezone || tenant.time_zone || 'America/New_York', budgetMs: 25000 });
+    const { linkNote } = await import('./lib/identity-link.js');
+    const out = await answerClient({ tenant, client: verified?.client || client, channel: 'web', text: message, history,
+      phone: verified?.phone || null, contactPhone: verified ? null : (link.contactPhone || null), memoryKey: verified?.phone || webKey,
+      tz: tenant.timezone || tenant.time_zone || 'America/New_York', extra: linkNote(link), budgetMs: 25000 });
     // Her brain unreachable → the grounded answer below (it always links a working booking page).
     reply = out?.ok ? String(out.reply || '').trim() : '';
   }catch(e){ console.warn('[widget-chat] brain:', String(e?.message || e).slice(0, 160)); }
