@@ -29,7 +29,19 @@ p{color:var(--muted);font-size:15px;line-height:1.6}
 </main>
 <script>
 (function(){
-  var s = new URLSearchParams(location.search).get('salon');
+  var q = new URLSearchParams(location.search), s = q.get('salon'), card = q.get('card');
+  if (card === '1' || card === 'already') {
+    document.querySelector('h1').textContent = 'Card on file';
+    document.title = 'Card on file' + (s ? ' — ' + s.slice(0, 80) : '');
+    document.getElementById('msg').textContent = (card === 'already' ? 'You already have a card on file' : 'Thank you — your card is saved') + (s ? ' with ' + s.slice(0, 80) : '') + '. It isn’t charged now; your appointment is held. See you soon.';
+    return;
+  }
+  if (card === '0') {
+    document.querySelector('h1').textContent = 'No card added';
+    document.title = 'No card added';
+    document.getElementById('msg').textContent = 'Nothing was saved. You can use the link in your text anytime before your visit.';
+    return;
+  }
   if (s) {
     s = s.slice(0, 80);
     document.title = 'Deposit received — ' + s;

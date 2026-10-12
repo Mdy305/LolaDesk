@@ -210,3 +210,31 @@ do $$ begin
   end;
 end $$;
 
+-- ════ 20261011_client_cards.sql ════
+-- A client's card on file at one salon (api/lib/card-on-file.js): the Stripe customer + saved payment
+-- method on LolaDesk's Stripe account — never a card number. One row per salon + client.
+create table if not exists public.client_cards (
+  id                  uuid primary key default gen_random_uuid(),
+  tenant_id           uuid not null references public.tenants(id) on delete cascade,
+  client_id           uuid not null references public.clients(id) on delete cascade,
+  stripe_customer_id  text not null,
+  payment_method_id   text,
+  brand               text,
+  last4               text,
+  exp_month           integer,
+  exp_year            integer,
+  status              text default 'pending',
+  created_at          timestamptz default now(),
+  updated_at          timestamptz default now(),
+  unique (tenant_id, client_id)
+);
+alter table public.client_cards enable row level security;
+
+-- One no-show fee per booking, even if two scans overlap (skipped while old duplicates exist).
+do $$ begin
+  if to_regclass('public.payments') is not null and not exists (
+    select 1 from public.payments where sub_kind = 'no_show_fee' and booking_id is not null group by booking_id having count(*) > 1
+  ) then
+    execute 'create unique index if not exists payments_one_no_show_fee on public.payments (booking_id) where sub_kind = ''no_show_fee''';
+  end if;
+end $$;

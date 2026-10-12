@@ -132,7 +132,22 @@ const fmtWhen = (iso, tz) => fmtSalon(iso, tz);
 // Fire the deposit request for a freshly created confirmed booking. Never
 // throws — a deposit failure must never fail the booking it protects.
 // Injectable `send`/`createLink` for tests. Returns { ok, skipped?/reason?, deposit? }.
-export async function requestDeposit({ tenantId, booking, policy = null, send = sendSMS, createLink = createPaymentLink } = {}){
+// The booking is held either by a deposit (whose link also saves the card when the salon charges no-show
+// fees) or — no deposit due — by a card on file (lib/card-on-file.js). One text, never both.
+export async function requestDeposit(args = {}){
+  const r = await requestDepositOnly(args);
+  if(!args.noCard && r && r.skipped && ['policy_off', 'trusted_client', 'zero_amount'].includes(r.reason)){
+    try{
+      const { requestCardOnFile } = await import('./card-on-file.js');
+      const card = await requestCardOnFile({ tenantId: args.tenantId, booking: args.booking, send: args.send || null });
+      if(card && (card.sent || card.url) && !card.skipped) return { ...r, card };
+      if(card && card.url && card.reason === 'no_phone') return { ...r, card };
+    }catch(_){ /* the card ask never fails a booking */ }
+  }
+  return r;
+}
+
+export async function requestDepositOnly({ tenantId, booking, policy = null, send = sendSMS, createLink = createPaymentLink } = {}){
   ensureMigrations(); // self-heal the deposits table if the wiring migration never landed
   const c = db();
   if(!c) return { ok: false, skipped: true, reason: 'no_db' };
@@ -162,7 +177,11 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
     if(!client?.phone) return { ok: true, skipped: true, reason: 'no_client_phone' };
     if(!tenant?.phone_number) return { ok: true, skipped: true, reason: 'no_from_number' };
 
+    let saveCard = false, cardFee = '';
+    try{ const { cardPolicy } = await import('./card-on-file.js'); const cp = await cardPolicy(tenantId, c); saveCard = cp.ask === true; cardFee = cp.fee_text || ''; }catch(_){}
     const link = await createLink({
+      saveCard,
+      saveCardNote: saveCard ? `Paying this deposit also keeps your card on file with ${tenant?.name || 'the salon'}. It is only charged again if you miss the appointment without notice (no-show fee: ${cardFee}).` : '',
       amountCents: cents,
       description: `${svc?.name || 'Appointment'} deposit — ${tenant.name || 'the salon'}`,
       successUrl: `${process.env.APP_URL || 'https://www.loladesk.com'}/paid?salon=${encodeURIComponent(tenant.name || '')}`,
@@ -181,7 +200,7 @@ export async function requestDeposit({ tenantId, booking, policy = null, send = 
       text: depositRequestText({
         firstName: client.name, salon: tenant.name, serviceName: svc?.name,
         when, amount: `$${(cents / 100).toFixed(2)}`, link: link?.url || '', holdMinutes: policy.hold_minutes || 0
-      })
+      }) + (saveCard ? ` (Paying also keeps your card on file for the no-show policy: ${cardFee}.)` : '')
     }).catch(() => {}); // a failed text never fails the deposit; the salon can resend from the dashboard
     return { ok: true, deposit, link_url: link?.url || null, amount_cents: cents };
   }catch(e){

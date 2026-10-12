@@ -535,6 +535,14 @@ async function book_appointment(tenant, body){
     if(addOnTo) speakStr += `It's on the same appointment, so there's nothing new to confirm. `;
     else if(plan.required) speakStr += `I'm texting you a secure link for the $${(plan.amount_cents / 100).toFixed(plan.amount_cents % 100 ? 2 : 0)} deposit${plan.hold_minutes ? ` — the spot is held for ${plan.hold_minutes} minutes` : ''}. `;
     else speakStr += client_email ? `I'll text and email you a confirmation. ` : `I'll text you a confirmation. `;
+    // No deposit, but the salon holds bookings with a card (no-show policy): say it plainly, once.
+    if(!addOnTo && !plan.required && bk?.id && client?.id){
+      try{
+        const { cardPolicy, savedCard } = await import('./lib/card-on-file.js');
+        const cp = await cardPolicy(tenant.id);
+        if(cp.ask && !(await savedCard(tenant.id, client.id))) speakStr += `I'm also texting you a secure link to put a card on file to hold it — it's not charged now, only if you miss the appointment without notice. `;
+      }catch(_){}
+    }
     // A real add-on from the menu that fits right after, with the same stylist — offered once.
     let upsell = null;
     if(bk?.id && !addOnTo && body.channel !== 'no_upsell'){
