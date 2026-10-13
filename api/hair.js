@@ -6,8 +6,8 @@
  * The browser sends her photo already recolored to the chosen shade (our own color engine),
  * padded at the bottom so there is room for long hair. The image model adds only length and
  * fullness, keeping her face, color and everything else.
- * Needs GEMINI_API_KEY in the Vercel project. Without it, answers 503 and the studio keeps
- * its classic preview.
+ * Runs through the Vercel AI Gateway (no key needed on Vercel: OIDC), or Google directly if
+ * GEMINI_API_KEY is set. If neither is available, answers 503 and the studio keeps its classic preview.
  */
 const MODEL = process.env.HAIR_MODEL || 'gemini-2.5-flash-image';
 const ALLOWED = /^https:\/\/(studio\.mmasalon\.com|(www\.)?mmasalon\.com|mma-studio[a-z0-9-]*\.vercel\.app)$/;
@@ -39,8 +39,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
   const origin = req.headers.origin || '';
   if (origin && !ALLOWED.test(origin)) return res.status(403).json({ error: 'origin' });
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return res.status(503).json({ error: 'not_configured' });
+  const gkey = process.env.GEMINI_API_KEY;   // optional: a direct Google key
+  const gw = process.env.AI_GATEWAY_API_KEY || req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN;   // default: Vercel AI Gateway, billed to the Vercel account
+  if (!gkey && !gw) return res.status(503).json({ error: 'not_configured' });
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'anon';
   if (limited(ip)) return res.status(429).json({ error: 'busy' });
 
@@ -50,24 +51,55 @@ export default async function handler(req, res) {
   if (!FALL[inches] || !m || m[1].length > 2.8e6) return res.status(400).json({ error: 'bad_input' });
 
   try {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: m[1] } }, { text: prompt(inches) }] }],
-        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
-      })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { console.error('hair model', r.status, JSON.stringify(j).slice(0, 400)); return res.status(502).json({ error: 'model' }); }
-    const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
-    const img = parts.map(p => p.inlineData || p.inline_data).find(Boolean);
-    if (!img || !img.data) return res.status(502).json({ error: 'no_image' });
-    return res.status(200).json({ image: `data:${img.mimeType || img.mime_type || 'image/png'};base64,${img.data}` });
+    const image = gkey ? await viaGoogle(gkey, m[1], inches) : await viaGateway(gw, m[1], inches);
+    if (image === 'unauthorized') return res.status(503).json({ error: 'not_configured' });
+    if (!image) return res.status(502).json({ error: 'no_image' });
+    return res.status(200).json({ image });
   } catch (e) {
     console.error('hair model', e);
     return res.status(502).json({ error: 'model' });
   }
+}
+
+/* Vercel AI Gateway: OpenAI-style chat completions with image output. */
+export async function viaGateway(token, b64, inches) {
+  const r = await fetch('https://ai-gateway.vercel.sh/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      model: process.env.GATEWAY_HAIR_MODEL || 'google/gemini-3.1-flash-image-preview',
+      messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
+        { type: 'text', text: prompt(inches) }
+      ] }],
+      modalities: ['image', 'text'],
+      stream: false
+    })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 || r.status === 402 || r.status === 403) { console.error('hair gateway', r.status, JSON.stringify(j).slice(0, 300)); return 'unauthorized'; }
+  if (!r.ok) { console.error('hair gateway', r.status, JSON.stringify(j).slice(0, 400)); return null; }
+  const msg = j.choices && j.choices[0] && j.choices[0].message || {};
+  const img = (msg.images || []).map(i => i.image_url && i.image_url.url).find(Boolean);
+  return img || null;
+}
+
+/* Google Gemini API directly (when GEMINI_API_KEY is set). */
+export async function viaGoogle(key, b64, inches) {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64 } }, { text: prompt(inches) }] }],
+      generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+    })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 || r.status === 403) return 'unauthorized';
+  if (!r.ok) { console.error('hair google', r.status, JSON.stringify(j).slice(0, 400)); return null; }
+  const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+  const img = parts.map(p => p.inlineData || p.inline_data).find(Boolean);
+  return img && img.data ? `data:${img.mimeType || img.mime_type || 'image/png'};base64,${img.data}` : null;
 }
 function safeJSON(s) { try { return JSON.parse(s); } catch (e) { return {}; } }
 
