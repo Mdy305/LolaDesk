@@ -160,6 +160,11 @@ input[type=range]{width:100%;margin:18px 0 6px;accent-color:var(--ink)}
 .rail button img{width:100%;height:100%;object-fit:cover;display:block}
 .rail button[aria-pressed="true"]{box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--ink);transform:scale(1.06)}
 canvas.fill{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.seg.lseg{top:auto;bottom:14px}
+canvas.fill.ai{object-fit:contain}
+.gen-note{position:absolute;left:50%;top:58px;transform:translateX(-50%);padding:7px 14px;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font-size:12px;font-weight:500;letter-spacing:.01em;z-index:2;white-space:nowrap;animation:genp 1.6s ease-in-out infinite}
+.gen-note[hidden]{display:none}
+@keyframes genp{50%{opacity:.55}}
 .demo-note{position:absolute;right:14px;bottom:18px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.8)}
 
 /* reserve */
@@ -424,6 +429,8 @@ const VIEWS = {
     return `${topbar()}<div class="screen" style="padding-bottom:0"><div class="scroll">
         <div class="frame dark" style="flex:none;height:min(58vh,470px);margin:6px 12px 0"><canvas id="tryCanvas" class="fill" role="img" aria-label="${before?'Your photo':'Your photo in '+esc(h.name)}"></canvas>
           <div class="seg" role="group" aria-label="Compare"><button type="button" data-compare="before" aria-pressed="${before}">Before</button><button type="button" data-compare="after" aria-pressed="${!before}">After</button></div>
+          ${before||AI.off?'':`<div class="seg lseg" role="group" aria-label="Length">${LENGTHS.map(l=>`<button type="button" data-len="${l.id}" aria-pressed="${S.len===l.id}">${l.inch}\u2033</button>`).join('')}</div>`}
+          <span class="gen-note" id="genNote" hidden>Styling your length\u2026</span>
           ${S.engine==='off'?'<span class="demo-note">Preview unavailable on this device</span>':''}
         </div>
         <div style="padding:20px 24px 0;display:flex;flex-direction:column;gap:6px">
@@ -718,7 +725,9 @@ async function paintTry(target){
   const cv = target || document.getElementById('tryCanvas'); if (!cv || !PHOTO) return;
   const { w, h, orig, mask, cdf, Y, Ymid } = PHOTO; cv.width = w; cv.height = h;
   const g = cv.getContext('2d');
-  if ((!target && S.compare === 'before') || shade().custom || !Ymid) { g.putImageData(orig, 0, 0); return; }
+  if (!target) cv.classList.remove('ai');
+  if (!(!target && S.compare === 'before')) { const ai = AI.img.get(aiKey()); if (ai) { cv.width = ai.naturalWidth; cv.height = ai.naturalHeight; cv.getContext('2d').drawImage(ai, 0, 0); if (!target) { cv.classList.add('ai'); aiNote(); } return; } }
+  if ((!target && S.compare === 'before') || shade().custom || !Ymid) { g.putImageData(orig, 0, 0); if (!target && S.compare !== 'before') aiQueue(cv); return; }
   const T = await shadeStats(shade());
   if (!target && document.getElementById('tryCanvas') !== cv) return;   // a newer render replaced it
   const O = hairStats(PHOTO), LAB = O.lab;
@@ -752,6 +761,40 @@ async function paintTry(target){
     o[i*4+2] = d[i*4+2] * (1-a) + B * a;
   }
   g.putImageData(out, 0, 0);
+  if (!target) aiQueue(cv);
+}
+/* ---------- AI length & volume: her photo, in her shade, at 12, 18 and 24 inches ---------- */
+const AI = { img: new Map(), pending: new Set(), off: false, timer: 0 };
+const aiKey = (len) => `${S.shade}|${len || S.len}`;
+function aiNote(){ const n = document.getElementById('genNote'); if (n) n.hidden = !(AI.pending.has(aiKey()) && S.compare !== 'before'); }
+function aiSource(cv){                                // her recolored photo, with room below for long hair
+  const k = Math.min(1, 1024 / (cv.height * 1.5)), w = Math.round(cv.width * k), h = Math.round(cv.height * k), H = Math.round(h * 1.5);
+  const c = document.createElement('canvas'); c.width = w; c.height = H; const g = c.getContext('2d');
+  g.drawImage(cv, 0, 0, w, h);
+  try { g.filter = 'blur(18px)'; } catch (e) {}
+  g.drawImage(cv, 0, cv.height - 6, cv.width, 6, 0, h, w, H - h); g.filter = 'none';
+  return c.toDataURL('image/jpeg', .86);
+}
+function aiQueue(cv){
+  if (AI.off || S.screen !== 'look' || !PHOTO) return;
+  clearTimeout(AI.timer);
+  const shadeAt = S.shade, first = S.len;
+  AI.timer = setTimeout(() => {
+    if (S.shade !== shadeAt || S.screen !== 'look') return;
+    const src = aiSource(cv), order = [first].concat(LENGTHS.map(l => l.id).filter(id => id !== first));
+    (async () => { for (const id of order) { if (AI.off || S.shade !== shadeAt) return; await aiMake(shadeAt, id, src); } })();
+  }, 900);                                              // only once she pauses on a shade
+}
+async function aiMake(shadeCode, lenId, src){
+  const key = `${shadeCode}|${lenId}`; if (AI.img.has(key) || AI.pending.has(key)) return;
+  AI.pending.add(key); aiNote();
+  try {
+    const r = await fetch('/api/hair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: src, inches: LENGTHS.find(l => l.id === lenId).inch }) });
+    if (r.status === 503 || r.status === 403) { AI.off = true; const ls = document.querySelector('.lseg'); if (ls) ls.remove(); return; }   // not switched on: the classic preview stays
+    if (!r.ok) return;
+    const j = await r.json(); const img = await loadImg(j.image); AI.img.set(key, img);
+    if (S.screen === 'look' && key === aiKey()) paintTry();
+  } catch (e) {} finally { AI.pending.delete(key); aiNote(); }
 }
 /* ---------- LolaDesk: lead, order and booking reach the salon ---------- */
 function studioPayload(event, extra){

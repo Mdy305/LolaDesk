@@ -19,5 +19,10 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/hair.js": {
+      "maxDuration": 60
+    }
+  }
 }
