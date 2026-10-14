@@ -727,7 +727,8 @@ async function paintTry(target){
   const g = cv.getContext('2d');
   if (!target) cv.classList.remove('ai');
   if (!(!target && S.compare === 'before')) { const ai = AI.img.get(aiKey()); if (ai) { cv.width = ai.naturalWidth; cv.height = ai.naturalHeight; cv.getContext('2d').drawImage(ai, 0, 0); if (!target) { cv.classList.add('ai'); aiNote(); } return; } }
-  if ((!target && S.compare === 'before') || shade().custom || !Ymid) { g.putImageData(orig, 0, 0); if (!target && S.compare !== 'before') aiQueue(cv); return; }
+  if (!target && S.compare !== 'before' && !AI.off && !AI.fail.has(aiKey())) { g.putImageData(orig, 0, 0); aiQueue(); return; }   // AI at work: her own photo until her look is ready
+  if ((!target && S.compare === 'before') || shade().custom || !Ymid) { g.putImageData(orig, 0, 0); return; }
   const T = await shadeStats(shade());
   if (!target && document.getElementById('tryCanvas') !== cv) return;   // a newer render replaced it
   const O = hairStats(PHOTO), LAB = O.lab;
@@ -761,40 +762,52 @@ async function paintTry(target){
     o[i*4+2] = d[i*4+2] * (1-a) + B * a;
   }
   g.putImageData(out, 0, 0);
-  if (!target) aiQueue(cv);
 }
 /* ---------- AI length & volume: her photo, in her shade, at 12, 18 and 24 inches ---------- */
-const AI = { img: new Map(), pending: new Set(), off: false, timer: 0 };
+const AI = { img: new Map(), pending: new Set(), fail: new Set(), sw: new Map(), off: false, timer: 0 };
 const aiKey = (len) => `${S.shade}|${len || S.len}`;
 function aiNote(){ const n = document.getElementById('genNote'); if (n) n.hidden = !(AI.pending.has(aiKey()) && S.compare !== 'before'); }
-function aiSource(cv){                                // her recolored photo, with room below for long hair
-  const k = Math.min(1, 1024 / (cv.height * 1.5)), w = Math.round(cv.width * k), h = Math.round(cv.height * k), H = Math.round(h * 1.5);
+function aiSource(){                                  // her own photo, untouched, with room below for long hair
+  const s = document.createElement('canvas'); s.width = PHOTO.w; s.height = PHOTO.h; s.getContext('2d').putImageData(PHOTO.orig, 0, 0);
+  const k = Math.min(1, 1024 / (s.height * 1.5)), w = Math.round(s.width * k), h = Math.round(s.height * k), H = Math.round(h * 1.5);
   const c = document.createElement('canvas'); c.width = w; c.height = H; const g = c.getContext('2d');
-  g.drawImage(cv, 0, 0, w, h);
+  g.drawImage(s, 0, 0, w, h);
   try { g.filter = 'blur(18px)'; } catch (e) {}
-  g.drawImage(cv, 0, cv.height - 6, cv.width, 6, 0, h, w, H - h); g.filter = 'none';
-  return c.toDataURL('image/jpeg', .86);
+  g.drawImage(s, 0, s.height - 6, s.width, 6, 0, h, w, H - h); g.filter = 'none';
+  return c.toDataURL('image/jpeg', .88);
 }
-function aiQueue(cv){
+async function aiSwatch(h){                           // the shade itself, so the AI colors from the real hair, not from words
+  if (h.custom || !h.img) return '';
+  if (AI.sw.has(h.code)) return AI.sw.get(h.code);
+  try { const im = await loadImg(h.img), k = Math.min(1, 384 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+    c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    const u = c.toDataURL('image/jpeg', .9); AI.sw.set(h.code, u); return u; } catch (e) { return ''; }
+}
+function aiQueue(){
   if (AI.off || S.screen !== 'look' || !PHOTO) return;
   clearTimeout(AI.timer);
   const shadeAt = S.shade, first = S.len;
-  AI.timer = setTimeout(() => {
+  AI.timer = setTimeout(async () => {
     if (S.shade !== shadeAt || S.screen !== 'look') return;
-    const src = aiSource(cv), order = [first].concat(LENGTHS.map(l => l.id).filter(id => id !== first));
-    (async () => { for (const id of order) { if (AI.off || S.shade !== shadeAt) return; await aiMake(shadeAt, id, src); } })();
-  }, 900);                                              // only once she pauses on a shade
+    const h = shade(), src = aiSource(), sw = await aiSwatch(h), order = [first].concat(LENGTHS.map(l => l.id).filter(id => id !== first));
+    for (const id of order) { if (AI.off || S.shade !== shadeAt) return; await aiMake(h, id, src, sw); }
+  }, 700);                                              // only once she pauses on a shade
 }
-async function aiMake(shadeCode, lenId, src){
-  const key = `${shadeCode}|${lenId}`; if (AI.img.has(key) || AI.pending.has(key)) return;
+async function aiMake(h, lenId, src, sw){
+  const key = `${h.code}|${lenId}`; if (AI.img.has(key) || AI.pending.has(key) || AI.fail.has(key)) return;
   AI.pending.add(key); aiNote();
+  let ok = false;
   try {
-    const r = await fetch('/api/hair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: src, inches: LENGTHS.find(l => l.id === lenId).inch }) });
+    const r = await fetch('/api/hair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      image: src, inches: LENGTHS.find(l => l.id === lenId).inch,
+      shade: { name: h.name, story: h.story || '', keep: !!h.custom }, swatch: sw }) });
     if (r.status === 503 || r.status === 403) { AI.off = true; const ls = document.querySelector('.lseg'); if (ls) ls.remove(); return; }   // not switched on: the classic preview stays
     if (!r.ok) return;
-    const j = await r.json(); const img = await loadImg(j.image); AI.img.set(key, img);
-    if (S.screen === 'look' && key === aiKey()) paintTry();
-  } catch (e) {} finally { AI.pending.delete(key); aiNote(); }
+    const j = await r.json(); const img = await loadImg(j.image); AI.img.set(key, img); ok = true;
+  } catch (e) {} finally {
+    AI.pending.delete(key); if (!ok && !AI.off) AI.fail.add(key);
+    if (S.screen === 'look' && key === aiKey()) paintTry(); aiNote();
+  }
 }
 /* ---------- LolaDesk: lead, order and booking reach the salon ---------- */
 function studioPayload(event, extra){
