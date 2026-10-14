@@ -117,7 +117,8 @@
              { label: 'Activate Lola', href: '/activation-studio', pages: ['activation-studio'], owner: true, hidden: true },
              { label: 'Phone & texting', href: '/telecom', pages: ['telecom'], platform: true },
              { label: 'Launch checklist', href: '/launch', pages: ['launch'], owner: true, hidden: true },
-             { label: 'LolaDesk Command', href: '/admin', pages: ['admin'], platform: true }] },
+             { label: 'LolaDesk Command', href: '/admin', pages: ['admin'], platform: true },
+             { label: 'LolaDesk Console', href: '/console', pages: ['console'], platform: true }] },
   ];
 
   // Behind the owner's name. On a phone the Salon place lives here (the bottom
@@ -128,6 +129,7 @@
     { label: 'Team', href: '/team', manager: true, pages: ['team'], dup: true },
     { label: 'Billing', href: '/subscription', owner: true, pages: ['subscription'], dup: true },
     { label: 'LolaDesk Command', href: '/admin', platform: true, pages: ['admin'], dup: true },
+    { label: 'LolaDesk Console', href: '/console', platform: true, pages: ['console'], dup: true },
   ];
   const ACCOUNT_PAGES = ['settings', 'team', 'subscription', 'numbers', 'telecom', 'activation-studio', 'launch'];
   const inMenu = (x) => allowed(x) && !x.hidden;
@@ -321,7 +323,7 @@ body.ln-shell{padding-left:236px}
       const on = a.pages.includes(page);
       return `<a role="menuitem" href="${a.href}"${a.dup ? ' data-ln-dup' : ''}${on ? ' class="is-active" aria-current="page"' : ''}>${esc(a.label)}</a>`;
     }).join('');
-    return `${items}${items ? '<hr data-ln-dup>' : ''}<button type="button" role="menuitem" class="ln-out" data-ln-signout>Sign out</button>`;
+    return `${items}${items ? '<hr data-ln-dup>' : ''}<button type="button" role="menuitem" data-ln-support>Contact support</button><button type="button" role="menuitem" class="ln-out" data-ln-signout>Sign out</button>`;
   }
   function meHTML(compact) {
     return `<button type="button" class="ln-me${onAccountPage ? ' is-active' : ''}" aria-haspopup="menu" aria-expanded="false" aria-label="Account">
@@ -470,6 +472,54 @@ body.ln-shell{padding-left:236px}
     e.preventDefault();
     try { localStorage.removeItem('loladesk_token'); localStorage.removeItem('loladesk_refresh'); sessionStorage.removeItem('loladesk_tenant'); sessionStorage.removeItem('lolaNavRole'); } catch (_) {}
     location.replace('/login');
+  });
+
+  // ── Contact support: a salon asks the LolaDesk team for help (→ /api/customer-care?action=contact) ──
+  function openSupport() {
+    closeMenus();
+    if (document.getElementById('lnSupport')) return;
+    const box = document.createElement('div');
+    box.id = 'lnSupport';
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Contact LolaDesk support');
+    box.innerHTML = `<style>#lnSupport{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:rgba(0,0,0,.55);padding:16px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif}
+#lnSupport .s-card{width:min(440px,100%);background:#0c0c0e;border:1px solid #28282e;border-radius:18px;padding:22px;color:#f2f2f5;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+#lnSupport h2{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:0 0 4px}
+#lnSupport p{font-size:13px;color:#8a8a92;margin:0 0 14px;line-height:1.5}
+#lnSupport textarea{width:100%;box-sizing:border-box;min-height:110px;background:#121214;border:1px solid #28282e;border-radius:12px;padding:11px 12px;color:#f2f2f5;font:inherit;font-size:14px;resize:vertical;outline:none}
+#lnSupport textarea:focus{border-color:#4a4a52}
+#lnSupport label{display:flex;gap:8px;align-items:center;font-size:13px;color:#8a8a92;margin:10px 0 0}
+#lnSupport .s-row{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+#lnSupport button{border-radius:10px;padding:9px 15px;font:inherit;font-size:13.5px;cursor:pointer}
+#lnSupport .s-cancel{background:none;border:1px solid #28282e;color:#b4b4bc}
+#lnSupport .s-send{background:#f2f2f4;border:0;color:#0a0a0b;font-weight:600}
+#lnSupport .s-send:disabled{opacity:.5}
+#lnSupport .s-msg{font-size:13px;margin-top:10px;min-height:18px;color:#8a8a92}</style>
+<div class="s-card"><h2>Contact support</h2><p>Tell the LolaDesk team what you need. We reply within one business day.</p>
+<textarea id="lnSupportText" placeholder="What's going on?" aria-label="Your message" maxlength="2000"></textarea>
+<label><input type="checkbox" id="lnSupportUrgent"> It's urgent — Lola isn't answering or booking</label>
+<div class="s-msg" id="lnSupportMsg"></div>
+<div class="s-row"><button type="button" class="s-cancel" data-s-close>Cancel</button><button type="button" class="s-send" data-s-send>Send</button></div></div>`;
+    document.body.appendChild(box);
+    const close = () => box.remove();
+    const ta = box.querySelector('#lnSupportText'), msg = box.querySelector('#lnSupportMsg'), send = box.querySelector('[data-s-send]');
+    setTimeout(() => ta.focus(), 30);
+    box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('[data-s-close]')) close(); });
+    box.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    send.addEventListener('click', async () => {
+      const text = ta.value.trim();
+      if (text.length < 3) { msg.textContent = 'Tell us what you need help with.'; return; }
+      send.disabled = true; msg.textContent = 'Sending…';
+      try {
+        let token = ''; try { token = localStorage.getItem('loladesk_token') || ''; } catch (_) {}
+        const r = await fetch('/api/customer-care?action=contact', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: JSON.stringify({ message: text, urgency: box.querySelector('#lnSupportUrgent').checked ? 'high' : 'normal' }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || 'Couldn’t send — email support@loladesk.com.');
+        box.querySelector('.s-card').innerHTML = '<h2>Sent</h2><p>' + esc(j.message || 'The LolaDesk team will reply within one business day.') + '</p><div class="s-row"><button type="button" class="s-send" data-s-close>Done</button></div>';
+      } catch (err) { msg.textContent = err.message; send.disabled = false; }
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('[data-ln-support]')) { e.preventDefault(); openSupport(); }
   });
 
   // ── Go anywhere (⌘K): every page, Lola's actions, live client search ──

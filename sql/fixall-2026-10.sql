@@ -238,3 +238,31 @@ do $$ begin
     execute 'create unique index if not exists payments_one_no_show_fee on public.payments (booking_id) where sub_kind = ''no_show_fee''';
   end if;
 end $$;
+
+-- ════ 20261014_support_console.sql ════
+-- LolaDesk Console (console.html → api/console.js): the support inbox. Tickets come from Lola's
+-- support line (calls, texts) and from salons inside the app ("Contact support", channel 'app').
+-- Same SQL is self-applied at runtime by api/lib/migrate.js (SUPPORT_TICKETS_COLUMNS_DDL).
+create table if not exists public.support_tickets (
+  id         uuid primary key default gen_random_uuid(),
+  name       text,
+  business   text,
+  phone      text,
+  email      text,
+  issue      text,
+  urgency    text not null default 'normal',
+  channel    text,
+  status     text not null default 'open',
+  created_at timestamptz not null default now()
+);
+alter table public.support_tickets
+  add column if not exists tenant_id   uuid,
+  add column if not exists admin_note  text,
+  add column if not exists assigned_to text,
+  add column if not exists replies     jsonb not null default '[]'::jsonb,
+  add column if not exists resolved_at timestamptz,
+  add column if not exists updated_at  timestamptz default now();
+create index if not exists idx_support_tickets_created on public.support_tickets (created_at desc);
+create index if not exists idx_support_tickets_status on public.support_tickets (status, created_at desc);
+create index if not exists idx_support_tickets_tenant on public.support_tickets (tenant_id);
+alter table public.support_tickets enable row level security;

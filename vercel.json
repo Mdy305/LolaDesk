@@ -8,6 +8,10 @@
     {
       "source": "/b/:slug",
       "destination": "/book.html"
+    },
+    {
+      "source": "/console",
+      "destination": "/console.html"
     }
   ],
   "outputDirectory": ".",
