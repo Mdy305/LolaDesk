@@ -16,6 +16,7 @@
  *   careReply(text)              → a short text answer from the same knowledge
  *   handleCareText(c, {…})       → inbound text to the support line
  *   recordTicket(c, ticket)      → save + alert the team
+ *   careOptedOut(c, phone)       → texted STOP to the support line?
  */
 import crypto from 'node:crypto';
 import { telnyxRequest, telnyxData, appUrl, normalizeE164 } from './telnyx-client.js';
@@ -219,8 +220,14 @@ export async function recordTicket(c, t = {}, { notify } = {}) {
     issue: String(t.issue || t.text || '').slice(0, 2000), urgency: ['low', 'normal', 'high'].includes(t.urgency) ? t.urgency : 'normal',
     channel: String(t.channel || 'phone_call').slice(0, 40), status: 'open', created_at: new Date().toISOString(),
   };
+  if (t.tenant_id) row.tenant_id = t.tenant_id;   // "Contact support" inside the app: the salon it came from
   let saved = false;
-  if (c) saved = (await insertHealing(c, 'support_tickets', row)).ok;
+  if (c) {
+    let r = await insertHealing(c, 'support_tickets', row);
+    // An older table without tenant_id (the Console's migration not applied yet): keep the ticket anyway.
+    if (!r.ok && row.tenant_id && /tenant_id/.test(String(r.reason || ''))) { const { tenant_id, ...rest } = row; r = await insertHealing(c, 'support_tickets', rest); }
+    saved = r.ok;
+  }
   let alerted = false;
   try {
     const send = notify || (await import('../cron/sync-alerts.js')).notifyOperator;
@@ -237,6 +244,11 @@ const START = /^\s*(start|unstop|yes)\s*$/i;
 async function optOuts(c) {
   try { const { data } = await c.from('platform_settings').select('value').eq('key', 'customer_care_opt_outs').maybeSingle(); return Array.isArray(data?.value) ? data.value : []; }
   catch (_) { return []; }
+}
+/** Did this number text STOP to the support line? (Console replies respect it.) */
+export async function careOptedOut(c, phone) {
+  const n = normalizeE164(phone || '');
+  return !!n && (await optOuts(c)).includes(n);
 }
 async function setOptOuts(c, list) {
   try { await c.from('platform_settings').upsert({ key: 'customer_care_opt_outs', value: list.slice(-5000), updated_at: new Date().toISOString() }, { onConflict: 'key' }); } catch (_) {}

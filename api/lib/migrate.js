@@ -196,6 +196,18 @@ const SUPPORT_TICKETS_DDL = `create table if not exists public.support_tickets (
 create index if not exists idx_support_tickets_created on public.support_tickets (created_at desc);
 alter table public.support_tickets enable row level security;`;
 
+// support_tickets workflow columns — LolaDesk Console (console.html): who it's from (salon), the team's
+// note, who claimed it, replies sent, when it was resolved. Same SQL in sql/fixall-2026-10.sql.
+export const SUPPORT_TICKETS_COLUMNS_DDL = `alter table public.support_tickets
+  add column if not exists tenant_id   uuid,
+  add column if not exists admin_note  text,
+  add column if not exists assigned_to text,
+  add column if not exists replies     jsonb not null default '[]'::jsonb,
+  add column if not exists resolved_at timestamptz,
+  add column if not exists updated_at  timestamptz default now();
+create index if not exists idx_support_tickets_status on public.support_tickets (status, created_at desc);
+create index if not exists idx_support_tickets_tenant on public.support_tickets (tenant_id);`;
+
 // tenant_channels — a salon's own Instagram (and future social) inbox connection.
 const TENANT_CHANNELS_DDL = `create table if not exists public.tenant_channels (
   id          uuid primary key default gen_random_uuid(),
@@ -409,6 +421,7 @@ async function runMigrations() {
   await ensureTable(c, 'platform_settings', PLATFORM_SETTINGS_DDL, applied);
   await ensureTable(c, 'legal_acceptances', LEGAL_ACCEPTANCES_DDL, applied);
   await ensureTable(c, 'support_tickets', SUPPORT_TICKETS_DDL, applied);
+  await ensureColumns(c, 'support_tickets', 'id,tenant_id,admin_note,assigned_to,replies,resolved_at,updated_at', SUPPORT_TICKETS_COLUMNS_DDL, applied);
   await ensureTable(c, 'tenant_channels', TENANT_CHANNELS_DDL, applied);
   await ensureTable(c, 'booking_outbox', BOOKING_OUTBOX_DDL, applied);
   await ensureTable(c, 'client_cards', CLIENT_CARDS_DDL, applied);
