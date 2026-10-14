@@ -26,6 +26,7 @@ import { getOwnerMemory, setOwnerMemory } from './db.js';
 import { listBookings, revenueSummary, dueForRebooking } from './operator-db.js';
 import { buildClientMemoryBlock, profileFromMemoryRows } from './lola-skills.js';
 import { observationsBlock, briefingLine } from './lola-intelligence.js';
+import { businessSnapshot as liveSetup, situation as liveDay, chiefOfStaffStyle, within } from './owner-awareness.js';
 
 function fmtMoney(n){ return '$' + (Math.round((Number(n)||0)*100)/100).toLocaleString('en-US'); }
 
@@ -56,6 +57,9 @@ export async function buildOwnerSystemPrompt(tenant, { channel = 'voice' } = {})
 
   let snapshot = null;
   try{ snapshot = await businessSnapshot(tenant); }catch{}
+  // The live setup (menu, team, hours, Google — what onboarding synced) and the day in salon time.
+  const setup = await within(2500, liveSetup(tenant), null);
+  const day = setup ? await within(3000, liveDay(tenant, { snap: setup }), null) : null;
 
   let memoryBlock = '';
   try{ memoryBlock = buildClientMemoryBlock(profileFromMemoryRows(await getOwnerMemory(tenant.id))) || ''; }catch{}
@@ -79,11 +83,13 @@ export async function buildOwnerSystemPrompt(tenant, { channel = 'voice' } = {})
     : `You are texting: keep replies under 3 short sentences, plain text, no markdown.`;
 
   return [
+    chiefOfStaffStyle(tenant),
     `You are Lola — not an assistant, but the person who runs ${tenant.name}: its front desk manager and head of marketing, speaking privately with the owner${tenant.owner_name ? `, ${String(tenant.owner_name).split(' ')[0]}` : ''}. You have the judgment of a operator who's run salons for fifteen years and the recall of someone who never forgets a client or a number. Warm, sharp, decisive. You don't hedge; you have opinions and you back them with the numbers below.`,
-    `Business: ${tenant.business_mode || 'salon'} in ${tenant.location || 'their city'}. Hours: ${tenant.hours || 'not set'}.`,
-    menu ? `Menu: ${menu}.` : '',
+    setup ? setup.prompt : `Business: ${tenant.business_mode || 'salon'} in ${tenant.location || 'their city'}. Hours: ${tenant.hours || 'not set'}.`,
+    setup ? '' : (menu ? `Menu: ${menu}.` : ''),
+    day ? day.prompt : '',
     tenant.knowledge ? `Owner's notes for you: ${tenant.knowledge}` : '',
-    snapshot ? `Live numbers right now — today: ${snapshot.today_count} appointment${snapshot.today_count===1?'':'s'}${snapshot.next_appointment?`, next up ${snapshot.next_appointment}`:''}; this week: ${fmtMoney(snapshot.revenue_week)} across ${snapshot.revenue_week_count}; this month: ${fmtMoney(snapshot.revenue_month)} across ${snapshot.revenue_month_count}; ${snapshot.overdue_rebook_count} clients overdue to rebook.` : '',
+    snapshot && !day ? `Live numbers right now — today: ${snapshot.today_count} appointment${snapshot.today_count===1?'':'s'}${snapshot.next_appointment?`, next up ${snapshot.next_appointment}`:''}; this week: ${fmtMoney(snapshot.revenue_week)} across ${snapshot.revenue_week_count}; this month: ${fmtMoney(snapshot.revenue_month)} across ${snapshot.revenue_month_count}; ${snapshot.overdue_rebook_count} clients overdue to rebook.` : '',
     noticed,
     strategy,
     memoryBlock,

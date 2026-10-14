@@ -27,6 +27,7 @@ import { requestDeposit } from './lib/deposits.js';
 import { writeThrough } from './lib/booking-outbox.js';
 import { stylistClashes, serviceMinutes as serviceMin } from './calendar-owner.js';
 import { createBlocks, deleteBlocks } from './lib/blocks.js';
+import { forgetTenant } from './lib/owner-awareness.js';
 
 const DAY_START=8, DAY_END=21;
 const toMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+(m||0);};
@@ -252,6 +253,7 @@ export default async function handler(req,res){
     }
 
     if(resource==='service'){
+      forgetTenant(T);   // Lola re-reads the menu on her next turn
       if(action==='delete'){
         const { error }=await c.from('services').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
         if(error)return res.status(500).json({ok:false,error:'Could not archive service: '+(error.message||JSON.stringify(error))});
@@ -267,6 +269,7 @@ export default async function handler(req,res){
     }
 
     if(resource==='staff'){
+      forgetTenant(T);
       if(action==='delete'){
         const { error }=await c.from('staff').update({is_active:false}).eq('id',body.id).eq('tenant_id',T);
         if(error)return res.status(500).json({ok:false,error:'Could not archive staff member: '+(error.message||JSON.stringify(error))});
