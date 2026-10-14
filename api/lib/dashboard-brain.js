@@ -28,6 +28,11 @@ import { OWNER_TOOLS, OWNER_TOOL_NAMES, OWNER_READ_TOOLS, runOwnerTool, ownerSys
 import { routeOwnerIntent, agentFor } from './owner-intents.js';
 import { lolaSelfCheck } from './lola-doctor.js';
 import { getUserFromToken, bearer, isAdminEmail } from './auth.js';
+import { businessSnapshot, situation, hydrateTenant, chiefOfStaffStyle, chiefBrief, within } from './owner-awareness.js';
+
+// "Catch me up" (and the hello when the owner arrives) is the chief-of-staff briefing.
+const BRIEF_ASK = /\b(catch me up|brief me|morning brief|daily brief|give me (?:the|my) (?:rundown|brief|update)|anything i should know|what should i know|how are we doing)\b/i;
+export function wantsBrief(text){ return BRIEF_ASK.test(String(text || '')); }
 
 // Lola must answer a spoken turn fast: the whole brain has this long.
 const BRAIN_BUDGET_MS = 22000;
@@ -271,13 +276,19 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
 
   const started = Date.now();
   const left = () => BRAIN_BUDGET_MS - (Date.now() - started);
-  let ownerPrompt = '';
-  try{ ownerPrompt = await ownerSystemPrompt(tenant); }catch{}
+  // What Lola already knows before the owner says a word: the business as onboarding synced it
+  // (live menu, team, hours, Google) and right now (today, tomorrow, the week, who needs a call back).
+  const [ownerPrompt, snap] = await Promise.all([
+    within(3000, ownerSystemPrompt(tenant), ''),
+    within(2500, businessSnapshot(tenant), null),
+  ]);
+  const now = snap ? await within(3000, situation(tenant, { snap, calls: false }), null) : null;
+  if(snap) tenant = hydrateTenant(tenant, snap);   // every fast path below sees the real menu and team
   // body.system is only ever page context from the Lola panel ("the owner is on
   // the Calendar page…") — never a persona; the persona lives on the server.
   const pageContext = typeof body.system === 'string' && body.system.length <= 800 ? `PAGE CONTEXT: ${body.system}` : '';
   const voiceStyle = body.voice ? 'The owner is SPEAKING to you: answer in one or two short spoken sentences, no lists, no markdown, no links.' : '';
-  const systemPrompt = [ownerPrompt, pageContext, voiceStyle, realBusinessFacts(tenant), memoryBlock].filter(Boolean).join('\n') || undefined;
+  const systemPrompt = [chiefOfStaffStyle(tenant), ownerPrompt, pageContext, voiceStyle, snap?.prompt || realBusinessFacts(tenant), now?.prompt, memoryBlock].filter(Boolean).join('\n') || undefined;
   // Owner commands (text/call/cancel/move/no-show/fill/revenue/brief…) go
   // straight to the tool-calling brain, never the caller fast-paths.
   const ownerCmd = isOwnerCommand(lastUserTextMsg);
@@ -301,6 +312,17 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
         actions: pend.ui ? [pend.ui] : undefined, needs_confirmation: !!pend.needs_confirmation, orchestration: plan('execution') } };
     }
   }catch(e){ /* fall through */ }
+
+  // ── The briefing: the owner arrived (silent hello) or asked to be caught up ──
+  try{
+    if(wantsBrief(lastUserTextMsg)){
+      const br = await within(8000, chiefBrief(tenant), null);
+      if(br && br.say){
+        await remember(br.say);
+        return { status: 200, json: { content:[{ type:'text', text: br.say }], intent:'today_brief', source:'reflex', suggestions: br.suggestions, orchestration: plan('today_brief') } };
+      }
+    }
+  }catch(e){ /* fall through to the day brief */ }
 
   // ── Reflexes: the everyday commands run instantly, no model in the loop ──
   try{
@@ -512,6 +534,12 @@ export async function ownerCommandReply({ tenant, text, history = [], channel = 
     }catch{ /* fall through */ }
   }
   try{
+    if(wantsBrief(msg)){
+      const br = await within(8000, chiefBrief(tenant), null);
+      if(br && br.say) return { say: br.say, intent: 'today_brief', needs_confirmation: false };
+    }
+  }catch{ /* fall through */ }
+  try{
     const hit = routeOwnerIntent(msg);
     if(hit?.navigate) return finish({ say: hit.say, ui: { navigate: hit.navigate } }, 'open_page');
     if(hit?.self_check){ const chk = await lolaSelfCheck(tenant, { platform: false }); return { say: chk.say, intent: 'self_check', needs_confirmation: false }; }
@@ -522,7 +550,9 @@ export async function ownerCommandReply({ tenant, text, history = [], channel = 
   }catch{ /* fall through */ }
   if(!isOwnerCommand(msg)) return null;
   try{
-    const system = [await ownerSystemPrompt(tenant), channel === 'sms' ? 'The owner is TEXTING you from their cell: reply in at most 2 short plain sentences, no markdown.' : ''].filter(Boolean).join('\n');
+    const snap = await within(2500, businessSnapshot(tenant), null);
+    const now = snap ? await within(3000, situation(tenant, { snap }), null) : null;
+    const system = [chiefOfStaffStyle(tenant), await ownerSystemPrompt(tenant), snap?.prompt, now?.prompt, channel === 'sms' ? 'The owner is TEXTING you from their cell: reply in at most 2 short plain sentences, no markdown.' : ''].filter(Boolean).join('\n');
     const prior = (Array.isArray(history) ? history : []).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').slice(-8);
     const r = await chat({ system, messages: [...prior, { role: 'user', content: msg }], tools: OWNER_TOOLS, maxTokens: 300, temperature: 0.3, fast: true, deadlineMs: 12000 });
     const call = r?.ok && Array.isArray(r.tool_calls) ? r.tool_calls[0] : null;

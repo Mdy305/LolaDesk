@@ -234,7 +234,9 @@ export default async function handler(req, res){
     const name = tenant.owner_name ? ` ${String(tenant.owner_name).split(' ')[0]}` : '';
     // Jarvis-style: lead with what she NOTICED, not a generic prompt.
     let brief = '';
-    try{ brief = await briefingLine(tenant); }catch{}
+    // The chief-of-staff briefing first (the day in salon time, money locked in, the one move); the older line as backup.
+    try{ const { chiefBrief, within } = await import('./lib/owner-awareness.js'); brief = (await within(6000, chiefBrief(tenant), null))?.say || ''; }catch{}
+    if(!brief){ try{ brief = await briefingLine(tenant); }catch{} }
     const greet = brief
       ? `Hey${name}, it's Lola. ${brief}`
       : `Hey${name}, it's Lola. Your day's looking smooth — ask me about revenue, who's due, or tell me to move, cancel, book, or text clients.`;

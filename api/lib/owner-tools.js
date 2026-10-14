@@ -413,6 +413,7 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
       case 'learn_business': {
         if (!args.website && !args.notes) return { ok: false, say: 'Send me your website address, or paste your menu with prices, and I\u2019ll learn it.' };
         const out = await learnBusiness(c, tenant, { website: args.website, notes: args.notes });
+        try { (await import('./owner-awareness.js')).forgetTenant(tenant.id); } catch { /* cache only */ }
         return { ok: !!out.ok, say: out.say, suggestions: out.suggestions, ui: out.ok && out.report && (out.report.services_added || out.report.team_added) ? { refresh: 'services' } : undefined };
       }
 

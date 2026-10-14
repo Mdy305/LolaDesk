@@ -10,6 +10,7 @@ import { bearer, getUserFromToken } from '../lib/auth.js';
 import { resolveTenantForUser } from '../lib/tenant-access.js';
 import { db } from '../lib/db.js';
 import { learnBusiness } from '../lib/business-learn.js';
+import { forgetTenant } from '../lib/owner-awareness.js';
 import { buildFillPlan, planSummary } from '../lib/fill-plan.js';
 import { growthBrief } from '../lib/growth-brief.js';
 
@@ -59,6 +60,7 @@ export default async function handler(req, res) {
       } catch (_) { /* the brief never blocks learning */ }
     }
     // What's ready to take bookings now (hours, services, team…), straight from the booking checklist.
+    forgetTenant(tenant.id);   // Lola sees the synced setup on her very next word
     if (out.ok) { try { const { bookingReadiness } = await import('../lib/booking-readiness.js'); const r = await bookingReadiness(tenant.id); out.readiness = { ready: !!r.ready, steps: (r.steps || []).map(s => ({ id: s.id, label: s.label, done: !!s.done, href: s.href })), booking_url: r.booking_url || null }; } catch (_) {} }
     return res.status(out.ok ? 200 : 422).json(out);
   } catch (e) {
