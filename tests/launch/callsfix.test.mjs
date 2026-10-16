@@ -69,7 +69,8 @@ ok(out.actions[0]?.result?.cancelled === true && /Haircut on .+ at 2 PM is cance
 ok(costs.some((c) => c.kind === 'cost_ai' && c.tenantId === TID && c.cents === 1), 'each answered turn logs its AI cost');
 
 // ── 9. Tools dropped by Telnyx: no invented times ──
-script = [{ status: 400, error: 'tools not supported' }, { content: 'Sure! I have 2pm or 4pm open tomorrow — which works?' }];
+// Telnyx refuses tools on the fast model AND on the strong one: the last one answers without hands.
+script = [{ status: 400, error: 'tools not supported' }, { status: 400, error: 'tools not supported' }, { content: 'Sure! I have 2pm or 4pm open tomorrow — which works?' }];
 out = await answerClient({ tenant: T.tenants[0], channel: 'sms', text: 'any time tomorrow for a haircut?', phone: SARAH, tz: TZ });
 ok(out.toolsDropped === true && !/2pm|4pm/.test(out.reply) && /nothing is booked/.test(out.reply), 'tools dropped → she says honestly she can’t check yet: ' + out.reply);
 script = [{ status: 400, error: 'tools not supported' }, { content: 'We are at 1 Ocean Drive.' }];

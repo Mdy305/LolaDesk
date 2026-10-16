@@ -5,8 +5,9 @@
  * Public (the sign-in page talks to her too), so: size cap + per-IP limit.
  */
 const URL_STT = 'https://api.telnyx.com/v2/ai/audio/transcriptions';
-// Telnyx STT docs: whisper-large-v3-turbo is the fast + accurate one, distil-large-v2 the lightweight fallback.
-const MODELS = () => [process.env.LOLA_STT_MODEL, 'openai/whisper-large-v3-turbo', 'distil-whisper/distil-large-v2'].filter(Boolean);
+// Telnyx STT docs: whisper-large-v3-turbo is the default; deepgram/nova-3 the documented alternative.
+// Telnyx's documented speech-to-text models (POST /v2/ai/audio/transcriptions).
+const MODELS = () => [process.env.LOLA_STT_MODEL, 'openai/whisper-large-v3-turbo', 'deepgram/nova-3'].filter(Boolean);
 // Words a salon says that generic speech-to-text mishears (Whisper's prompt biases toward them).
 const SALON_WORDS = 'LolaDesk, Lola, balayage, highlights, keratin, blowout, ombré, toner, gloss, root touch-up, extensions, lash lift, brow lamination, microblading, manicure, pedicure, gel, facial, Botox, filler, appointment, reschedule, deposit, no-show';
 const hits = new Map();

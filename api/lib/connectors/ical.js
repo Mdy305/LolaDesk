@@ -165,23 +165,55 @@ export function feedsOf(integration) {
   return one ? [{ url: one, label: integration?.metadata?.label || 'Calendar', staff_id: integration?.metadata?.staff_id || null }] : [];
 }
 
-/** Connector contract used by booking-sync (read-only). */
+/** A stable short key per linked calendar (its stylist, else a hash of its link) — part of every event id. */
+export function feedKey(feed) {
+  if (feed?.staff_id) return 's' + String(feed.staff_id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  let h = 2166136261; const u = String(normalizeUrl(feed?.url) || feed?.url || '');
+  for (let i = 0; i < u.length; i++) { h ^= u.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return 'f' + (h >>> 0).toString(36);
+}
+
+/**
+ * Connector contract used by booking-sync (read-only).
+ * Every linked calendar is read on its own: one link that is down never hides the others. A link that
+ * can't be read right now reuses its last good copy (if this server has one); otherwise it is reported in
+ * `failed_feeds` so the sync keeps its cached busy time instead of opening those chairs. Every event id
+ * carries its calendar's key, so the same invite on two stylists' calendars blocks BOTH stylists.
+ */
 export async function listAppointments(integration, { from, to, fetchImpl } = {}) {
   const tz = integration.metadata?.timezone || 'America/New_York';
   const out = [];
-  for (const feed of feedsOf(integration)) {
+  const failed = [];
+  const feeds = feedsOf(integration);
+  await Promise.all(feeds.map(async (feed) => {
     const url = normalizeUrl(feed.url);
+    const key = feedKey(feed);
     const hit = cache.get(url);
-    let text;
+    let text = null, stale = false;
     if (hit && Date.now() - hit.at < TTL_MS) text = hit.text;
-    else { text = await fetchIcs(url, fetchImpl ? { fetchImpl } : {}); cache.set(url, { at: Date.now(), text }); }
-    for (const e of parseIcs(text, { from, to, defaultTz: tz })) out.push({
-      id: `${(e.uid || 'ev').slice(0, 120)}@${e.start}`, starts_at: new Date(e.start).toISOString(), ends_at: new Date(e.end).toISOString(),
+    else {
+      try { text = await fetchIcs(url, fetchImpl ? { fetchImpl } : {}); cache.set(url, { at: Date.now(), text }); }
+      catch (e) {
+        if (hit && Date.now() - hit.at < 6 * 3600e3) { text = hit.text; stale = true; }   // last good copy, up to 6h
+        failed.push({ key, label: feed.label || 'Calendar', error: String(e?.message || e).slice(0, 140), stale });
+        if (!text) return;
+      }
+    }
+    let events = [];
+    try { events = parseIcs(text, { from, to, defaultTz: tz }); }
+    catch (e) { failed.push({ key, label: feed.label || 'Calendar', error: 'unreadable calendar: ' + String(e?.message || e).slice(0, 100), stale: false }); return; }
+    for (const e of events) out.push({
+      id: `${(e.uid || 'ev').slice(0, 120)}@${e.start}#${key}`, starts_at: new Date(e.start).toISOString(), ends_at: new Date(e.end).toISOString(),
       duration_min: Math.round((e.end - e.start) / 60e3), client: { name: null }, service: e.summary ? e.summary.slice(0, 80) : null,
       // A stylist's own link blocks that stylist (local id); a salon-wide link takes one chair per appointment.
-      stylist: feed.staff_id ? 'local:' + feed.staff_id : null, status: 'booked',
+      stylist: feed.staff_id ? 'local:' + feed.staff_id : null, status: 'booked', feed: key,
     });
+  }));
+  if (feeds.length && failed.length === feeds.length && !failed.some((f) => f.stale)) {
+    throw new Error(`calendar link${feeds.length > 1 ? 's' : ''} not answering: ${failed.map((f) => `${f.label} (${f.error})`).join('; ')}`.slice(0, 300));
   }
+  // Calendars whose busy time must be KEPT (not judged by this read): unreachable ones, even when served from a stale copy.
+  Object.defineProperty(out, 'failed_feeds', { value: failed, enumerable: false });
   return out;
 }
 export function clearIcsCache() { cache.clear(); }

@@ -28,7 +28,9 @@ import { insertHealing } from './legal.js';
 export const SETTING_KEY = 'customer_care';
 export const ASSISTANT_NAME = 'LolaDesk Customer Care';
 export const SUPPORT_EMAIL = 'support@loladesk.com';
-const CARE_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
+import { FALLBACK as MODEL_FALLBACK, modelFor } from './telnyx-models.js';
+// The default only; provisioning picks from the models Telnyx really serves (telnyx-models.js).
+const CARE_MODEL = MODEL_FALLBACK.assistant;
 
 // One source of truth for what Lola says about the product. Keep in step
 // with pricing.html and the legal pages.
@@ -68,7 +70,7 @@ export function ticketUrl() {
   return `${appUrl()}/api/customer-care?action=ticket&k=${ticketToken()}&from={{telnyx_end_user_target}}&ch={{telnyx_conversation_channel}}`;
 }
 
-export function buildCareAgent({ voice } = {}) {
+export function buildCareAgent({ voice, model } = {}) {
   const tools = [{
     type: 'webhook',
     webhook: {
@@ -94,7 +96,7 @@ export function buildCareAgent({ voice } = {}) {
   return {
     name: ASSISTANT_NAME,
     description: 'LolaDesk customer support — Lola answering questions about the LolaDesk app.',
-    model: CARE_MODEL,
+    model: model || CARE_MODEL,
     instructions: careInstructions(),
     greeting: CARE_GREETING,
     tools,
@@ -160,7 +162,7 @@ export async function provisionCare(c, { phone_number = null, area_code = '305',
   if (!process.env.TELNYX_API_KEY) throw new Error('TELNYX_API_KEY is not set');
   const saved = await careState(c) || {};
   const voice = await salonVoice();
-  const spec = buildCareAgent({ voice });
+  const spec = buildCareAgent({ voice, model: await modelFor('assistant').catch(() => null) });
 
   // 1. Assistant — saved id, else exact name; refresh its words every time.
   const list = telnyxData(await telnyxRequest('/ai/assistants', { timeoutMs: 10000 }));

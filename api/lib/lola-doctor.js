@@ -45,10 +45,10 @@ export async function lolaSelfCheck(tenant, { speakTest = true, platform = false
   // Brain
   const b = await timed(() => chat({ system: 'Reply with the single word: ready', messages: [{ role: 'user', content: 'Status?' }], maxTokens: 20, fast: true, deadlineMs: 12000 }));
   const brainOk = b.v?.ok && b.v.text;
-  const slow = brainOk && /Kimi/i.test(b.v.model || '');
+  const slow = brainOk && b.ms > 9000;
   checks.push({ key: 'brain', ok: !!brainOk && !slow, ms: b.ms, model: b.v?.model || FAST_MODEL(),
-    say: brainOk ? `My brain answered in ${(b.ms / 1000).toFixed(1)} seconds${slow ? ' on Kimi, because the fast model isn’t available on your Telnyx account — so I’m slower than I should be' : ''}.` : 'My brain isn’t answering.',
-    fix: brainOk ? (/Kimi/i.test(b.v.model || '') ? `Telnyx → AI → Inference: enable ${FAST_MODEL()} (or set LOLA_FAST_MODEL to a model you have).` : null) : 'Check TELNYX_API_KEY in Vercel and that Telnyx AI Inference is enabled on the account.',
+    say: brainOk ? `My brain answered in ${(b.ms / 1000).toFixed(1)} seconds on ${b.v.model}${slow ? ' — slower than it should be' : ''}.` : 'My brain isn’t answering.',
+    fix: brainOk ? (slow ? 'Telnyx → AI → Inference: check the account isn’t rate-limited; LolaDesk already picks the fastest model Telnyx lists.' : null) : 'Check TELNYX_API_KEY in Vercel, that Telnyx AI Inference is enabled and the balance is above $0.',
     error: brainOk ? undefined : (b.v?.error || String(b.e?.message || '')) });
   // Voice
   if (speakTest) {

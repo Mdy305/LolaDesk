@@ -1,19 +1,25 @@
-// Telnyx AI Inference — Kimi (and other models) via OpenAI-compatible API.
-// Reuses TELNYX_API_KEY. Used by:
-//   - onboarding/step2-ingest.js (extract salon info from website)
-//   - lola/ask.js (Drop C — "ask Lola anything about your business")
-//   - inbox autopilot replies (planned)
-// Documented endpoint (POST /v2/ai/chat/completions is deprecated) and listed models:
-// the fast Llama first (reads a website in seconds), Kimi K2.6 as the fallback.
+// Telnyx AI Inference via the OpenAI-compatible API. Reuses TELNYX_API_KEY. Used by onboarding
+// (reading the salon's website), lola/ask.js and inbox replies. The model is picked from Telnyx's own
+// list (telnyx-models.js): the fast model first (reads a website in seconds), the strong one as backup.
+import { modelFor, markModelBad, isModelError, modelListed } from './telnyx-models.js';
 const TELNYX_AI = 'https://api.telnyx.com/v2/ai/openai/chat/completions';
-const DEFAULT_MODEL = process.env.TELNYX_LLM_MODEL || 'meta-llama/Llama-3.3-70B-Instruct';
-const FALLBACK_MODEL = 'moonshotai/Kimi-K2.6';
+
+async function defaultModel(role) {
+  const env = process.env.TELNYX_LLM_MODEL;
+  if (role === 'fast' && env && (await modelListed(env.trim()).catch(() => null)) === true) return env.trim();
+  return modelFor(role);
+}
 
 export async function chat(opts) {
-  try { return await chatOnce(opts); }
+  const first = opts?.model || await defaultModel('fast');
+  try { return await chatOnce({ ...opts, model: first }); }
   catch (e) {
-    if (opts?.model || !/\b(400|404|422)\b|model/i.test(String(e?.message))) throw e;
-    return chatOnce({ ...opts, model: FALLBACK_MODEL, max_tokens: Math.max(opts?.max_tokens || 1200, 2000) });
+    const status = Number((String(e?.message).match(/Telnyx AI (\d{3})/) || [])[1]);
+    if (isModelError(status, e?.message)) markModelBad(first);
+    else if (opts?.model || !/\b(400|404|422|429|5\d\d)\b|model|timeout|fetch failed/i.test(String(e?.message))) throw e;
+    const next = await modelFor('power');
+    if (!next || next === first) throw e;
+    return chatOnce({ ...opts, model: next, max_tokens: Math.max(opts?.max_tokens || 1200, 2000) });
   }
 }
 
@@ -28,7 +34,7 @@ async function chatOnce({ messages, model, max_tokens, temperature, response_for
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: model || DEFAULT_MODEL,
+      model,
       messages,
       max_tokens: max_tokens || 1200,
       temperature: temperature ?? 0.2,

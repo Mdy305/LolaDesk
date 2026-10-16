@@ -6,7 +6,7 @@ globalThis.fetch = async (url, init = {}) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   if (u.includes('/ai/openai/chat/completions')) {
     const b = JSON.parse(init.body); ai.push(b);
-    if (fastDown && /Llama/.test(b.model)) return J({ error: { message: 'model not found' } }, 404);
+    if (fastDown && /GLM/.test(b.model)) return J({ error: { message: 'model not found' } }, 404);
     const sys = b.messages[0].content;
     const text = /HEADLINE/.test(sys) ? 'HEADLINE:\nFill Tuesdays with your due clients\nPOSITIONING SHIFT:\nFrom walk-in to booked-out\nTOP PRIORITIES:\nBring back the 2 due clients | They are ready | Text them Tuesday times\nCAMPAIGNS TO RUN:\nDue-back Tuesday | Due clients | sms | once | 2 bookings\nWHAT NOT TO DO:\n- Discount\nNORTH STAR METRIC:\nChair utilization'
       : 'SUMMARY:\nA Miami Beach salon known for color.\nPOSITIONING:\nLuxury color\nTARGET AUDIENCE:\nProfessionals\nSTRENGTHS:\n- Color\nGAPS:\n- No online booking\nSERVICES DETECTED:\n- Balayage\nBRAND TONE:\nWarm\nTOP OPPORTUNITIES:\n- Add a booking link';
@@ -34,7 +34,7 @@ let r = await run({ action: 'analyze', url: 'mmasalon.example' });
 ok(!r.ok && ai.length === 0, 'Analyze needs a signed-in owner (no anonymous AI spend / URL fetching)');
 r = await run({ action: 'analyze', url: 'mmasalon.example' }, { authorization: 'Bearer tok' });
 ok(r.ok && /Miami Beach/.test(r.summary) && r.services_detected?.includes('Balayage'), 'Analyze reads the URL and returns the report');
-ok(/Llama/.test(ai.at(-1).model) && ai.at(-1).max_tokens >= 1100, 'long reports are written by the fast model with room to finish (not a 120s Kimi chain that Vercel kills): ' + ai.at(-1).model + ' / ' + ai.at(-1).max_tokens);
+ok(/GLM/.test(ai.at(-1).model) && ai.at(-1).max_tokens >= 1100, 'long reports are written by the fast model with room to finish (not a 120s Kimi chain that Vercel kills): ' + ai.at(-1).model + ' / ' + ai.at(-1).max_tokens);
 fastDown = true; ai.length = 0;
 r = await run({ action: 'analyze', url: 'mmasalon.example' }, { authorization: 'Bearer tok' });
 ok(r.ok && ai.some((b) => /Kimi/.test(b.model)), 'fast model unavailable → Kimi finishes it inside the same budget');

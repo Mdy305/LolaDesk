@@ -5,19 +5,19 @@
  * model selection are server-controlled so browser payloads, tenant data, or
  * stale environment variables cannot silently move Lola to another provider.
  */
+import { modelFor, cachedModelFor, markModelBad, isModelError, FALLBACK } from './telnyx-models.js';
 const TELNYX_INFERENCE = 'https://api.telnyx.com/v2/ai/openai/chat/completions';
-const DEFAULT_TELNYX_MODEL = 'moonshotai/Kimi-K2.6';
+// Models come from Telnyx's own list (telnyx-models.js) — never a hard-coded id Telnyx may have retired.
+const DEFAULT_TELNYX_MODEL = FALLBACK.power;
 const REQUEST_TIMEOUT_MS = 30000;
 // Conversation needs speed: Lola answering a voice turn, a text, the website
 // chat or the owner's command bar. Those go to a fast, non-reasoning open
 // model hosted by Telnyx (same API, same key), inside a hard deadline — and
 // fall back to Kimi only if that model is unavailable. Long-form writing
 // (strategy, learning a website, campaign plans) stays on Kimi.
-const DEFAULT_FAST_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
-export const FAST_MODEL = () => String(process.env.LOLA_FAST_MODEL || DEFAULT_FAST_MODEL).trim();
+export const FAST_MODEL = () => cachedModelFor('fast');
 const FAST_DEADLINE_MS = 15000;
 const LONG_DEADLINE_MS = 48000;
-let fastDownUntil = 0;           // set when Telnyx says the fast model isn't available
 
 export const AI_PROVIDER = 'telnyx';
 export const POWER_MODEL = DEFAULT_TELNYX_MODEL;
@@ -88,24 +88,31 @@ async function chatFast({ system, messages, maxTokens, temperature, tools, deadl
   const left=()=>deadline-(Date.now()-started);
   const oai=toOpenAI(system, messages);
   const want=Math.max(200, Math.min(Number(maxTokens)||600, long ? 4000 : 1200));
+  // The fast model and the strong one, both from what Telnyx really serves right now.
+  const pick=(role)=>Promise.race([modelFor(role), new Promise((r)=>setTimeout(()=>r(cachedModelFor(role)), 3000))]);
+  const [fastId, powerId]=await Promise.all([pick('fast'), pick('power')]);
   const plan=[];
-  if(Date.now()>=fastDownUntil) plan.push({ model:FAST_MODEL(), maxTokens:want });
-  plan.push({ model:DEFAULT_TELNYX_MODEL, maxTokens:Math.max(want, 2000) });   // Kimi thinks before it speaks
+  if(fastId && fastId!==powerId) plan.push({ model:fastId, maxTokens:want });
+  plan.push({ model:powerId, maxTokens:Math.max(want, 2000) });   // the strong model may think before it speaks
   let last={ error:'no attempts' };
-  for(const step of plan){
+  for(let i=0;i<plan.length;i++){
+    const step=plan[i], lastStep=i===plan.length-1;
     if(left()<2500) break;
     let useTools=tools;
     let r=await callOnce({ ...step, oai, temperature, tools:useTools, timeoutMs:left() });
     let toolsDropped=false;
-    if(!r.ok && r.status===400 && useTools?.length && left()>2500){ useTools=null; toolsDropped=true; r=await callOnce({ ...step, oai, temperature, tools:null, timeoutMs:left() }); }
+    // Telnyx refused the MODEL (retired / not enabled): never ask for it again until the list changes.
+    if(!r.ok && isModelError(r.status, r.error)){ markModelBad(step.model); last=r; console.info('[telnyx-ai]', { ok:false, status:r.status, model:step.model, refused:true }); continue; }
+    // Refused the TOOLS: the next model gets them; only the last one answers without hands.
+    if(!r.ok && r.status===400 && useTools?.length){
+      if(!lastStep){ last=r; continue; }
+      if(left()>2500){ useTools=null; toolsDropped=true; r=await callOnce({ ...step, oai, temperature, tools:null, timeoutMs:left() }); }
+    }
     console.info('[telnyx-ai]', { ok:r.ok, status:r.status||200, model:step.model, fast:true, ms:Date.now()-started, toolCalls:r.tool_calls?.length||0 });
     if(r.ok && (r.text || r.tool_calls)) return { ok:true, text:r.text, tool_calls:r.tool_calls, provider:AI_PROVIDER, model:step.model, ms:Date.now()-started, ...(toolsDropped ? { toolsDropped:true } : {}) };
     last=r.ok ? { error:'empty response' } : r;
-    // The fast model isn't served (unknown model / not enabled): stop asking for 10 minutes.
-    // Only when the error is about the MODEL — one bad request (too long, odd message order) must not bench it.
-    if(!r.ok && step.model!==DEFAULT_TELNYX_MODEL && [400,403,404,422].includes(r.status) && /model|not (found|available|enabled|supported)/i.test(String(r.error||''))) fastDownUntil=Date.now()+10*60e3;
   }
-  return { ok:false, text:'', provider:AI_PROVIDER, model:FAST_MODEL(), error:'Telnyx inference failed: '+(last.error||'unknown error') };
+  return { ok:false, text:'', provider:AI_PROVIDER, model:fastId || FAST_MODEL(), error:'Telnyx inference failed: '+(last.error||'unknown error') };
 }
 
 async function chatTelnyx({ system, messages, maxTokens, temperature, tools, deadlineMs }){
@@ -129,6 +136,8 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
     }
   }
 
+  const multimodal=(messages||[]).some(m => m && m.content != null && typeof m.content !== 'string');
+  let model=await Promise.race([modelFor(multimodal ? 'vision' : 'power'), new Promise((r)=>setTimeout(()=>r(cachedModelFor(multimodal ? 'vision' : 'power')), 3000))]);
   const requested=Math.max(1,Math.min(Number(maxTokens)||600,8000));
   const budgets=[Math.max(requested,3200),Math.max(requested,2000),1200,800];
   let last={error:'no attempts'};
@@ -140,7 +149,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
     const timer=setTimeout(()=>controller.abort(),Math.max(500,Math.min(REQUEST_TIMEOUT_MS,left())));
     try{
       const payload={
-        model:POWER_MODEL,
+        model,
         messages:oai,
         max_tokens:budgets[i],
         temperature:i>1?0.6:temperature
@@ -162,7 +171,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
       console.info('[telnyx-ai]',{
         ok:r.ok,
         status:r.status,
-        model:POWER_MODEL,
+        model,
         attempt:i+1,
         toolCalls:Array.isArray(data?.choices?.[0]?.message?.tool_calls)
           ? data.choices[0].message.tool_calls.length
@@ -170,7 +179,8 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
       });
 
       if(!r.ok){
-        last={error:data?.error?.message||`HTTP ${r.status}`};
+        last={error:data?.error?.message||data?.errors?.[0]?.detail||`HTTP ${r.status}`};
+        if(isModelError(r.status, last.error)){ markModelBad(model); const next=await modelFor(multimodal ? 'vision' : 'power').catch(()=>null); if(next && next!==model){ model=next; continue; } }
         if(r.status===400&&payload.tools&&!dropTools){ dropTools=true; continue; }
         if(!`${r.status}`.startsWith('5')&&r.status!==429) break;
         continue;
@@ -180,7 +190,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
       const text=cleanAnswer(msg?.content||'');   // never speak the model's private reasoning
       const tool_calls=msg?.tool_calls||null;
       if(text||tool_calls){
-        return { ok:true, text, tool_calls, provider:AI_PROVIDER, model:POWER_MODEL, attempt:i+1, ...(dropTools&&tools?.length ? { toolsDropped:true } : {}) };
+        return { ok:true, text, tool_calls, provider:AI_PROVIDER, model, attempt:i+1, ...(dropTools&&tools?.length ? { toolsDropped:true } : {}) };
       }
       last={error:'empty response'};
     }catch(error){
@@ -196,7 +206,7 @@ async function chatTelnyx({ system, messages, maxTokens, temperature, tools, dea
     ok:false,
     text:'',
     provider:AI_PROVIDER,
-    model:POWER_MODEL,
+    model,
     error:'all Telnyx inference attempts failed: '+(last.error||'unknown error')
   };
 }

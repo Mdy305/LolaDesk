@@ -112,12 +112,12 @@ export async function createAssistant({ tenant, business_profile, voice_id, gree
   const instructions = buildInstructions({ tenant, business_profile });
   const body = {
     name: `Lola — ${tenant.name || 'salon'}`,
-    model: 'meta-llama/Meta-Llama-3.1-70B-Instruct',
+    model: await import('./telnyx-models.js').then((m) => m.modelFor('assistant')).catch(() => 'zai-org/GLM-5.3-Flash'),
     instructions,
     // ONE voice: the valet-girl Lola from ElevenLabs whenever it's configured (lib/one-voice.js).
     voice_settings: (await import('./one-voice.js').then((m) => m.lolaVoiceSettings()).catch(() => null)) || { voice: voice_id || DEFAULT_VOICE },
     greeting: greeting || `Hi, thank you for calling ${tenant.name || 'us'}. This is Lola — how can I help?`,
-    transcription: { model: 'distil-whisper/distil-large-v2' }
+    // transcription: Telnyx's own default (a fixed id here can be retired)
   };
   const data = await tx('/ai/assistants', {
     method: 'POST',

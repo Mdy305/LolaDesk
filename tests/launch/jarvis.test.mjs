@@ -57,15 +57,15 @@ ok(sms.length === 1 && sms[0].to === '+13055551111' && /running 10 minutes late/
 calls.length = 0;
 r = await say('What should I post on Instagram this week?', { voice: true, system: 'The owner is on the "dashboard" page of LolaDesk.' });
 ok(r.status === 200 && words(r) === 'Sure — here you go.', 'open questions go to her brain');
-ok(calls[0]?.model === 'meta-llama/Llama-3.3-70B-Instruct' && Array.isArray(calls[0].tools) && calls[0].tools.length > 10, 'fast Telnyx model with her tools');
+ok(calls[0]?.model === 'zai-org/GLM-5.3-Flash' && Array.isArray(calls[0].tools) && calls[0].tools.length > 10, 'fast Telnyx model (from Telnyx’s list; documented default when the list is unreadable) with her tools');
 const sys = calls[0]?.messages?.[0]?.content || '';
 ok(/SPEAKING to you/.test(sys) && /PAGE CONTEXT/.test(sys) && !/Beverly Hills/.test(sys), 'spoken turns get short spoken answers; the page is context, not a persona');
 
 // 4) Fast model not on the account → Kimi, once, then remembered
 calls.length = 0;
-llm = (model) => model.includes('Llama') ? { status: 404, json: { errors: [{ detail: 'model not found' }] } } : { status: 200, json: { choices: [{ message: { content: 'From Kimi.' } }] } };
+llm = (model) => model.includes('GLM') ? { status: 404, json: { errors: [{ detail: 'model not found' }] } } : { status: 200, json: { choices: [{ message: { content: 'From Kimi.' } }] } };
 r = await say('Tell me something nice');
-ok(words(r) === 'From Kimi.' && calls.map(c => c.model).join(',') === 'meta-llama/Llama-3.3-70B-Instruct,moonshotai/Kimi-K2.6', 'fast model missing → Kimi answers the same turn');
+ok(words(r) === 'From Kimi.' && calls.map(c => c.model).join(',') === 'zai-org/GLM-5.3-Flash,moonshotai/Kimi-K2.6', 'fast model refused → the strong model answers the same turn');
 calls.length = 0; await say('And another');
 ok(calls.length === 1 && calls[0].model === 'moonshotai/Kimi-K2.6', 'and she stops asking for the missing model');
 
@@ -98,7 +98,7 @@ ok(/applyActions\(/.test(app) && /nextTurnVoice/.test(app) && !/Valentina R\. is
 // 8) “Lola, run a check”
 llm = () => ({ status: 200, json: { choices: [{ message: { content: 'ready' } }] } });
 r = await say('Lola, run a check');
-ok(r.intent === 'self_check' && Array.isArray(r.checks) && r.checks.find(x => x.key === 'brain') && r.checks.find(x => x.key === 'texts')?.ok && /fast model/.test(words(r)), 'self-check: ' + words(r).slice(0, 140));
+ok(r.intent === 'self_check' && Array.isArray(r.checks) && r.checks.find(x => x.key === 'brain') && r.checks.find(x => x.key === 'texts')?.ok && r.checks.find(x => x.key === 'brain')?.ok && /answered in/.test(r.checks.find(x => x.key === 'brain').say), 'self-check: ' + words(r).slice(0, 140));
 
 // 9) Alive: every page in sight, her mood, her hello
 const side = readFileSync(new URL('../../sidebar.js', import.meta.url), 'utf8');

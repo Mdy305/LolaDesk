@@ -80,7 +80,7 @@ ok(p.ok && p.created_assistant && p.bought && orders[0]?.phone_numbers?.[0]?.pho
 ok(!patchedNums.some(x => x.startsWith('pn-salon')) && patchedNums.some(x => x.startsWith('pn-new:voice') && x.includes('texml-care')) && patchedNums.some(x => x.startsWith('pn-new:messaging') && x.includes('mp-1')), 'the salon’s number is never touched; the support number gets calls and texts');
 const a = assistants[0];
 ok(/LolaDesk/.test(a.instructions) && /\$99/.test(a.instructions) && greetingDiscloses(a.greeting) && a.tools.some(t => t.webhook?.name === 'log_support_request') && a.telephony_settings.supports_unauthenticated_web_calls, 'support Lola knows the product, discloses, can pass things to the team, works on the web');
-ok(!a.model || /Llama|Kimi|moonshot/i.test(a.model), 'support Lola runs on Telnyx inference');
+ok(!a.model || /GLM|zai-org|Kimi|moonshot|DeepSeek|Qwen/i.test(a.model), 'support Lola runs on Telnyx inference (a model Telnyx lists)');
 orders.length = 0; p = await care.provisionCare(db(), {});
 ok(p.ok && !p.bought && !orders.length && !p.created_assistant && p.number === '+13055559999', 'running it again refreshes her, buys nothing');
 r = await call('customer-care.js', { method: 'GET', query: { public: '1' } });
