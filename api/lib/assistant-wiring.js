@@ -352,14 +352,17 @@ export async function wireAssistant({ heal = false } = {}) {
   if (heal && sharedNow.length) {
     let lib = null;
     for (const t of sharedNow) {
-      const d = diagnoseTool(t);
-      if (!d || !d.fixable) continue;
+      const d0 = diagnoseTool(t);
+      const d = d0 && d0.fixable ? d0 : null;
+      // A Library copy of book_appointment must ask for first + last name, mobile and email too.
+      const withParams = withBookingParams(t);
+      if (!d && !withParams) continue;
       lib = lib || await libraryTools().catch(() => new Map());
       const hit = lib.get(toolName(t));
       if (!hit) continue;
-      const url = d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(d.tool || t.webhook.name);
-      const webhook = { ...(hit.def?.webhook || t.webhook), url, method: 'POST' };
-      try { await telnyxRequest('/ai/tools/' + encodeURIComponent(hit.id), { method: 'PATCH', body: { type: 'webhook', webhook }, timeoutMs: 9000 }); sharedFixed.push(t.webhook.name); fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d.problem, shared: true }); }
+      const url = d ? (d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl(d.tool || t.webhook.name)) : (hit.def?.webhook?.url || t.webhook.url);
+      const webhook = { ...(hit.def?.webhook || t.webhook), url, method: 'POST', ...(withParams ? { body_parameters: withParams.webhook.body_parameters } : {}) };
+      try { await telnyxRequest('/ai/tools/' + encodeURIComponent(hit.id), { method: 'PATCH', body: { type: 'webhook', webhook }, timeoutMs: 9000 }); sharedFixed.push(t.webhook.name); if (withParams) bookingParams.push(t.webhook.name + ' (Tools Library)'); fixed.push({ name: t.webhook.name, from: t.webhook.url || null, to: url, problem: d ? d.problem : 'booking_details', shared: true }); }
       catch (e) { unknown.push({ name: t.webhook?.name, url: t.webhook?.url, error: 'library update refused: ' + String(e?.message || e).slice(0, 120) }); }
     }
   }

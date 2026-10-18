@@ -51,11 +51,13 @@ ok(row && /^Lola: Thanks for calling/.test(row.recording_url) && /Caller: I want
 ok(row && row.status === 'booked' && /Jerome Martin booked a Cut/.test(row.summary), 'marked booked, with a summary: ' + row?.summary);
 ok(mails.length === 2 && mails.map((m) => m.personalizations[0].to[0].email).sort().join() === 'desk@mmasalon.com,owner@mmasalon.com', 'emailed to the owner and the extra address from Settings');
 ok(/Lola · New booking — Jerome Martin/.test(mails[0].personalizations[0].subject) && /I want a haircut tomorrow at 2/.test(JSON.stringify(mails[0].content)), 'the email carries the transcript: ' + mails[0].personalizations[0].subject);
-ok(r.unknown_salon === 1 && !T.calls.some((x) => x.insight_id === 'conv:c-other'), 'a conversation with no salon is never guessed onto someone’s screen');
+ok(r.platform === 1 && !T.calls.some((x) => x.insight_id === 'conv:c-other'), 'a conversation with no salon is never guessed onto someone’s screen');
+ok((T.support_tickets || []).length === 1 && /^website/.test(T.support_tickets[0].channel) && /Caller:/.test(T.support_tickets[0].issue), 'it is filed in the LolaDesk Console instead (Support, channel website, with the transcript) — never lost');
 ok(!T.calls.some((x) => x.insight_id === 'conv:c-live') && !T.calls.some((x) => x.insight_id === 'conv:c-sms'), 'a call still in progress waits; texts stay in the Inbox');
 
 r = await run();
 ok(r.saved === 0 && mails.length === 2 && T.calls.filter((x) => x.insight_id === 'conv:c-web').length === 1, 'run again → nothing twice (no duplicate row, no second email)');
+ok(T.support_tickets.length === 1, 'and the Console copy is not filed twice');
 
 T.booking_settings[0].metadata = { transcript_emails: false };
 convs[1].last_message_at = old;

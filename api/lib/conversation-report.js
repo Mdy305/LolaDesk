@@ -176,57 +176,98 @@ export async function tenantForConversation(c, meta = {}) {
  * Every finished conversation of Lola's Telnyx assistant from the last few hours → the salon's Calls
  * screen + transcript email. Quiet for `quietMs` = finished. Each conversation exactly once.
  */
+/** Already filed in the Console? (platform_settings key per conversation; never fails the run) */
+async function platformSeen(c, key) {
+  try { const { data } = await c.from('platform_settings').select('key').eq('key', key).maybeSingle(); return !!data; } catch (_) { return false; }
+}
+async function markPlatformSeen(c, key) {
+  try { await c.from('platform_settings').upsert({ key, value: { at: new Date().toISOString() }, updated_at: new Date().toISOString() }, { onConflict: 'key' }); } catch (_) {}
+}
+/**
+ * A website conversation that belongs to no salon — a visitor talking to Lola on loladesk.com (the
+ * support assistant, or LolaBrain without a salon header) — is filed in the LolaDesk Console
+ * (Support → tickets, channel "website") with its transcript, so the platform owner sees every one.
+ */
+async function fileForPlatform(c, { conv, turns, summary, who, phone, email, web }) {
+  const transcript = transcriptLines(turns).slice(0, 1700);
+  const r = await (await import('./customer-care.js')).recordTicket(c, {
+    name: who || null, phone: phone || null, email: email || null, channel: web ? 'website' : 'website_call',
+    urgency: phone || email ? 'normal' : 'low',
+    issue: `${summary}\n\n${transcript}`.slice(0, 2000),
+  }, { notify: phone || email ? undefined : async () => ({ sent: false }) });   // text the owner only when it's a lead
+  return !!r?.saved;
+}
+
+/**
+ * Every finished conversation of Lola's Telnyx assistants from the last few hours:
+ *   a salon's (its website widget or its line) → that salon's Calls screen + transcript email;
+ *   no salon (loladesk.com, the support line's web widget) → the LolaDesk Console, never dropped.
+ * Quiet for `quietMs` = finished. Each conversation exactly once.
+ */
 export async function collectTelnyxConversations({ c = db(), sinceMs = 6 * 3600e3, quietMs = 3 * 60e3, now = Date.now(), limit = 40, budgetMs = 45000 } = {}) {
   if (!c || !process.env.TELNYX_API_KEY) return { ok: false, error: 'not configured' };
   const started = Date.now();
   const { resolveAssistant } = await import('./assistant-wiring.js');
   const found = await resolveAssistant().catch(() => null);
-  if (!found?.id) return { ok: false, error: 'no assistant' };
+  const assistants = [];
+  if (found?.id) assistants.push({ id: found.id, kind: 'salon' });
+  try { const { careState } = await import('./customer-care.js'); const care = await careState(c); if (care?.assistant_id && care.assistant_id !== found?.id) assistants.push({ id: care.assistant_id, kind: 'platform' }); } catch (_) {}
+  if (!assistants.length) return { ok: false, error: 'no assistant' };
   const since = new Date(now - sinceMs).toISOString();
-  const list = await tget(`/ai/conversations?metadata->assistant_id=eq.${encodeURIComponent(found.id)}&last_message_at=gte.${encodeURIComponent(since)}&order=last_message_at.desc&limit=${limit}`);
-  const convs = Array.isArray(list?.data) ? list.data : [];
-  const out = { ok: true, seen: convs.length, saved: 0, emailed: 0, skipped: 0, unknown_salon: 0 };
-  for (const conv of convs) {
-    if (Date.now() - started > budgetMs) break;
-    const meta = conv.metadata && typeof conv.metadata === 'object' ? conv.metadata : {};
-    const ch = String(meta.telnyx_conversation_channel || '').toLowerCase();
-    if (/sms|message|whatsapp/.test(ch)) { out.skipped++; continue; }            // texts are already in the Inbox
-    const last = Date.parse(conv.last_message_at || conv.created_at || 0) || 0;
-    if (now - last < quietMs) { out.skipped++; continue; }                      // still talking
-    const key = 'conv:' + conv.id;
-    const { data: dup } = await c.from('calls').select('id').eq('insight_id', key).maybeSingle().then((x) => x, () => ({ data: null }));
-    if (dup?.id) { out.skipped++; continue; }
-    if (meta.call_control_id) {   // already delivered by Telnyx's insights webhook → don't report it twice
-      const { data: had } = await c.from('calls').select('id,insight_id').eq('telnyx_call_control_id', meta.call_control_id).maybeSingle().then((x) => x, () => ({ data: null }));
-      if (had?.insight_id) { out.skipped++; continue; }
+  const out = { ok: true, seen: 0, saved: 0, emailed: 0, skipped: 0, unknown_salon: 0, platform: 0 };
+  for (const asst of assistants) {
+    const list = await tget(`/ai/conversations?metadata->assistant_id=eq.${encodeURIComponent(asst.id)}&last_message_at=gte.${encodeURIComponent(since)}&order=last_message_at.desc&limit=${limit}`);
+    const convs = Array.isArray(list?.data) ? list.data : [];
+    out.seen += convs.length;
+    for (const conv of convs) {
+      if (Date.now() - started > budgetMs) break;
+      const meta = conv.metadata && typeof conv.metadata === 'object' ? conv.metadata : {};
+      const ch = String(meta.telnyx_conversation_channel || '').toLowerCase();
+      if (/sms|message|whatsapp/.test(ch)) { out.skipped++; continue; }            // texts are already in the Inbox
+      const last = Date.parse(conv.last_message_at || conv.created_at || 0) || 0;
+      if (now - last < quietMs) { out.skipped++; continue; }                      // still talking
+      const key = 'conv:' + conv.id;
+      const { data: dup } = await c.from('calls').select('id').eq('insight_id', key).maybeSingle().then((x) => x, () => ({ data: null }));
+      if (dup?.id) { out.skipped++; continue; }
+      if (await platformSeen(c, key)) { out.skipped++; continue; }
+      if (meta.call_control_id) {   // already delivered by Telnyx's insights webhook → don't report it twice
+        const { data: had } = await c.from('calls').select('id,insight_id').eq('telnyx_call_control_id', meta.call_control_id).maybeSingle().then((x) => x, () => ({ data: null }));
+        if (had?.insight_id) { out.skipped++; continue; }
+      }
+      const tenant = asst.kind === 'salon' ? await tenantForConversation(c, meta) : null;
+      const msgs = [];
+      for (let page = 1; page <= 3; page++) {
+        const j = await tget(`/ai/conversations/${encodeURIComponent(conv.id)}/messages?page[size]=100&page[number]=${page}`);
+        const rows = Array.isArray(j?.data) ? j.data : [];
+        msgs.push(...rows);
+        if (!j || page >= (Number(j?.meta?.total_pages) || 1)) break;
+      }
+      msgs.sort((a, b) => (Date.parse(a.created_at || a.sent_at || 0) || 0) - (Date.parse(b.created_at || b.sent_at || 0) || 0));
+      const turns = msgs.filter((m) => (m.role === 'user' || m.role === 'assistant') && String(m.text || '').trim()).map((m) => ({ role: m.role, content: String(m.text).trim() }));
+      if (!turns.length) { out.skipped++; continue; }
+      const booked = msgs.some((m) => m.role === 'tool' && /"booked"\s*:\s*true/.test(String(m.text || '')));
+      // Who it was: the caller's line, or what they gave a tool.
+      let who = '', email = '', phone = phoneOk(meta.telnyx_end_user_target) ? meta.telnyx_end_user_target : null;
+      for (const m of msgs) for (const tc of (m.tool_calls || [])) {
+        try { const a = JSON.parse(tc?.function?.arguments || '{}'); if ((a.client_name || a.name) && !who) who = String(a.client_name || a.name); if (!phone && phoneOk(a.client_phone || a.callback_number || a.phone)) phone = a.client_phone || a.callback_number || a.phone; if (!email && /@/.test(String(a.client_email || a.email || ''))) email = String(a.client_email || a.email); } catch (_) {}
+      }
+      const web = /web/.test(ch) || (!phoneOk(meta.telnyx_end_user_target) && !phoneOk(meta.telnyx_agent_target));
+      if (!tenant) {
+        // No salon: loladesk.com or the support widget → the Console (Support), never lost.
+        const summary = await summarize(turns, { salon: 'LolaDesk', booked });
+        if (await fileForPlatform(c, { conv, turns, summary, who, phone, email, web })) { await markPlatformSeen(c, key); out.platform++; }
+        else out.unknown_salon++;
+        continue;
+      }
+      const summary = await summarize(turns, { salon: tenant.name, booked });
+      const r = await reportConversation(c, tenant, {
+        turns, summary, booked, key, channel: web ? 'web' : 'phone', who: who || (phone ? String(phone) : ''),
+        callControlId: meta.call_control_id || null,
+        fromNumber: phone, toNumber: phoneOk(meta.telnyx_agent_target) ? meta.telnyx_agent_target : tenant.phone_number || null,
+      });
+      if (r.callId && !r.skipped) out.saved++;
+      out.emailed += r.emailed || 0;
     }
-    const tenant = await tenantForConversation(c, meta);
-    if (!tenant) { out.unknown_salon++; continue; }
-    const msgs = [];
-    for (let page = 1; page <= 3; page++) {
-      const j = await tget(`/ai/conversations/${encodeURIComponent(conv.id)}/messages?page[size]=100&page[number]=${page}`);
-      const rows = Array.isArray(j?.data) ? j.data : [];
-      msgs.push(...rows);
-      if (!j || page >= (Number(j?.meta?.total_pages) || 1)) break;
-    }
-    msgs.sort((a, b) => (Date.parse(a.created_at || a.sent_at || 0) || 0) - (Date.parse(b.created_at || b.sent_at || 0) || 0));
-    const turns = msgs.filter((m) => (m.role === 'user' || m.role === 'assistant') && String(m.text || '').trim()).map((m) => ({ role: m.role, content: String(m.text).trim() }));
-    if (!turns.length) { out.skipped++; continue; }
-    const booked = msgs.some((m) => m.role === 'tool' && /"booked"\s*:\s*true/.test(String(m.text || '')));
-    // Who it was: the caller's line, or what they gave the booking tool.
-    let who = '', phone = phoneOk(meta.telnyx_end_user_target) ? meta.telnyx_end_user_target : null;
-    for (const m of msgs) for (const tc of (m.tool_calls || [])) {
-      try { const a = JSON.parse(tc?.function?.arguments || '{}'); if (a.client_name && !who) who = String(a.client_name); if (a.client_phone && !phone && phoneOk(a.client_phone)) phone = a.client_phone; } catch (_) {}
-    }
-    const web = /web/.test(ch) || (!phoneOk(meta.telnyx_end_user_target) && !phoneOk(meta.telnyx_agent_target));
-    const summary = await summarize(turns, { salon: tenant.name, booked });
-    const r = await reportConversation(c, tenant, {
-      turns, summary, booked, key, channel: web ? 'web' : 'phone', who: who || (phone ? String(phone) : ''),
-      callControlId: meta.call_control_id || null,
-      fromNumber: phone, toNumber: phoneOk(meta.telnyx_agent_target) ? meta.telnyx_agent_target : tenant.phone_number || null,
-    });
-    if (r.callId && !r.skipped) out.saved++;
-    out.emailed += r.emailed || 0;
   }
   return out;
 }
