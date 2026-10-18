@@ -20,6 +20,7 @@ import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
 import { telnyxSafeVariables } from './booking-link.js';
 import { toolKey, toolKeyOk } from './tool-key.js';
+import { telnyxVoiceMode } from './voice-mode.js';
 import { HUMAN_MARK, HUMAN_RULES } from './human-touch.js';
 
 
@@ -454,7 +455,7 @@ export async function wireAssistant({ heal = false } = {}) {
       catch (e) {
         // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
         if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
-        if (k === 'voice_settings' && voice && process.env.VOICE_PROVIDER === 'telnyx' && /not found|valid/i.test(String(e?.message || ''))) {
+        if (k === 'voice_settings' && voice && telnyxVoiceMode() && /not found|valid/i.test(String(e?.message || ''))) {
           // That voice isn't available to assistants: the next real Telnyx voice, once.
           try { const el = await import('./elevenlabs.js'); el.markBadVoice(patch.voice_settings?.voice); await el.resolveTelnyxVoice({ force: true }); const ov = await import('./one-voice.js'); const vs2 = await ov.lolaVoiceSettings(a.voice_settings); if (vs2) { await updateAssistant(id, { voice_settings: vs2 }); patch.voice_settings = vs2; continue; } } catch (e2) { voice.error = String(e2?.message || e2); continue; }
         }

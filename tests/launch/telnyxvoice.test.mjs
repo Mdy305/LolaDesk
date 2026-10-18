@@ -47,7 +47,11 @@ await import('./fake-supabase.mjs');
 const P = new URL('../../api/', import.meta.url).href;
 const el = await import(P + 'lib/elevenlabs.js');
 const ov = await import(P + 'lib/one-voice.js');
-const v = await el.resolveTelnyxVoice();
+const SIG = 'Telnyx.Ultra.81eeddd4-4185-4ffa-81b9-2cf690fa16c7';
+ok(await el.resolveTelnyxVoice() === SIG && ov.lolaPhoneVoice() === SIG, 'by default she speaks in HER Telnyx Ultra voice (the owner’s own), even though Telnyx’s stock list doesn’t include custom voices');
+// If Telnyx ever refuses her voice, she is never silent: the next real voice from Telnyx’s own list.
+el.markBadVoice(SIG);
+const v = await el.resolveTelnyxVoice({ force: true });
 ok(v === 'Telnyx.NaturalHD.astra', 'picked from Telnyx’s own list: a natural en-US female voice (never a made-up id): ' + v);
 const { wireAssistant } = await import(P + 'lib/assistant-wiring.js');
 const w = await wireAssistant({ heal: true });
@@ -76,4 +80,8 @@ el._resetVoiceCache(); process.env.LOLA_TELNYX_VOICE = 'Telnyx.KokoroTTS.af_hear
 ok(await el.resolveTelnyxVoice() === 'Telnyx.KokoroTTS.af_heart' && ov.lolaPhoneVoice() === 'Telnyx.KokoroTTS.af_heart', 'LOLA_TELNYX_VOICE (one setting) changes her voice everywhere');
 el._resetVoiceCache(); process.env.LOLA_TELNYX_VOICE = 'Telnyx.Ultra.Clara';
 ok(await el.resolveTelnyxVoice() !== 'Telnyx.Ultra.Clara', 'a voice id Telnyx doesn’t list is never used');
+el._resetVoiceCache(); process.env.LOLA_TELNYX_VOICE = 'Telnyx.Ultra.11111111-2222-4333-8444-555555555555';
+ok(await el.resolveTelnyxVoice() === 'Telnyx.Ultra.11111111-2222-4333-8444-555555555555', 'a custom (cloned) voice the owner sets is used — custom voices are never in the stock list');
+delete process.env.VOICE_PROVIDER; el._resetVoiceCache(); delete process.env.LOLA_TELNYX_VOICE;
+ok(ov.lolaPhoneVoice() === SIG, 'Telnyx is her voice by default — no setting needed (VOICE_PROVIDER=elevenlabs is the only way back)');
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);

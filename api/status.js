@@ -10,9 +10,10 @@
  *   fixes     what to do, in order
  * Cached 60s per instance.
  */
+import { telnyxVoiceMode } from './lib/voice-mode.js';
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-human';
+export const RELEASE = 'lola-voice';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -149,10 +150,11 @@ export async function buildStatus() {
   // ── Her ONE voice: the valet-girl Lola from ElevenLabs, in the app and on the phone ──
   const healed = [];
   const vfix = [];
-  const optedOut = process.env.VOICE_PROVIDER === 'telnyx';
+  const optedOut = telnyxVoiceMode();
   live.voice_key = has('ELEVENLABS_API_KEY'); live.voice_id = has('ELEVENLABS_VOICE_ID', 'LOLA_VOICE_ID');
   {
     const el = await import('./lib/elevenlabs.js');
+    if (optedOut) { try { await el.resolveTelnyxVoice(); } catch (_) {} live.lola_voice = el.telnyxVoice(); }
     if (live.voice_key && !optedOut) {
       try { const s = await el.getUserSubscription({ timeoutMs: 6000 }); live.elevenlabs = s.quotaExhausted ? 'out_of_credit' : 'ok'; if (s.characterLimit) live.elevenlabs_left_pct = Math.round(100 * (s.remaining || 0) / s.characterLimit); }
       catch (e) { live.elevenlabs = /\b(401|403)\b/.test(String(e?.message)) ? 'key_refused' : 'unreachable'; }
@@ -445,7 +447,7 @@ const scrubDetail = (t) => String(t || '')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
-const PUBLIC_DETAIL = ['calendar_outbox_text', 'models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_DETAIL = ['lola_voice', 'calendar_outbox_text', 'models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;

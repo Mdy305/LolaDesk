@@ -69,6 +69,13 @@
         const err = (n === 'NotAllowedError' || n === 'SecurityError') ? 'mic_blocked' : (n === 'NotFoundError' || n === 'OverconstrainedError') ? 'no_mic' : 'mic_blocked';
         return done({ text: '', error: err, say: SAY[err] });
       }
+      // Which microphone the browser actually picked (AirPods in their case, an iPhone, a virtual mic…):
+      // named in the message, so "it's sending silence" says WHICH one.
+      const track = (stream.getAudioTracks && stream.getAudioTracks()[0]) || null;
+      const micName = track && track.label ? String(track.label).replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim() : '';
+      const silentSay = () => micName
+        ? 'I’m only hearing silence from “' + micName + '”. If that’s not the mic you’re talking into, pick the right one (Mac: System Settings → Sound → Input; Chrome: the mic icon in the address bar), make sure it isn’t muted, then tap me again — or just type to me.'
+        : SAY.silent_mic;
       const mime = pickMime();
       let rec;
       try { rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
@@ -139,15 +146,17 @@
           if (cancelled) return done({ text: '', error: 'cancelled' });
           const quick = srFinal.trim(), partial = srInterim.trim();
           if (quick) return done({ text: (quick + (partial ? ' ' + partial : '')).trim() });
-          // Only true digital silence (a muted or dead mic) is skipped; anything else is transcribed.
-          if (vad && heardAny && peak < 0.0025 && !partial) return done({ text: '', error: 'no_speech', say: SAY.silent_mic });
+          // The level meter can be fooled (a suspended or muted analyser, some Bluetooth mics), so a quiet
+          // meter never throws the recording away: Telnyx still listens to it, and only if Telnyx also
+          // hears nothing does she say the mic is silent — naming the mic the browser picked.
+          const quiet = (vad && heardAny && peak < 0.0025) || !!(track && track.muted);
           const blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/webm').split(';')[0] });
-          if (blob.size < 600) return done(partial ? { text: partial } : { text: '', error: 'no_speech', say: SAY.no_speech });
+          if (blob.size < 600) return done(partial ? { text: partial } : { text: '', error: 'no_speech', say: quiet ? silentSay() : SAY.no_speech });
           opts.onThinking && opts.onThinking();
           try {
             const text = await transcribe(blob, blob.type);
-            done(text ? { text } : partial ? { text: partial } : { text: '', error: 'no_speech', say: SAY.no_speech });
-          } catch (_) { done(partial ? { text: partial } : { text: '', error: 'hear_failed', say: SAY.hear_failed }); }
+            done(text ? { text } : partial ? { text: partial } : { text: '', error: 'no_speech', say: quiet ? silentSay() : SAY.no_speech });
+          } catch (_) { done(partial ? { text: partial } : { text: '', error: quiet ? 'no_speech' : 'hear_failed', say: quiet ? silentSay() : SAY.hear_failed }); }
         };
         try { rec.state !== 'inactive' ? rec.stop() : rec.onstop(); } catch (_) { rec.onstop(); }
       }

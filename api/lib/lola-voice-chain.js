@@ -17,6 +17,7 @@
  * AbortError always propagates — a cancelled turn must never fall through
  * to the next tier.
  */
+import { telnyxVoiceMode } from './voice-mode.js';
 import { synthesize as elevenSynthesize, isConfigured as elevenConfigured } from './elevenlabs.js';
 
 const TELNYX_TTS_URL = 'https://api.telnyx.com/v2/text-to-speech/speech';
@@ -25,7 +26,7 @@ const TELNYX_VOICES_URL = 'https://api.telnyx.com/v2/text-to-speech/voices';
 // ONE voice (the valet-girl Lola from ElevenLabs): the Telnyx tier sounds like someone else, so it
 // only speaks when the owner chose it on purpose (VOICE_PROVIDER=telnyx). Otherwise a failure surfaces.
 export function telnyxTtsConfigured() {
-  return !!process.env.TELNYX_API_KEY && process.env.VOICE_PROVIDER === 'telnyx';
+  return !!process.env.TELNYX_API_KEY && telnyxVoiceMode();
 }
 
 export function whichVoice() {

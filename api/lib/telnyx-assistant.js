@@ -63,7 +63,8 @@ export async function findPhoneNumberRecord({ phone_number }) {
 
 // ── AI Assistants ────────────────────────────────────────────
 
-const DEFAULT_VOICE = 'Telnyx.KokoroTTS.af_heart';
+import { LOLA_SIGNATURE_VOICE } from './voice-mode.js';
+const DEFAULT_VOICE = LOLA_SIGNATURE_VOICE;
 
 // Build the system prompt Lola uses per tenant.
 function buildInstructions({ tenant, business_profile }) {

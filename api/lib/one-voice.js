@@ -15,10 +15,11 @@
  */
 import crypto from 'node:crypto';
 import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
+import { telnyxVoiceMode } from './voice-mode.js';
 import { telnyxVoice, resolveTelnyxVoice, markBadVoice } from './elevenlabs.js';
 /** In Telnyx mode, make sure the voice is one Telnyx really has before it is set anywhere. */
-export async function readyVoice(){ if (process.env.VOICE_PROVIDER === 'telnyx' && process.env.TELNYX_API_KEY) { try { await resolveTelnyxVoice(); } catch (_) {} } }
-const telnyxMode = () => process.env.VOICE_PROVIDER === 'telnyx';
+export async function readyVoice(){ if (telnyxVoiceMode() && process.env.TELNYX_API_KEY) { try { await resolveTelnyxVoice(); } catch (_) {} } }
+const telnyxMode = () => telnyxVoiceMode();
 
 // ── Calls we place (demo, owner bridge, forwarding test): Telnyx plays HER voice, rendered by
 // /api/speak-lola (the same ElevenLabs voice as the app). Signed, so Telnyx's fetch is never
@@ -114,13 +115,14 @@ export async function unifyAssistantVoices({ heal = false } = {}) {
     try {
       let vs = await lolaVoiceSettings(a.voice_settings);
       const { updateAssistant } = await import('./assistant-wiring.js');
-      try { await updateAssistant(a.id, { voice_settings: vs }); }
-      catch (e) {
-        // Telnyx doesn't have that voice for assistants: drop it and use the next real one (once).
-        if (!/not found|invalid|valid/i.test(String(e?.message || '')) || process.env.VOICE_PROVIDER !== 'telnyx') throw e;
-        markBadVoice(vs.voice); await resolveTelnyxVoice({ force: true });
-        vs = await lolaVoiceSettings(a.voice_settings);
-        await updateAssistant(a.id, { voice_settings: vs });
+      // Telnyx doesn't have that voice for assistants: drop it and use the next real one (up to 3 tries).
+      for (let attempt = 0; ; attempt++) {
+        try { await updateAssistant(a.id, { voice_settings: vs }); break; }
+        catch (e) {
+          if (attempt >= 3 || !/not found|invalid|valid/i.test(String(e?.message || '')) || !telnyxVoiceMode()) throw e;
+          markBadVoice(vs.voice); await resolveTelnyxVoice({ force: true });
+          vs = await lolaVoiceSettings(a.voice_settings);
+        }
       }
       out.fixed.push({ name: a.name || 'assistant', from: was });
       out.lola++;

@@ -47,8 +47,9 @@ export function isConfigured(){
 // The voice is never guessed: it is picked from the voices Telnyx itself lists for this account (a young,
 // natural en-US female first; Ultra → NaturalHD → Kokoro), or the owner's LOLA_TELNYX_VOICE when Telnyx
 // knows it. A voice Telnyx refuses is dropped and the next real one is used.
+import { telnyxVoiceMode, LOLA_SIGNATURE_VOICE, isCustomVoice } from './voice-mode.js';
 export const DEFAULT_TELNYX_VOICE = 'Telnyx.KokoroTTS.af_heart';
-const envVoice = () => String(process.env.LOLA_TELNYX_VOICE || process.env.TELNYX_TTS_VOICE || '').trim();
+const envVoice = () => String(process.env.LOLA_TELNYX_VOICE || process.env.TELNYX_TTS_VOICE || '').trim() || LOLA_SIGNATURE_VOICE;
 let resolvedVoice = null, resolvedAt = 0, voiceCandidates = [];
 const badVoices = new Set();
 export function telnyxVoice(){ return resolvedVoice || (envVoice() && !badVoices.has(envVoice()) ? envVoice() : DEFAULT_TELNYX_VOICE); }
@@ -89,7 +90,8 @@ export async function resolveTelnyxVoice({ force = false, fetchImpl = fetch } = 
     .map((x) => x.id);
   const known = new Set(voiceCandidates);
   const want = envVoice();
-  resolvedVoice = (want && !badVoices.has(want) && (!known.size || known.has(want))) ? want
+  // Her own (custom, UUID) voice is never in Telnyx's stock list: it is trusted until Telnyx actually refuses it.
+  resolvedVoice = (want && !badVoices.has(want) && (!known.size || known.has(want) || isCustomVoice(want))) ? want
     : (voiceCandidates.find((id) => !badVoices.has(id)) || (badVoices.has(DEFAULT_TELNYX_VOICE) ? null : DEFAULT_TELNYX_VOICE));
   resolvedAt = Date.now();
   return resolvedVoice || DEFAULT_TELNYX_VOICE;
@@ -120,7 +122,7 @@ export async function telnyxSpeech(text, { signal } = {}) {
 
 /** Which engine speaks right now, for health checks and the UI. */
 export function voiceProvider(){
-  if (process.env.VOICE_PROVIDER === 'telnyx') return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
+  if (telnyxVoiceMode()) return process.env.TELNYX_API_KEY ? 'telnyx' : 'none';
   return isConfigured() ? 'elevenlabs' : 'none';
 }
 
@@ -135,7 +137,7 @@ export function lolaVoiceId(){ return lolaVoice(); }
 export async function synthesize(textOrOpts, opts = {}) {
   const text = textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.text : textOrOpts;
   const signal = (textOrOpts && typeof textOrOpts === 'object' ? textOrOpts.signal : null) || (opts && opts.signal);
-  if (process.env.VOICE_PROVIDER === 'telnyx') return telnyxSpeech(text, { signal });
+  if (telnyxVoiceMode()) return telnyxSpeech(text, { signal });
   if (!process.env.ELEVENLABS_API_KEY) throw new Error('Lola’s voice isn’t connected: ELEVENLABS_API_KEY is missing');
   if (!lolaVoice()) throw new Error('Lola’s voice isn’t connected: ELEVENLABS_VOICE_ID is missing');
   try { const b = await synthesizeEleven(textOrOpts, opts); elevenLastError = ''; elevenLastOkAt = Date.now(); return b; }
