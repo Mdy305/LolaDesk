@@ -19,6 +19,7 @@
 import { db, getClientMemory, factsFromMemoryRows, addClientFact } from './db.js';
 import { chat } from './llm.js';
 import { buildLolaSystemPrompt, buildClientMemoryBlock, profileFromMemoryRows } from './lola-skills.js';
+import { humanize } from './human-touch.js';
 
 const DAY = 86400e3;
 export function agoWords(iso, now = Date.now()) {
@@ -204,7 +205,7 @@ ${extra}`.trim();
     if (!r || !r.ok) break;
     const calls = Array.isArray(r.tool_calls) ? r.tool_calls : [];
     if (!calls.length) {
-      let reply = String(r.text || '').replace(/[*_#`]/g, '').trim();
+      let reply = humanize(String(r.text || '').replace(/[*_#`]/g, '').trim(), { channel: channel === 'voice' ? 'voice' : 'sms' });
       // Telnyx refused the tool list this turn: she checked nothing and changed nothing, so a reply
       // that offers times or says booked/moved/cancelled would be invented. Say so honestly instead.
       if (reply && r.toolsDropped && !actions.length && (CLAIMS.test(reply) || WANTS_BOOKING.test(String(text || '')))) {

@@ -1,4 +1,5 @@
 import { tenantKnowledgePrompt } from './db.js';
+import { humanCraft } from './human-touch.js';
 import { 
   PAYMENT_SKILLS, INVENTORY_SKILLS, CLIENT_SKILLS, MARKETING_SKILLS,
   ADVANCED_BOOKING_SKILLS, TEAM_SKILLS, COMMUNICATION_SKILLS, QUALITY_SKILLS,
@@ -640,6 +641,8 @@ OPERATING RULES:
 - If MOOD is urgent, acknowledge urgency and offer the fastest next action.
 - Keep SMS replies to 1-3 sentences; keep voice replies to 1-2 short sentences.
 - FOR VOICE CHANNEL: Speak naturally like you're talking to a friend. Include ${companyName} name in the greeting. Short pauses make sense. Every word should feel like it belongs to this specific person.
+
+${humanCraft({ audience: 'client', channel: channel === 'voice' ? 'voice' : 'chat' })}
 
 REMEMBER: You are Lola. You are the smartest front desk on the planet. Every particle of what you say resonates because it is shaped by what you remember. Make them feel known.`;
 }

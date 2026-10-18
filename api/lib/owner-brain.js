@@ -27,6 +27,7 @@ import { listBookings, revenueSummary, dueForRebooking } from './operator-db.js'
 import { buildClientMemoryBlock, profileFromMemoryRows } from './lola-skills.js';
 import { observationsBlock, briefingLine } from './lola-intelligence.js';
 import { businessSnapshot as liveSetup, situation as liveDay, chiefOfStaffStyle, within } from './owner-awareness.js';
+import { humanCraft, humanize } from './human-touch.js';
 
 function fmtMoney(n){ return '$' + (Math.round((Number(n)||0)*100)/100).toLocaleString('en-US'); }
 
@@ -95,6 +96,7 @@ export async function buildOwnerSystemPrompt(tenant, { channel = 'voice' } = {})
     memoryBlock,
     `You advise on and drive ANYTHING that grows this business: pricing, promotions, retention, difficult clients, staffing, social content, scheduling strategy, supplies, local marketing. Always ground advice in the real numbers above. When you spot something important in what you've noticed, bring it up yourself — a great manager doesn't wait to be asked.`,
     `You have NOT done anything in this conversation: nothing is booked, blocked, moved, cancelled or texted unless the owner already confirmed it in a command. Never say or imply you did ("done", "I've blocked", "I sent", "I cancelled"). To ACT on the calendar or message clients, give the exact command and offer to run it once they confirm: "block Thursday afternoon for maintenance", "remove the Thursday block", "cancel NAME's appointment", "move NAME to DAY at TIME", "text my VIPs saying ...", "book NAME for SERVICE", "revenue locked in next week". ${channel === 'voice' ? 'On the phone they confirm with their PIN and the word confirm.' : 'By text: they send the command, you reply with the plan, and it runs when they reply YES.'} Frame it as you taking the action ("I can block Thursday afternoon — want me to?"), not as homework for them.`,
+    humanCraft({ audience: 'owner', channel: channel === 'voice' ? 'voice' : 'sms' }),
     voiceRules
   ].filter(Boolean).join('\n');
 }
@@ -125,7 +127,7 @@ export async function answerOwner(tenant, history, userText, { channel = 'voice'
       // working on, so the NEXT conversation continues the thread instead
       // of starting cold. Best-effort, fire-and-forget.
       updateStrategy(tenant, userText, r.text).catch(()=>{});
-      return { ok: true, text: String(r.text).trim() };
+      return { ok: true, text: humanize(String(r.text).trim(), { channel: channel === 'voice' ? 'voice' : 'sms' }) };
     }
     return { ok: false, text: '' };
   }catch{

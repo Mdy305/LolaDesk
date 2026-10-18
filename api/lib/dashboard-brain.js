@@ -24,11 +24,12 @@ import { SKILLS } from '../lola-tools.js';
 import { resolveDate } from './operator-db.js';
 import { getOrStartConversation, participantFor, getConversationHistory, logMessage, getOwnerMemory, setOwnerMemory } from './db.js';
 import { buildClientMemoryBlock, extractPersonalizationSignals, mergeClientProfile, profileFromMemoryRows, detectLolaIntent, deterministicSkillReply } from './lola-skills.js';
-import { OWNER_TOOLS, OWNER_TOOL_NAMES, OWNER_READ_TOOLS, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand } from './owner-tools.js';
+import { OWNER_TOOLS, OWNER_TOOL_NAMES, OWNER_READ_TOOLS, runOwnerTool, ownerSystemPrompt, takePendingAction, isOwnerCommand, supportFollowUp } from './owner-tools.js';
 import { routeOwnerIntent, agentFor } from './owner-intents.js';
 import { lolaSelfCheck } from './lola-doctor.js';
 import { getUserFromToken, bearer, isAdminEmail } from './auth.js';
 import { businessSnapshot, situation, hydrateTenant, chiefOfStaffStyle, chiefBrief, within } from './owner-awareness.js';
+import { humanCraft, humanize } from './human-touch.js';
 
 // "Catch me up" (and the hello when the owner arrives) is the chief-of-staff briefing.
 const BRIEF_ASK = /\b(catch me up|brief me|morning brief|daily brief|give me (?:the|my) (?:rundown|brief|update)|anything i should know|what should i know|how are we doing)\b/i;
@@ -288,7 +289,7 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
   // the Calendar page…") — never a persona; the persona lives on the server.
   const pageContext = typeof body.system === 'string' && body.system.length <= 800 ? `PAGE CONTEXT: ${body.system}` : '';
   const voiceStyle = body.voice ? 'The owner is SPEAKING to you: answer in one or two short spoken sentences, no lists, no markdown, no links.' : '';
-  const systemPrompt = [chiefOfStaffStyle(tenant), ownerPrompt, pageContext, voiceStyle, snap?.prompt || realBusinessFacts(tenant), now?.prompt, memoryBlock].filter(Boolean).join('\n') || undefined;
+  const systemPrompt = [chiefOfStaffStyle(tenant), ownerPrompt, humanCraft({ audience: 'owner', channel: body.voice ? 'voice' : 'app' }), pageContext, voiceStyle, snap?.prompt || realBusinessFacts(tenant), now?.prompt, memoryBlock].filter(Boolean).join('\n') || undefined;
   // Owner commands (text/call/cancel/move/no-show/fill/revenue/brief…) go
   // straight to the tool-calling brain, never the caller fast-paths.
   const ownerCmd = isOwnerCommand(lastUserTextMsg);
@@ -326,7 +327,7 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
 
   // ── Reflexes: the everyday commands run instantly, no model in the loop ──
   try{
-    const hit = routeOwnerIntent(lastUserTextMsg);
+    const hit = supportFollowUp(messages, lastUserTextMsg) || routeOwnerIntent(lastUserTextMsg);
     if(hit?.self_check){
       let platform = false;
       try { const u = req ? await getUserFromToken(bearer(req)) : null; platform = !!(u && isAdminEmail(u.email)); } catch {}
@@ -484,8 +485,8 @@ export async function dashboardBrainReply({ tenant, body, req, user }){
     result.intent = funcName;
   }
 
-  const finalText = String(result?.text || '').trim() ||
-    'I am on it. Give me the client name, service, and preferred time, and I will handle the next step.';
+  const finalText = humanize(String(result?.text || '').trim(), { channel: body.voice ? 'voice' : 'app' }) ||
+    "I'm on it — who's it for, what service, and when works?";
   await remember(finalText);
 
   // Return in the shape the dashboard expects
@@ -540,7 +541,7 @@ export async function ownerCommandReply({ tenant, text, history = [], channel = 
     }
   }catch{ /* fall through */ }
   try{
-    const hit = routeOwnerIntent(msg);
+    const hit = supportFollowUp([...(Array.isArray(history) ? history : []), { role: 'user', content: msg }], msg) || routeOwnerIntent(msg);
     if(hit?.navigate) return finish({ say: hit.say, ui: { navigate: hit.navigate } }, 'open_page');
     if(hit?.self_check){ const chk = await lolaSelfCheck(tenant, { platform: false }); return { say: chk.say, intent: 'self_check', needs_confirmation: false }; }
     if(hit?.tool){
