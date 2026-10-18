@@ -121,7 +121,7 @@ test('direct voice session answers with ZERO telephony state (calls table never 
 });
 
 test('direct voice session returns Lola canonical voice audio in band when configured', async () => {
-  process.env.ELEVENLABS_API_KEY = 'test-eleven-key';
+  process.env.ELEVENLABS_API_KEY = 'test-eleven-key'; process.env.VOICE_PROVIDER = 'elevenlabs';   // this test checks the ElevenLabs path (Telnyx is the default voice)
   process.env.ELEVENLABS_VOICE_ID = 'lola-canonical-1';
   stubFetch({ telnyx: true, elevenlabs: true });
   const [res, out] = makeRes();
@@ -138,7 +138,7 @@ test('direct voice session returns Lola canonical voice audio in band when confi
   const decoded = Buffer.from(out.body.audio, 'base64');
   assert.ok(decoded.length > 0, 'decoded audio must be non-empty');
   globalThis.fetch = realFetch;
-  delete process.env.ELEVENLABS_API_KEY;
+  delete process.env.ELEVENLABS_API_KEY; delete process.env.VOICE_PROVIDER;
   delete process.env.ELEVENLABS_VOICE_ID;
 });
 

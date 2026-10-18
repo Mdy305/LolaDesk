@@ -36,7 +36,8 @@ const DEFAULT_MODEL = MODEL_FALLBACK.assistant;   // replaced at creation by the
 // ELEVENLABS_VOICE_ID is authoritative; TELNYX_VOICE_ID is a legacy alias.
 // Never default to a different (e.g. Polly) voice: if no canonical voice is
 // configured, provisioning must fail loudly rather than ship a modified one.
-const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOICE_ID || '';
+import { LOLA_SIGNATURE_VOICE, telnyxVoiceMode } from './lib/voice-mode.js';
+const DEFAULT_VOICE = telnyxVoiceMode() ? (process.env.LOLA_TELNYX_VOICE || LOLA_SIGNATURE_VOICE) : (process.env.ELEVENLABS_VOICE_ID || process.env.TELNYX_VOICE_ID || '');
 
 function buildAgents(tenant){
   const t = tenant || {};

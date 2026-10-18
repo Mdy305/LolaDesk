@@ -12,7 +12,7 @@ globalThis.fetch = async (url, init) => {
 const { synthesize, voiceProvider } = await import('../../api/lib/elevenlabs.js');
 const reset = () => { calls.length = 0; };
 
-process.env.ELEVENLABS_API_KEY = 'e'; process.env.ELEVENLABS_VOICE_ID = 'v'; process.env.TELNYX_API_KEY = 't'; delete process.env.VOICE_PROVIDER;
+process.env.ELEVENLABS_API_KEY = 'e'; process.env.ELEVENLABS_VOICE_ID = 'v'; process.env.TELNYX_API_KEY = 't'; process.env.VOICE_PROVIDER = 'elevenlabs';
 let buf = await synthesize({ text: 'Hi' });
 ok(buf.length === 3 && calls.every(c => !c.includes('telnyx')), 'ElevenLabs speaks when it works');
 reset(); elevenStatus = 401;
@@ -29,7 +29,7 @@ reset(); process.env.ELEVENLABS_API_KEY = 'e'; elevenStatus = 200; process.env.V
 buf = await synthesize('Hi');
 ok(!calls.some(c => c.includes('elevenlabs')) && calls.includes('voice=Telnyx.Ultra.Clara'), 'VOICE_PROVIDER=telnyx and LOLA_TELNYX_VOICE are honored');
 ok(voiceProvider() === 'telnyx', 'health reports the engine speaking');
-delete process.env.VOICE_PROVIDER; delete process.env.TELNYX_API_KEY; elevenStatus = 500; reset();
+process.env.VOICE_PROVIDER = 'elevenlabs'; delete process.env.TELNYX_API_KEY; elevenStatus = 500; reset();
 let threw = false; try { await synthesize('Hi'); } catch (e) { threw = true; }
 ok(threw, 'nothing to fall back to → the error surfaces (never a fake success)');
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS'); process.exit(fails ? 1 : 0);
