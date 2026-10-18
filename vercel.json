@@ -16,39 +16,155 @@
   ],
   "outputDirectory": ".",
   "fluid": true,
-  "functions": {"api/**/*.js":{"maxDuration":60}},
-  "redirects":[
-    {"source":"/landing","destination":"/","permanent":false},
-    {"source":"/start","destination":"/onboarding","permanent":false},
-    {"source":"/get-started","destination":"/onboarding","permanent":false},
-    {"source":"/signup","destination":"/onboarding","permanent":false},
-    {"source":"/sign-up","destination":"/onboarding","permanent":false},
-    {"source":"/register","destination":"/onboarding","permanent":false},
-    {"source":"/join","destination":"/onboarding","permanent":false},
-    {"source":"/trial","destination":"/onboarding","permanent":false},
-    {"source":"/create-account","destination":"/onboarding","permanent":false},
-    {"source":"/sign-in","destination":"/login","permanent":false},
-    {"source":"/demo","destination":"/dashboard","permanent":false}
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
+    }
+  },
+  "redirects": [
+    {
+      "source": "/landing",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/start",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/get-started",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/signup",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/sign-up",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/register",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/join",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/trial",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/create-account",
+      "destination": "/onboarding",
+      "permanent": false
+    },
+    {
+      "source": "/sign-in",
+      "destination": "/login",
+      "permanent": false
+    },
+    {
+      "source": "/demo",
+      "destination": "/dashboard",
+      "permanent": false
+    }
   ],
-  "headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"}]}],
-  "crons":[
-    {"path":"/api/cron/campaigns","schedule":"* * * * *"},
-    {"path":"/api/cron/owner-alerts","schedule":"*/15 * * * *"},
-    {"path":"/api/cron/sync-availability","schedule":"* * * * *"},
-    {"path":"/api/cron/booking-outbox","schedule":"* * * * *"},
-    {"path":"/api/cron/sync-alerts","schedule":"*/15 * * * *"},
-    {"path":"/api/cron/publish-reviews","schedule":"0 * * * *"},
-    {"path":"/api/cron/sync-connections","schedule":"0 3 * * *"},
-    {"path":"/api/cron/autopilot","schedule":"0 * * * *"},
-    {"path":"/api/cron/booking-reminders","schedule":"*/15 * * * *"},
-    {"path":"/api/cron/deposits","schedule":"*/5 * * * *"},
-    {"path":"/api/cron/rebooking","schedule":"0 * * * *"},
-    {"path":"/api/cron/fill-plans","schedule":"7 * * * *"},
-    {"path":"/api/cron/booking-fees","schedule":"23 9 * * *"},
-    {"path":"/api/cron/telecom-sync","schedule":"*/30 * * * *"},
-    {"path":"/api/cron/conversation-reports","schedule":"*/5 * * * *"},
-    {"path":"/api/cron/release-numbers","schedule":"41 6 * * *"},
-    {"path":"/api/cron/no-show-scan","schedule":"*/15 * * * *"},
-    {"path":"/api/cron/studio-followup","schedule":"17 * * * *"}
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self' *; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; style-src 'self' 'unsafe-inline' *; connect-src 'self' *; img-src 'self' data: *; media-src 'self' blob: data: *;"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/campaigns",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/owner-alerts",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-availability",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/booking-outbox",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sync-alerts",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/publish-reviews",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-connections",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/autopilot",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/booking-reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/deposits",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/rebooking",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/fill-plans",
+      "schedule": "7 * * * *"
+    },
+    {
+      "path": "/api/cron/booking-fees",
+      "schedule": "23 9 * * *"
+    },
+    {
+      "path": "/api/cron/telecom-sync",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/conversation-reports",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/release-numbers",
+      "schedule": "41 6 * * *"
+    },
+    {
+      "path": "/api/cron/no-show-scan",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/studio-followup",
+      "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/cron/lola-heal",
+      "schedule": "13,43 * * * *"
+    }
   ]
 }
