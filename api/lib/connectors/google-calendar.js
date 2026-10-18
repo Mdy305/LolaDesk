@@ -66,7 +66,8 @@ export async function listAppointments(integration, { from, to, calendarId='prim
     const params = new URLSearchParams({ timeMin, timeMax, singleEvents:'true', orderBy:'startTime', maxResults:'250' });
     if(pageToken) params.set('pageToken', pageToken);
     const data = await gcal(integration, eventsUrl(calendarId, `?${params}`));
-    items.push(...(data.items || []));
+    if(!Array.isArray(data?.items)) throw new Error('Google Calendar answered without an event list');   // never "no appointments" on an odd answer
+    items.push(...data.items);
     pageToken = data.nextPageToken || null;
   }while(pageToken && ++pages < 20);
   return items.map(normalize);

@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
     const [tenantRes, settingsRes, servicesRes, staffRes, faqRes] = await Promise.all([
       c.from('tenants').select('id, name, slug, location, business_profile').eq('id', tn.tenant_id).maybeSingle(),
-      c.from('booking_settings').select('business_hours').eq('tenant_id', tn.tenant_id).maybeSingle(),
+      c.from('booking_settings').select('*').eq('tenant_id', tn.tenant_id).maybeSingle(),   // * : a database without the column keeps the hours in metadata
       c.from('services').select('name, price, duration_minutes').eq('tenant_id', tn.tenant_id).eq('active', true).order('sort_order', { ascending: true, nullsFirst: false }).limit(12),
       c.from('staff').select('first_name, last_name, name, role').eq('tenant_id', tn.tenant_id).eq('active', true).limit(10),
       c.from('knowledge_base').select('key, value').eq('tenant_id', tn.tenant_id).in('source', ['website_faq', 'gmb_qa']).limit(5)
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
       `${s.name}${s.price ? ` — $${s.price}` : ''}${s.duration_minutes ? ` (${s.duration_minutes} min)` : ''}`
     ).join(' • ');
 
-    const hoursObj = settingsRes.data?.business_hours || {};
+    const hoursObj = settingsRes.data?.business_hours || settingsRes.data?.metadata?.business_hours || {};
     const hours = ['mon','tue','wed','thu','fri','sat','sun'].map(d => {
       const h = hoursObj[d];
       if (!h || h.closed) return `${d}: closed`;

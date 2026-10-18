@@ -66,6 +66,13 @@ export default async function handler(req, res){
   if(!client) return res.status(503).json({ ok: false, error: 'Database not configured' });
 
   const started = Date.now();
+  // The calendar outbox: due jobs claimed with SKIP LOCKED, one calendar per job, failures isolated.
+  try{
+    const { runOutbox } = await import('../lib/calendar-outbox.js');
+    const o = await runOutbox({ client, limit: 60, budgetMs: BUDGET_MS });
+    if(o.ok) return res.status(200).json({ ok: true, outbox: true, claimed: o.claimed, failed: o.failed, ensured: o.ensured, duration_ms: o.duration_ms,
+      errors: (o.results || []).filter(r => r && r.ok === false).slice(0, 10) });
+  }catch(e){ console.warn('[cron/sync-availability] outbox unavailable, step-by-step sync:', String(e?.message || e).slice(0, 120)); }
   const { data: rawTenants, error } = await client.from('tenants').select('id').order('id', { ascending: true });
   if(error) return res.status(500).json({ ok: false, error: error.message });
   if(!rawTenants?.length) return res.status(200).json({ ok: true, synced: 0, note: 'No tenants' });

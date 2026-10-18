@@ -30,6 +30,7 @@ ok(s.live.database && s.live.telnyx_key && s.live.telnyx_ai && s.live.fast_model
 ok(s.live.numbers === 2 && s.live.numbers_registered_10dlc === 0 && s.fixes.some((f) => /10DLC/.test(f)), 'unregistered numbers → “texts get blocked, register 10DLC”');
 ok(s.fixes.some((f) => /CRON_SECRET/.test(f)), 'missing CRON_SECRET is named with the exact fix');
 ok(!JSON.stringify(s).includes('el-secret') && !JSON.stringify(s).includes('secret-key-123') && !JSON.stringify(s).includes('+1305'), 'never reveals a key or a phone number');
+globalThis.__rpc = () => ({ data: [], error: null }); // the database has every function (sync-atomic SQL run)
 registered = ['+13055550100', '+13055550101']; process.env.GOOGLE_PLACES_API_KEY = 'g'; process.env.CRON_SECRET = 'x'; process.env.ADMIN_EMAILS = 'a@b.c'; process.env.INTEGRATION_ENCRYPTION_KEY = 'k';
 s = await buildStatus();
 ok(s.ok && s.fixes.length === 0 && s.live.brain === true && s.live.hearing === true, 'all set → ok, nothing to fix (her brain and ears answered for real)');

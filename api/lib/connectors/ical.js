@@ -131,13 +131,13 @@ export function parseIcs(text, { from, to, defaultTz = 'America/New_York' } = {}
     if (e.end <= e.start) continue;
     if (e.recurrenceId != null) {   // a moved/cancelled single occurrence
       if (e.status === 'CANCELLED' || e.transp === 'TRANSPARENT') continue;
-      if (e.end > f && e.start < t) out.push({ uid: e.uid, start: e.start, end: e.end, summary: e.summary });
+      if (e.end > f && e.start < t) out.push({ uid: e.uid, start: e.start, end: e.end, summary: e.summary, status: e.status || null });
       continue;
     }
     if (e.status === 'CANCELLED' || e.transp === 'TRANSPARENT') continue;
     for (const occ of expand(e, f, t, calTz)) {
       if (e.uid && overrides.has(e.uid + '@' + occ.start)) continue;
-      out.push({ uid: e.uid, start: occ.start, end: occ.end, summary: e.summary });
+      out.push({ uid: e.uid, start: occ.start, end: occ.end, summary: e.summary, status: e.status || null });
     }
   }
   return out.sort((a, b) => a.start - b.start);
@@ -206,7 +206,7 @@ export async function listAppointments(integration, { from, to, fetchImpl } = {}
       id: `${(e.uid || 'ev').slice(0, 120)}@${e.start}#${key}`, starts_at: new Date(e.start).toISOString(), ends_at: new Date(e.end).toISOString(),
       duration_min: Math.round((e.end - e.start) / 60e3), client: { name: null }, service: e.summary ? e.summary.slice(0, 80) : null,
       // A stylist's own link blocks that stylist (local id); a salon-wide link takes one chair per appointment.
-      stylist: feed.staff_id ? 'local:' + feed.staff_id : null, status: 'booked', feed: key,
+      stylist: feed.staff_id ? 'local:' + feed.staff_id : null, status: e.status === 'TENTATIVE' ? 'tentative' : 'booked', feed: key,   // tentative = unconfirmed, still busy
     });
   }));
   if (feeds.length && failed.length === feeds.length && !failed.some((f) => f.stale)) {

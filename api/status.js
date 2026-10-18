@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-solid';
+export const RELEASE = 'lola-atomic';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -63,6 +63,26 @@ export async function buildStatus() {
       const c = db();
       const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1), c.from('client_cards').select('id').limit(1)]);
       live.october_sql = probes.every((p) => !p?.error);
+      // Atomic onboarding + the calendar outbox (sql/sync-atomic-2026-10.sql; self-applied when exec_sql exists).
+      try {
+        const ss = await import('./lib/sync-schema.js');
+        await Promise.race([ss.ensureSyncSchema(), new Promise((r) => setTimeout(r, 4000))]);
+        live.sync_atomic_sql = await ss.syncSchemaReady({ fresh: true });
+        if (live.sync_atomic_sql) {
+          const [{ data: jobs }, { data: conf }] = await Promise.all([
+            c.from('calendar_sync_jobs').select('status,label,last_error,provider').limit(2000),
+            c.from('calendar_conflicts').select('id').eq('status', 'open').limit(500),
+          ]);
+          const J = jobs || [];
+          live.calendar_jobs = J.length;
+          live.calendar_jobs_failing = J.filter((j) => j.status === 'failing').length;
+          live.calendar_conflicts_open = (conf || []).length;
+          if (J.length) {
+            const bad = J.find((j) => j.status === 'failing' || j.status === 'retrying');
+            live.calendar_outbox_text = `${J.length} calendar job${J.length > 1 ? 's' : ''} · ${J.filter((j) => j.status === 'ok').length} syncing · ${live.calendar_jobs_failing} failing (booked times kept locked)` + (bad ? ` — ${bad.label || bad.provider}: ${String(bad.last_error || '').slice(0, 100)}` : '') + (live.calendar_conflicts_open ? ` · ${live.calendar_conflicts_open} double booking${live.calendar_conflicts_open > 1 ? 's' : ''} held for the owner` : '');
+          }
+        }
+      } catch (_) { live.sync_atomic_sql = null; }
       // Calendar sync (other booking systems): connected calendars, is the sync running, which ones fail.
       try {
         const CAL = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'booksy', 'google_calendar', 'ical'];
@@ -399,6 +419,7 @@ export async function buildStatus() {
   if (live.calendars_linked && live.calendar_sync_running === false) fixes.push('Linked booking calendars haven’t synced in 30 minutes — Vercel → Settings → Cron Jobs must be enabled and CRON_SECRET set; then Redeploy.');
   else if (live.calendars_linked && live.calendar_sync_ok === false) fixes.push(`A linked booking calendar is failing (${String(live.calendar_sync_text || '').split('failing: ')[1] || 'see Settings → Calendar'}). Its booked times stay blocked; the salon should re-paste its calendar link in Settings → Calendar.`);
   if (live.google_scan === false) fixes.push('Onboarding can’t read Google profiles (rating, reviews, hours, competitors) — Google Cloud → APIs: enable “Places API (New)”, create an API key, add GOOGLE_PLACES_API_KEY in Vercel, Redeploy.');
+  if (live.sync_atomic_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/sync-atomic-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It makes the onboarding scan save everything in one transaction and turns on the calendar outbox (each linked calendar synced on its own; a broken link never unlocks its booked times).');
   if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check, double-booking protection and cards on file.');
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
@@ -424,7 +445,7 @@ const scrubDetail = (t) => String(t || '')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
-const PUBLIC_DETAIL = ['models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_DETAIL = ['calendar_outbox_text', 'models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;

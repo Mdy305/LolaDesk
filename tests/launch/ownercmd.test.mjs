@@ -4,11 +4,14 @@
 process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'k';
 process.env.OPERATOR_TOOLS_SECRET = 'op-secret'; process.env.ELEVENLABS_API_KEY = 'el'; process.env.ELEVENLABS_VOICE_ID = 'v1';
 delete process.env.TELNYX_PUBLIC_KEY; delete process.env.OWNER_LINE_NUMBER; delete process.env.LOLADESK_OWNER_LINE;
-// The fixtures put "Thursday afternoon" bookings on the coming Thursday. On a Thursday evening that is
-// next week's Thursday — inside the "next week" revenue window — so the clock runs a few hours earlier then.
-{ const RD = Date; const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new RD());
-  const wd = p.find((x) => x.type === 'weekday')?.value, hr = Number(p.find((x) => x.type === 'hour')?.value) % 24;
-  if (wd === 'Thu' && hr >= 9) { const shift = (hr - 7) * 3600e3; globalThis.Date = class extends RD { constructor(...a) { a.length ? super(...a) : super(RD.now() - shift); } static now() { return RD.now() - shift; } }; } }
+// The fixtures put "Thursday afternoon" bookings on the coming Thursday, which must stay inside THIS week
+// (Mon–Sun) for the "next week" revenue checks. On Thu evening–Sun that Thursday is next week's, so the test
+// clock always runs as Tuesday 7am (salon time) of the current week.
+{ const RD = Date; const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new RD());
+  const g = (t) => p.find((x) => x.type === t)?.value;
+  const idx = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(g('weekday')), hr = Number(g('hour')) % 24, mi = Number(g('minute'));
+  const shift = ((idx - 1) * 24 + (hr - 7)) * 3600e3 + mi * 60e3;
+  if (shift) globalThis.Date = class extends RD { constructor(...a) { a.length ? super(...a) : super(RD.now() - shift); } static now() { return RD.now() - shift; } }; }
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const texts = []; let llm = { content: 'Here to help.' };
 globalThis.fetch = async (url, init = {}) => {

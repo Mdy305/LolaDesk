@@ -98,7 +98,9 @@ export async function listAppointments(integration, { from, to } = {}){
   const r = await fetch(`${API_BASE}/appointments?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
   if(!r.ok) throw new Error(`Vagaro appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
-  const rows = data.appointments || data.data || data.items || [];
+  const rows = [data.appointments, data.data, data.items].find(Array.isArray);
+  // An answer without an appointment list is NOT "no appointments" — never release booked times on it.
+  if(!rows) throw new Error('Vagaro answered without an appointment list');
   return rows.map(normalize);
 }
 

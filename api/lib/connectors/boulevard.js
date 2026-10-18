@@ -28,12 +28,14 @@ async function gql(integration, query, variables = {}){
   return data.data;
 }
 export async function listAppointments(integration, { from, to } = {}){
-  if(!process.env.BOULEVARD_CLIENT_ID) return [];
+  // Not "no appointments": the server can't reach Boulevard — keep its booked times locked.
+  if(!process.env.BOULEVARD_CLIENT_ID) throw new Error('Boulevard is not connected on the server (BOULEVARD_CLIENT_ID missing)');
   const startAt = from || new Date(Date.now()-7*864e5).toISOString();
   const endAt = to || new Date(Date.now()+30*864e5).toISOString();
   const query = `query L($startAt:DateTime!,$endAt:DateTime!){appointments(first:200,filter:{startAtRange:{from:$startAt,to:$endAt}}){edges{node{id startAt endAt state client{firstName lastName phoneNumber email} appointmentServices{service{name}} staff{firstName lastName}}}}}`;
   const data = await gql(integration, query, { startAt, endAt });
-  return (data?.appointments?.edges||[]).map(({node}) => ({ id:node.id, starts_at:node.startAt, ends_at:node.endAt, duration_min:Math.round((new Date(node.endAt)-new Date(node.startAt))/60000), client:{name:[node.client?.firstName,node.client?.lastName].filter(Boolean).join(' ')||'Client', phone:node.client?.phoneNumber, email:node.client?.email}, service:node.appointmentServices?.[0]?.service?.name||'Service', stylist:[node.staff?.firstName,node.staff?.lastName].filter(Boolean).join(' ')||null, status:(node.state||'confirmed').toLowerCase(), raw:node }));
+  if(!Array.isArray(data?.appointments?.edges)) throw new Error('Boulevard answered without an appointment list');
+  return data.appointments.edges.map(({node}) => ({ id:node.id, starts_at:node.startAt, ends_at:node.endAt, duration_min:Math.round((new Date(node.endAt)-new Date(node.startAt))/60000), client:{name:[node.client?.firstName,node.client?.lastName].filter(Boolean).join(' ')||'Client', phone:node.client?.phoneNumber, email:node.client?.email}, service:node.appointmentServices?.[0]?.service?.name||'Service', stylist:[node.staff?.firstName,node.staff?.lastName].filter(Boolean).join(' ')||null, status:(node.state||'confirmed').toLowerCase(), raw:node }));
 }
 export async function createAppointment(integration){
   if(!process.env.BOULEVARD_CLIENT_ID) return { ok:false, error:'Boulevard requires partner approval', _stub:true };

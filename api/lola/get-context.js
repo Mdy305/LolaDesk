@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     const [tenantRes, settingsRes, servicesRes, staffRes] = await Promise.all([
       c.from('tenants').select('id, name, timezone, business_profile').eq('id', tn.tenant_id).maybeSingle(),
-      c.from('booking_settings').select('business_hours, closures').eq('tenant_id', tn.tenant_id).maybeSingle(),
+      c.from('booking_settings').select('*').eq('tenant_id', tn.tenant_id).maybeSingle(),   // * : hours may live in metadata
       c.from('services').select('id, name, price, duration_min, category').eq('tenant_id', tn.tenant_id).eq('active', true).order('sort_order', { ascending: true, nullsFirst: false }),
       c.from('staff').select('id, first_name, last_name, name, role').eq('tenant_id', tn.tenant_id).eq('active', true)
     ]);
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
     const business = {
       name: tenant.name,
       timezone: tenant.timezone || 'America/New_York',
-      hours: settingsRes.data?.business_hours || null,
-      closures: settingsRes.data?.closures || [],
+      hours: settingsRes.data?.business_hours || settingsRes.data?.metadata?.business_hours || null,
+      closures: settingsRes.data?.closures || settingsRes.data?.metadata?.closures || [],
       services: (servicesRes.data || []).map(s => ({
         id: s.id, name: s.name,
         price_dollars: Number(s.price || 0),

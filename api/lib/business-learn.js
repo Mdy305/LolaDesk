@@ -303,7 +303,164 @@ export function depositFromText(text) {
   return { type: 'unknown', source: t.slice(0, 160) };
 }
 
+// ── ONE transaction ─────────────────────────────────────────────────────────────────────────────
+// The scan's writes — services, prices, the team, staff hours, opening hours, the Google Places payload
+// and the salon record — are PLANNED here from a fresh read, then COMMITTED by the database function
+// lola_apply_onboarding (sql/sync-atomic-2026-10.sql) in one transaction: all of it lands or none of it
+// does. A database without the function self-applies it once (exec_sql); if it still can't, the older
+// step-by-step writer runs and the live check names the SQL file to run.
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** Only well-formed days reach the database (one bad time would roll the whole ingestion back). */
+export function cleanWeek(week) {
+  if (!week || typeof week !== 'object') return null;
+  const out = {};
+  for (const d of ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']) {
+    const x = week[d]; if (!x || typeof x !== 'object') continue;
+    if (x.closed === true) { out[d] = { open: '10:00', close: '19:00', closed: true }; continue; }
+    const o = String(x.open || '').slice(0, 5), cl = String(x.close || '').slice(0, 5);
+    if (HHMM.test(o) && HHMM.test(cl) && cl > o) out[d] = { open: o, close: cl, closed: false };
+  }
+  return Object.keys(out).length >= 5 ? out : null;
+}
+
+export async function planProfile(c, tenant, profile, { source = {} } = {}) {
+  const [{ data: fresh }, { data: bs0 }, { data: svcRows }, { data: staffRows }] = await Promise.all([
+    q(c.from('tenants').select('*').eq('id', tenant.id).maybeSingle()),
+    q(c.from('booking_settings').select('*').eq('tenant_id', tenant.id).maybeSingle()),
+    q(c.from('services').select('*').eq('tenant_id', tenant.id)),
+    q(c.from('staff').select('*').eq('tenant_id', tenant.id)),
+  ]);
+  const t = fresh || tenant;
+  const place = source.google?.place || null;
+  const report = { services_added: 0, team_added: 0, timezone: null, hours: false, notes: [] };
+  const plan = { hours: null, services_insert: [], services_price: [], staff_insert: [], default_staff: DEFAULT_STAFF, tenant_patch: {}, settings_patch: {} };
+
+  // Opening hours: Google first (exact), then the website.
+  const gWeek = place?.hours?.length ? cleanWeek(parsePlacesHours(place.hours)) : null;
+  const week = gWeek || cleanWeek(profile.business_hours) || cleanWeek(parseHoursText(profile.hours_text));
+  if (week) plan.hours = { week, source: gWeek ? 'google' : 'website' };
+
+  // The menu: the whole menu for a salon without one; prices for services already listed without a price.
+  const isPlaceholder = (x) => /^consultation$/i.test(x.name || '') && !Number(x.price);
+  const real = (svcRows || []).filter((x) => !isPlaceholder(x) && x.is_active !== false);
+  if (!real.length) {
+    plan.services_insert = profile.services.map((x) => ({ name: x.name, description: x.description || '', category: x.category || null,
+      duration_minutes: x.duration_min || 60, price: x.price || 0, ...(phasesFor(x.name, x.duration_min || 60) || {}) }));
+    const unpriced = profile.services.filter((x) => !x.price).map((x) => x.name);
+    if (unpriced.length) report.needs_price = unpriced.slice(0, 30);
+    report.processing_phased = plan.services_insert.filter((x) => x.processing_duration_min).length || undefined;
+  } else {
+    const priced = new Map(profile.services.filter((x) => x.price > 0).map((x) => [String(x.name).toLowerCase(), x.price]));
+    plan.services_price = real.filter((x) => !Number(x.price) && priced.has(String(x.name).toLowerCase())).map((x) => ({ name: x.name, price: priced.get(String(x.name).toLowerCase()) }));
+  }
+
+  // The team.
+  const realStaff = (staffRows || []).filter((x) => x.name !== DEFAULT_STAFF);
+  if (!realStaff.length && profile.team.length) plan.staff_insert = profile.team.map((m) => ({ name: m.name, role: m.role || 'Stylist' }));
+
+  // The salon record Lola reads on every call — blanks only — and the Google Places payload.
+  const patch = plan.tenant_patch;
+  const menu = Array.isArray(t.services) ? t.services.filter((x) => x && (x.name || typeof x === 'string')) : [];
+  if ((!menu.length || menu.every((x) => /^consultation$/i.test(x.name || x))) && profile.services.length)
+    patch.services = profile.services.map((x) => ({ name: x.name, price: x.price, duration: x.duration_min ? `${x.duration_min} min` : null }));
+  if (!t.hours && profile.hours_text) patch.hours = profile.hours_text;
+  if (!t.location && (profile.address || profile.city)) patch.location = profile.address || profile.city;
+  if ((!Array.isArray(t.team) || !t.team.length) && profile.team.length) patch.team = profile.team;
+  if (!t.website_url && source.website) patch.website_url = source.website;
+  if (place) {
+    if (!t.location && place.address) patch.location = place.address;
+    if (!t.hours && !patch.hours && place.hours?.length) patch.hours = place.hours.join('; ').slice(0, 400);
+    if (!t.google_review_url && place.review_link) { patch.google_review_url = place.review_link; report.reviews_on = true; }
+  }
+  if (!t.gmb_url && (place?.maps_url || source.maps_url)) patch.gmb_url = place?.maps_url || source.maps_url;
+  if (patch.hours) report.hours = true;
+  const persona = toneToPersona(profile.tone, profile.positioning);
+  if (persona && (!t.persona || t.persona === 'warm')) patch.persona = persona;
+  patch.knowledge = knowledgeFor(parseKnowledge(t.knowledge), profile, source, place);
+
+  // Booking settings the scan found.
+  const dep = depositFromText(profile.policies?.deposit);
+  if (dep) { report.deposit_found = dep; plan.settings_patch.deposits_detected = dep; }
+  if (profile.timezone && (!bs0 || !bs0.timezone || bs0.timezone === 'America/New_York') && profile.timezone !== (bs0?.timezone || 'America/New_York')) plan.settings_patch.timezone = profile.timezone;
+  if (profile.policies.cancellation_window_hours != null) plan.settings_patch.cancellation_window_hours = profile.policies.cancellation_window_hours;
+  return { plan, report, tenant: t, settings: bs0 || null };
+}
+
+function knowledgeFor(prior, profile, source, place) {
+  return {
+    ...prior,
+    summary: profile.summary || prior.summary || null,
+    positioning: profile.positioning || prior.positioning || null,
+    audience: profile.audience || prior.audience || null,
+    tone: profile.tone || prior.tone || null,
+    usp: profile.usp || prior.usp || null,
+    faq: profile.faq.length ? profile.faq : (prior.faq || []),
+    policies: profile.policies,
+    marketing: profile.marketing,
+    instagram: source.instagram || prior.instagram || null,
+    // How clients reach the salon today (never the Lola line in tenants.phone_number).
+    salon_phone: place?.phone || profile.phone || source.links?.phone || prior.salon_phone || null,
+    booking_link: source.links?.booking || prior.booking_link || null,
+    booking_system: source.links?.booking_system || prior.booking_system || null,
+    socials: { ...(prior.socials || {}), ...Object.fromEntries(['facebook', 'tiktok', 'youtube'].map(k => [k, source.links?.[k] || prior.socials?.[k] || null])) },
+    instagram_profile: source.instagram_profile || prior.instagram_profile || null,
+    google: place ? {
+      place_id: place.id, name: place.name, address: place.address, lat: place.lat, lng: place.lng, rating: place.rating, reviews_count: place.reviews_count,
+      review_link: place.review_link, maps_url: place.maps_url || source.maps_url, phone: place.phone, website: place.website, hours: place.hours,
+      photos_count: place.photos_count, type: place.type, price_level: place.price_level, status: place.status,
+      reviews: (place.reviews || []).slice(0, 5).map(r => ({ rating: r.rating, text: String(r.text || '').slice(0, 600), ago: r.ago })),
+      competitors: (source.google?.competitors || []).slice(0, 12), fetched_at: new Date().toISOString(),
+    } : (source.maps_url ? { ...(prior.google || {}), maps_url: source.maps_url, pending: source.google?.reason || 'unread' } : (prior.google || null)),
+    learned: { at: new Date().toISOString(), website: source.website || null, maps: source.maps_url || null, pasted_menu: !!source.notes, services: profile.services.length, team: profile.team.length },
+  };
+}
+
+/** Commit a plan in one transaction. → { ok, result } | { ok:false, missing:true } | { ok:false, error } */
+export async function commitOnboarding(c, tenantId, plan) {
+  const call = async () => { try { return await c.rpc('lola_apply_onboarding', { p_tenant_id: tenantId, p_plan: plan }); } catch (e) { return { data: null, error: { message: String(e?.message || e) } }; } };
+  const { isMissingFunction, ensureSyncSchema } = await import('./sync-schema.js');
+  let r = await call();
+  if (r?.error && isMissingFunction(r.error)) {
+    const st = await ensureSyncSchema();
+    if (st === 'applied' || st === 'up-to-date') r = await call();
+  }
+  if (r?.error) return isMissingFunction(r.error) ? { ok: false, missing: true } : { ok: false, error: String(r.error.message || r.error).slice(0, 300) };
+  const out = Array.isArray(r?.data) ? r.data[0] : r?.data;
+  return out && out.ok ? { ok: true, result: out } : { ok: false, error: 'the database did not confirm the save' };
+}
+
 export async function applyProfile(c, tenant, profile, { source = {} } = {}) {
+  let planned = null;
+  try { planned = await planProfile(c, tenant, profile, { source }); } catch (e) { planned = null; }
+  if (planned) {
+    const { plan, report } = planned;
+    const done = await commitOnboarding(c, tenant.id, plan);
+    if (done.ok) {
+      const x = done.result;
+      report.atomic = true;
+      report.services_added = Number(x.services_added) || 0;
+      report.team_added = Number(x.team_added) || 0;
+      if (x.prices_filled) report.prices_filled = Number(x.prices_filled);
+      if (x.schedules_set) report.schedules_refit = Number(x.schedules_set);
+      if (x.hours) { report.hours = true; report.hours_source = plan.hours?.source; report.business_hours = plan.hours?.week; }
+      if (plan.settings_patch.timezone) report.timezone = plan.settings_patch.timezone;
+      if (report.needs_price) { const want = new Set(report.needs_price.map((n) => String(n).toLowerCase())); report.needs_price = (x.services || []).filter((r) => want.has(String(r.name).toLowerCase())).map((r) => ({ id: r.id, name: r.name })); }
+      if (report.team_added && !x.hours && !plan.hours) { try { await ensureBookingBaseline(tenant.id); } catch { report.notes.push('schedules_pending'); } }
+      return report;
+    }
+    if (!done.missing) {
+      // The transaction refused: NOTHING was written (no half-synced salon). Say so; the owner can retry.
+      report.atomic = true; report.failed = true; report.notes.push('atomic_rollback'); report.error = done.error;
+      return report;
+    }
+  }
+  // No database function yet: the step-by-step writer (the live check asks for sql/sync-atomic-2026-10.sql).
+  const legacy = await applyProfileSteps(c, tenant, profile, { source });
+  legacy.atomic = false;
+  return legacy;
+}
+
+async function applyProfileSteps(c, tenant, profile, { source = {} } = {}) {
   const report = { services_added: 0, team_added: 0, timezone: null, hours: false, notes: [] };
   const { data: fresh } = await q(c.from('tenants').select('*').eq('id', tenant.id).maybeSingle());
   const t = fresh || tenant;
@@ -491,6 +648,7 @@ export function learnedSay(profile, report, source = {}) {
   const place = source.google?.place;
   const from = source.website ? `I read ${source.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}${place ? ' and your Google Maps listing' : ''}`
     : place ? 'I read your Google Maps listing' : 'I read your menu';
+  if (report.failed) return { say: `${from}, but saving it failed, so I saved nothing — your setup is exactly as it was. Say “learn my website” to try again.`, suggestions: ['Learn my website'] };
   let say = bits.length ? `${from} and learned ${bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits.at(-1) : bits[0]}.` : `${from}, but couldn't find services or prices. Paste your menu and I'll learn it.`;
   if (place?.rating) {
     const rank = mapRank(place, source.google.competitors || []);
@@ -558,5 +716,5 @@ export async function learnBusiness(c, tenant, { website, notes, instagram, city
   if (!profile.city && city) profile.city = String(city).slice(0, 80);
   const report = await applyProfile(c, tenant, profile, { source });
   const { say, suggestions } = learnedSay(profile, report, source);
-  return { ok: true, used_brain: usedBrain, read_error: readError, source, profile, report, say, suggestions };
+  return { ok: !report.failed, ...(report.failed ? { error: 'save_failed_nothing_written' } : {}), used_brain: usedBrain, read_error: readError, source, profile, report, say, suggestions };
 }

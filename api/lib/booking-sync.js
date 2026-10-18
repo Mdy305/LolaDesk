@@ -35,8 +35,23 @@ function normStatus(status){
  * Fetch + normalize + upsert one tenant's provider appointments.
  * Returns a summary for the caller (cron / manual) to relay or log.
  */
-export async function syncTenantAvailability(client, tenantId, { provider = null, rangeDays = 45 } = {}){
+export async function syncTenantAvailability(client, tenantId, { provider = null, rangeDays = 45, legacy = false } = {}){
   if(!client) return { ok: false, error: 'db_not_configured' };
+  // The calendar outbox (one job per calendar, failures isolated and kept locked) when the database has it.
+  if(!legacy){
+    try{
+      const { runOutbox } = await import('./calendar-outbox.js');
+      const o = await runOutbox({ client, tenantId, limit: 50, budgetMs: 40000 });
+      if(o.ok){
+        const res = (o.results || []).filter(r => r && !r.removed && !r.deferred);
+        const failed = res.filter(r => r.ok === false);
+        return { ok: true, outbox: true, providers: [...new Set(res.map(r => r.provider))], fetched: res.reduce((n, r) => n + (r.fetched || 0), 0),
+          upserted: res.reduce((n, r) => n + (r.upserted || 0), 0), stale_removed: res.reduce((n, r) => n + (r.pruned || 0), 0),
+          conflicts: res.reduce((n, r) => n + (r.conflicts || 0), 0),
+          provider_errors: failed.map(r => ({ provider: r.provider, calendar: r.calendar, error: r.error, kept: true })), jobs: res.length };
+      }
+    }catch(_){ /* the step-by-step sync below */ }
+  }
   const started = Date.now();
 
   let integrations = [];

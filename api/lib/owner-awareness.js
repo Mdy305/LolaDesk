@@ -89,10 +89,13 @@ export async function businessSnapshot(tenant, { fresh = false } = {}) {
   if (!tenant?.id) return null;
   return cached(`${tenant.id}:snap`, TTL.snap, async () => {
     const c = db();
-    const [svcs, staff, bs, links, lastSync] = await Promise.all([
+    const [svcs, staff, bs, links, lastSync, jobs, conflicts] = await Promise.all([
       listServices(tenant.id).catch(() => []), listStaff(tenant.id).catch(() => []), getBookingSettings(tenant.id).catch(() => null),
       c ? c.from('integrations').select('provider,status').eq('tenant_id', tenant.id).then((r) => r.data || [], () => []) : [],
       c ? c.from('booking_sync_log').select('provider,error_message,created_at').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(1).then((r) => (r.data || [])[0] || null, () => null) : null,
+      // The calendar outbox (when the database has it): each linked calendar's own state, and double bookings.
+      c ? c.from('calendar_sync_jobs').select('label,provider,status,last_error').eq('tenant_id', tenant.id).then((r) => (r.error ? null : r.data || []), () => null) : null,
+      c ? c.from('calendar_conflicts').select('provider,starts_at,staff_id').eq('tenant_id', tenant.id).eq('status', 'open').limit(20).then((r) => (r.error ? [] : r.data || []), () => []) : [],
     ]);
     const k = parseKnowledge(tenant.knowledge);
     const named = (svcs || []).filter((s) => s && s.name);
@@ -122,13 +125,21 @@ export async function businessSnapshot(tenant, { fresh = false } = {}) {
     const otherSystem = k.booking_system && !/loladesk|lola/i.test(String(k.booking_system)) ? String(k.booking_system) : null;
     if (otherSystem && !calendars.length) gaps.push({ key: 'calendar', say: `Your clients book through ${otherSystem}, and I can't see that calendar yet — paste its calendar link in Settings → Calendar so I never double-book.` });
     let syncError = null;
-    if (calendars.length && lastSync?.error_message && Date.now() - Date.parse(lastSync.created_at || 0) < 3 * 3600e3) {
+    const badJob = Array.isArray(jobs) ? jobs.find((j) => j.status === 'failing' || j.status === 'retrying') : null;
+    if (badJob) {
+      syncError = `${badJob.label || badJob.provider}: ${String(badJob.last_error || 'not answering').slice(0, 120)}`;
+      gaps.push({ key: 'sync', say: `Your ${badJob.label || badJob.provider} calendar isn't answering (${String(badJob.last_error || '').slice(0, 90)}). I'm keeping its booked times blocked and retrying — if it stays, re-paste the link in Settings → Calendar.` });
+    } else if (!Array.isArray(jobs) && calendars.length && lastSync?.error_message && Date.now() - Date.parse(lastSync.created_at || 0) < 3 * 3600e3) {
       let first = lastSync.error_message; try { const j = JSON.parse(first); first = Array.isArray(j) && j[0] ? `${j[0].calendar || j[0].provider}: ${j[0].error}` : first; } catch (_) {}
       syncError = String(first).slice(0, 160);
       gaps.push({ key: 'sync', say: `One of your linked calendars isn't answering (${syncError}). I'm keeping its booked times blocked — re-paste the link in Settings → Calendar.` });
     }
+    if ((conflicts || []).length) {
+      const n = conflicts.length, first0 = conflicts[0];
+      gaps.unshift({ key: 'conflict', say: `${n === 1 ? 'One appointment' : `${n} appointments`} in ${first0.provider === 'ical' ? 'a linked calendar' : first0.provider} sit${n === 1 ? 's' : ''} on top of a LolaDesk booking. I'm keeping ${n === 1 ? 'both' : 'all of them'} blocked so nobody else is booked there — open the calendar and tell me which one stays.` });
+    }
     const learned = k.learned || null;
-    const snap = { calendars, sync_error: syncError, other_system: otherSystem, services, staff: team, week, hours, tz: bs?.timezone || 'America/New_York', google, knowledge: k, learned, gaps,
+    const snap = { calendars, sync_error: syncError, conflicts: (conflicts || []).length, other_system: otherSystem, services, staff: team, week, hours, tz: bs?.timezone || 'America/New_York', google, knowledge: k, learned, gaps,
       booking_system: k.booking_system || null, salon_phone: k.salon_phone || null };
     snap.prompt = snapshotPrompt(tenant, snap);
     return snap;
@@ -250,8 +261,8 @@ export function oneMove(s, snap) {
     const why = n.reason === 'unhappy' ? 'sounded unhappy' : n.reason === 'asked_for_you' ? 'asked for you' : 'called and I missed them';
     return { say: `${n.name === 'a new caller' ? 'A new caller' : n.name}${n.vip ? ' (VIP)' : ''} ${why}${s.needs.length > 1 ? ` — ${plural(s.needs.length, 'person', 'people')} want a call back` : ''}. Want me to call ${s.needs.length > 1 ? 'them' : n.name === 'a new caller' ? 'them' : n.name} back?`, suggestion: 'Call them back' };
   }
-  const gap = snap?.gaps?.find((g) => g.key === 'sync' || g.key === 'calendar') || snap?.gaps?.find((g) => g.key === 'prices' || g.key === 'menu' || g.key === 'hours');
-  if (gap) return { say: gap.say, suggestion: gap.key === 'prices' ? 'Open services' : (gap.key === 'calendar' || gap.key === 'sync') ? 'Open settings' : 'Learn my website' };
+  const gap = snap?.gaps?.find((g) => g.key === 'conflict') || snap?.gaps?.find((g) => g.key === 'sync' || g.key === 'calendar') || snap?.gaps?.find((g) => g.key === 'prices' || g.key === 'menu' || g.key === 'hours');
+  if (gap) return { say: gap.say, suggestion: gap.key === 'prices' ? 'Open services' : gap.key === 'conflict' ? 'Open my calendar' : (gap.key === 'calendar' || gap.key === 'sync') ? 'Open settings' : 'Learn my website' };
   if (s.opening && s.opening.end - s.opening.start >= 120) {
     const o = s.opening;
     return { say: `${o.stylist ? `${first(o.stylist)} is` : "You're"} open ${clock(o.start)}–${clock(o.end)} ${s.focusDay}. Want me to offer it to the waitlist and clients who are due?`, suggestion: `Fill ${s.focusDay} ${clock(o.start)}` };

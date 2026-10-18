@@ -76,7 +76,8 @@ function fakeStorage() {
   };
 }
 export function createClient() {
-  return { from: (t) => new Q(t), rpc: async () => ({ data: null, error: { message: 'no rpc' } }),
+  // rpc: what PostgREST answers for a function the database doesn't have (tests may install globalThis.__rpc).
+  return { from: (t) => new Q(t), rpc: async (name, args) => (globalThis.__rpc ? globalThis.__rpc(name, args) : { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${name} in the schema cache` } }),
     auth: { getUser: async (token) => {                 // tests may map token → user via globalThis.__authUsers
       const u = (globalThis.__authUsers || {})[token];
       return u ? { data: { user: u }, error: null } : { data: { user: null }, error: { message: 'no auth' } };
