@@ -407,6 +407,15 @@ export async function wireAssistant({ heal = false } = {}) {
     voice = { current: a.voice_settings?.voice || null, ok: isLola, possible: !!ov.lolaPhoneVoice(), error: null };
     if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
   } catch (_) { voice = null; }
+  // Her BRAIN on the phone: a model Telnyx no longer serves means every call fails silently.
+  // Swap it for the best model Telnyx lists right now (its "recommended for assistants" first).
+  let model = null;
+  try {
+    const tm = await import('./telnyx-models.js');
+    const listed = a.model ? await tm.modelListed(a.model) : false;
+    model = { current: a.model || null, ok: !a.model || listed === true || (listed === null && !tm.looksRetired(a.model)), set_to: null };   // no model = Telnyx's own default
+    if (!model.ok) { const next = await tm.modelFor('assistant'); if (next && next !== a.model) patch.model = next; else model.ok = true; }
+  } catch (_) { model = null; }
   let healed = false, error = null;
   lastMcpDetached = []; lastDupKept = [];
   if (heal && Object.keys(patch).length) {
@@ -421,7 +430,7 @@ export async function wireAssistant({ heal = false } = {}) {
       // rest (the empty-value cleanup first), and name the part it refused.
       const firstErr = String(e?.message || e);
       // tools + tool_ids travel together: a shared copy is detached in the same save that keeps the inline one.
-      const ORDER = ['dynamic_variables', 'greeting', 'instructions', 'tools', 'dynamic_variables_webhook_url'];
+      const ORDER = ['model', 'dynamic_variables', 'greeting', 'instructions', 'tools', 'dynamic_variables_webhook_url'];
       const keys = [...ORDER.filter((k) => k in core), ...Object.keys(core).filter((k) => !ORDER.includes(k) && k !== 'tool_ids')];
       if (!('tools' in core) && 'tool_ids' in core) keys.push('tool_ids');
       const refused = [];
@@ -448,10 +457,12 @@ export async function wireAssistant({ heal = false } = {}) {
       }
     }
   }
+  if (model && patch.model) { model.set_to = healed && !(error && /^model|model:/.test(String(error))) ? patch.model : null; model.ok = !!model.set_to; }
   return {
+    model,
     web_calls: webCalls || (healed && !error && !webCallsError),
     web_calls_error: webCallsError,
-    ok: (!fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
+    ok: (!patch.model && !fixed.length && !added.length && !duplicateTools.length && dynOk && webCalls && disclosure.greeting && (disclosure.rules || !a.instructions) && (!voice || voice.ok || !voice.possible)) || (healed && !error && !voice?.error),
     voice: voice ? { current: voice.current, ok: voice.ok || (healed && !!patch.voice_settings), set_to: healed && patch.voice_settings ? patch.voice_settings.voice : null, error: voice.error } : null,
     assistant: { id, name: a.name || null, tools: tools.length },
     miswired: fixed, added_tools: added, unknown_tools: unknown, shared_tools: [...sharedNames], shared_fixed: sharedFixed, inline_count: next.length, duplicate_tools: [...duplicateTools, ...lastMcpDetached.map((n) => n + ' (detached, kept in Telnyx)')], mcp_detached: [...lastMcpDetached], dup_kept_in_telnyx: [...lastDupKept],

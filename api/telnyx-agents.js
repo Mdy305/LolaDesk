@@ -30,7 +30,8 @@ function authHeaders(){
   };
 }
 
-const DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct';
+import { FALLBACK as MODEL_FALLBACK, modelFor } from './lib/telnyx-models.js';
+const DEFAULT_MODEL = MODEL_FALLBACK.assistant;   // replaced at creation by the best model Telnyx lists
 // Lola's ONE canonical voice — the exact voice the owner created.
 // ELEVENLABS_VOICE_ID is authoritative; TELNYX_VOICE_ID is a legacy alias.
 // Never default to a different (e.g. Polly) voice: if no canonical voice is
@@ -71,7 +72,7 @@ Never apologize for prices. You are the only AI that can run an ultra-luxury sal
 async function createAgent(agent){
   const body = {
     name: agent.name,
-    model: agent.model,
+    model: await modelFor('assistant').catch(() => agent.model) || agent.model,
     instructions: agent.instructions,
     voice_settings: agent.voice_settings,
     description: agent.description

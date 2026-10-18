@@ -12,7 +12,7 @@
  */
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-chief';
+export const RELEASE = 'lola-atomic';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -63,6 +63,48 @@ export async function buildStatus() {
       const c = db();
       const probes = await Promise.all([c.from('client_notes').select('id').limit(1), c.from('signup_attempts').select('id').limit(1), c.from('public_rate_hits').select('id').limit(1), c.from('client_cards').select('id').limit(1)]);
       live.october_sql = probes.every((p) => !p?.error);
+      // Atomic onboarding + the calendar outbox (sql/sync-atomic-2026-10.sql; self-applied when exec_sql exists).
+      try {
+        const ss = await import('./lib/sync-schema.js');
+        await Promise.race([ss.ensureSyncSchema(), new Promise((r) => setTimeout(r, 4000))]);
+        live.sync_atomic_sql = await ss.syncSchemaReady({ fresh: true });
+        if (live.sync_atomic_sql) {
+          const [{ data: jobs }, { data: conf }] = await Promise.all([
+            c.from('calendar_sync_jobs').select('status,label,last_error,provider').limit(2000),
+            c.from('calendar_conflicts').select('id').eq('status', 'open').limit(500),
+          ]);
+          const J = jobs || [];
+          live.calendar_jobs = J.length;
+          live.calendar_jobs_failing = J.filter((j) => j.status === 'failing').length;
+          live.calendar_conflicts_open = (conf || []).length;
+          if (J.length) {
+            const bad = J.find((j) => j.status === 'failing' || j.status === 'retrying');
+            live.calendar_outbox_text = `${J.length} calendar job${J.length > 1 ? 's' : ''} · ${J.filter((j) => j.status === 'ok').length} syncing · ${live.calendar_jobs_failing} failing (booked times kept locked)` + (bad ? ` — ${bad.label || bad.provider}: ${String(bad.last_error || '').slice(0, 100)}` : '') + (live.calendar_conflicts_open ? ` · ${live.calendar_conflicts_open} double booking${live.calendar_conflicts_open > 1 ? 's' : ''} held for the owner` : '');
+          }
+        }
+      } catch (_) { live.sync_atomic_sql = null; }
+      // Calendar sync (other booking systems): connected calendars, is the sync running, which ones fail.
+      try {
+        const CAL = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'booksy', 'google_calendar', 'ical'];
+        const [{ data: ints }, { data: logs }] = await Promise.all([
+          c.from('integrations').select('tenant_id,provider,status').in('provider', CAL).eq('status', 'connected'),
+          c.from('booking_sync_log').select('tenant_id,provider,error_message,created_at').gte('created_at', new Date(Date.now() - 30 * 60e3).toISOString()).order('created_at', { ascending: false }).limit(500),
+        ]);
+        const linked = (ints || []).length;
+        live.calendars_linked = linked > 0;
+        if (linked) {
+          const latest = new Map(); for (const l of logs || []) if (!latest.has(l.tenant_id)) latest.set(l.tenant_id, l);
+          const salons = new Set((ints || []).map((i) => i.tenant_id));
+          const failing = [...latest.values()].filter((l) => salons.has(l.tenant_id) && l.error_message);
+          live.calendar_sync_running = (logs || []).length > 0;
+          live.calendar_sync_ok = live.calendar_sync_running && failing.length === 0;
+          const kinds = [...new Set((ints || []).map((i) => i.provider))].join(', ');
+          live.calendar_sync_text = `${linked} calendar connection${linked > 1 ? 's' : ''} (${kinds}) in ${salons.size} salon${salons.size > 1 ? 's' : ''}` + (!live.calendar_sync_running ? ' — not synced in the last 30 minutes' : failing.length ? ` — ${failing.length} failing: ${String(failing[0].error_message).slice(0, 120)}` : ' — all syncing');
+        }
+      } catch (_) {}
+      // Onboarding scan: the website is read by Lola's brain; Google (rating, reviews, hours) needs a Places key.
+      live.google_scan = !!(process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY);
+      live.onboarding_scan_text = `website → menu, team, hours: on${live.google_scan ? ' · Google profile → rating, reviews, hours, competitors: on' : ' · Google profile scan: OFF (no GOOGLE_PLACES_API_KEY)'}`;
     } catch (_) { live.october_sql = null; }
   }
   // Telnyx key + AI brain
@@ -74,7 +116,14 @@ export async function buildStatus() {
     if (!models.ok || !(models.j?.data || []).length) models = await tget('/ai/models');
     const ids = (models.j?.data || []).map((m) => m.id || m.name).filter(Boolean);
     live.telnyx_ai = models.ok && ids.length > 0;
-    live.fast_model = ids.some((x) => /Llama-3\.3-70B/i.test(x));
+    // The models Lola actually uses, picked from this list (never a retired id).
+    try {
+      const tm = await import('./lib/telnyx-models.js');
+      const [fast, power, assistant] = await Promise.all([tm.modelFor('fast'), tm.modelFor('power'), tm.modelFor('assistant')]);
+      live.models = { fast, power, assistant };
+      live.fast_model = ids.includes(fast);
+      live.models_text = `fast ${fast} · strong ${power} · phone ${assistant}`;
+    } catch (_) { live.fast_model = false; }
     // Her brain and her ears, for real: one tiny thought, one tiny transcription (the exact paths the app uses).
     if (live.telnyx_key) {
       const [brain, ears] = await Promise.all([
@@ -204,13 +253,15 @@ export async function buildStatus() {
       live.phone_tools_ok = unsignedTools === 0;
       live.salon_details_ok = varsSigned;
       live.website_calls = a.telephony_settings?.supports_unauthenticated_web_calls === true;
+      // Her brain on the phone: a model Telnyx no longer serves = every call goes silent.
+      try { const tm = await import('./lib/telnyx-models.js'); const listed = a.model ? await tm.modelListed(a.model) : false; live.phone_brain = !a.model || listed === true || (listed === null && !tm.looksRetired(a.model));   /* no model = Telnyx's own default */ if (!live.phone_brain) live.phone_brain_model = String(a.model || 'none'); } catch (_) {}
       // Booking honesty: she collects first + last name, mobile and email, and never says "booked" unless it is.
       const { BOOKING_MARK } = await import('./lib/assistant-wiring.js');
       const bookTool = (Array.isArray(a.tools) ? a.tools : []).find((t) => /^book_appointment$/i.test(String(t?.webhook?.name || '')));
       const bookProps = bookTool?.webhook?.body_parameters?.properties || {};
       live.booking_rules = String(a.instructions || '').includes(BOOKING_MARK) || !a.instructions;
       live.booking_asks_details = !bookTool || !!(bookProps.client_email && bookProps.client_phone && bookProps.client_name);
-      const wiringOff = unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls || !live.booking_rules || !live.booking_asks_details;
+      const wiringOff = live.phone_brain === false || unsignedTools > 0 || dups.length > 0 || !varsSigned || !live.website_calls || !live.booking_rules || !live.booking_asks_details;
       const rewire = found.source !== 'env' || wiringOff;   // a different assistant than Vercel's id, or wiring that drifted: re-wire
       // A stored default Telnyx can't accept (booking_url: null) blocks every save of the assistant.
       const dvRaw = (a.dynamic_variables && typeof a.dynamic_variables === 'object') ? a.dynamic_variables : {};
@@ -232,6 +283,7 @@ export async function buildStatus() {
           try {
             const { wireAssistant } = await import('./lib/assistant-wiring.js'); const w = await wireAssistant({ heal: true });
             if (w.healed && w.disclosure?.greeting_set_to) { healed.push('Phone greeting restored.'); live.phone_greeting = true; }
+            if (w.model?.set_to) { healed.push(`Lola’s phone brain moved from ${w.model.current || 'no model'} (Telnyx no longer serves it) to ${w.model.set_to} — calls get real answers again.`); live.phone_brain = true; delete live.phone_brain_model; }
             if (w.healed && !w.error && dups.length) { healed.push(`Removed ${dups.length} duplicate tool${dups.length > 1 ? 's' : ''} from Lola’s Telnyx assistant (${dups.slice(0, 4).join(', ')}) — Telnyx accepts changes to her again.`); delete live.duplicate_tools; }
             if (w.healed && !w.error && (!live.booking_rules || !live.booking_asks_details)) { healed.push('Lola now asks every client for first and last name, mobile and email before booking — and only says “booked” when it really is.'); live.booking_rules = true; live.booking_asks_details = true; }
             if (w.healed && !w.error && wiringOff) {
@@ -363,6 +415,11 @@ export async function buildStatus() {
   if (live.website_calls_error) fixes.push('Salon websites can’t talk to Lola yet — Telnyx refused the setting. Telnyx → AI → Assistants → Lola → Widget: turn on “unauthenticated web calls” → Save.');
   if (live.assistant && (live.phone_tools_ok === false || live.salon_details_ok === false || live.website_calls === false) && !live.wiring_error) fixes.push('Lola’s Telnyx wiring is being secured (signed tools, salon details, website calls) — check again in a minute.');
   if (live.wiring_error) fixes.push(`Telnyx refused Lola’s wiring update (${live.wiring_error}). Say “Lola, run a check” — or Telnyx → AI → Assistants → Lola → save once, then check again.`);
+  if (live.phone_brain === false) fixes.push(`Lola’s phone assistant runs on ${live.phone_brain_model || 'a model'} that Telnyx no longer serves — callers hear nothing. LolaDesk switches it automatically on the next check; if this stays: Telnyx → AI → Assistants → Lola → Model: pick ${live.models?.assistant || 'a listed model'} → Save.`);
+  if (live.calendars_linked && live.calendar_sync_running === false) fixes.push('Linked booking calendars haven’t synced in 30 minutes — Vercel → Settings → Cron Jobs must be enabled and CRON_SECRET set; then Redeploy.');
+  else if (live.calendars_linked && live.calendar_sync_ok === false) fixes.push(`A linked booking calendar is failing (${String(live.calendar_sync_text || '').split('failing: ')[1] || 'see Settings → Calendar'}). Its booked times stay blocked; the salon should re-paste its calendar link in Settings → Calendar.`);
+  if (live.google_scan === false) fixes.push('Onboarding can’t read Google profiles (rating, reviews, hours, competitors) — Google Cloud → APIs: enable “Places API (New)”, create an API key, add GOOGLE_PLACES_API_KEY in Vercel, Redeploy.');
+  if (live.sync_atomic_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/sync-atomic-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It makes the onboarding scan save everything in one transaction and turns on the calendar outbox (each linked calendar synced on its own; a broken link never unlocks its booked times).');
   if (live.october_sql === false) fixes.push('Supabase → SQL Editor → New query → paste the file sql/fixall-2026-10.sql from your LolaDesk folder → Run (safe to run twice). It adds client notes & color formulas, the one-free-trial-per-salon check, double-booking protection and cards on file.');
   if (!process.env.TELNYX_PUBLIC_KEY) fixes.push('Add TELNYX_PUBLIC_KEY in Vercel (Telnyx → Keys & Credentials → Public Key), then Redeploy — LolaDesk then rejects any forged call or text webhook.');
   if (relayUrl && live.voice_relay === false) fixes.push(`Lola’s live voice relay (Railway) isn’t answering (${live.voice_relay_error}). Railway → the relay service → check it’s running and its variables TELNYX_API_KEY, TELNYX_LOLA_BRAIN_ID, LOLA_VOICE_SECRET. Meanwhile the app uses her direct voice.`);
@@ -388,7 +445,7 @@ const scrubDetail = (t) => String(t || '')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
   .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
-const PUBLIC_DETAIL = ['lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_DETAIL = ['calendar_outbox_text', 'models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;

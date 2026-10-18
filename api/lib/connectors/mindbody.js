@@ -109,7 +109,8 @@ export async function listAppointments(integration, { from, to } = {}){
   const r = await fetch(`${API_BASE}/appointment/staffappointments?StartDate=${encodeURIComponent(start)}&EndDate=${encodeURIComponent(end)}&limit=200`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
   if(!r.ok) throw new Error(`Mindbody appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
-  return (data.Appointments || []).map(normalize);
+  if(!Array.isArray(data.Appointments)) throw new Error('Mindbody answered without an appointment list');   // never "no appointments" on an odd answer
+  return data.Appointments.map(normalize);
 }
 
 export async function createAppointment(integration, appt){

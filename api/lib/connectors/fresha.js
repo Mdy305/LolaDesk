@@ -97,7 +97,8 @@ export async function listAppointments(integration, { from, to } = {}){
   const r = await fetch(`${API_BASE}/appointments?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`, { headers: authHeaders(integration) });
   const data = await r.json().catch(() => ({}));
   if(!r.ok) throw new Error(`Fresha appointments ${r.status || ''}: ${data?.message || data?.error || 'request failed'}`);  // never 'no appointments' on an outage
-  const rows = data.appointments || data.data || [];
+  const rows = [data.appointments, data.data].find(Array.isArray);
+  if(!rows) throw new Error('Fresha answered without an appointment list');   // never "no appointments" on an odd answer
   return rows.map(normalize);
 }
 

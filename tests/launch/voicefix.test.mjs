@@ -5,6 +5,8 @@ process.env.SENDGRID_API_KEY = 'sg-test'; // confirmation emails configured
 // and /api/status says exactly why she's quiet when she is.
 process.env.TELNYX_PUBLIC_KEY = 'pk-test'; process.env.SUPABASE_URL = 'https://fake.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k'; process.env.TELNYX_API_KEY = 'secret-key-123';
 process.env.TELNYX_LOLA_BRAIN_ID = 'assistant-1'; process.env.TELNYX_VOICE_APP_ID = 'v1'; process.env.CRON_SECRET = 'x'; process.env.ADMIN_EMAILS = 'a@b.c'; process.env.INTEGRATION_ENCRYPTION_KEY = 'k';
+globalThis.__rpc = () => ({ data: [], error: null }); // the database has every function (sync-atomic SQL run)
+process.env.GOOGLE_PLACES_API_KEY = 'g-test'; // onboarding's Google scan configured
 process.env.ELEVENLABS_API_KEY = 'el-key-999'; process.env.ELEVENLABS_VOICE_ID = 'ValetLola01'; delete process.env.VOICE_PROVIDER; delete process.env.LOLA_TELNYX_VOICE;
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const telnyxTts = [], updates = [], secrets = [], numberPatches = []; let quota = { character_count: 100, character_limit: 100000 }, elevenTts = 200;

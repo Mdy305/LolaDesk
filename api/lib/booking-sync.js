@@ -19,6 +19,11 @@ import { getConnector } from './aggregator.js';
 export const SYNC_LOOKBACK_MS = 12 * 3600e3;
 export const SYNC_PROVIDERS = ['square', 'boulevard', 'vagaro', 'mindbody', 'fresha', 'booksy', 'google_calendar', 'ical'];
 
+const CONNECTOR_MS = Number(process.env.SYNC_CONNECTOR_MS || 20000);
+function withTimeout(p, ms, name){
+  let t; return Promise.race([Promise.resolve(p).finally(() => clearTimeout(t)), new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${name} didn't answer within ${Math.round(ms / 1000)}s`)), ms); })]);
+}
+
 function normStatus(status){
   const s = String(status || '').toLowerCase();
   if(['cancelled', 'canceled'].includes(s)) return 'cancelled';
@@ -30,8 +35,23 @@ function normStatus(status){
  * Fetch + normalize + upsert one tenant's provider appointments.
  * Returns a summary for the caller (cron / manual) to relay or log.
  */
-export async function syncTenantAvailability(client, tenantId, { provider = null, rangeDays = 45 } = {}){
+export async function syncTenantAvailability(client, tenantId, { provider = null, rangeDays = 45, legacy = false } = {}){
   if(!client) return { ok: false, error: 'db_not_configured' };
+  // The calendar outbox (one job per calendar, failures isolated and kept locked) when the database has it.
+  if(!legacy){
+    try{
+      const { runOutbox } = await import('./calendar-outbox.js');
+      const o = await runOutbox({ client, tenantId, limit: 50, budgetMs: 40000 });
+      if(o.ok){
+        const res = (o.results || []).filter(r => r && !r.removed && !r.deferred);
+        const failed = res.filter(r => r.ok === false);
+        return { ok: true, outbox: true, providers: [...new Set(res.map(r => r.provider))], fetched: res.reduce((n, r) => n + (r.fetched || 0), 0),
+          upserted: res.reduce((n, r) => n + (r.upserted || 0), 0), stale_removed: res.reduce((n, r) => n + (r.pruned || 0), 0),
+          conflicts: res.reduce((n, r) => n + (r.conflicts || 0), 0),
+          provider_errors: failed.map(r => ({ provider: r.provider, calendar: r.calendar, error: r.error, kept: true })), jobs: res.length };
+      }
+    }catch(_){ /* the step-by-step sync below */ }
+  }
   const started = Date.now();
 
   let integrations = [];
@@ -49,21 +69,34 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
 
   const appointments = [];
   const providerErrors = [];
-  const fetchedOk = new Set();   // providers whose list we actually received
-  for(const integration of targets){
+  const failedProviders = new Set();   // a provider with ANY connection we couldn't read is never pruned
+  const keepFeeds = [];                // calendars inside a provider whose busy time must be kept as is
+  // Several connections of one kind (two Google calendars, two Square locations): ids are kept apart.
+  const perProvider = targets.reduce((m, i) => m.set(i.provider, (m.get(i.provider) || 0) + 1), new Map());
+  // Every connection is read at the same time, each inside its own time limit: one slow or broken
+  // booking system never holds up — or wipes — the others.
+  await Promise.all(targets.map(async (integration) => {
     try{
       // Call the connector directly (not via listAllAppointments, which
       // swallows per-provider errors) so a failing provider is visible in
       // the audit log instead of silently returning zero rows.
       const connector = getConnector(integration.provider);
-      const apps = await connector.listAppointments(integration, { from, to });
+      if(!connector || typeof connector.listAppointments !== 'function') throw new Error('no connector for ' + integration.provider);
+      const apps = await withTimeout(connector.listAppointments(integration, { from, to }), CONNECTOR_MS, integration.provider);
       if(!Array.isArray(apps)) throw new Error('provider returned no appointment list');
-      appointments.push(...apps.map(a => ({ ...a, provider: integration.provider })));
-      fetchedOk.add(integration.provider);
+      const prefix = perProvider.get(integration.provider) > 1 && integration.id ? `${integration.id}:` : '';
+      appointments.push(...apps.filter(a => a && a.starts_at && !Number.isNaN(Date.parse(a.starts_at)))
+        .map(a => ({ ...a, id: a.id != null && prefix ? prefix + a.id : a.id, provider: integration.provider })));
+      for(const f of (apps.failed_feeds || [])){
+        keepFeeds.push({ provider: integration.provider, key: f.key });
+        providerErrors.push({ provider: integration.provider, calendar: f.label, error: f.error, kept: true });
+      }
     }catch(e){
+      failedProviders.add(integration.provider);
       providerErrors.push({ provider: integration.provider, error: String(e?.message || e).slice(0, 200) });
     }
-  }
+  }));
+  const fetchedOk = new Set(targets.map(t => t.provider).filter(p => !failedProviders.has(p)));
 
   // Normalize into cache rows. Providers with no stable id get a synthetic
   // key so upsert/dedup still works.
@@ -81,6 +114,8 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
     last_synced_at: new Date().toISOString()
   }));
 
+  // One statement can't upsert the same key twice: keep the last copy of any duplicate.
+  { const seen = new Map(); for(const r of rows) seen.set(`${r.provider}\u0000${r.external_booking_id}`, r); rows.length = 0; rows.push(...seen.values()); }
   let upserted = 0;
   if(rows.length){
     const { error } = await client.from('cached_availability')
@@ -103,8 +138,9 @@ export async function syncTenantAvailability(client, tenantId, { provider = null
     // Rows starting beyond the window we just listed are not judged by it (kept);
     // anything earlier — inside the window, or history before the look-back — goes.
     const toMs = new Date(to).getTime();
+    const kept = (r) => keepFeeds.some(k => k.provider === r.provider && String(r.external_booking_id || '').endsWith('#' + k.key));
     stale = (cached || []).filter(r => prunable.includes(r.provider) && !freshIds.has(`${r.provider}\u0000${r.external_booking_id}`)
-      && (!r.starts_at || new Date(r.starts_at).getTime() < toMs));
+      && !kept(r) && (!r.starts_at || new Date(r.starts_at).getTime() < toMs));
     if(stale.length){
       await client.from('cached_availability').delete()
         .eq('tenant_id', tenantId).in('id', stale.map(s => s.id));

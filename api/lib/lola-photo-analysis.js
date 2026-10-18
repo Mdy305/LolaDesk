@@ -13,6 +13,8 @@ import { InvokeLLM, validateImageUrl, processBatch, retryWithBackoff } from './l
 import { createHash } from 'crypto';
 
 // Configuration
+import { modelFor } from './telnyx-models.js';
+// Picked from Telnyx's own model list at call time (never a retired id).
 const VISION_MODEL = 'moonshotai/Kimi-K2.6';
 const REPLY_MODEL = 'moonshotai/Kimi-K2.6';
 const ANALYSIS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -56,7 +58,7 @@ export async function analyzeHairPhoto(imageUrl, clientMessage = '', tenantId = 
     const attempt = async () => {
       if (left() != null && left() < 1000) throw new Error('photo analysis deadline');
       const result = await InvokeLLM({
-        model: VISION_MODEL,
+        model: await modelFor('vision').catch(() => VISION_MODEL),
         images: [imageUrl],
         prompt: buildAnalysisPrompt(clientMessage),
         max_tokens: 600,
@@ -143,7 +145,7 @@ export async function generatePhotoResponse(analysis, context = {}) {
     const prompt = buildResponsePrompt(analysis, context);
 
     const result = await InvokeLLM({
-      model: REPLY_MODEL,
+      model: await modelFor('power').catch(() => REPLY_MODEL),
       prompt,
       max_tokens: 100,
       temperature: 0.7
@@ -185,7 +187,7 @@ export async function moderateImage(imageUrl, { deadlineMs = 0 } = {}) {
   try {
     const result = await InvokeLLM({
       ...(deadlineMs ? { deadlineMs } : {}),
-      model: REPLY_MODEL,
+      model: await modelFor('power').catch(() => REPLY_MODEL),
       images: [imageUrl],
       prompt: `Analyze this image for content appropriateness.
 
