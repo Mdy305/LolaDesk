@@ -70,9 +70,18 @@ export async function ensureElevenSecret() {
   return ident;
 }
 
+// Expressive Mode (Telnyx Ultra voices only): the model chooses real emotion as she speaks — warmth, a smile,
+// softness for a problem, a laugh. Turned on with her Ultra voice; if Telnyx ever refuses the flag, her
+// voice stays and only the flag is dropped (never a different voice).
+let expressiveRefused = false;
+export const isUltra = (v) => /^Telnyx\.Ultra\./i.test(String(v || ''));
+export function noteExpressiveRefused() { expressiveRefused = true; }
+export function _resetExpressive() { expressiveRefused = false; }
+const wantsExpressive = (voice) => isUltra(voice) && !expressiveRefused;
+
 /** Is this assistant speaking with Lola's one voice? */
 export function voiceIsLola(vs) {
-  if (telnyxMode()) return String(vs?.voice || '') === telnyxVoice();
+  if (telnyxMode()) { const v = String(vs?.voice || ''); return v === telnyxVoice() && (!wantsExpressive(v) || vs?.expressive_mode === true); }
   const want = voiceId();
   const v = String(vs?.voice || '');
   return !!want && /^ElevenLabs\./i.test(v) && v.split('.').pop() === want && !!vs?.api_key_ref;
@@ -83,7 +92,7 @@ export async function lolaVoiceSettings(current = {}) {
   await readyVoice();
   const voice = lolaPhoneVoice();
   if (!voice) return null;
-  if (telnyxMode()) { const { api_key_ref, ...rest } = (current && typeof current === 'object') ? current : {}; return { ...rest, voice }; }
+  if (telnyxMode()) { const { api_key_ref, expressive_mode, ...rest } = (current && typeof current === 'object') ? current : {}; return { ...rest, voice, ...(wantsExpressive(voice) ? { expressive_mode: true } : {}) }; }
   return { ...(current && typeof current === 'object' ? current : {}), voice, api_key_ref: await ensureElevenSecret() };
 }
 
@@ -119,7 +128,9 @@ export async function unifyAssistantVoices({ heal = false } = {}) {
       for (let attempt = 0; ; attempt++) {
         try { await updateAssistant(a.id, { voice_settings: vs }); break; }
         catch (e) {
-          if (attempt >= 3 || !/not found|invalid|valid/i.test(String(e?.message || '')) || !telnyxVoiceMode()) throw e;
+          if (attempt >= 3 || !/not found|invalid|valid|expressive/i.test(String(e?.message || '')) || !telnyxVoiceMode()) throw e;
+          // Refused with Expressive Mode on: keep her voice, drop only the flag.
+          if (vs.expressive_mode) { noteExpressiveRefused(); vs = await lolaVoiceSettings(a.voice_settings); continue; }
           markBadVoice(vs.voice); await resolveTelnyxVoice({ force: true });
           vs = await lolaVoiceSettings(a.voice_settings);
         }

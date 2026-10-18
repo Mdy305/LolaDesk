@@ -28,6 +28,9 @@ import { HUMAN_MARK, HUMAN_RULES } from './human-touch.js';
 export const GREETING_VAR = '{{lola_greeting}}';
 export const COMPLIANCE_MARK = '[LolaDesk compliance]';
 export const COMPLIANCE_RULES = `\n\n${COMPLIANCE_MARK}\n- Your greeting tells every caller the call may be recorded and that you are an AI assistant. Never skip or contradict it.\n- If anyone asks whether you are a person or a bot, say plainly that you are the salon's AI assistant.\n- If a caller does not want to be recorded, offer to have the salon call them back and log it.\n- Never give medical, legal or financial advice. In an emergency, tell them to hang up and call 911.\n- Only text people about their own appointments or what they asked for; if anyone says STOP, confirm and stop.`;
+// Natural turn-taking (Telnyx docs: transcription settings + start speaking plan).
+export const NATURAL_TURNS = { eot_threshold: 0.7, eot_timeout_ms: 5000, eager_eot_threshold: 0.4 };
+export const NATURAL_START = { wait_seconds: 0.3, transcription_endpointing_plan: { on_punctuation_seconds: 0.1, on_no_punctuation_seconds: 1.2, on_number_seconds: 0.8 } };
 export const BOOKING_MARK = '[LolaDesk booking]';
 export const BOOKING_RULES = `\n\n${BOOKING_MARK}\n- Before booking anyone, get their FIRST AND LAST name, their MOBILE number (on a phone call you already have it — just confirm it) and their EMAIL for the confirmation (they may skip the email). Read back the service, day, time, name and number, and get a yes.\n- Pass them to book_appointment as client_name (first and last), client_phone and client_email — or no_email: true if they skipped it.\n- Only say an appointment is booked when book_appointment answers booked: true. If it answers booked: false, do exactly what its speak and instruction say — never say "you're booked", "all set" or "confirmed" otherwise.\n- After a real booking, tell them the confirmation text is on its way (and the email, if they gave one).`;
 export const SALES_MARK = '[LolaDesk sales]';
@@ -395,6 +398,11 @@ export async function wireAssistant({ heal = false } = {}) {
   if (instr && !instr.includes(SALES_MARK)) instr += SALES_RULES;
   // How she sounds human on every call and website chat (listen, mirror, one question at a time, no bot phrases).
   if (instr && !instr.includes(HUMAN_MARK)) instr += HUMAN_RULES;
+  else if (instr && !instr.includes(HUMAN_RULES.trim())) {
+    // An older version of the human rules: replace just that block (up to the next [LolaDesk …] block).
+    const at = instr.indexOf(HUMAN_MARK), next = instr.indexOf('\n[LolaDesk ', at + HUMAN_MARK.length);
+    instr = instr.slice(0, at).replace(/\s+$/, '') + HUMAN_RULES + (next >= 0 ? '\n' + instr.slice(next).replace(/^\s+/, '\n') : '');
+  }
   if (instr && instr !== String(a.instructions || '')) patch.instructions = instr;
   if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
   // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.
@@ -414,6 +422,18 @@ export async function wireAssistant({ heal = false } = {}) {
     voice = { current: a.voice_settings?.voice || null, ok: isLola, possible: !!ov.lolaPhoneVoice(), error: null };
     if (!isLola && voice.possible && heal) { try { patch.voice_settings = await ov.lolaVoiceSettings(a.voice_settings); } catch (e) { voice.error = String(e?.message || e); } }
   } catch (_) { voice = null; }
+  // Turn-taking that feels like a person: Deepgram Flux hears when the caller has finished (and starts
+  // thinking before they quite stop), so there's no dead air after they talk — and she never jumps in
+  // mid-sentence. Applied once; an owner's own Flux tuning is left alone.
+  const tr = (a.transcription && typeof a.transcription === 'object') ? a.transcription : {};
+  if (!/flux/i.test(String(tr.model || '')) || !tr.settings || tr.settings.eager_eot_threshold == null) {
+    patch.transcription = { ...tr, model: 'deepgram/flux', settings: { ...(tr.settings || {}), ...NATURAL_TURNS } };
+  }
+  // The recorded-call disclosure in her greeting can't be talked over; anything after it can (like a person).
+  const is = (a.interruption_settings && typeof a.interruption_settings === 'object') ? a.interruption_settings : {};
+  if (is.enable === false || is.disable_greeting_interruption !== true || !is.start_speaking_plan) {
+    patch.interruption_settings = { ...is, enable: true, disable_greeting_interruption: true, start_speaking_plan: is.start_speaking_plan || NATURAL_START };
+  }
   // Her BRAIN on the phone: a model Telnyx no longer serves means every call fails silently.
   // Swap it for the best model Telnyx lists right now (its "recommended for assistants" first).
   let model = null;
@@ -428,7 +448,7 @@ export async function wireAssistant({ heal = false } = {}) {
   if (heal && Object.keys(patch).length) {
     // The essentials (signed tools, salon details, greeting, rules) go first and alone, so an optional
     // setting Telnyx might refuse can never block them; each optional setting is then tried on its own.
-    const OPTIONAL = ['dynamic_variables_webhook_timeout_ms', 'telephony_settings', 'voice_settings'];
+    const OPTIONAL = ['dynamic_variables_webhook_timeout_ms', 'telephony_settings', 'voice_settings', 'transcription', 'interruption_settings'];
     const core = Object.fromEntries(Object.entries(patch).filter(([k]) => !OPTIONAL.includes(k)));
     const extras = OPTIONAL.filter((k) => k in patch);
     try { if (Object.keys(core).length) await updateAssistant(id, core); healed = true; }
@@ -455,6 +475,10 @@ export async function wireAssistant({ heal = false } = {}) {
       catch (e) {
         // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
         if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
+        if (k === 'voice_settings' && voice && patch.voice_settings?.expressive_mode) {
+          // Telnyx refused Expressive Mode: keep her voice, drop only the flag.
+          try { const ov = await import('./one-voice.js'); ov.noteExpressiveRefused(); const vs2 = await ov.lolaVoiceSettings(a.voice_settings); await updateAssistant(id, { voice_settings: vs2 }); patch.voice_settings = vs2; continue; } catch (_) { /* fall through to the voice fallback */ }
+        }
         if (k === 'voice_settings' && voice && telnyxVoiceMode() && /not found|valid/i.test(String(e?.message || ''))) {
           // That voice isn't available to assistants: the next real Telnyx voice, once.
           try { const el = await import('./elevenlabs.js'); el.markBadVoice(patch.voice_settings?.voice); await el.resolveTelnyxVoice({ force: true }); const ov = await import('./one-voice.js'); const vs2 = await ov.lolaVoiceSettings(a.voice_settings); if (vs2) { await updateAssistant(id, { voice_settings: vs2 }); patch.voice_settings = vs2; continue; } } catch (e2) { voice.error = String(e2?.message || e2); continue; }
