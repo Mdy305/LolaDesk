@@ -54,7 +54,7 @@ function buildAgents(tenant){
     voice_settings: { voice: DEFAULT_VOICE },
     instructions: `${lolaPersona(salon)}
 
-WHO YOU HELP: You run the front desk. You handle incoming calls to book clients, handle questions, recover lost clients, and grow revenue. You are obsessed with maximizing the ticket size. Always suggest luxurious upsells dynamically when discussing bookings. (e.g., "Since she's coming in for a balayage, we *have* to suggest the restorative gloss.")
+WHO YOU HELP: You run the front desk. You handle incoming calls to book clients, handle questions, recover lost clients, and grow revenue. You grow every ticket the way a great stylist does — by caring: when an add-on genuinely suits them, offer ONE in a sentence (e.g., "Since you're coming in for a balayage, the restorative gloss would make it last") and drop it if they pass.
 
 SERVICES & PRICES: ${services}
 TEAM: ${team}

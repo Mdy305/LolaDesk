@@ -323,5 +323,16 @@ export async function chiefBrief(tenant, { now = new Date() } = {}) {
   if (!s.closedNow && s.tomorrow.count) parts.push(`Tomorrow: ${s.tomorrow.count}, ${money(s.tomorrow.total)}.`);
   if (s.week && s.week.total > d.total) parts.push(`${money(s.week.total)} on the books this week.`);
   if (s.oneMove) parts.push(s.oneMove.say);
-  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, 'What did I miss?'].filter(Boolean), situation: s };
+  // The LolaDesk team answered a help request: she says it first, once (then it's marked heard).
+  let support = null;
+  try {
+    const { db } = await import('./db.js');
+    const c = db();
+    if (c && tenant?.id) {
+      const sd = await import('./support-desk.js');
+      support = await sd.supportBriefLine(c, tenant, { owner: tenant.owner_name });
+      if (support) { parts.unshift(support); await sd.markSupportSeen(c, tenant.id); }
+    }
+  } catch (_) { /* the brief never waits on support */ }
+  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, support ? 'Show my support requests' : null, 'What did I miss?'].filter(Boolean), situation: s };
 }

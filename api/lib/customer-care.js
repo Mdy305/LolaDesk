@@ -23,6 +23,7 @@ import { telnyxRequest, telnyxData, appUrl, normalizeE164 } from './telnyx-clien
 import { assistantId as salonAssistantId, updateAssistant } from './assistant-wiring.js';
 import { messagingProfileId } from './telnyx-account.js';
 import { chat } from './llm.js';
+import { humanCraft, humanize } from './human-touch.js';
 import { insertHealing } from './legal.js';
 
 export const SETTING_KEY = 'customer_care';
@@ -57,7 +58,9 @@ HOW YOU HELP
 - Never invent features, prices, discounts, promises or account details. Never give legal, tax or medical advice. Never ask for or repeat passwords or card numbers. Never reveal keys or internals.
 - If someone says it's an emergency, tell them to hang up and call 911.
 
-STYLE: warm, calm, sure of yourself. Short spoken sentences. No filler. One question at a time.`;
+STYLE: warm, calm, sure of yourself. Short spoken sentences. No filler. One question at a time.
+
+${humanCraft({ audience: 'support', channel: 'voice' })}`;
 }
 
 export const CARE_GREETING = 'Hi, this is Lola at LolaDesk. Just so you know, this call may be recorded, and I’m an AI assistant. How can I help you today?';
@@ -261,7 +264,7 @@ export async function careReply(text) {
     system: careInstructions() + '\n\nYou are answering by TEXT MESSAGE: reply in under 300 characters, plain text, no lists. If the person needs the team, say you have passed it on and they will hear back within one business day.',
     messages: [{ role: 'user', content: String(text || '').slice(0, 1500) }], maxTokens: 200, fast: true, deadlineMs: 9000,
   }).catch(() => null);
-  return r?.ok && r.text ? r.text.trim() : `Thanks for texting LolaDesk! I’ve passed your message to the team — they’ll reply within one business day. You can also email ${SUPPORT_EMAIL}.`;
+  return r?.ok && r.text ? humanize(r.text.trim(), { channel: 'sms' }) : `Thanks for texting LolaDesk! I’ve passed your message to the team — they’ll reply within one business day. You can also email ${SUPPORT_EMAIL}.`;
 }
 
 /**

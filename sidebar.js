@@ -493,17 +493,45 @@ body.ln-shell{padding-left:236px}
 #lnSupport .s-cancel{background:none;border:1px solid #28282e;color:#b4b4bc}
 #lnSupport .s-send{background:#f2f2f4;border:0;color:#0a0a0b;font-weight:600}
 #lnSupport .s-send:disabled{opacity:.5}
-#lnSupport .s-msg{font-size:13px;margin-top:10px;min-height:18px;color:#8a8a92}</style>
-<div class="s-card"><h2>Contact support</h2><p>Tell the LolaDesk team what you need. We reply within one business day.</p>
+#lnSupport .s-msg{font-size:13px;margin-top:10px;min-height:18px;color:#8a8a92}
+#lnSupport .s-list{margin-top:18px;border-top:1px solid #1e1e22;padding-top:14px;max-height:260px;overflow:auto}
+#lnSupport .s-list h3{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e6e76;margin:0 0 8px}
+#lnSupport .s-tk{padding:10px 0;border-bottom:1px solid #18181b;font-size:13px;line-height:1.45}
+#lnSupport .s-tk:last-child{border-bottom:0}
+#lnSupport .s-st{font-size:11.5px;color:#8a8a92;margin-top:2px}
+#lnSupport .s-st.done{color:#5fc28a}
+#lnSupport .s-rp{margin-top:6px;padding:8px 10px;background:#121214;border-radius:10px;color:#d6d6dc}</style>
+<div class="s-card"><h2>Contact support</h2><p>Tell the LolaDesk team what you need. We reply within one business day — or just tell Lola: “tell support…”.</p>
 <textarea id="lnSupportText" placeholder="What's going on?" aria-label="Your message" maxlength="2000"></textarea>
 <label><input type="checkbox" id="lnSupportUrgent"> It's urgent — Lola isn't answering or booking</label>
 <div class="s-msg" id="lnSupportMsg"></div>
-<div class="s-row"><button type="button" class="s-cancel" data-s-close>Cancel</button><button type="button" class="s-send" data-s-send>Send</button></div></div>`;
+<div class="s-row"><button type="button" class="s-cancel" data-s-close>Cancel</button><button type="button" class="s-send" data-s-send>Send</button></div><div class="s-list" id="lnSupportList" hidden></div></div>`;
     document.body.appendChild(box);
     const close = () => box.remove();
     const ta = box.querySelector('#lnSupportText'), msg = box.querySelector('#lnSupportMsg'), send = box.querySelector('[data-s-send]');
     setTimeout(() => ta.focus(), 30);
     box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('[data-s-close]')) close(); });
+    // Your requests: what you asked and what the team answered (newest first).
+    (async () => {
+      try {
+        let tk = ''; try { tk = localStorage.getItem('loladesk_token') || ''; } catch (_) {}
+        if (!tk) return;
+        const r = await fetch('/api/customer-care?action=mine', { headers: { Authorization: 'Bearer ' + tk } });
+        const j = await r.json().catch(() => ({}));
+        const list = (j && j.tickets) || [];
+        const el = box.querySelector('#lnSupportList');
+        if (!el || !list.length) return;
+        const words = { open: 'Waiting for the team', in_progress: 'Being worked on', resolved: 'Resolved' };
+        const day = (x) => { try { return new Date(x).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (_) { return ''; } };
+        el.innerHTML = '<h3>Your requests</h3>' + list.slice(0, 6).map((t) => {
+          const last = (t.replies || [])[t.replies.length - 1];
+          return '<div class="s-tk"><div>' + esc(String(t.issue || '').slice(0, 160)) + '</div>' +
+            '<div class="s-st' + (t.status === 'resolved' ? ' done' : '') + '">' + esc(words[t.status] || 'Open') + ' · ' + esc(day(t.created_at)) + (t.ref ? ' · #' + esc(t.ref) : '') + '</div>' +
+            (last ? '<div class="s-rp">' + esc(String(last.text || '').slice(0, 600)) + '</div>' : '') + '</div>';
+        }).join('');
+        el.hidden = false;
+      } catch (_) { /* the form works without the list */ }
+    })();
     box.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
     send.addEventListener('click', async () => {
       const text = ta.value.trim();

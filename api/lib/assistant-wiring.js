@@ -20,6 +20,7 @@ import { telnyxRequest, telnyxData, appUrl } from './telnyx-client.js';
 import { greetingDiscloses, discloseGreeting } from './legal.js';
 import { telnyxSafeVariables } from './booking-link.js';
 import { toolKey, toolKeyOk } from './tool-key.js';
+import { HUMAN_MARK, HUMAN_RULES } from './human-touch.js';
 
 
 // Appended once to Lola's phone instructions (Florida is all-party consent; TCPA; honesty about being an AI).
@@ -391,6 +392,8 @@ export async function wireAssistant({ heal = false } = {}) {
   const bookingRules = instr.includes(BOOKING_MARK);
   if (!bookingRules && instr) instr += BOOKING_RULES;
   if (instr && !instr.includes(SALES_MARK)) instr += SALES_RULES;
+  // How she sounds human on every call and website chat (listen, mirror, one question at a time, no bot phrases).
+  if (instr && !instr.includes(HUMAN_MARK)) instr += HUMAN_RULES;
   if (instr && instr !== String(a.instructions || '')) patch.instructions = instr;
   if (!dynOk) patch.dynamic_variables_webhook_url = variablesUrl();
   // The salon-details webhook runs ~10 lookups; give it room so callers never get the generic defaults.

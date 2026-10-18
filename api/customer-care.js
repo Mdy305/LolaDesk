@@ -5,6 +5,7 @@
  *   POST ?action=ticket&k=…       → Lola's log_support_request tool (from Telnyx)
  *   POST ?action=contact { message, urgency? } → a signed-in SALON asks for help from inside the app
  *                                   ("Contact support" in the account menu) → support_tickets, channel 'app'
+ *   GET  ?action=mine             → a signed-in SALON's own help requests + the team's replies (marks them heard)
  *   GET                           → platform admin: current state
  *   POST { phone_number?, area_code? } → platform admin: set up / refresh the line
  *                                   (reuses a free number, else buys one)
@@ -71,6 +72,19 @@ export default async function handler(req, res) {
     });
     if (!r.saved) return res.status(500).json({ ok: false, error: `Couldn’t send that — email ${SUPPORT_EMAIL} and we’ll help right away.` });
     return res.json({ ok: true, message: 'Sent. The LolaDesk team will reply within one business day.' });
+  }
+
+  // A salon reading its own help requests (Contact support window): only its own tenant's rows.
+  if (req.method === 'GET' && q.action === 'mine') {
+    const u = await getUserFromToken(bearer(req)).catch(() => null);
+    if (!u) return res.status(401).json({ ok: false, error: 'Not signed in' });
+    if (!c) return res.json({ ok: true, tickets: [] });
+    const tenant = await resolveTenantForUser(u).catch(() => null);
+    if (!tenant) return res.json({ ok: true, tickets: [] });
+    const { ticketsFor, markSupportSeen } = await import('./lib/support-desk.js');
+    const tickets = await ticketsFor(c, tenant.id, { limit: 10 });
+    await markSupportSeen(c, tenant.id);
+    return res.json({ ok: true, tickets });
   }
 
   const user = await getUserFromToken(bearer(req)).catch(() => null);

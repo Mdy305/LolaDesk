@@ -114,6 +114,13 @@ export function routeOwnerIntent(input) {
   // ── her own health ──
   if (/\b(run (?:a |your )?(?:check|diagnostic|self.?check|test)|diagnose yourself|test yourself|are you (?:ok|okay|working|alright)|is everything working|system check|status check)\b/.test(t)) return { self_check: true };
 
+  // ── LolaDesk support (before "text …", so "text support that …" never texts a client named Support) ──
+  if (/\b(my (?:support |help )?(?:tickets?|requests?)|support (?:tickets?|status)|ticket status|did (?:support|loladesk|the (?:loladesk )?team) (?:reply|answer|respond|write back|get back)|any (?:reply|answer|news|word) from (?:support|loladesk|the (?:loladesk )?team))\b/.test(t)) return { tool: 'support_status', args: {} };
+  const help = raw.match(/^(?:contact|email|message|text|tell|ask|ping|write to)\s+(?:the\s+)?(?:loladesk\s+)?(?:support|help desk|loladesk team|loladesk)(?:\s+team)?(?:\s*(?:that|about|saying|to say|:|,|-|–)\s*(.+))?$/i)
+    || raw.match(/^(?:open|create|file|start)\s+(?:a\s+)?(?:support\s+|help\s+)?ticket(?:\s*(?:about|for|saying|that|:|,|-|–)\s*(.+))?$/i)
+    || raw.match(/^report\s+(?:a\s+|this\s+)?(?:bug|problem|issue)(?:\s+(?:to loladesk|to support))?(?:\s*(?:about|that|:|,|-|–)\s*(.+))?$/i);
+  if (help) return { tool: 'contact_support', args: { message: (help[1] || '').trim() } };
+
   // ── blocked time (before "cancel …", so "cancel the Thursday block" never cancels a client) ──
   const blk = parseBlockCommand(raw);
   if (blk) return blk;
@@ -192,6 +199,7 @@ export function routeOwnerIntent(input) {
 /** The team member each action belongs to — shown on the orb as Lola works. */
 export function agentFor(name) {
   if (/booking|no_show|waitlist|fill_gap|list_bookings|check_availability|book_|reschedule|cancel/.test(name)) return { id: 'booking', label: 'Booking' };
+  if (/support/.test(name)) return { id: 'support', label: 'Support' };
   if (/text|call|message/.test(name)) return { id: 'communications', label: 'Communications' };
   if (/campaign|fill_plan|learn|growth/.test(name)) return { id: 'marketing', label: 'Marketing' };
   if (/revenue|brief|away|block/.test(name)) return { id: 'operations', label: 'Operations' };

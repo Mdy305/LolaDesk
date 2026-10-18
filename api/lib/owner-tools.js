@@ -86,12 +86,28 @@ export const OWNER_TOOLS = [
   fn('learn_business', "Read the salon's website and/or a menu the owner pastes, and learn services, prices, team, hours, FAQ, brand voice and marketing ideas. Use for 'learn my website', 'read my site', or when the owner pastes a price list.", { website: { type: 'string' }, notes: { type: 'string', description: 'Menu, prices or anything the owner pasted.' } }),
   fn('confirm_appointments', "Text every client booked on a day asking them to confirm (reply YES) or reschedule. Use for 'confirm tomorrow's appointments', 'send confirmations'.", { date: dateArg, confirmed: confirmedArg }),
   fn('confirmation_status', "Who has confirmed their appointment for a day and who hasn't. Use for 'who confirmed tomorrow', 'confirmations'.", { date: dateArg }),
+  fn('contact_support', "Send a help request to the LolaDesk team (the company behind this app) — when something in LolaDesk isn't working, the owner is confused by the app, or they want a person from LolaDesk. Put the problem in the owner's own words plus what you saw in this conversation. Previewed first; sent on the owner's yes.", {
+    message: { type: 'string', description: "The problem, in the owner's words, with any useful detail (what they tried, what happened)." },
+    urgency: { type: 'string', enum: ['normal', 'high'], description: 'high only if Lola is not answering calls or not booking at all.' }, confirmed: confirmedArg,
+  }, ['message']),
+  fn('support_status', "The owner's help requests to LolaDesk and the team's answers. Use for 'did support answer', 'my tickets', 'any news from LolaDesk'."),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
 for (const m of SETUP_MODULES) for (const t of m.SETUP_TOOLS || []) if (!OWNER_TOOLS.some((x) => x.function.name === t.function.name)) OWNER_TOOLS.push(t);
 const setupModuleFor = (name) => SETUP_MODULES.find((m) => (m.SETUP_TOOLS || []).some((t) => t.function.name === name)) || null;
 export const OWNER_TOOL_NAMES = new Set(OWNER_TOOLS.map(t => t.function.name));
-const NEEDS_CONFIRM = new Set(['block_time', 'unblock_time', 'confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
+/** Lola asked what to tell support: the owner's next message IS the request (see supportFollowUp). */
+export const SUPPORT_ASK = "What's going on? Tell me in a sentence and I'll get it to the LolaDesk team.";
+export function supportFollowUp(messages, text) {
+  const prior = (Array.isArray(messages) ? messages : []).filter((m) => m && (m.role === 'user' || m.role === 'assistant'));
+  // The last assistant turn before this message must be the ask, and the reply must be real words, not yes/no.
+  let i = prior.length - 1; if (i >= 0 && prior[i].role === 'user') i--;
+  const lastSaid = i >= 0 && prior[i].role === 'assistant' ? (typeof prior[i].content === 'string' ? prior[i].content : (Array.isArray(prior[i].content) ? prior[i].content.map((x) => x?.text || '').join(' ') : '')) : '';
+  const msg = String(text || '').trim();
+  if (lastSaid.trim() !== SUPPORT_ASK || msg.length < 3 || isAffirmative(msg) || isNegative(msg)) return null;
+  return { tool: 'contact_support', args: { message: msg } };
+}
+const NEEDS_CONFIRM = new Set(['contact_support', 'block_time', 'unblock_time', 'confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
   calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
@@ -115,7 +131,7 @@ export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do i
 export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
 
 /** Tools that only read — the only ones an UNVERIFIED channel may run. */
-export const OWNER_READ_TOOLS = new Set(['today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
+export const OWNER_READ_TOOLS = new Set(['support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -125,7 +141,8 @@ export async function ownerSystemPrompt(tenant) {
     `You are Lola, the AI front desk and marketing manager of ${tenant.name || 'this salon'}. You are speaking with the OWNER inside LolaDesk.`,
     `Today is ${wd} ${today} (salon timezone ${tz}).`,
     'When the owner asks you to do something, call the matching tool. Never claim you did something unless a tool result says it happened.',
-    'Keep spoken replies short: one or two sentences, warm and plain.',
+    'Keep spoken replies short: one or two sentences, warm and plain — the way a trusted right hand talks, never a help desk.',
+    'If LolaDesk itself is not working, something is confusing, or they want a person from LolaDesk, call contact_support with the problem in their own words (plus what you saw in this conversation); it is previewed and sent when they say yes. For "did support answer" / "my tickets" call support_status.',
     'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
     'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
     'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
@@ -356,6 +373,24 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
         if (!s.total) return { ok: true, say: `Nothing is booked ${when}.` };
         const w = s.waiting.map(x => x.name.split(' ')[0]);
         return { ok: true, say: `${s.confirmed.length} of ${s.total} confirmed for ${when}.${w.length ? ` Still waiting on ${w.slice(0, 5).join(', ')}${w.length > 5 ? '…' : ''}.${s.waiting.some(x => !x.asked) ? ' Want me to text them?' : ''}` : ' Everyone is confirmed.'}`, ...s };
+      }
+
+      case 'contact_support': {
+        const message = String(args.message || '').trim().slice(0, 1500);
+        const urgency = args.urgency === 'high' ? 'high' : 'normal';
+        if (message.length < 3) return { ok: true, say: SUPPORT_ASK };
+        if (!confirmed) return park(tenant.id, name, { message, urgency }, `I'll send this to the LolaDesk team${urgency === 'high' ? ' as urgent' : ''}: "${message.length > 160 ? message.slice(0, 159) + '…' : message}". Send it?`);
+        const { openSupportTicket } = await import('./support-desk.js');
+        let user = null;
+        try { const { getUserFromToken, bearer } = await import('./auth.js'); user = req ? await getUserFromToken(bearer(req)) : null; } catch { /* the salon's own contact details are used */ }
+        return openSupportTicket(c, tenant, { message, urgency, user });
+      }
+
+      case 'support_status': {
+        const { ticketsFor, supportStatusSay, markSupportSeen } = await import('./support-desk.js');
+        const list = await ticketsFor(c, tenant.id, { limit: 10 });
+        await markSupportSeen(c, tenant.id);
+        return { ok: true, say: supportStatusSay(list), tickets: list };
       }
 
       case 'open_page': {
