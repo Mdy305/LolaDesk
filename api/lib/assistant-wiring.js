@@ -347,6 +347,27 @@ export async function wireAssistant({ heal = false } = {}) {
   // book_appointment asks for the full name, mobile and email (Telnyx only collects what a tool declares).
   const bookingParams = [];
   for (let i = 0; i < next.length; i++) { const u = withBookingParams(next[i]); if (u) { next[i] = u; bookingParams.push(u.webhook.name); } }
+  // A Tools-Library (shared) book_appointment that doesn't ask for first + last name, mobile and email:
+  // adding them in the Library doesn't stick, so Lola takes her own signed copy and the Library copy is detached from her
+  // (never deleted — it stays in Telnyx → AI → Tools for anyone else using it).
+  const ownCopies = new Set();
+  for (const t of sharedNow) {
+    const name = norm(toolName(t));
+    const d0 = diagnoseTool(t), d = d0 && d0.fixable ? d0 : null;
+    const withParams = withBookingParams(t);
+    // Re-signing / re-pointing a Library tool sticks (PATCH /ai/tools, documented): only the booking-details
+    // fix doesn't, so only a book_appointment missing them is replaced by her own copy.
+    if (!(name === 'book_appointment' && withParams)) continue;
+    const r = REQUIRED.find((x) => x.name === name);
+    const url = d && d.problem === 'unsigned_keep' ? signKeep(t.webhook.url) : toolUrl((d && d.tool) || name);
+    const body_parameters = r ? { type: 'object', properties: r.props, ...(name === 'book_appointment' ? { required: ['service', 'date', 'time', 'client_name', 'client_phone'] } : {}) }
+      : (withParams ? withParams.webhook.body_parameters : t.webhook?.body_parameters);
+    next.push({ type: 'webhook', webhook: { name: t.webhook?.name || name, description: r?.description || t.webhook?.description || name, url, method: 'POST', ...(body_parameters ? { body_parameters } : {}) } });
+    ownCopies.add(name);
+    fixed.push({ name: t.webhook?.name || name, from: t.webhook?.url || null, to: url, problem: d ? d.problem : 'booking_details', shared: true, own_copy: true });
+    if (withParams) bookingParams.push(name + ' (her own copy replaces the Tools-Library one)');
+  }
+  const ownBooking = ownCopies.has('book_appointment');
   const have = new Set([...next.map((t) => norm(t?.webhook?.name || t?.function?.name || '')), ...sharedNames]);
   const added = [];
   for (const r of REQUIRED) if (!have.has(r.name)) { next.push({ type: 'webhook', webhook: { name: r.name, description: r.description, url: toolUrl(r.name), method: 'POST', body_parameters: { type: 'object', properties: r.props } } }); added.push(r.name); }
@@ -357,6 +378,7 @@ export async function wireAssistant({ heal = false } = {}) {
   if (heal && sharedNow.length) {
     let lib = null;
     for (const t of sharedNow) {
+      if (ownCopies.has(norm(toolName(t)))) continue;   // replaced by her own copy above
       const d0 = diagnoseTool(t);
       const d = d0 && d0.fixable ? d0 : null;
       // A Library copy of book_appointment must ask for first + last name, mobile and email too.
