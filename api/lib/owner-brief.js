@@ -56,11 +56,12 @@ export async function awayBrief(c, tenant, since, opts = {}) {
   const now = opts.now || new Date();
   const tid = tenant.id;
 
-  const [calls, made, cancelled, runs] = await Promise.all([
+  const [calls, made, cancelled, runs, leadRows] = await Promise.all([
     rows(c.from('calls').select('*').eq('tenant_id', tid).gte('created_at', since).order('created_at', { ascending: false }).limit(300)),
     rows(c.from('bookings').select('*').eq('tenant_id', tid).gte('created_at', since).order('created_at', { ascending: false }).limit(300)),
     rows(c.from('bookings').select('*').eq('tenant_id', tid).eq('status', 'cancelled').gte('updated_at', since).limit(200)),
     rows(c.from('agent_runs').select('*').eq('tenant_id', tid).gte('ran_at', since).order('ran_at', { ascending: false }).limit(20)),
+    rows(c.from('usage_events').select('kind,metadata,created_at').eq('tenant_id', tid).in('kind', ['lead', 'lead_done']).gte('created_at', since).order('created_at', { ascending: false }).limit(100)),
   ]);
 
   const newBookings = made.filter(b => b.status !== 'cancelled');
@@ -91,6 +92,25 @@ export async function awayBrief(c, tenant, since, opts = {}) {
       kind: 'callback', reason: why, call_id: k.id, phone, client_id: cl?.id || null,
       name: name || prettyPhone(phone), known: !!name, vip: !!(cl && (cl.is_vip || cl.status === 'vip')), at: k.created_at,
       action: `Call ${name || prettyPhone(phone)} back`,
+    });
+  }
+  // Every request Lola took that isn't on the calendar (lib/lead-inbox.js): a booking she couldn't finish,
+  // a call-back, a message — on the phone, the website, a text. Never lost.
+  const doneAt = new Map(leadRows.filter(e => e.kind === 'lead_done' && e.metadata?.phone).map(e => [e.metadata.phone, Date.parse(e.created_at)]));
+  for (const e of leadRows) {
+    const m = e.kind === 'lead' ? (e.metadata || {}) : null;
+    if (!m || (!m.phone && !m.email && !m.message)) continue;
+    const phone = e164(m.phone) || null;
+    if (phone && (seen.has(phone) || (doneAt.get(phone) || 0) >= Date.parse(e.created_at))) continue;
+    if (phone) seen.add(phone);
+    const cl = phone ? byPhone.get(phone) : null;
+    const name = m.name || nameOf(cl);
+    const want = [m.service, m.when].filter(Boolean).join(' ');
+    needs.push({
+      kind: 'lead', reason: m.reason ? 'not_booked' : 'request', phone, email: m.email || null, client_id: cl?.id || null,
+      name: name || (phone ? prettyPhone(phone) : m.email || 'Someone'), known: !!name, vip: !!(cl && (cl.is_vip || cl.status === 'vip')), at: e.created_at,
+      want, message: m.message || '', channel: m.channel || '',
+      action: m.reason ? `Book ${name ? first(name) : 'them'}${want ? ` (${want})` : ''}` : `Call ${name ? first(name) : prettyPhone(phone) || 'them'} back`,
     });
   }
   // VIPs and unhappy callers first.
@@ -125,7 +145,7 @@ export async function awayBrief(c, tenant, since, opts = {}) {
   }
   if (needs.length) {
     const n = needs[0];
-    const why = n.reason === 'unhappy' ? 'sounded unhappy' : n.reason === 'asked_for_you' ? 'asked for you' : 'called and I missed them';
+    const why = n.reason === 'unhappy' ? 'sounded unhappy' : n.reason === 'asked_for_you' ? 'asked for you' : n.reason === 'not_booked' ? `wanted ${n.want || 'an appointment'} and I couldn't finish the booking` : n.reason === 'request' ? (n.message ? `left a message: “${String(n.message).slice(0, 80)}”` : `asked for ${n.want || 'a call back'}`) : 'called and I missed them';
     say += ` ${n.known ? first(n.name) : `A caller at ${n.name}`}${n.vip ? ' (VIP)' : ''} ${why}${needs.length > 1 ? `, and ${plural(needs.length - 1, 'other person', 'others')} need${needs.length - 1 === 1 ? 's' : ''} a call back` : ''}. Want me to call ${needs.length > 1 || !n.known ? 'them' : first(n.name)} back?`;
   }
   const autopilot = runs.map(r => r.summary).filter(Boolean).slice(0, 3);
