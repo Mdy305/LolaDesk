@@ -248,6 +248,20 @@ ${extra}`.trim();
         catch (e) { result = { speak: 'That didn’t go through — offer to have the salon follow up.', error: String(e?.message || e) }; }
       }
       actions.push({ tool: name, args, result });
+      // Never lose a request made by text / DM / website chat (lib/lead-inbox.js): a booking that didn't go
+      // through, a call-back or a message lands on the salon's dashboard; a booking that did closes it.
+      if (['book_appointment', 'take_message', 'capture_lead'].includes(name)) {
+        try {
+          const li = await import('./lead-inbox.js');
+          const leadPhone = phone || args.client_phone || contactPhone || '';
+          if (name === 'book_appointment' && result?.booked === true) await li.leadBooked(tenant, leadPhone);
+          else if (name !== 'book_appointment' || result?.booked === false) {
+            await li.saveLead({ tenant, name: args.client_name || (story?.first ? story.name : '') || '', phone: leadPhone, email: args.client_email || '',
+              service: args.service || (name === 'book_appointment' ? 'appointment' : ''), when: [args.date, args.time].filter(Boolean).join(' '),
+              message: args.message_summary || args.message || '', channel, ...(name === 'book_appointment' ? li.bookingOutcome(result) : {}) });
+          }
+        } catch (_) { /* the reply still goes out */ }
+      }
       msgs.push({ role: 'tool', tool_call_id: call.id, name, content: JSON.stringify(result).slice(0, 2500) });
     }
   }

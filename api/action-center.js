@@ -58,6 +58,8 @@ export default async function handler(req,res){
       const when=new Date(booking.starts_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
       items.push({id,type:'booking',priority:'high',title:'Confirm today’s appointment',detail:`${booking.client_name||'Client'} · ${booking.service||'Appointment'} at ${when}`,created_at:booking.created_at||booking.starts_at,href:'bookings.html',cta:'Review booking'});
     }
+    // Every request Lola took that isn't on the calendar: call them back (lib/lead-inbox.js).
+    try{ const { leadActions }=await import('./lib/lead-inbox.js'); items.push(...leadActions(usage,{now})); }catch{}
     const draftEvents=usage.filter(x=>x.kind==='campaign_draft');
     const sentIds=new Set(usage.filter(x=>x.kind==='campaign_sent').map(x=>x.metadata?.draft_id).filter(Boolean));
     for(const e of draftEvents){

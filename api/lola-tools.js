@@ -739,12 +739,32 @@ async function rebook_next_visit(tenant, body){
   };
 }
 
+// ── Never lose a request: a copy of every booking attempt, call-back and message (lib/lead-inbox.js) ──
+const LEAD_TOOLS = new Set(['book_appointment', 'capture_lead', 'take-message', 'take_message', 'takeMessage', 'escalate']);
+function leadFrom(tool, body = {}, { channel = '', reason = '', salonLine = '', call = '' } = {}){
+  const isMsg = tool !== 'book_appointment';
+  return {
+    name: body.client_name || body.caller_name || body.name || '',
+    phone: body.client_phone || body.callback_number || body.caller_line || '',
+    email: body.client_email || body.email || '',
+    service: body.service || body.service_requested || (isMsg ? '' : 'appointment'),
+    when: [body.date, body.time].filter(Boolean).join(' '),
+    message: body.message_summary || body.message || '',
+    channel, reason, salonLine, call,
+  };
+}
+async function keepLead(tenant, tool, body, opts = {}){
+  if(!LEAD_TOOLS.has(String(tool))) return null;
+  try{ const { saveLead } = await import('./lib/lead-inbox.js'); return await saveLead({ tenant, ...leadFrom(tool, body, opts), alert: opts.alert !== false, trusted: opts.trusted !== false }); }
+  catch(e){ console.error('[lola-tools] lead not saved:', String(e?.message || e).slice(0, 160)); return null; }
+}
+
 // ── SKILL: capture a lead ──
 async function capture_lead(tenant, { client_name, client_phone, service_requested }){
   try{
     if(tenant.id && client_phone){
       const client = await upsertClient(tenant.id, { phone: client_phone, name: client_name });
-      await logUsage(tenant.id, 'lead', 1, { service: service_requested, name: client_name });
+      // The lead itself (with what they wanted) is kept by keepLead → lib/lead-inbox.js.
     }
     return {
       speak: `Got it${client_name?`, ${String(client_name).split(' ')[0]}`:''} — I've noted you're interested in ${service_requested||'a visit'} and the team will reach out shortly. Thank you for calling!`,
@@ -1002,6 +1022,8 @@ export default async function handler(req, res){
     // skills (menu, prices, open times) stay open; the heal above re-signs drifted wiring.
     if(WRITE_SKILLS.has(String(tool)) && !signed){
       console.warn('[lola-tools] unsigned write refused:', tool);
+      // Nothing is booked — but the request is kept for the salon (or the LolaDesk team) to finish.
+      { const t = await resolveTenant(body).catch(() => null); await keepLead(t, tool, body, { channel: web ? 'web' : 'phone', reason: 'unsigned', trusted: false, salonLine: body.to || '', call: real(req.query?.call) ? String(req.query.call) : '' }); }
       return res.status(200).json({ booked: false, ok: false, error: 'unsigned', verified: false,
         speak: "I can't book from here right now, so nothing is booked yet. Please call or text the salon and I'll take care of it there." });
     }
@@ -1013,6 +1035,7 @@ export default async function handler(req, res){
       // No salon on this call (a website widget pasted without LolaDesk's salon line header, or an
       // unrouted number): say so plainly — never let her pretend she booked anything.
       console.warn('[lola-tools] no salon for', tool, web ? '(website call: the widget code is missing X-LolaDesk-Salon — copy it from Settings → Lola on your website)' : '(unrouted number)');
+      await keepLead(null, tool, body, { channel: web ? 'web' : 'phone', reason: 'salon_unknown', salonLine: body.to || (real(req.query?.salon) ? String(req.query.salon) : ''), call: real(req.query?.call) ? String(req.query.call) : '' });
       return res.status(200).json({ booked: false, ok: false, error: 'salon_unknown',
         speak: "I can't reach the salon's calendar from here right now, so nothing is booked yet. Leave me your name and mobile and the salon will text you to confirm — or call us and I'll book you on the phone." });
     }
@@ -1030,6 +1053,13 @@ export default async function handler(req, res){
     
     // Execute the skill safely via Orchestrator
     const result = await executeSkill(tenant, clientPhone, tool, body, SKILLS);
+    // Booked → it's on the calendar. Not booked, a call-back or a message → a lead on the salon's dashboard + the owner told.
+    if(tool === 'book_appointment' && result?.booked === true){ try{ const { leadBooked } = await import('./lib/lead-inbox.js'); await leadBooked(tenant, body.client_phone || callerId); }catch(_){} }
+    else if(tool !== 'book_appointment' || (result && result.booked === false)){
+      const { bookingOutcome } = await import('./lib/lead-inbox.js');
+      const how = tool === 'book_appointment' ? bookingOutcome(result) : { reason: '', alert: true };
+      await keepLead(tenant, tool, { ...body, caller_line: callerId || undefined }, { channel: web ? 'web' : 'phone', reason: how.reason, alert: how.alert, call: real(req.query?.call) ? String(req.query.call) : '' });
+    }
     // Latency profile for every voice tool call (visible in Vercel logs / browser devtools).
     try { res.setHeader('Server-Timing', `tenant;dur=${tTenant - t0}, skill;desc="${tool}";dur=${Date.now() - tTenant}, total;dur=${Date.now() - t0}`); res.setHeader('X-Lola-Latency-Ms', String(Date.now() - t0)); } catch (_) {}
     if (Date.now() - t0 > 1500) console.warn('[lola-tools] slow tool', tool, Date.now() - t0, 'ms');
