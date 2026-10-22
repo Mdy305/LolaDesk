@@ -117,7 +117,8 @@ export async function externalAppointments(c, tenantId, fromIso, toIso) {
       const sid = r.staff_id ? String(r.staff_id) : '';
       const staffId = sid.startsWith('local:') ? sid.slice(6) : (sid && toLocal.get(r.provider + ':' + sid)) || null;
       return { id: r.id || (r.provider + ':' + r.external_booking_id), provider: r.provider || 'external', external_booking_id: r.external_booking_id || null,
-        starts_at: new Date(r.starts_at).toISOString(), ends_at: new Date(r.ends_at).toISOString(), staff_id: staffId, status: r.status || 'booked', read_only: true };
+        starts_at: new Date(r.starts_at).toISOString(), ends_at: new Date(r.ends_at).toISOString(), staff_id: staffId, status: r.status || 'booked', read_only: true,
+        client_name: r.client_name || null, service: r.service && r.service !== 'Service' ? r.service : null };
     });
   } catch (_) { return []; }
 }

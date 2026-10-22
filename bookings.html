@@ -692,9 +692,9 @@ function renderDay(){
       if(it.kind==='x'){
         const x=it.x,el=document.createElement('div');
         el.className='ext-appt';el.style.top=top(it.s)+'px';el.style.height=h+'px';placeLane(el,it);
-        el.title=(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
-        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+' · '+fmtDur(it.e-it.s)+'</div><div class="ex-p">'+esc(provName(x.provider))+'</div><div class="ex-n">Booked on their platform</div>';
-        el.onclick=ev=>{ev.stopPropagation();toast(provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
+        el.title=(x.client_name?x.client_name+' · ':'')+(x.service?x.service+' · ':'')+(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
+        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+' · '+fmtDur(it.e-it.s)+'</div><div class="ex-p">'+esc(x.client_name||provName(x.provider))+'</div><div class="ex-n">'+esc(x.service?(x.service+' · '+provName(x.provider)):'Booked on their platform')+'</div>';
+        el.onclick=ev=>{ev.stopPropagation();toast((x.client_name?x.client_name+(x.service?' · '+x.service:'')+' — ':'')+provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
         col.appendChild(el);return;
       }
       const b=it.b,color=apptColor(b),dur=it.e-it.s;
@@ -934,9 +934,9 @@ function renderWeek(){
       if(it.kind==='x'){
         const x=it.x,el=document.createElement('div');
         el.className='ext-appt';el.style.top=top(it.s)+'px';el.style.height=h+'px';placeLane(el,it);
-        el.title=(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
-        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+'</div><div class="ex-p">'+esc(provName(x.provider))+'</div>';
-        el.onclick=ev=>{ev.stopPropagation();toast(provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
+        el.title=(x.client_name?x.client_name+' · ':'')+(x.service?x.service+' · ':'')+(x.provider||'Platform')+' appointment (read-only) · '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at);
+        el.innerHTML='<div class="at">'+fmtT(x.starts_at)+'</div><div class="ex-p">'+esc(x.client_name||provName(x.provider))+'</div>';
+        el.onclick=ev=>{ev.stopPropagation();toast((x.client_name?x.client_name+(x.service?' · '+x.service:'')+' — ':'')+provName(x.provider||'Platform')+' appointment '+fmtT(x.starts_at)+'–'+fmtT(x.ends_at)+' — edit it in '+(x.provider?provName(x.provider):'that platform')+'.');};
         col.appendChild(el);return;
       }
       const b=it.b,color=apptColor(b),dur=it.e-it.s;

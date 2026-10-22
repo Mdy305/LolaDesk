@@ -1028,8 +1028,25 @@ async function requestCal(){
 function renderIntegrations(list){
   (list||[]).forEach(i=>{
     const b=document.getElementById('c-'+i.provider);
-    if(b){b.textContent=i.status==='connected'?'Connected ✓':'Reconnect';b.style.borderColor='#22c55e';b.style.color='#22c55e';}
+    if(!b) return;
+    const ok=i.status==='connected'&&!i.needs_reconnect;
+    b.textContent=ok?'Connected ✓':'Reconnect';
+    b.style.borderColor=ok?'#22c55e':'#ef4444';b.style.color=ok?'#22c55e':'#ef4444';
+    const row=b.closest('.toggle-row'), ts=row&&row.querySelector('.ts');
+    if(ts&&i.provider==='square'){
+      ts.textContent=i.status==='revoked'?'Disconnected in Square — reconnect so Lola sees your calendar'
+        :i.status==='needs_reconnect'?'Square needs you to sign in again'
+        :i.needs_reconnect?'Reconnect once to give Lola your full calendar'
+        :'Two-way sync'+(i.location_name?' · '+i.location_name:'');
+    }
+    // Square connected: the same button disconnects (and revokes LolaDesk's access in Square).
+    if(i.provider==='square'&&ok) b.onclick=()=>disconnectProvider('square','Square');
   });
+}
+async function disconnectProvider(p,label){
+  if(!confirm(label+' is connected. Disconnect it? Lola will stop seeing and booking your '+label+' calendar.')) return;
+  try{const r=await fetch('/api/oauth/disconnect',{method:'POST',headers:H(),body:JSON.stringify({provider:p})});const d=await r.json().catch(()=>({}));
+    if(d.ok){const b=document.getElementById('c-'+p);if(b){b.textContent='Connect';b.style.borderColor='';b.style.color='';b.onclick=()=>connect(p);}}else alert('Could not disconnect: '+(d.error||'try again'));}catch(e){alert('Could not reach LolaDesk.');}
 }
 async function exportData(){
   try{

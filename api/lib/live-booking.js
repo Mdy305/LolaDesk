@@ -55,7 +55,7 @@ export async function liveBook(lp, payload) {
     const error = code === 'conflict' || /conflict|taken|unavailable/i.test(String(e?.message)) ? 'taken'
       : code === 'card_required' ? 'card_required'
       : code === 'service_not_found' ? 'service_not_found'
-      : (code === 'timeout' || code === 'network' || code === 'auth') ? 'unreachable' : 'not_confirmed';
+      : (code === 'timeout' || code === 'network' || code === 'auth' || code === 'square_auth' || code === 'plan_required') ? 'unreachable' : 'not_confirmed';
     return { ok: false, error, offers: e?.offers || [], menu: e?.menu || [], message: String(e?.message || e).slice(0, 200) };
   }
 }
