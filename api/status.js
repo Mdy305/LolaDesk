@@ -13,7 +13,7 @@
 import { telnyxVoiceMode } from './lib/voice-mode.js';
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-widgetfix';
+export const RELEASE = 'lola-squarebrain';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -50,11 +50,21 @@ export async function buildStatus() {
     INTEGRATION_ENCRYPTION_KEY: has('INTEGRATION_ENCRYPTION_KEY'),
     STRIPE_SECRET_KEY: has('STRIPE_SECRET_KEY'),
     GOOGLE_PLACES_API_KEY: has('GOOGLE_PLACES_API_KEY'),
+    SQUARE_APP: has('SQUARE_APP_ID') && has('SQUARE_APP_SECRET'),
+    SQUARE_WEBHOOK_SIGNATURE_KEY: has('SQUARE_WEBHOOK_SIGNATURE_KEY'),
   };
   const live = {};
   const fixes = [];
   // Database
   try { const c = db(); const { error } = c ? await c.from('tenants').select('id').limit(1) : { error: { message: 'not configured' } }; live.database = !error; } catch (_) { live.database = false; }
+  // Square connections: how many, and how many must reconnect once (revoked / missing seller-level access).
+  try {
+    const c = db();
+    const { data: sqRows } = c ? await c.from('integrations').select('status,metadata').eq('provider', 'square').limit(1000) : { data: [] };
+    live.square_connections = (sqRows || []).length;
+    live.square_reconnect = (sqRows || []).filter((r) => r.status !== 'connected' || (Array.isArray(r.metadata?.missing_scopes) && r.metadata.missing_scopes.length)).length;
+    live.square_webhook = !!process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+  } catch (_) {}
   // October fixes (atomic holds, one-trial-per-salon, client notes): self-applied when possible,
   // otherwise one SQL script for the owner to run.
   if (live.database) {
@@ -407,6 +417,8 @@ export async function buildStatus() {
   if (settings.TELNYX_API_KEY && live.telnyx_key && !live.telnyx_ai) fixes.push('Telnyx AI isn’t enabled on your account — Telnyx → AI → Inference: turn it on (Lola’s brain and hearing run there).');
   if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
+  if (live.square_connections > 0 && !settings.SQUARE_WEBHOOK_SIGNATURE_KEY) fixes.push('Square changes arrive only by the 1-minute check: Square Developer Console → your app → Webhooks → add https://www.loladesk.com/api/square-webhook (booking.created, booking.updated, oauth.authorization.revoked), then paste its Signature key in Vercel as SQUARE_WEBHOOK_SIGNATURE_KEY and Redeploy.');
+  if (live.square_reconnect > 0) fixes.push(`${live.square_reconnect} salon(s) must reconnect Square once (Settings → Integrations → Square) so Lola sees every booking in their Square, not only her own.`);
   if (live.numbers > 0 && live.numbers_registered_10dlc === 0) fixes.push('None of your Telnyx numbers is registered for business texting (10DLC) — US carriers block the texts. Telnyx → Messaging → 10DLC: register your brand + campaign and assign your salon number.');
   else if (live.numbers > 0 && live.numbers_registered_10dlc != null && live.numbers_registered_10dlc < live.numbers) fixes.push(`${live.numbers - live.numbers_registered_10dlc} of your ${live.numbers} Telnyx numbers aren’t on a 10DLC campaign — texts from them get blocked. Assign them in Telnyx → Messaging → 10DLC.`);
   if (!settings.CRON_SECRET) fixes.push('Add CRON_SECRET in Vercel (any long random word), then Redeploy — without it calendar sync, reminders, deposits and Boulevard writes never run.');

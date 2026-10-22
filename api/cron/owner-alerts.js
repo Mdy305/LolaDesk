@@ -79,5 +79,8 @@ export default async function handler(req, res) {
   // Trial ending in 3 days / 1 day → proof of value + the link to keep Lola
   // (only with BILLING_ENFORCE on).
   const trial = await runTrialReminders(c).catch((e) => [{ error: String(e?.message || e) }]);
-  return res.status(200).json({ ok: true, sent: results.filter(r => r.sent).length, results, trial_reminders: trial });
+  // Square sales → LolaBrain: catch up every connected salon not read in the last 6 hours.
+  let square_sales = null;
+  try { const { runSquareImports } = await import('../lib/square-data.js'); square_sales = await runSquareImports(c, { budgetMs: 30000 }); } catch (e) { square_sales = { error: String(e?.message || e) }; }
+  return res.status(200).json({ ok: true, sent: results.filter(r => r.sent).length, results, trial_reminders: trial, square_sales });
 }

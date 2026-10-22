@@ -139,6 +139,17 @@ export function routeOwnerIntent(input) {
     return { tool: 'today_brief', args: { date: dayOf(t) || 'today' } };
   }
 
+  // ── business analysis (Square sales): trends, services, clients, staff, timing, marketing ──
+  if (/\b(analy[sz]e|analysis|insights?|trends?|best.?sellers?|top (?:services|sellers|clients|spenders)|who (?:stopped|hasn'?t been|haven'?t been) (?:coming|back)|lost clients|retention|average ticket|busiest (?:day|time)|slowest day|financ(?:e|es|ial)|vs\.? last year|compared? (?:to|with) last (?:month|year)|marketing ideas|how (?:do|can) (?:i|we) grow|grow (?:my|the|our) (?:business|salon)|how'?s the salon doing|square (?:sales|data|report))\b/.test(t) && !/\b(campaign|send|text (?:them|everyone))\b/.test(t)) {
+    const focus = /\b(best.?sellers?|top services|services?)\b/.test(t) ? 'services'
+      : /\b(who (?:stopped|hasn'?t|haven'?t)|lost clients|retention|top (?:clients|spenders)|clients)\b/.test(t) ? 'clients'
+      : /\b(busiest|slowest)\b/.test(t) ? 'times'
+      : /\b(marketing|grow)\b/.test(t) ? 'marketing'
+      : /\b(stylist|team|staff)\b/.test(t) ? 'staff'
+      : /\b(revenue|sales|financ|average ticket|last year|last month)\b/.test(t) ? 'revenue' : 'overview';
+    return { tool: 'business_insights', args: { focus } };
+  }
+
   // ── money ──
   const moneyAsk = /\b(how much (?:did|have|do) (?:we|i) (?:make|made|earn|earned|book|booked|bring in|brought in)|revenue|sales|money (?:today|this week|this month)|how'?s (?:business|revenue|the money)|locked in)\b/.test(t)
     || (/\bhow much\b/.test(t) && /\b(booked|on the books|scheduled|coming in|lined up)\b/.test(t));

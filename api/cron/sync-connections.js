@@ -59,6 +59,9 @@ export default async function handler(req, res) {
     const t = await wa.syncTemplateStatuses(client);
     whatsapp = { ok: s.ok, matched: (s.matched || []).length, unmatched: (s.unmatched || []).length, conflicts: (s.conflicts || []).length, templates_updated: t.updated };
   } catch (_) {}
+  // Square: tokens renewed (every ≤7 days), permissions checked, stylists/services re-matched, revoked ones flagged.
+  let square = null;
+  try { const { squareDaily } = await import('../lib/square-care.js'); square = await squareDaily(client); } catch (e) { square = { error: String(e?.message || e) }; }
   const snapshot = await liveTelnyxSnapshot();
   let wiring = null;
   try { wiring = snapshot.error ? null : await wireTenantNumbers(client, { heal: true, snapshot }); } catch (e) { wiring = { ok: false, error: String(e?.message || e) }; }
@@ -74,6 +77,7 @@ export default async function handler(req, res) {
     instagram,
     messenger,
     whatsapp,
+    square,
     duration_ms: Date.now() - started,
     generated_at: new Date().toISOString()
   });

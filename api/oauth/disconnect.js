@@ -1,7 +1,8 @@
 /**
  * POST /api/oauth/disconnect  (Authorization: Bearer <access_token>)
  * { provider }
- * Disconnects the provider by deleting the integration record for the tenant.
+ * Disconnects the provider: revokes LolaDesk's access at the provider (Square) and deletes the
+ * integration record for the tenant.
  */
 import { getUserFromToken, bearer } from '../lib/auth.js';
 import { db } from '../lib/db.js';
@@ -28,6 +29,14 @@ export default async function handler(req, res) {
     const { provider } = body;
     if (!provider) return res.status(400).json({ error: 'provider required' });
 
+    // Square (and any provider that supports it): revoke LolaDesk's access at the provider first.
+    if (provider === 'square') {
+      try {
+        const { getTenantIntegrations } = await import('../lib/db.js');
+        const row = (await getTenantIntegrations(tenant.id, { status: null })).find((i) => i.provider === 'square');
+        if (row) { const { revokeAccess } = await import('../lib/connectors/square.js'); await revokeAccess(row); }
+      } catch (_) { /* the local disconnect still happens */ }
+    }
     const { error } = await c.from('integrations')
       .delete()
       .eq('tenant_id', tenant.id)

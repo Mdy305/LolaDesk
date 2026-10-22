@@ -59,8 +59,8 @@ export const OWNER_TOOLS = [
   fn('find_client', 'Look up a client: phone, last visit, next booking.', { client: clientArg }, ['client']),
   fn('list_bookings', "List bookings for a day, or a client's upcoming bookings.", { date: dateArg, client: clientArg }),
   fn('text_client', 'Text one client from the salon line.', { client: clientArg, message: { type: 'string' }, confirmed: confirmedArg }, ['client', 'message']),
-  fn('launch_campaign', 'Launch a marketing text campaign to a whole audience of any size (lapsed = not seen in N days, vip, recent = seen in the last 30 days, tomorrow = booked tomorrow, all). Sent in paced batches between 9am and 8pm with an opt-out line, nobody texted twice in a week, bookings it wins are tracked. Use this for marketing to groups.', {
-    segment: { type: 'string', enum: ['lapsed', 'vip', 'recent', 'tomorrow', 'all'] }, days: { type: 'integer', description: 'For lapsed: days since last visit (default 60).' },
+  fn('launch_campaign', 'Launch a marketing text campaign to a whole audience of any size (lapsed = not seen in N days, vip, recent = seen in the last 30 days, tomorrow = booked tomorrow, due = due for their next visit, second_visit = came once and never returned, all). Sent in paced batches between 9am and 8pm with an opt-out line, nobody texted twice in a week, bookings it wins are tracked. Use this for marketing to groups.', {
+    segment: { type: 'string', enum: ['lapsed', 'vip', 'recent', 'tomorrow', 'all', 'due', 'second_visit'] }, days: { type: 'integer', description: 'For lapsed: days since last visit (default 60).' },
     message: { type: 'string', description: 'The text. Use {first_name} for personalization.' }, name: { type: 'string' }, confirmed: confirmedArg,
   }, ['segment', 'message']),
   fn('campaign_report', 'How recent marketing campaigns are doing: sent, bookings won, revenue.'),
@@ -94,6 +94,9 @@ export const OWNER_TOOLS = [
     question: { type: 'string', description: 'The client question, in English (leave empty to answer the oldest open one).' },
     answer: { type: 'string', description: 'What Lola should tell clients, in the owner’s words.' },
   }, ['answer']),
+  fn('business_insights', "The salon's business analysis from its real sales (Square payments, orders, clients): revenue and trends (month to date vs last month and last year, last 30 days, average ticket, tips), best and falling services, clients (new, retention, regulars who stopped coming and what they're worth, top spenders), revenue by team member, busiest and slowest days, and the marketing moves worth making now — each with its audience, value and a ready text. Use for 'how's the salon doing', 'analyze my business', 'sales trends', 'best sellers', 'top clients', 'who stopped coming', 'busiest day', 'finances', 'marketing ideas', 'how do I grow'.", {
+    focus: { type: 'string', enum: ['overview', 'revenue', 'services', 'clients', 'staff', 'times', 'marketing'] },
+  }),
   fn('open_questions', "The questions clients asked this month that Lola couldn't answer. Use for 'what did clients ask that you didn't know', 'what should I teach you'."),
   fn('support_status', "The owner's help requests to LolaDesk and the team's answers. Use for 'did support answer', 'my tickets', 'any news from LolaDesk'."),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
@@ -136,7 +139,7 @@ export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do i
 export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
 
 /** Tools that only read — the only ones an UNVERIFIED channel may run. */
-export const OWNER_READ_TOOLS = new Set(['open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
+export const OWNER_READ_TOOLS = new Set(['business_insights', 'open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -152,7 +155,7 @@ export async function ownerSystemPrompt(tenant) {
     'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
     'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
     'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
-    'You are also their marketing manager: when they ask how to grow, give 2-3 specific moves for THIS business (who to text, what offer, when), then offer to send the text with text_clients_segment.',
+    'You are also their marketing manager and business analyst: for sales, trends, services, clients, staff, busiest days, finances or how to grow, call business_insights (their real Square sales) and answer with the numbers that matter plus 2-3 specific moves for THIS business; when they want to act on a move, call launch_campaign with that move’s segment and message (confirmed=false first).',
     marketingBrief(tenant),
   ].filter(Boolean).join('\n');
 }
@@ -395,6 +398,23 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
       case 'teach_lola': {
         const { teachLola } = await import('./knowledge-gaps.js');
         return teachLola(c, tenant, { question: args.question, answer: args.answer });
+      }
+
+      case 'business_insights': {
+        const sd = await import('./square-data.js');
+        const r = await sd.squareInsights(c, tenant);
+        const focus = ['overview', 'revenue', 'services', 'clients', 'staff', 'times', 'marketing'].includes(args.focus) ? args.focus : 'overview';
+        if (!r.ok) {
+          const { data: sqc } = await c.from('integrations').select('status').eq('tenant_id', tenant.id).eq('provider', 'square').maybeSingle().then((x) => x, () => ({ data: null }));
+          if (!sqc) {
+            const rev = await runOwnerTool({ tenant, name: 'revenue_report', args: { period: 'month' }, req }).catch(() => null);
+            return { ok: true, say: `${rev?.say ? rev.say + ' ' : ''}Connect Square in Settings and I'll analyze your full sales history — trends, best services, who stopped coming and what to do about it.`, suggestions: ['Open settings'] };
+          }
+          return { ok: true, say: sd.sayInsights(r, focus) };
+        }
+        const m = r.moves[0];
+        return { ok: true, say: sd.sayInsights(r, focus), insights: { revenue: { ...r.revenue, months: r.revenue.months.slice(-6) }, services: r.services.slice(0, 5), falling: r.falling_services, clients: { ...r.clients, top_spenders: r.clients.top_spenders.slice(0, 5) }, staff: r.staff.slice(0, 6), times: r.times, moves: r.moves.slice(0, 4) },
+          suggestions: [m?.message ? `Start the ${m.key.replace(/_/g, ' ')} campaign` : null, focus !== 'clients' ? 'Who stopped coming?' : null, focus !== 'services' ? 'What are my best sellers?' : null].filter(Boolean) };
       }
 
       case 'open_questions': {
