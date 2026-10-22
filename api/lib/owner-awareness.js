@@ -334,5 +334,8 @@ export async function chiefBrief(tenant, { now = new Date() } = {}) {
       if (support) { parts.unshift(support); await sd.markSupportSeen(c, tenant.id); }
     }
   } catch (_) { /* the brief never waits on support */ }
-  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, support ? 'Show my support requests' : null, 'What did I miss?'].filter(Boolean), situation: s };
+  // What clients asked that she didn't know — the owner teaches her in one sentence (lib/knowledge-gaps.js).
+  let gaps = null;
+  try { const { db: dbc } = await import('./db.js'); const c2 = dbc(); if (c2 && tenant?.id) { const kg = await import('./knowledge-gaps.js'); gaps = kg.gapsBriefLine(await kg.openGaps(c2, tenant.id, { days: 14 })); if (gaps) parts.push(gaps); } } catch (_) {}
+  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, support ? 'Show my support requests' : null, gaps ? 'What did clients ask you?' : null, 'What did I miss?'].filter(Boolean), situation: s };
 }

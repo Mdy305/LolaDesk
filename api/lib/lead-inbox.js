@@ -65,7 +65,7 @@ async function recentSame(c, tenantId, phone, name) {
   } catch (_) { return null; }
 }
 
-export async function saveLead({ tenant = null, name = '', phone = '', email = '', service = '', when = '', message = '', channel = '', reason = '', salonLine = '', call = '', alert = true, trusted = true } = {}) {
+export async function saveLead({ tenant = null, name = '', phone = '', email = '', service = '', when = '', message = '', channel = '', reason = '', salonLine = '', call = '', alert = true, trusted = true, link = '', alertEmail = true } = {}) {
   const c = db();
   const lead = {
     name: clip(name, 80), phone: phone ? (e164(phone) || clip(phone, 20)) : '', email: clip(email, 120).toLowerCase(),
@@ -88,7 +88,7 @@ export async function saveLead({ tenant = null, name = '', phone = '', email = '
     if (alert && (!dup || dup.metadata?.reason !== lead.reason)) {
       try {
         const { notifyOwner } = await import('./billing-enforce.js');
-        const r = await notifyOwner(tenant, `Lola: ${leadSummary(lead)}. It’s on your LolaDesk dashboard under Needs you.`, { subject: `New request for ${tenant.name || 'your salon'}${lead.name ? ' — ' + lead.name : ''}` });
+        const r = await notifyOwner(tenant, `Lola: ${leadSummary(lead)}.${link ? ` Transcript: ${link}` : ' It’s on your LolaDesk dashboard under Needs you.'}`, { subject: `New request for ${tenant.name || 'your salon'}${lead.name ? ' — ' + lead.name : ''}`, email: alertEmail });
         alerted = !!(r.texted || r.emailed);
       } catch (_) {}
     }

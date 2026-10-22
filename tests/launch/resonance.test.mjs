@@ -37,7 +37,7 @@ const { HUMAN_RULES } = await import(new URL('../../api/lib/human-touch.js', imp
 const ov = await import(new URL('../../api/lib/one-voice.js', import.meta.url).href);
 
 await wireAssistant({ heal: true });
-ok(asst.transcription?.model === 'deepgram/flux' && asst.transcription.settings?.eager_eot_threshold === NATURAL_TURNS.eager_eot_threshold && asst.transcription.language === 'en', 'Flux turn-taking: she answers the moment the caller is done (eager end-of-turn), language kept');
+ok(asst.transcription?.model === 'deepgram/flux' && asst.transcription.settings?.eager_eot_threshold === NATURAL_TURNS.eager_eot_threshold && asst.transcription.language === 'multi', 'Flux turn-taking: she answers the moment the caller is done (eager end-of-turn), in any of her languages');
 ok(asst.interruption_settings?.enable === true && asst.interruption_settings.disable_greeting_interruption === true && asst.interruption_settings.start_speaking_plan?.wait_seconds <= 0.4, 'callers can talk over her like a person — except the recorded-call disclosure');
 ok(asst.voice_settings?.voice === SIG && asst.voice_settings.expressive_mode === true, 'her own Ultra voice with Expressive Mode: real feeling in her voice');
 const instr = String(asst.instructions);
@@ -47,7 +47,7 @@ ok(/No dead air, ever/.test(instr) && /one sec/.test(instr), 'she says a quick b
 // The owner tuned Flux themselves: left alone.
 asst.transcription = { model: 'deepgram/flux', settings: { eot_threshold: 0.9, eot_timeout_ms: 8000, eager_eot_threshold: 0.6 } };
 const n = posts.length; await wireAssistant({ heal: true });
-ok(asst.transcription.settings.eot_threshold === 0.9 && !posts.slice(n).some((p) => p.transcription), 'an owner’s own Flux tuning is never overwritten');
+ok(asst.transcription.settings.eot_threshold === 0.9 && asst.transcription.settings.eager_eot_threshold === 0.6 && asst.transcription.settings.eot_timeout_ms === 8000 && n >= 0, 'an owner’s own Flux tuning is never overwritten (only her languages are added)');
 
 // Telnyx refuses Expressive Mode: her voice stays, only the flag goes.
 asst.voice_settings = { voice: 'Telnyx.KokoroTTS.af_heart' }; refuseExpressive = true; ov._resetExpressive();

@@ -84,11 +84,11 @@
 
       // The browser's recognizer, in parallel, for instant words when it works.
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      let sr = null, srFinal = '', srInterim = '';
+      let sr = null, srFinal = '', srInterim = '', srConf = 1;
       if (SR) {
         try {
-          sr = new SR(); sr.lang = opts.lang || 'en-US'; sr.interimResults = true; sr.continuous = true;
-          sr.onresult = (e) => { let i2 = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) srFinal += t; else i2 += t; } srInterim = i2; opts.onInterim && opts.onInterim((srFinal + ' ' + i2).trim()); };
+          sr = new SR(); sr.lang = opts.lang || (navigator.languages && navigator.languages[0]) || navigator.language || 'en-US'; sr.interimResults = true; sr.continuous = true;
+          sr.onresult = (e) => { let i2 = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) { srFinal += t; const cf = Number(e.results[i][0].confidence); if (cf > 0 && cf < srConf) srConf = cf; } else i2 += t; } srInterim = i2; opts.onInterim && opts.onInterim((srFinal + ' ' + i2).trim()); };
           sr.onerror = () => {}; sr.onend = () => { sr = null; };
           sr.start();
         } catch (_) { sr = null; }
@@ -145,7 +145,9 @@
           cleanup();
           if (cancelled) return done({ text: '', error: 'cancelled' });
           const quick = srFinal.trim(), partial = srInterim.trim();
-          if (quick) return done({ text: (quick + (partial ? ' ' + partial : '')).trim() });
+          // The browser's recognizer hears in ONE language: when it was unsure (someone speaking French, Spanish or
+          // Russian to an English browser), Telnyx hears the recording instead — it understands every language.
+          if (quick && srConf >= 0.6) return done({ text: (quick + (partial ? ' ' + partial : '')).trim() });
           // The level meter can be fooled (a suspended or muted analyser, some Bluetooth mics), so a quiet
           // meter never throws the recording away: Telnyx still listens to it, and only if Telnyx also
           // hears nothing does she say the mic is silent — naming the mic the browser picked.

@@ -29,7 +29,8 @@ export async function transcribeAudio(buf, mime = 'audio/webm', { deadline = Dat
     const fd = new FormData();
     fd.append('file', new Blob([buf], { type: mime }), 'speech.' + ext);
     fd.append('model', model);
-    fd.append('language', 'en');
+    // No language pinned: Whisper detects it, so the owner can talk to Lola in English, Spanish, French or Russian.
+    if (process.env.LOLA_STT_LANGUAGE) fd.append('language', process.env.LOLA_STT_LANGUAGE);
     fd.append('prompt', [SALON_WORDS, prompt].filter(Boolean).join(', ').slice(0, 800));
     const ac = new AbortController(); const t = setTimeout(() => ac.abort(), Math.min(20000, left));
     try {
