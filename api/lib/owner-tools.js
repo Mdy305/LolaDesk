@@ -90,6 +90,11 @@ export const OWNER_TOOLS = [
     message: { type: 'string', description: "The problem, in the owner's words, with any useful detail (what they tried, what happened)." },
     urgency: { type: 'string', enum: ['normal', 'high'], description: 'high only if Lola is not answering calls or not booking at all.' }, confirmed: confirmedArg,
   }, ['message']),
+  fn('teach_lola', "Teach Lola an answer she'll give clients from now on (phone, website, texts, DMs) — use when the owner answers a question clients asked that Lola didn't know, or says 'tell clients that…', 'when someone asks X, say Y'.", {
+    question: { type: 'string', description: 'The client question, in English (leave empty to answer the oldest open one).' },
+    answer: { type: 'string', description: 'What Lola should tell clients, in the owner’s words.' },
+  }, ['answer']),
+  fn('open_questions', "The questions clients asked this month that Lola couldn't answer. Use for 'what did clients ask that you didn't know', 'what should I teach you'."),
   fn('support_status', "The owner's help requests to LolaDesk and the team's answers. Use for 'did support answer', 'my tickets', 'any news from LolaDesk'."),
   fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
@@ -131,7 +136,7 @@ export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do i
 export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
 
 /** Tools that only read — the only ones an UNVERIFIED channel may run. */
-export const OWNER_READ_TOOLS = new Set(['support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
+export const OWNER_READ_TOOLS = new Set(['open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -142,6 +147,7 @@ export async function ownerSystemPrompt(tenant) {
     `Today is ${wd} ${today} (salon timezone ${tz}).`,
     'When the owner asks you to do something, call the matching tool. Never claim you did something unless a tool result says it happened.',
     'Keep spoken replies short: one or two sentences, warm and plain — the way a trusted right hand talks, never a help desk.',
+    'When the owner answers something clients asked you (or says "tell clients that…"), call teach_lola with the question and the answer — from then on you answer it on every call, text and the website.',
     'If LolaDesk itself is not working, something is confusing, or they want a person from LolaDesk, call contact_support with the problem in their own words (plus what you saw in this conversation); it is previewed and sent when they say yes. For "did support answer" / "my tickets" call support_status.',
     'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
     'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
@@ -384,6 +390,18 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
         let user = null;
         try { const { getUserFromToken, bearer } = await import('./auth.js'); user = req ? await getUserFromToken(bearer(req)) : null; } catch { /* the salon's own contact details are used */ }
         return openSupportTicket(c, tenant, { message, urgency, user });
+      }
+
+      case 'teach_lola': {
+        const { teachLola } = await import('./knowledge-gaps.js');
+        return teachLola(c, tenant, { question: args.question, answer: args.answer });
+      }
+
+      case 'open_questions': {
+        const { openGaps } = await import('./knowledge-gaps.js');
+        const g = await openGaps(c, tenant.id);
+        if (!g.length) return { ok: true, say: "Nothing new — I've had an answer for everything clients asked this month." };
+        return { ok: true, say: `Clients asked me ${g.length === 1 ? 'one thing' : g.length + ' things'} I didn't know: ${g.slice(0, 5).map((x) => '“' + x.question + '”').join('; ')}. Tell me the answers — one at a time is fine.`, questions: g };
       }
 
       case 'support_status': {

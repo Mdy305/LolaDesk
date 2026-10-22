@@ -40,7 +40,7 @@ export async function summarize(turns, { salon = '', booked = false, deadlineMs 
   if (!process.env.TELNYX_API_KEY || turns.length < 2) return fallback.slice(0, 300);
   try {
     const { chat } = await import('./llm.js');
-    const r = await chat({ system: `Summarize this ${salon ? salon + ' ' : ''}front-desk conversation for the salon owner in at most 2 short sentences: who it was (name if given), what they wanted, and the outcome (booked — service, day, time — or what is still needed). Plain text.`,
+    const r = await chat({ system: `Summarize this ${salon ? salon + ' ' : ''}front-desk conversation for the salon owner in at most 2 short sentences: who it was (name if given), what they wanted, and the outcome (booked — service, day, time — or what is still needed). Write it in English even when the conversation was in Spanish, French, Russian or another language, and say which language they spoke (e.g. "(in French)"). Plain text.`,
       messages: [{ role: 'user', content: transcriptLines(turns).slice(0, 6000) }], maxTokens: 160, temperature: 0.2, fast: true, deadlineMs });
     const t = String(r?.text || '').trim();
     return (r?.ok && t ? t : fallback).slice(0, 400);
@@ -135,13 +135,55 @@ export async function emailConversation(tenant, details, { timeoutMs = 6000, c =
   return { sent, reason };
 }
 
-/** One finished conversation, end to end: save on the screen, then email the salon (once). */
+/** Contact details a caller SAID (no tool call needed): "my number is 305 555 1234", "maria@gmail.com". */
+export function contactFromWords(turns = []) {
+  const said = (turns || []).filter((t) => t && t.role === 'user').map((t) => String(t.content || '')).join(' ');
+  const email = (said.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || '';
+  const digits = (said.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/) || [])[0] || '';
+  return { email: email.toLowerCase(), phone: digits ? digits.replace(/[^\d+]/g, '') : '' };
+}
+
+/**
+ * Nothing slips through: a conversation that didn't end in a booking becomes a lead on the salon's
+ * dashboard (Needs you), and the owner gets the summary + a link to the full transcript by text (the
+ * transcript email covers email) — unless Lola already passed that same person on in the last hours.
+ */
+export async function followUpConversation(c, tenant, details, saved, { alertEmail = true } = {}) {
+  if (!c || !tenant?.id || details.booked) return { lead: false };
+  const turns = details.turns || [];
+  const callerTurns = turns.filter((t) => t.role === 'user').length;
+  const spoken = contactFromWords(turns);
+  const phone = (details.channel !== 'web' && details.fromNumber) || details.phone || spoken.phone || '';
+  const email = details.email || spoken.email || '';
+  if (!phone && !email && callerTurns < 2) return { lead: false, reason: 'too short' };
+  try {
+    const { e164: toE164 } = await import('./db.js');
+    const p = phone ? (toE164(phone) || phone) : '';
+    if (p) {
+      const { data } = await c.from('usage_events').select('metadata,created_at').eq('tenant_id', tenant.id).eq('kind', 'lead')
+        .gte('created_at', new Date(Date.now() - 3 * 3600e3).toISOString()).limit(50);
+      if ((data || []).some((r) => r.metadata?.phone === p)) return { lead: false, reason: 'already passed on' };
+    }
+  } catch (_) {}
+  const link = `${APP()}/calls${saved?.callId ? '?id=' + encodeURIComponent(saved.callId) : ''}`;
+  const { saveLead } = await import('./lead-inbox.js');
+  const r = await saveLead({ tenant, name: details.who && !/^\+?\d[\d\s()-]+$/.test(details.who) ? details.who : '', phone, email,
+    message: details.summary || '', channel: details.channel === 'web' ? 'website' : 'phone', reason: '', link, alertEmail });
+  return { lead: !!r?.ok, where: r?.where || null };
+}
+
+/** One finished conversation, end to end: save on the screen, email the salon, and follow up (once). */
 export async function reportConversation(c, tenant, details) {
   const saved = await saveConversation(c, { tenantId: tenant.id, ...details });
   if (saved.skipped || saved.error) return { ...saved, emailed: 0 };
   const who = details.who || (details.fromNumber && details.channel !== 'web' ? details.fromNumber : '');
   const mail = await emailConversation(tenant, { ...details, who, callId: saved.callId }, { c });
-  return { ...saved, emailed: mail.sent, email_reason: mail.reason };
+  let follow = { lead: false };
+  try { // The transcript email already carries everything (or the owner switched emails off): the alert is a text.
+    follow = await followUpConversation(c, tenant, { ...details, who }, saved, { alertEmail: !mail.sent && mail.reason !== 'no_recipient' }); } catch (_) {}
+  // What Lola didn't know becomes something the owner can teach her (lib/knowledge-gaps.js).
+  try { const { noteGaps } = await import('./knowledge-gaps.js'); await noteGaps(c, tenant, details.turns || [], { callId: saved.callId }); } catch (_) {}
+  return { ...saved, emailed: mail.sent, email_reason: mail.reason, lead: follow.lead };
 }
 
 // ── The Telnyx assistant's conversations (website widget + assistant phone calls) ──
@@ -261,7 +303,7 @@ export async function collectTelnyxConversations({ c = db(), sinceMs = 6 * 3600e
       }
       const summary = await summarize(turns, { salon: tenant.name, booked });
       const r = await reportConversation(c, tenant, {
-        turns, summary, booked, key, channel: web ? 'web' : 'phone', who: who || (phone ? String(phone) : ''),
+        turns, summary, booked, key, channel: web ? 'web' : 'phone', who: who || (phone ? String(phone) : ''), phone: phone || '', email,
         callControlId: meta.call_control_id || null,
         fromNumber: phone, toNumber: phoneOk(meta.telnyx_agent_target) ? meta.telnyx_agent_target : tenant.phone_number || null,
       });

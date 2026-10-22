@@ -114,6 +114,9 @@ export function routeOwnerIntent(input) {
   // ── her own health ──
   if (/\b(run (?:a |your )?(?:check|diagnostic|self.?check|test)|diagnose yourself|test yourself|are you (?:ok|okay|working|alright)|is everything working|system check|status check)\b/.test(t)) return { self_check: true };
 
+  // ── what clients asked that she didn't know ──
+  if (/\b(what did (?:clients|people|they) ask(?: you)?|what (?:should|can) i teach you|open questions|questions you couldn'?t answer|what didn'?t you know)\b/.test(t)) return { tool: 'open_questions', args: {} };
+
   // ── LolaDesk support (before "text …", so "text support that …" never texts a client named Support) ──
   if (/\b(my (?:support |help )?(?:tickets?|requests?)|support (?:tickets?|status)|ticket status|did (?:support|loladesk|the (?:loladesk )?team) (?:reply|answer|respond|write back|get back)|any (?:reply|answer|news|word) from (?:support|loladesk|the (?:loladesk )?team))\b/.test(t)) return { tool: 'support_status', args: {} };
   const help = raw.match(/^(?:contact|email|message|text|tell|ask|ping|write to)\s+(?:the\s+)?(?:loladesk\s+)?(?:support|help desk|loladesk team|loladesk)(?:\s+team)?(?:\s*(?:that|about|saying|to say|:|,|-|–)\s*(.+))?$/i)

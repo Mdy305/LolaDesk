@@ -716,7 +716,8 @@ export function tenantKnowledgePrompt(tenant){
     const p = k.policies;
     lines.push(`Policies: ${[p.cancellation_window_hours ? `cancel at least ${p.cancellation_window_hours}h ahead` : '', p.deposit || '', p.notes || ''].filter(Boolean).join('; ')}`);
   }
-  if(Array.isArray(k.faq) && k.faq.length) lines.push(`FAQ:\n${k.faq.slice(0, 8).map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}`);
+  // The owner's own answers first (taught through Lola), then what she learned from the website.
+  if(Array.isArray(k.faq) && k.faq.length) lines.push(`FAQ (answer exactly like this, in the client's language):\n${[...k.faq.filter(f => f && f.taught), ...k.faq.filter(f => f && !f.taught)].slice(0, 25).map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}`);
   if(k.documents_digest) lines.push(`From the owner's documents:\n${String(k.documents_digest).slice(0, 4000)}`);
   if(k.notes) lines.push(`Owner notes: ${String(k.notes).slice(0, 2000)}`);
   if(k.upsells && k.upsells.length > 0) {

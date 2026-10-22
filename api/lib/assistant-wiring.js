@@ -169,6 +169,22 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   // GET merges Tools-Library tools into `tools` with shared:true; an update must leave them out (they are
   // managed through tool_ids / PATCH /ai/tools) — sending them back inline is what Telnyx calls "not unique".
   if (body && Array.isArray(body.tools)) body = { ...body, tools: dedupeTools(body.tools.filter((t) => t?.shared !== true)).tools.map(stripShared) };
+  // Library (shared) tools are detached with Telnyx's own endpoint (DELETE /ai/assistants/{id}/tools/{tool_id}).
+  // Sending tool_ids in an update re-attaches the ones already there — which Telnyx then refuses as
+  // "names must be unique" for every shared tool — so tool_ids never travel in an update.
+  const detach = async (b, curIds) => {
+    if (!b || !Array.isArray(b.tool_ids)) return b;
+    const want = new Set(b.tool_ids);
+    let ids = Array.isArray(curIds) ? curIds : null;
+    if (!ids) { try { ids = (telnyxData(await telnyxRequest(path, { timeoutMs })) || {}).tool_ids; } catch (_) { ids = null; } }
+    for (const tid of (Array.isArray(ids) ? ids : [])) {
+      if (want.has(tid)) continue;
+      try { await telnyxRequest(path + '/tools/' + encodeURIComponent(tid), { method: 'DELETE', timeoutMs }); } catch (_) { /* already detached */ }
+    }
+    const { tool_ids, ...rest } = b;
+    return rest;
+  };
+  if (body && Array.isArray(body.tool_ids)) body = await detach(body);
   const send = async (b) => {
     try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
     catch (e) {
@@ -187,7 +203,14 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const tools = dedupeTools((Array.isArray(body?.tools) ? body.tools : cur.tools || []).filter((t) => t?.shared !== true)).tools.map(stripShared);
     const dupNames = dupTools(e) ? duplicateNamesFrom(e) : [];
     const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
-    const retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}), ...(shared ? { tool_ids: shared.tool_ids } : {}) };
+    let retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}) };
+    if (shared) await detach({ tool_ids: shared.tool_ids }, cur.tool_ids);
+    else if (dupNames.length) {
+      // Telnyx didn't list the attached ids: detach the Library tools with those names directly (never deleted).
+      const lib = await libraryTools().catch(() => new Map());
+      const inlineNames = new Set(tools.map(toolName));
+      for (const n of dupNames) { const hit = lib.get(norm(n)); if (hit && inlineNames.has(norm(n))) { try { await telnyxRequest(path + '/tools/' + encodeURIComponent(hit.id), { method: 'DELETE', timeoutMs }); } catch (_) {} } }
+    }
     try { return await send(retry); }
     catch (e2) {
       // Still not unique: the other copy lives in an attached MCP server. Detach that server (never deleted).
@@ -447,9 +470,14 @@ export async function wireAssistant({ heal = false } = {}) {
   // Turn-taking that feels like a person: Deepgram Flux hears when the caller has finished (and starts
   // thinking before they quite stop), so there's no dead air after they talk — and she never jumps in
   // mid-sentence. Applied once; an owner's own Flux tuning is left alone.
+  // She understands English, Spanish, French and Russian (Flux hears all four, switching mid-call:
+  // language "multi"); an owner's own Flux timing is left alone.
   const tr = (a.transcription && typeof a.transcription === 'object') ? a.transcription : {};
+  const multilingual = ['multi', 'auto'].includes(String(tr.language || '').toLowerCase());
   if (!/flux/i.test(String(tr.model || '')) || !tr.settings || tr.settings.eager_eot_threshold == null) {
-    patch.transcription = { ...tr, model: 'deepgram/flux', settings: { ...(tr.settings || {}), ...NATURAL_TURNS } };
+    patch.transcription = { ...tr, model: 'deepgram/flux', language: 'multi', settings: { ...(tr.settings || {}), ...NATURAL_TURNS } };
+  } else if (!multilingual) {
+    patch.transcription = { ...tr, language: 'multi' };
   }
   // The recorded-call disclosure in her greeting can't be talked over; anything after it can (like a person).
   const is = (a.interruption_settings && typeof a.interruption_settings === 'object') ? a.interruption_settings : {};
@@ -497,6 +525,8 @@ export async function wireAssistant({ heal = false } = {}) {
       catch (e) {
         // telephony_settings: retry with only the one flag (never drop the number routing Telnyx keeps).
         if (k === 'telephony_settings') { try { await updateAssistant(id, { telephony_settings: { default_texml_app_id: a.telephony_settings?.default_texml_app_id, supports_unauthenticated_web_calls: true } }); continue; } catch (_) {} }
+        // "multi" refused for this account: Flux's automatic language detection instead (same four languages).
+        if (k === 'transcription' && patch.transcription?.language === 'multi') { try { await updateAssistant(id, { transcription: { ...patch.transcription, language: 'auto' } }); continue; } catch (_) {} }
         if (k === 'voice_settings' && voice && patch.voice_settings?.expressive_mode) {
           // Telnyx refused Expressive Mode: keep her voice, drop only the flag.
           try { const ov = await import('./one-voice.js'); ov.noteExpressiveRefused(); const vs2 = await ov.lolaVoiceSettings(a.voice_settings); await updateAssistant(id, { voice_settings: vs2 }); patch.voice_settings = vs2; continue; } catch (_) { /* fall through to the voice fallback */ }
