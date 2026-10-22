@@ -122,7 +122,9 @@ export default async function handler(req, res){
     try{
       const { resolveAssistant } = await import('./lib/assistant-wiring.js');
       const a = await resolveAssistant();
-      const line = String(tenant.phone_number || '').trim();
+      // Named by its SIGNED salon id — a phone line can be shared by duplicate rows, the id never is.
+      const { salonRef } = await import('./lib/tenant-resolver.js');
+      const line = salonRef(tenant.id) || String(tenant.phone_number || '').trim();
       if(a?.id && line) voice = { agent_id: a.id, line, widget: '0.36.0' };
     }catch{}
     return res.status(200).json({ ok:true, name: tenant.name, voice,

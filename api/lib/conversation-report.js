@@ -195,13 +195,18 @@ async function tget(path, timeoutMs = 9000) {
     return r.ok ? j : null;
   } catch (_) { return null; } finally { clearTimeout(t); }
 }
-const phoneOk = (v) => String(v || '').replace(/\D/g, '').length >= 8 && !/\{\{/.test(String(v));
+const phoneOk = (v) => !/^s_/.test(String(v || '')) && String(v || '').replace(/\D/g, '').length >= 8 && !/\{\{/.test(String(v));
 
 /** Which salon a Telnyx conversation belongs to: the dialed number, the website widget's salon line, or the linked call. */
 export async function tenantForConversation(c, meta = {}) {
-  const { resolveInboundTenant } = await import('./tenant-resolver.js');
+  const { resolveInboundTenant, resolveSalonRef } = await import('./tenant-resolver.js');
   const salonKey = Object.keys(meta).find((k) => /loladesk[-_]salon/i.test(k));
   const custom = meta.custom_headers && typeof meta.custom_headers === 'object' ? Object.entries(meta.custom_headers).find(([k]) => /loladesk[-_]salon/i.test(k))?.[1] : null;
+  for (const ref of [salonKey ? meta[salonKey] : null, custom]) {   // the widget's signed salon id
+    if (!/^s_/.test(String(ref || ''))) continue;
+    const r = await resolveSalonRef(ref).catch(() => null);
+    if (r?.status === 'resolved' && r.tenant) return r.tenant;
+  }
   for (const line of [meta.telnyx_agent_target, salonKey ? meta[salonKey] : null, custom]) {
     if (!phoneOk(line)) continue;
     const r = await resolveInboundTenant({ to: line }).catch(() => null);
