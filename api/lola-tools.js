@@ -47,6 +47,11 @@ async function resolveTenant(body){
   // The salon comes ONLY from the number that was called. A `tenant` slug in
   // the body used to be trusted, which let anyone cancel/reschedule any
   // salon's bookings or read a caller's memory.
+  if(body.__salon_ref){   // a salon's website widget: its signed id wins (a shared line could be ambiguous)
+    const { resolveSalonRef } = await import('./lib/tenant-resolver.js');
+    const routing = await resolveSalonRef(body.__salon_ref);
+    return routing.status === 'resolved' ? routing.tenant : null;
+  }
   const to = body.to || body.To || body.called_number || body.telnyx_agent_target || body.data?.payload?.telnyx_agent_target || '';
   const phone = to ? String(to).replace(/\D/g, '') : '';
   if(phone.length >= 8){
@@ -970,8 +975,11 @@ export default async function handler(req, res){
     // Telnyx fills the salon line into the URL: it always wins over anything the model typed.
     if(real(req.query?.to)) body.to = String(req.query.to);
     // A website call has no dialed number; the salon's widget names its line (X-LolaDesk-Salon → {{loladesk_salon}}).
-    const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
+    const isPhone = (v) => !/^s_/.test(String(v || '')) && String(v || '').replace(/\D/g, '').length >= 8;
     if(!isPhone(body.to) && real(req.query?.salon) && isPhone(req.query.salon)) body.to = String(req.query.salon);
+    // …or its signed salon id (never ambiguous): resolveTenant() checks the signature.
+    else if(!isPhone(body.to) && real(req.query?.salon)) body.__salon_ref = String(req.query.salon);
+    else delete body.__salon_ref;
     const web = /web/i.test(String(req.query?.ch || ''));
     // The caller's own line, as Telnyx saw it (never what the model or caller typed) — website visitors have none.
     const callerId = signed && !web && real(req.query?.from) && isPhone(req.query.from) ? String(req.query.from) : null;

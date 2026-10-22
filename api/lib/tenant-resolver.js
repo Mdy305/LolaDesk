@@ -30,6 +30,7 @@
  * routing — it carries the demo fallback this module exists to prevent.
  */
 
+import crypto from 'node:crypto';
 import { db, e164, getTenantByPhoneStrict } from './db.js';
 import { ensureMigrations } from './migrate.js';
 
@@ -144,6 +145,35 @@ export async function resolveInboundTenant({ to } = {}) {
  * resolves back to THIS tenant (not another tenant, not "not_found").
  * Bypasses the cache so the gate always reflects the live DB.
  */
+/**
+ * A salon's website widget names its salon with a SIGNED salon id ("s_<tenant id>.<sig>") — never
+ * ambiguous, even when a phone line is shared by duplicate rows, and impossible to forge for another
+ * salon. Phone lines (older snippets) still work through the normal number routing.
+ */
+export function salonRef(tenantId) {
+  const id = String(tenantId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return '';
+  const sec = String(process.env.LOLA_TOOLS_SECRET || process.env.TELNYX_API_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+  if (!sec) return '';
+  return 's_' + id + '.' + crypto.createHmac('sha256', sec).update('loladesk:salon:' + id.toLowerCase()).digest('base64url').slice(0, 16);
+}
+export async function resolveSalonRef(ref) {
+  const v = String(ref || '').trim();
+  const m = v.match(/^s_([0-9a-f-]{36})\.([A-Za-z0-9_-]{16})$/i);
+  if (m) {
+    const want = salonRef(m[1]);
+    const ok = want && want.length === v.length && crypto.timingSafeEqual(Buffer.from(want), Buffer.from(v));
+    if (!ok) return { status: 'not_found', reason: 'bad-salon-ref', tenant: null, source: 'salon_ref', number: null };
+    const c = db();
+    if (!c) return { status: 'misconfigured', reason: 'database-not-configured', tenant: null, source: 'salon_ref', number: null };
+    const { data: t } = await c.from('tenants').select('*').eq('id', m[1].toLowerCase()).maybeSingle().then((x) => x, () => ({ data: null }));
+    if (isUsable(t)) return { status: 'resolved', reason: null, tenant: t, source: 'salon_ref', number: e164(t.phone_number) || null };
+    return { status: 'not_found', reason: 'salon-ref-without-tenant', tenant: null, source: 'salon_ref', number: null };
+  }
+  if (!/^s_/.test(v) && v.replace(/\D/g, '').length >= 8) return resolveInboundTenant({ to: v });
+  return { status: 'not_found', reason: 'missing-salon', tenant: null, source: null, number: null };
+}
+
 export async function verifyTenantRouting(tenant) {
   if (!isUsable(tenant)) return { ready: false, status: 'not_found', reason: 'no-tenant', number: null, source: null };
   const number = e164(tenant.phone_number);

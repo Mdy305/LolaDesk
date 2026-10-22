@@ -21,7 +21,7 @@ const key = mod.widgetKeyFor('mma');
 const run = (req) => new Promise((resolve) => { const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(o) { resolve({ status: this.statusCode, ...o }); }, end() { resolve({}); } }; mod.default({ headers: {}, url: '/api/widget-chat', ...req }, res); });
 
 let r = await run({ method: 'GET', url: `/api/widget-chat?slug=mma&key=${key}` });
-ok(r.ok && r.voice && r.voice.agent_id === 'assistant-57f2d23e-48b1-4107-9811-c40b296f15b6' && r.voice.line === '+13055550100' && r.voice.widget === '0.36.0', 'the one-line widget learns LolaBrain + the salon’s line from LolaDesk (nothing to copy)');
+ok(r.ok && r.voice && r.voice.agent_id === 'assistant-57f2d23e-48b1-4107-9811-c40b296f15b6' && r.voice.line.startsWith('s_' + TID + '.') && r.voice.widget === '0.36.0', 'the one-line widget learns LolaBrain + the salon’s signed id from LolaDesk (nothing to copy)');
 r = await run({ method: 'GET', url: `/api/widget-chat?slug=mma&key=wrong` });
 ok(r.status === 401, 'another salon’s key never opens this Lola');
 

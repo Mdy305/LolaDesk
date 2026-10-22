@@ -438,9 +438,9 @@ function renderBookingLink(){
 }
 // Each salon's own Lola widget: the shared Telnyx assistant, told which salon it is
 // through the X-LolaDesk-Salon header (Telnyx turns it into {{loladesk_salon}} for her tools).
-function renderLolaWidget(agentId){
+function renderLolaWidget(agentId, salonRef){
   const box=document.getElementById('lolaWidgetCode'), btn=document.getElementById('lolaWidgetCopy'); if(!box) return;
-  const line=String((TENANT&&TENANT.phone_number)||'').trim();
+  const line=String(salonRef||(TENANT&&TENANT.phone_number)||'').trim();
   if(!agentId){ box.textContent='Lola’s web voice isn’t switched on for LolaDesk yet.'; if(btn) btn.disabled=true; return; }
   if(!line){ box.textContent='Get your Lola phone number first (Phone below) — your website widget uses it to know it’s your salon.'; if(btn) btn.disabled=true; return; }
   const name=String((TENANT&&TENANT.name)||'').replace(/["<>&']/g,'');
@@ -625,7 +625,7 @@ async function load(){
       document.getElementById('opStatus').innerHTML='<span class="dot live"></span><div class="status-txt"><b>Voice command ready</b><small>Call your Lola number from '+esc(TENANT.operator_phone)+' — Lola will know it\'s you</small></div>';
     }
     renderBookingLink();
-    renderLolaWidget(d.lola_agent_id); loadSnippet();
+    renderLolaWidget(d.lola_agent_id, d.lola_salon_ref); loadSnippet();
     igLoad();
     fbLoad();
     icalLoad(); blvdLoad();

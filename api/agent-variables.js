@@ -6,7 +6,7 @@
  */
 import { getClientByPhone, getClientMemory, db } from './lib/db.js';
 import { buildTenantVariables } from './lib/tenant-variables.js';
-import { resolveInboundTenant } from './lib/tenant-resolver.js';
+import { resolveInboundTenant, resolveSalonRef } from './lib/tenant-resolver.js';
 import { clientStory, welcomeBack } from './lib/client-brain.js';
 import { discloseGreeting } from './lib/legal.js';
 import { toolKeyOk } from './lib/tool-key.js';
@@ -69,9 +69,11 @@ export default async function handler(req, res){
     const body = typeof req.body === 'string' ? JSON.parse(req.body||'{}') : (req.body||{});
     const q = (()=>{ try{ return new URL(req.url,'http://x').searchParams; }catch{ return new URLSearchParams(); } })();
     const qTo = q.get('to');
-    const isPhone = (v) => String(v || '').replace(/\D/g, '').length >= 8;
+    const isPhone = (v) => !/^s_/.test(String(v || '')) && String(v || '').replace(/\D/g, '').length >= 8;
     let toNumber = qTo || pickToNumber(body);
-    if(!isPhone(toNumber) && isPhone(pickWebSalon(body))) toNumber = pickWebSalon(body);
+    // A website call has no dialed number: its widget names the salon (signed salon id, or its line).
+    const webRef = isPhone(toNumber) ? '' : pickWebSalon(body);
+    if(webRef && isPhone(webRef)) toNumber = webRef;
     const fromNumber = pickFromNumber(body);
     // Caller memory (name, last visit, notes) is private: only for LolaDesk's own signed request, and
     // only for a real caller line (a website visitor has no verified number).
@@ -89,7 +91,8 @@ export default async function handler(req, res){
     // BEFORE the first syllable. If the dialed number can't be resolved to
     // exactly one tenant, return NEUTRAL placeholders — never the demo
     // salon's name/services, never another tenant's data.
-    const routing = await resolveInboundTenant({ to: toNumber, from: fromNumber });
+    const routing = webRef ? await resolveSalonRef(webRef) : await resolveInboundTenant({ to: toNumber, from: fromNumber });
+    if(webRef && routing.status === 'resolved' && !isPhone(toNumber)) toNumber = routing.number || '';
     const tenant = routing.status === 'resolved' ? routing.tenant : null;
 
     // ── POST-CALL INSIGHTS CORRELATION + LIVE CALL ROW ──
