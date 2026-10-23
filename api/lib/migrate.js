@@ -401,6 +401,80 @@ export function ensureSalesSchema(){
   return _salesEnsured;
 }
 
+
+// Deposits: what Square actually sent to the salon's bank (payouts) and every line inside each one (charges,
+// fees, refunds, adjustments) — so Lola can match each sale to the deposit that paid it.
+export const SALON_SALES_MONEY_DDL = `alter table public.salon_sales add column if not exists source text;
+alter table public.salon_sales add column if not exists fee_cents bigint not null default 0;
+alter table public.salon_sales add column if not exists refunded_cents bigint not null default 0;`;
+export const SALON_PAYOUTS_DDL = `create table if not exists public.salon_payouts (
+  id               uuid primary key default gen_random_uuid(),
+  tenant_id        uuid not null references public.tenants(id) on delete cascade,
+  provider         text not null default 'square',
+  external_id      text not null,
+  status           text,
+  amount_cents     bigint not null default 0,
+  fee_cents        bigint not null default 0,
+  currency         text,
+  arrival_date     date,
+  created_ext      timestamptz,
+  destination_type text,
+  destination_ref  text,
+  payout_type      text,
+  entries          int,
+  entries_loaded   boolean not null default false,
+  entries_net_cents bigint,
+  location_ref     text,
+  synced_at        timestamptz not null default now(),
+  unique (tenant_id, provider, external_id)
+);
+create index if not exists idx_salon_payouts_arrival on public.salon_payouts (tenant_id, arrival_date desc);
+alter table public.salon_payouts enable row level security;`;
+export const SALON_PAYOUT_ENTRIES_DDL = `create table if not exists public.salon_payout_entries (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references public.tenants(id) on delete cascade,
+  provider      text not null default 'square',
+  payout_ref    text not null,
+  external_id   text not null,
+  entry_type    text,
+  effective_at  timestamptz,
+  gross_cents   bigint not null default 0,
+  fee_cents     bigint not null default 0,
+  net_cents     bigint not null default 0,
+  payment_ref   text,
+  refund_ref    text,
+  synced_at     timestamptz not null default now(),
+  unique (tenant_id, provider, external_id)
+);
+create index if not exists idx_salon_payout_entries_payout on public.salon_payout_entries (tenant_id, payout_ref);
+create index if not exists idx_salon_payout_entries_payment on public.salon_payout_entries (tenant_id, payment_ref);
+alter table public.salon_payout_entries enable row level security;`;
+
+let _payoutsEnsured = null;
+export function resetPayoutsSchema(){ _payoutsEnsured = null; }
+/** Deposit tables + the money columns on salon_sales (memoized; never throws). */
+export function ensurePayoutsSchema(){
+  if(_payoutsEnsured) return _payoutsEnsured;
+  _payoutsEnsured = (async () => {
+    const c = db();
+    if(!c) return 'no-db';
+    const sales = await ensureSalesSchema();
+    if(sales === 'missing' || sales === 'error'){ _payoutsEnsured = null; return 'missing'; }
+    const applied = [];
+    try {
+      const probe = await c.from('salon_sales').select('source,fee_cents,refunded_cents').limit(1);
+      if(probe.error){ const r = await c.rpc('exec_sql', { p_sql: SALON_SALES_MONEY_DDL }); if(!r?.error) applied.push('salon_sales money columns'); }
+    } catch(_) {}
+    await ensureTable(c, 'salon_payouts', SALON_PAYOUTS_DDL, applied);
+    await ensureTable(c, 'salon_payout_entries', SALON_PAYOUT_ENTRIES_DDL, applied);
+    const a = await c.from('salon_payouts').select('id').limit(1);
+    const b = await c.from('salon_payout_entries').select('id').limit(1);
+    if(a.error || b.error){ _payoutsEnsured = null; return 'missing'; }
+    return applied.length ? 'applied' : 'up-to-date';
+  })().catch((e) => { _payoutsEnsured = null; console.warn('[migrate] payouts schema:', String(e?.message || e).slice(0, 160)); return 'error'; });
+  return _payoutsEnsured;
+}
+
 export function resetMigrations() {
   _ensured = null;
 }

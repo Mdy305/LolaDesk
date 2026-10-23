@@ -13,7 +13,9 @@ const SQV = () => process.env.SQUARE_VERSION || '2024-12-18';
 export const SCOPE_LIST = ['MERCHANT_PROFILE_READ','APPOINTMENTS_READ','APPOINTMENTS_WRITE','APPOINTMENTS_ALL_READ','APPOINTMENTS_ALL_WRITE',
   'APPOINTMENTS_BUSINESS_SETTINGS_READ','CUSTOMERS_READ','CUSTOMERS_WRITE','ITEMS_READ','EMPLOYEES_READ',
   // Read-only sales: Lola's revenue, marketing and money insights (what sold, who spends, who stopped coming).
-  'PAYMENTS_READ','ORDERS_READ'];
+  'PAYMENTS_READ','ORDERS_READ',
+  // Read-only deposits: what Square actually sent to the salon's bank, line by line (Lola verifies every sale).
+  'PAYOUTS_READ'];
 const SCOPES = SCOPE_LIST.join('+');
 export const redirectUrl = () => process.env.SQUARE_REDIRECT_URL || `${(process.env.APP_URL || 'https://www.loladesk.com').replace(/\/$/, '')}/api/oauth/callback`;
 export function getAuthUrl(state){

@@ -35,7 +35,7 @@ function parts(iso, tz) {
 // ── Storage: the salon_sales / salon_sale_items tables (one row per payment / order line). When the
 // database can't create them yet, the same data lives in one platform_settings row — nothing is lost.
 let tablesOk = null;
-export function resetSalesTables(){ tablesOk = null; }
+export function resetSalesTables(){ tablesOk = null; extraCols = null; }
 export async function salesTables(){
   if (tablesOk != null) return tablesOk;
   try { const { ensureSalesSchema } = await import('./migrate.js'); const st = await ensureSalesSchema(); tablesOk = st === 'up-to-date' || st === 'applied'; }
@@ -53,6 +53,13 @@ async function pageAll(make, size = 1000, maxPages = 80) {
   }
   return out;
 }
+let extraCols = null;
+async function salesExtraColumns(c){
+  if (extraCols != null) return extraCols;
+  try { const { ensurePayoutsSchema } = await import('./migrate.js'); await ensurePayoutsSchema(); } catch (_) {}
+  try { const { error } = await c.from('salon_sales').select('source,fee_cents').limit(1); extraCols = !error; } catch (_) { extraCols = false; }
+  return extraCols;
+}
 const META_KEYS = ['v', 'tz', 'done_until', 'backfilled', 'updated_at', 'clients_at', 'client_sync'];
 
 export async function loadLedger(c, tenantId) {
@@ -65,8 +72,9 @@ export async function loadLedger(c, tenantId) {
   const led = { v: 2, ...Object.fromEntries(META_KEYS.filter((k) => meta[k] != null).map((k) => [k, meta[k]])), payments: {}, orders: {}, store: 'tables' };
   const cut = new Date(Date.now() - KEEP_DAYS * DAY).toISOString().slice(0, 10);
   try {
-    const sales = await pageAll(() => c.from('salon_sales').select('id,external_id,occurred_at,day,hour,dow,net_cents,tip_cents,customer_ref,order_ref,team_ref').eq('tenant_id', tenantId).eq('provider', 'square').gte('day', cut).order('day', { ascending: true }));
-    for (const r of sales) led.payments[r.external_id] = [String(r.day).slice(0, 10), r.hour, r.dow, Number(r.net_cents) || 0, Number(r.tip_cents) || 0, r.customer_ref || null, r.order_ref || null, r.team_ref || null, r.occurred_at || null];
+    const cols = 'id,external_id,occurred_at,day,hour,dow,net_cents,tip_cents,customer_ref,order_ref,team_ref' + ((await salesExtraColumns(c)) ? ',source,fee_cents,refunded_cents' : '');
+    const sales = await pageAll(() => c.from('salon_sales').select(cols).eq('tenant_id', tenantId).eq('provider', 'square').gte('day', cut).order('day', { ascending: true }));
+    for (const r of sales) led.payments[r.external_id] = [String(r.day).slice(0, 10), r.hour, r.dow, Number(r.net_cents) || 0, Number(r.tip_cents) || 0, r.customer_ref || null, r.order_ref || null, r.team_ref || null, r.occurred_at || null, r.source || null, Number(r.fee_cents) || 0, Number(r.refunded_cents) || 0];
     const items = await pageAll(() => c.from('salon_sale_items').select('id,order_ref,line_no,day,customer_ref,name,quantity,total_cents').eq('tenant_id', tenantId).eq('provider', 'square').gte('day', cut).order('day', { ascending: true }));
     const byOrder = new Map();
     for (const r of items) { if (!byOrder.has(r.order_ref)) byOrder.set(r.order_ref, { day: String(r.day).slice(0, 10), cust: r.customer_ref || null, lines: [] }); byOrder.get(r.order_ref).lines.push(r); }
@@ -89,12 +97,13 @@ async function saveLedger(c, tenantId, led) {
     if (led.store === 'tables') {
       const { data: cl } = await c.from('clients').select('id,preferences').eq('tenant_id', tenantId).limit(10000).then((x) => x, () => ({ data: [] }));
       const clientOf = new Map((cl || []).filter((x) => x.preferences?.square_id).map((x) => [x.preferences.square_id, x.id]));
+      const salesCols = await salesExtraColumns(c);
       const pIds = led._migrate ? Object.keys(led.payments) : [...(led._dirtyP || [])];
       const oIds = led._migrate ? Object.keys(led.orders) : [...(led._dirtyO || [])];
       const stamp = new Date().toISOString();
-      const sales = pIds.filter((id) => led.payments[id]).map((id) => { const [day, hour, dow, net, tip, cust, order, team, at] = led.payments[id]; return {
+      const sales = pIds.filter((id) => led.payments[id]).map((id) => { const [day, hour, dow, net, tip, cust, order, team, at, source, fee, refunded] = led.payments[id]; return {
         tenant_id: tenantId, provider: 'square', external_id: id, occurred_at: at || new Date(day + 'T17:00:00Z').toISOString(),
-        day, hour, dow, net_cents: net, tip_cents: tip, customer_ref: cust, client_id: (cust && clientOf.get(cust)) || null, order_ref: order, team_ref: team, synced_at: stamp }; });
+        day, hour, dow, net_cents: net, tip_cents: tip, customer_ref: cust, client_id: (cust && clientOf.get(cust)) || null, order_ref: order, team_ref: team, ...(salesCols ? { source: source || null, fee_cents: fee || 0, refunded_cents: refunded || 0 } : {}), synced_at: stamp }; });
       for (let i = 0; i < sales.length; i += 500) { const r = await c.from('salon_sales').upsert(sales.slice(i, i + 500), { onConflict: 'tenant_id,provider,external_id' }); if (r?.error) throw new Error(r.error.message); }
       const drop = [...(led._dropP || [])];
       for (let i = 0; i < drop.length; i += 200) await c.from('salon_sales').delete().eq('tenant_id', tenantId).eq('provider', 'square').in('external_id', drop.slice(i, i + 200));
@@ -131,7 +140,8 @@ async function importWindow(S, integ, led, from, to, tz, locs) {
       if (String(p.status || '').toUpperCase() !== 'COMPLETED') { if (led.payments[p.id]) (led._dropP ||= new Set()).add(p.id); delete led.payments[p.id]; continue; }
       const t = parts(p.created_at, tz);
       const net = cents(p.amount_money) - cents(p.refunded_money);
-      led.payments[p.id] = [t.day, t.hour, t.dow, net, cents(p.tip_money), p.customer_id || null, p.order_id || null, p.team_member_id || p.employee_id || null, p.created_at || null];
+      led.payments[p.id] = [t.day, t.hour, t.dow, net, cents(p.tip_money), p.customer_id || null, p.order_id || null, p.team_member_id || p.employee_id || null, p.created_at || null,
+        String(p.source_type || '').toUpperCase() || null, (p.processing_fee || []).reduce((t, f) => t + cents(f.amount_money), 0), cents(p.refunded_money)];
       (led._dirtyP ||= new Set()).add(p.id);
     }
     cursor = d.cursor || null;
@@ -261,6 +271,29 @@ export async function importSquareSales(c, integ, { now = Date.now(), budgetMs =
 }
 
 /** Every connected Square salon: catch up those not imported in the last 6 hours (cron, every 15 min). */
+/**
+ * Once connected, everything: sales + clients, then bank deposits — matched sale by sale — and the owner
+ * told once about any money that didn't arrive. (Callback, the 15-minute cron and "Sync now" all use this.)
+ */
+export async function syncEverything(c, integ, { now = Date.now(), budgetMs = 25000 } = {}) {
+  const started = Date.now();
+  const sales = await importSquareSales(c, integ, { now, budgetMs: Math.round(budgetMs * 0.6) });
+  let deposits = null;
+  const scopes = integ.metadata?.scopes;
+  if (!Array.isArray(scopes) || scopes.includes('PAYOUTS_READ')) {
+    try {
+      const D = await import('./square-deposits.js');
+      const imp = await D.importPayouts(c, integ, { now, budgetMs: Math.max(3000, budgetMs - (Date.now() - started)) });
+      deposits = { ...imp };
+      if (imp.ok || imp.payouts) {
+        const { data: tenant } = await c.from('tenants').select('*').eq('id', integ.tenant_id).maybeSingle();
+        if (tenant) { const r = await D.reconcile(c, tenant, { now }); deposits.issues = r.issues?.length || 0; deposits.all_clear = !!r.all_clear; if (imp.backfilled) deposits.alerted = (await D.depositAlerts(c, tenant, r)).sent; }
+      }
+    } catch (e) { deposits = { ok: false, error: String(e?.message || e).slice(0, 200) }; }
+  } else deposits = { skipped: 'needs_reconnect' };
+  return { ...sales, deposits };
+}
+
 export async function runSquareImports(c, { now = Date.now(), budgetMs = 30000 } = {}) {
   const started = Date.now();
   const { squareRows } = await import('./square-care.js');
@@ -271,7 +304,7 @@ export async function runSquareImports(c, { now = Date.now(), budgetMs = 30000 }
     if (Array.isArray(scopes) && !scopes.includes('PAYMENTS_READ')) { out.push({ tenant: integ.tenant_id, skipped: 'needs_reconnect' }); continue; }
     const led = await loadLedger(c, integ.tenant_id);
     if (led.backfilled && led.updated_at && now - Date.parse(led.updated_at) < 6 * 3600e3) { out.push({ tenant: integ.tenant_id, skipped: 'fresh' }); continue; }
-    try { out.push({ tenant: integ.tenant_id, ...(await importSquareSales(c, integ, { now, budgetMs: Math.max(5000, budgetMs - (Date.now() - started)) })) }); }
+    try { out.push({ tenant: integ.tenant_id, ...(await syncEverything(c, integ, { now, budgetMs: Math.max(5000, budgetMs - (Date.now() - started)) })) }); }
     catch (e) { out.push({ tenant: integ.tenant_id, ok: false, error: String(e?.message || e).slice(0, 200) }); }
   }
   return out;

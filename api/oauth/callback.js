@@ -13,8 +13,8 @@ export async function finishSquare(saved, tokens){
   const map = await sqc.autoMap(integ).catch(() => null);
   if(map) await db().from('integrations').update({ metadata: { ...metadata, mapped: { staff: map.staff?.mapped || 0, services: map.services?.mapped || 0, unmatched_staff: map.staff?.unmatched || [], unmatched_services: (map.services?.unmatched || []).slice(0, 20) } } }).eq('id', saved.id);
   try{ const { ensureJobs } = await import('../lib/calendar-outbox.js'); await ensureJobs(db(), saved.tenant_id); }catch(_){}
-  // Their Square sales history starts flowing into LolaBrain now (the 15-minute cron finishes the rest).
-  try{ const { importSquareSales } = await import('../lib/square-data.js'); await importSquareSales(db(), integ, { budgetMs: 8000 }); }catch(_){}
+  // Everything starts flowing into LolaBrain now — sales, clients, deposits (the 15-minute cron finishes the rest).
+  try{ const { syncEverything } = await import('../lib/square-data.js'); await syncEverything(db(), integ, { budgetMs: 9000 }); }catch(_){}
   return { metadata, map };
 }
 
