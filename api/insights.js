@@ -68,9 +68,11 @@ export default async function handler(req, res) {
       const led = await sd.loadLedger(c, tenant.id);
       const r = conn.status === 'not_connected' && !Object.keys(led.payments || {}).length ? { ok: false, empty: true } : await sd.squareInsights(c, tenant);
       const take = r.ok ? await lolaTake(c, tenant, r, { refresh: req.query?.refresh === '1' }) : null;
+      let deposits = null;
+      try { const D = await import('./lib/square-deposits.js'); const d = await D.reconcile(c, tenant, { days: 30 }); if (d.ok) deposits = { all_clear: d.all_clear, issues: d.issues.filter((i) => i.severity >= 2).length, deposited: d.totals.deposited, on_its_way: d.totals.on_its_way + d.totals.waiting, top: d.issues[0]?.title || null }; } catch (_) {}
       return res.status(200).json({ ok: true, salon: tenant.name, connection: conn,
         sync: { store: led.store, tables: led.store === 'tables', payments: Object.keys(led.payments || {}).length, orders: Object.keys(led.orders || {}).length, backfilled: !!led.backfilled, updated_at: led.updated_at || null, from: led.done_until ? null : null, clients: led.client_sync || null },
-        insights: r, take });
+        insights: r, take, deposits });
     }
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'GET or POST' });
 
@@ -79,7 +81,7 @@ export default async function handler(req, res) {
       const { squareRows } = await import('./lib/square-care.js');
       const integ = (await squareRows(c, { status: 'connected' })).find((x) => x.tenant_id === tenant.id);
       if (!integ) return res.status(400).json({ ok: false, error: 'Connect Square first (Settings → Square).' });
-      const r = await sd.importSquareSales(c, integ, { budgetMs: 20000 });
+      const r = await sd.syncEverything(c, integ, { budgetMs: 22000 });
       return res.status(200).json({ ok: true, ...r });
     }
 

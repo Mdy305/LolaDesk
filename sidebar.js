@@ -100,6 +100,7 @@
       pages: [] },
     { id: 'growth', label: 'Growth', href: '/campaigns', manager: true,
       subs: [{ label: 'Business', href: '/insights', pages: ['insights'], manager: true },
+             { label: 'Deposits', href: '/deposits', pages: ['deposits'], owner: true },
              { label: 'Campaigns', href: '/campaigns', pages: ['campaigns', 'marketing'] },
              { label: 'Marketer', href: '/marketer', pages: ['marketer'], manager: true },
              { label: 'Reviews', href: '/reviews', pages: ['reviews'] },

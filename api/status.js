@@ -13,7 +13,7 @@
 import { telnyxVoiceMode } from './lib/voice-mode.js';
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-business';
+export const RELEASE = 'lola-deposits';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -64,7 +64,7 @@ export async function buildStatus() {
     live.square_connections = (sqRows || []).length;
     live.square_reconnect = (sqRows || []).filter((r) => r.status !== 'connected' || (Array.isArray(r.metadata?.missing_scopes) && r.metadata.missing_scopes.length)).length;
     live.square_webhook = !!process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-    if (live.square_connections > 0) { try { const { ensureSalesSchema } = await import('./lib/migrate.js'); live.sales_tables = ['up-to-date', 'applied'].includes(await ensureSalesSchema()); } catch (_) { live.sales_tables = false; } }
+    if (live.square_connections > 0) { try { const { ensureSalesSchema, ensurePayoutsSchema } = await import('./lib/migrate.js'); live.sales_tables = ['up-to-date', 'applied'].includes(await ensureSalesSchema()) && ['up-to-date', 'applied'].includes(await ensurePayoutsSchema()); } catch (_) { live.sales_tables = false; } }
   } catch (_) {}
   // October fixes (atomic holds, one-trial-per-salon, client notes): self-applied when possible,
   // otherwise one SQL script for the owner to run.
@@ -419,7 +419,7 @@ export async function buildStatus() {
   if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
   if (live.square_connections > 0 && !settings.SQUARE_WEBHOOK_SIGNATURE_KEY) fixes.push('Square changes arrive only by the 1-minute check: Square Developer Console → your app → Webhooks → add https://www.loladesk.com/api/square-webhook (booking.created, booking.updated, oauth.authorization.revoked), then paste its Signature key in Vercel as SQUARE_WEBHOOK_SIGNATURE_KEY and Redeploy.');
-  if (live.square_connections > 0 && live.sales_tables === false) fixes.push('Your Square sales are kept, but in a temporary store: Supabase → SQL Editor → paste and run sql/square-sales.sql (from your LolaDesk folder) once, so the Business page and LolaBrain read them from real tables.');
+  if (live.square_connections > 0 && live.sales_tables === false) fixes.push('One step for the Business and Deposits pages: Supabase → SQL Editor → paste and run sql/square-sales.sql (from your LolaDesk folder) once. Until then sales are kept in a temporary store and deposits can’t be checked.');
   if (live.square_reconnect > 0) fixes.push(`${live.square_reconnect} salon(s) must reconnect Square once (Settings → Integrations → Square) so Lola sees every booking in their Square, not only her own.`);
   if (live.numbers > 0 && live.numbers_registered_10dlc === 0) fixes.push('None of your Telnyx numbers is registered for business texting (10DLC) — US carriers block the texts. Telnyx → Messaging → 10DLC: register your brand + campaign and assign your salon number.');
   else if (live.numbers > 0 && live.numbers_registered_10dlc != null && live.numbers_registered_10dlc < live.numbers) fixes.push(`${live.numbers - live.numbers_registered_10dlc} of your ${live.numbers} Telnyx numbers aren’t on a 10DLC campaign — texts from them get blocked. Assign them in Telnyx → Messaging → 10DLC.`);

@@ -139,6 +139,12 @@ export function routeOwnerIntent(input) {
     return { tool: 'today_brief', args: { date: dayOf(t) || 'today' } };
   }
 
+  // ── deposits: did the money reach the bank? ──
+  if (/\b(deposits?|payouts?|bank (?:transfers?|deposits?)|transfers? (?:to|from) (?:my|the) (?:bank|account)|did (?:all )?(?:my|the) money (?:arrive|come in|land)|was i paid|did (?:square|i) (?:pay|get paid)|reconcil(?:e|iation)|money in (?:my|the) (?:bank|account))\b/.test(t) && !/\b(take|collect|require|ask for|charge) (?:a )?deposit|\b(booking|client'?s?|no.?show|card on file|turn (?:on|off)|enable|disable|policy|refund (?:a|the|her|his) deposit)\b/.test(t)) {
+    const days = /\b(year|12 months|365)\b/.test(t) ? 365 : /\b(90 days|quarter|3 months)\b/.test(t) ? 90 : 30;
+    return { tool: 'verify_deposits', args: { days } };
+  }
+
   // ── business analysis (Square sales): trends, services, clients, staff, timing, marketing ──
   if (/\b(analy[sz]e|analysis|insights?|trends?|best.?sellers?|top (?:services|sellers|clients|spenders)|who (?:stopped|hasn'?t been|haven'?t been) (?:coming|back)|lost clients|retention|average ticket|busiest (?:day|time)|slowest day|financ(?:e|es|ial)|vs\.? last year|compared? (?:to|with) last (?:month|year)|marketing ideas|how (?:do|can) (?:i|we) grow|grow (?:my|the|our) (?:business|salon)|how'?s the salon doing|square (?:sales|data|report))\b/.test(t) && !/\b(campaign|send|text (?:them|everyone))\b/.test(t)) {
     const focus = /\b(best.?sellers?|top services|services?)\b/.test(t) ? 'services'

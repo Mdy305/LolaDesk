@@ -147,7 +147,9 @@ table.svc td:nth-child(n+2){text-align:right;white-space:nowrap;color:var(--text
     const week=wd.map(w=>'<div class="hbar'+(w.day===r.times.busiest_day?' hi':'')+'"><span>'+esc(w.day)+'</span><div class="t"><i style="width:'+Math.round(w.revenue/maxW*100)+'%"></i></div><span>'+money(w.revenue)+'</span></div>').join('');
     const svc=(r.services||[]).map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+s.sold_90d+' sold</td><td>'+money(s.revenue_90d)+'</td><td>'+(s.trend==null?'<span class="note">new</span>':pct(s.trend))+'</td></tr>').join('');
     const camps=(r.campaigns||[]).slice(0,8).map(x=>'<div class="li"><div>'+esc(x.name)+'<small>'+day((x.sent_at||'').slice(0,10))+' · '+x.texts+' texts · '+x.returned+' came back ('+x.return_rate+'%)</small></div><div class="amt">'+money(x.revenue)+'</div></div>').join('');
-    $('body').innerHTML=
+    const dep=D.deposits;
+    const depBar=dep?'<a href="/deposits" class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px;text-decoration:none;color:inherit;padding:14px 20px"><span><span class="bz-dot'+(dep.all_clear?'':' warn')+'"></span>&nbsp; '+(dep.all_clear?'Deposits: every card sale of the last 30 days is accounted for — '+money(dep.deposited/100)+' in your bank, '+money(dep.on_its_way/100)+' on its way.':'Deposits: '+esc(dep.top||(dep.issues+' thing(s) to check')))+'</span><span style="color:var(--text2);font-size:13px">Deposits →</span></a>':'';
+    $('body').innerHTML=depBar+
       (D.take&&D.take.text?'<div class="card take"><h2>Lola’s take</h2>'+D.take.text.split(/\n{2,}|\n/).filter(Boolean).map(p=>'<p>'+esc(p)+'</p>').join('')+'<div class="by">'+(D.take.by==='lola'?'LolaBrain, from your Square sales':'From your Square sales')+(D.take.at?' · '+ago(D.take.at):'')+'</div></div>':'')+
       '<div class="bz-kpis">'+
         '<div class="bz-kpi"><div class="l">This month</div><div class="v">'+money(R.this_month)+'</div><div class="d">'+pct(R.month_to_date_vs_last_month)+' vs last month</div></div>'+

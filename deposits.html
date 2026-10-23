@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Deposits — LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<style>
+.dp{max-width:1100px}
+.dp-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.dp-head h1{font-size:30px;font-weight:600;letter-spacing:-.025em;margin:0}
+.dp-sub{margin:6px 0 0;color:var(--text2);font-size:14px}
+.dp-btn{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:9px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:38px}
+.dp-btn:disabled{opacity:.5}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--text2);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#0b0b0c;font-weight:600}
+.verdict{border-radius:20px;padding:22px;margin-bottom:18px;border:.5px solid var(--border);background:var(--surface)}
+.verdict.ok{background:radial-gradient(ellipse 80% 140% at 0% 0%,rgba(48,209,88,.12),transparent 60%),var(--surface)}
+.verdict.bad{background:radial-gradient(ellipse 80% 140% at 0% 0%,rgba(255,90,77,.14),transparent 60%),var(--surface)}
+.verdict h2{margin:0 0 6px;font-size:21px;letter-spacing:-.015em}
+.verdict p{margin:0;color:var(--text2);font-size:14.5px;line-height:1.6}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+@media(max-width:900px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.fbox{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:16px}
+.fbox .l{font-size:12px;color:var(--text2)}
+.fbox .v{font-size:24px;font-weight:600;letter-spacing:-.02em;margin-top:6px}
+.fbox .d{font-size:12px;color:var(--text3);margin-top:4px;line-height:1.45}
+.fbox.good .v{color:#30d158}.fbox.warn .v{color:var(--warning)}.fbox.bad .v{color:var(--danger)}
+.dp-card{background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:20px;margin-bottom:18px}
+.dp-card h3{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);font-weight:600;margin:0 0 12px}
+.issue{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:12px;padding:12px 0;border-bottom:.5px solid var(--border);align-items:start}
+.issue:last-child{border-bottom:0}
+.issue i{width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--warning)}
+.issue.s3 i{background:var(--danger)}.issue.s1 i{background:var(--text3)}
+.issue b{font-size:14.5px;font-weight:600}
+.issue p{margin:4px 0 0;font-size:13px;color:var(--text2);line-height:1.5}
+.issue .amt{font-weight:600;white-space:nowrap}
+table.po{width:100%;border-collapse:collapse;font-size:13.5px}
+table.po th{font-size:11.5px;color:var(--text3);font-weight:500;text-align:left;padding:6px 4px;border-bottom:.5px solid var(--border)}
+table.po td{padding:11px 4px;border-bottom:.5px solid var(--border)}
+table.po tr.row{cursor:pointer}table.po tr.row:hover td{background:rgba(255,255,255,.02)}
+table.po td.r,table.po th.r{text-align:right;white-space:nowrap}
+.dp-pill{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--text2)}
+.dp-pill.PAID{background:rgba(48,209,88,.12);color:#30d158}.dp-pill.SENT{background:rgba(90,200,250,.12);color:var(--info)}.dp-pill.FAILED{background:rgba(255,90,77,.14);color:var(--danger)}
+.lines{background:var(--bg2);border-radius:14px;padding:6px 12px;margin:4px 0 10px}
+.ln{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;font-size:12.5px;padding:7px 0;border-bottom:.5px solid var(--border)}
+.ln:last-child{border-bottom:0}.ln span:nth-child(n+2){text-align:right;color:var(--text2);white-space:nowrap}
+.ln a{color:var(--text)}
+.dp-empty{font-size:14px;color:var(--text2);padding:28px;border:1px dashed var(--border);border-radius:18px;text-align:center;line-height:1.6}
+.dp-empty a{display:inline-block;margin-top:12px}
+.note{font-size:12px;color:var(--text3);line-height:1.5;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1c1c1f;color:#f2f2f5;border:1px solid var(--border);padding:12px 18px;border-radius:14px;font-size:14px;z-index:400;max-width:min(560px,calc(100vw - 32px))}
+</style>
+</head>
+<body data-page="deposits">
+<div class="app"><main class="main"><div class="dp">
+  <div class="dp-head">
+    <div><h1>Deposits</h1><div class="dp-sub" id="sub">Every sale, matched to the money Square sent your bank.</div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div class="seg" id="seg"><button data-d="30" class="on">30 days</button><button data-d="90">90 days</button><button data-d="365">12 months</button></div>
+      <button class="dp-btn" id="btnSync">Check now</button>
+    </div>
+  </div>
+  <div id="body"><div class="dp-card">Loading…</div></div>
+</div></main></div>
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const m2=c=>{const n=(Number(c)||0)/100;return (n<0?'−':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  const dt=k=>{if(!k)return '—';const d=new Date(String(k).slice(0,10)+'T12:00:00Z');return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});};
+  const token=()=>(window.LolaAuth&&window.LolaAuth.token)||localStorage.getItem('loladesk_token')||'';
+  const STATUS={PAID:'In your bank',SENT:'On its way',FAILED:'Failed'};
+  const DEST={BANK_ACCOUNT:'Bank',CARD:'Debit card',SQUARE_BALANCE:'Square balance',SQUARE_STORED_BALANCE:'Square balance'};
+  let DAYS=30,D=null,OPEN=null;
+  async function api(q,body){const r=await fetch('/api/deposits'+(q||''),{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok===false)throw new Error(d.error||('Request failed ('+r.status+')'));return d;}
+  function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),4500);}
+  function render(){
+    const c=D.connection||{},r=D.reconcile||{};
+    if(!c.connected&&c.status==='not_connected'){$('body').innerHTML='<div class="dp-empty"><b>Connect Square and Lola checks every deposit.</b><br>She matches each card sale to the money Square sent your bank — and tells you the moment something doesn’t arrive. Read-only.<br><a class="dp-btn" href="/settings#integrations">Connect Square</a></div>';return;}
+    if(c.needs_reconnect){$('body').innerHTML='<div class="dp-empty"><b>Reconnect Square once.</b><br>Lola needs read-only access to your deposits.<br><a class="dp-btn" href="/settings#integrations">Reconnect Square</a></div>';return;}
+    if(!r.ok){$('body').innerHTML='<div class="dp-empty">'+esc(r.error==='tables_missing'?'One step left: in Supabase → SQL Editor, run sql/square-sales.sql from your LolaDesk folder.':(r.error||'Lola couldn’t check deposits right now.'))+'</div>';return;}
+    const T=r.totals,bad=r.issues.filter(i=>i.severity>=2);
+    $('sub').textContent='Every sale, matched to the money Square sent your bank'+(r.synced_at?' · checked '+new Date(r.synced_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'')+(r.backfilled?'':' · still reading older deposits…');
+    const verdict=!T.counts.card?'<div class="verdict"><h2>No card sales to check in this period.</h2><p>'+(T.cash_count?m2(T.cash_sales)+' in cash across '+T.cash_count+' sales — that’s in your drawer, not a deposit.':'')+'</p></div>'
+      :r.all_clear?'<div class="verdict ok"><h2>Every card sale is accounted for.</h2><p>'+T.counts.deposited+' of '+T.counts.card+' card sales are already in your bank'+(T.counts.on_its_way+T.counts.waiting?'; the other '+(T.counts.on_its_way+T.counts.waiting)+' are on their way.':'.')+'</p></div>'
+      :'<div class="verdict bad"><h2>'+bad.length+' thing'+(bad.length===1?'':'s')+' to check.</h2><p>'+esc(bad.map(i=>i.title).slice(0,2).join(' · '))+'</p></div>';
+    const flow='<div class="flow">'+
+      '<div class="fbox"><div class="l">Card sales</div><div class="v">'+m2(T.card_sales)+'</div><div class="d">'+T.counts.card+' sales'+(T.refunds?' · '+m2(T.refunds)+' refunded':'')+'</div></div>'+
+      '<div class="fbox"><div class="l">Square fees</div><div class="v">'+m2(T.square_fees)+'</div><div class="d">'+(T.fee_rate!=null?T.fee_rate+'% of card sales':'')+'</div></div>'+
+      '<div class="fbox good"><div class="l">In your bank</div><div class="v">'+m2(T.deposited)+'</div><div class="d">of '+m2(T.expected)+' expected</div></div>'+
+      '<div class="fbox '+(T.missing||T.failed?'bad':'warn')+'"><div class="l">'+(T.missing||T.failed?'Not arrived':'On its way')+'</div><div class="v">'+m2(T.missing||T.failed?T.missing+T.failed:T.on_its_way+T.waiting)+'</div><div class="d">'+(T.missing||T.failed?(T.counts.missing+T.counts.failed)+' sale(s) need a look':(T.counts.on_its_way+T.counts.waiting)+' sale(s), normal')+'</div></div>'+
+    '</div>';
+    const issues=r.issues.length?'<div class="dp-card"><h3>What needs you</h3>'+r.issues.map(i=>'<div class="issue s'+i.severity+'"><i></i><div><b>'+esc(i.title)+'</b><p>'+esc(i.detail)+'</p></div><div class="amt">'+m2(i.amount_cents)+'</div></div>').join('')+'</div>':'';
+    const rows=(r.payouts||[]).map(p=>'<tr class="row" data-p="'+esc(p.id)+'"><td>'+dt(p.arrival_date)+'</td><td><span class="dp-pill '+esc(p.status)+'">'+esc(STATUS[p.status]||p.status||'—')+'</span>'+(p.adds_up?'':' <span class="dp-pill FAILED">doesn’t add up</span>')+'</td><td>'+esc(DEST[p.destination]||p.destination||'')+(p.destination_ref?' '+esc(p.destination_ref):'')+'</td><td class="r">'+(p.entries!=null?p.entries+(p.entries===1?' line':' lines'):'')+'</td><td class="r"><b>'+m2(p.amount)+'</b>'+(p.fee?'<br><span class="note">fee '+m2(p.fee)+'</span>':'')+'</td></tr>'+(OPEN&&OPEN.id===p.id?'<tr><td colspan="5"><div class="lines">'+(OPEN.lines?OPEN.lines.map(l=>'<div class="ln"><span>'+esc((l.type||'').replace(/_/g,' ').toLowerCase())+(l.client?' · '+(l.client_id?'<a href="/client?id='+encodeURIComponent(l.client_id)+'">'+esc(l.client)+'</a>':esc(l.client)):'')+(l.sale_day?' · sale '+dt(l.sale_day):'')+'</span><span>'+(l.fee?'fee '+m2(l.fee):'')+'</span><span>'+m2(l.net)+'</span></div>').join(''):'Loading…')+'</div></td></tr>':'')).join('');
+    const payouts='<div class="dp-card"><h3>Deposits from Square</h3>'+(rows?'<table class="po"><tr><th>Arrives</th><th>Status</th><th>To</th><th class="r">Lines</th><th class="r">Amount</th></tr>'+rows+'</table><div class="note">Tap a deposit to see every sale, fee and refund inside it.</div>':'<div class="note">No deposits in this period yet.</div>')+'</div>';
+    const cash=T.cash_count||T.outside_sales?'<div class="dp-card"><h3>Not paid out by Square</h3><div class="note" style="font-size:13.5px;color:var(--text2)">'+(T.cash_count?m2(T.cash_sales)+' in cash across '+T.cash_count+' sale'+(T.cash_count===1?'':'s')+' — count it against your drawer. ':'')+(T.outside_sales?m2(T.outside_sales)+' recorded as paid outside Square (other tender) — check it where it was paid.':'')+'</div></div>':'';
+    $('body').innerHTML=verdict+flow+issues+payouts+cash+'<div class="note">“In your bank” means Square reports the transfer as paid to your account. To see it on your bank statement too, match the dates and amounts above — they’re exactly what your bank receives.</div>';
+    document.querySelectorAll('tr.row').forEach(tr=>tr.onclick=async()=>{const id=tr.dataset.p;if(OPEN&&OPEN.id===id){OPEN=null;render();return;}OPEN={id};render();try{const d=await api('?payout='+encodeURIComponent(id));OPEN={id,lines:d.lines};}catch(e){OPEN={id,lines:[]};toast(e.message);}render();});
+  }
+  async function load(){try{D=await api('?days='+DAYS);render();}catch(e){$('body').innerHTML='<div class="dp-empty">'+esc(e.message)+'</div>';}}
+  document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{DAYS=Number(b.dataset.d);document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));OPEN=null;load();});
+  $('btnSync').onclick=async()=>{const b=$('btnSync');b.disabled=true;b.textContent='Checking with Square…';try{const d=await api('',{action:'sync'});toast(d.deposits&&d.deposits.all_clear?'All good — every card sale is accounted for.':'Checked. '+((d.deposits&&d.deposits.issues)||0)+' thing(s) to look at.');await load();}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent='Check now';}};
+  (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+})();
+</script>
+<script src="/lola-stage.js" defer></script>
+</body>
+</html>

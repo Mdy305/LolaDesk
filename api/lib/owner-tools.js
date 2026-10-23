@@ -97,9 +97,12 @@ export const OWNER_TOOLS = [
   fn('business_insights', "The salon's business analysis from its real sales (Square payments, orders, clients): revenue and trends (month to date vs last month and last year, last 30 days, average ticket, tips), best and falling services, clients (new, retention, regulars who stopped coming and what they're worth, top spenders), revenue by team member, busiest and slowest days, and the marketing moves worth making now — each with its audience, value and a ready text. Use for 'how's the salon doing', 'analyze my business', 'sales trends', 'best sellers', 'top clients', 'who stopped coming', 'busiest day', 'finances', 'marketing ideas', 'how do I grow'.", {
     focus: { type: 'string', enum: ['overview', 'revenue', 'services', 'clients', 'staff', 'times', 'marketing'] },
   }),
+  fn('verify_deposits', "Check that every card sale really reached the salon's bank: Square payouts matched sale by sale — what's in the bank, what's on its way, Square fees, refunds, cash kept apart, and anything missing, failed or not adding up. Use for 'did all my money arrive', 'check my deposits', 'payouts', 'was I paid', 'reconcile', 'bank transfers'.", {
+    days: { type: 'integer', description: 'Period in days: 30 (default), 90 or 365.' },
+  }),
   fn('open_questions', "The questions clients asked this month that Lola couldn't answer. Use for 'what did clients ask that you didn't know', 'what should I teach you'."),
   fn('support_status', "The owner's help requests to LolaDesk and the team's answers. Use for 'did support answer', 'my tickets', 'any news from LolaDesk'."),
-  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['business', 'calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
+  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['business', 'deposits', 'calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
 for (const m of SETUP_MODULES) for (const t of m.SETUP_TOOLS || []) if (!OWNER_TOOLS.some((x) => x.function.name === t.function.name)) OWNER_TOOLS.push(t);
 const setupModuleFor = (name) => SETUP_MODULES.find((m) => (m.SETUP_TOOLS || []).some((t) => t.function.name === name)) || null;
@@ -118,7 +121,7 @@ export function supportFollowUp(messages, text) {
 const NEEDS_CONFIRM = new Set(['contact_support', 'block_time', 'unblock_time', 'confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
-  business: '/insights', calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
+  business: '/insights', deposits: '/deposits', calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
   revenue: '/revenue', settings: '/settings', growth: '/growth-os', reviews: '/reviews', team: '/team',
   services: '/services', banking: '/banking', pos: '/pos', marketing: '/campaigns',
 };
@@ -139,7 +142,7 @@ export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do i
 export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
 
 /** Tools that only read — the only ones an UNVERIFIED channel may run. */
-export const OWNER_READ_TOOLS = new Set(['business_insights', 'open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
+export const OWNER_READ_TOOLS = new Set(['verify_deposits', 'business_insights', 'open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -398,6 +401,13 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
       case 'teach_lola': {
         const { teachLola } = await import('./knowledge-gaps.js');
         return teachLola(c, tenant, { question: args.question, answer: args.answer });
+      }
+
+      case 'verify_deposits': {
+        const D = await import('./square-deposits.js');
+        const days = [30, 90, 365].includes(Number(args.days)) ? Number(args.days) : 30;
+        const r = await D.reconcile(c, tenant, { days });
+        return { ok: true, say: D.sayDeposits(r), deposits: r.ok ? { totals: r.totals, issues: r.issues.slice(0, 5), all_clear: r.all_clear } : null, suggestions: ['Open deposits'] };
       }
 
       case 'business_insights': {

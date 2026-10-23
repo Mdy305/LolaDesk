@@ -49,7 +49,7 @@ const live = () => ({ ...row(), access_token: decrypt(row().access_token), refre
 
 // ── Permissions: seller-level, least privilege ──
 const auth = SQ.getAuthUrl('st');
-ok(['APPOINTMENTS_ALL_READ', 'APPOINTMENTS_ALL_WRITE', 'APPOINTMENTS_BUSINESS_SETTINGS_READ', 'EMPLOYEES_READ'].every((s) => auth.includes(s)) && /session=false/.test(auth) && /PAYMENTS_READ/.test(auth) && !/PAYMENTS_WRITE|ORDERS_WRITE|BANK|PAYOUTS/.test(auth), 'connect asks for seller-level bookings + team + business settings + read-only sales — never to move money');
+ok(['APPOINTMENTS_ALL_READ', 'APPOINTMENTS_ALL_WRITE', 'APPOINTMENTS_BUSINESS_SETTINGS_READ', 'EMPLOYEES_READ'].every((s) => auth.includes(s)) && /session=false/.test(auth) && /PAYMENTS_READ/.test(auth) && !/PAYMENTS_WRITE|ORDERS_WRITE|BANK|PAYOUTS_WRITE/.test(auth), 'connect asks for seller-level bookings + team + business settings + read-only sales — never to move money');
 
 // ── Every booking, named; cancelled frees the chair; rate limits ridden out ──
 S.rate = 1;

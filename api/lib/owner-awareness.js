@@ -340,5 +340,7 @@ export async function chiefBrief(tenant, { now = new Date() } = {}) {
   // Their Square sales, in one line — and the biggest move (lib/square-data.js).
   let sales = null;
   try { const { db: dbc } = await import('./db.js'); const c3 = dbc(); if (c3 && tenant?.id) { const sd = await import('./square-data.js'); sales = sd.briefLine(await sd.squareInsights(c3, tenant)); if (sales) parts.push(sales + '.'); } } catch (_) {}
-  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, support ? 'Show my support requests' : null, gaps ? 'What did clients ask you?' : null, sales ? 'Analyze my business' : null, 'What did I miss?'].filter(Boolean), situation: s };
+  let depLine = null;
+  try { const { db: dbc } = await import('./db.js'); const c4 = dbc(); if (c4 && tenant?.id) { const D = await import('./square-deposits.js'); depLine = D.depositBriefLine(await D.reconcile(c4, tenant, { days: 30 })); if (depLine) parts.unshift(depLine); } } catch (_) {}
+  return { say: parts.join(' ').replace(/\s+/g, ' ').trim(), suggestions: [s.oneMove?.suggestion, support ? 'Show my support requests' : null, gaps ? 'What did clients ask you?' : null, depLine ? 'Check my deposits' : null, sales ? 'Analyze my business' : null, 'What did I miss?'].filter(Boolean), situation: s };
 }
