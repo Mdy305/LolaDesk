@@ -99,7 +99,7 @@ export const OWNER_TOOLS = [
   }),
   fn('open_questions', "The questions clients asked this month that Lola couldn't answer. Use for 'what did clients ask that you didn't know', 'what should I teach you'."),
   fn('support_status', "The owner's help requests to LolaDesk and the team's answers. Use for 'did support answer', 'my tickets', 'any news from LolaDesk'."),
-  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
+  fn('open_page', 'Open a page of LolaDesk for the owner.', { page: { type: 'string', enum: ['business', 'calendar', 'dashboard', 'clients', 'calls', 'inbox', 'revenue', 'settings', 'growth', 'reviews', 'team', 'services', 'banking', 'pos', 'marketing'] } }, ['page']),
 ];
 for (const m of SETUP_MODULES) for (const t of m.SETUP_TOOLS || []) if (!OWNER_TOOLS.some((x) => x.function.name === t.function.name)) OWNER_TOOLS.push(t);
 const setupModuleFor = (name) => SETUP_MODULES.find((m) => (m.SETUP_TOOLS || []).some((t) => t.function.name === name)) || null;
@@ -118,7 +118,7 @@ export function supportFollowUp(messages, text) {
 const NEEDS_CONFIRM = new Set(['contact_support', 'block_time', 'unblock_time', 'confirm_appointments', 'launch_campaign', 'text_client', 'text_clients_segment', 'call_client', 'cancel_booking', 'reschedule_booking', 'mark_no_show', 'fill_gap']);
 
 const PAGES = {
-  calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
+  business: '/insights', calendar: '/calendar', dashboard: '/dashboard', clients: '/clients', calls: '/calls', inbox: '/inbox',
   revenue: '/revenue', settings: '/settings', growth: '/growth-os', reviews: '/reviews', team: '/team',
   services: '/services', banking: '/banking', pos: '/pos', marketing: '/campaigns',
 };
@@ -155,7 +155,7 @@ export async function ownerSystemPrompt(tenant) {
     'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
     'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
     'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
-    'You are also their marketing manager and business analyst: for sales, trends, services, clients, staff, busiest days, finances or how to grow, call business_insights (their real Square sales) and answer with the numbers that matter plus 2-3 specific moves for THIS business; when they want to act on a move, call launch_campaign with that move’s segment and message (confirmed=false first).',
+    'You are also their marketing manager and business analyst: for sales, trends, services, clients, staff, busiest days, finances or how to grow, call business_insights (their real Square sales) and answer with the numbers that matter plus 2-3 specific moves for THIS business; when they want to act on a move, call launch_campaign with that move’s segment, message and name (its name lets Lola measure what it brought back in Square money), confirmed=false first. The Business page shows all of it.',
     marketingBrief(tenant),
   ].filter(Boolean).join('\n');
 }
