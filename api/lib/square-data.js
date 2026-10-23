@@ -32,15 +32,86 @@ function parts(iso, tz) {
   } catch (_) { return { day: d.toISOString().slice(0, 10), hour: d.getUTCHours(), dow: d.getUTCDay() }; }
 }
 
+// ── Storage: the salon_sales / salon_sale_items tables (one row per payment / order line). When the
+// database can't create them yet, the same data lives in one platform_settings row — nothing is lost.
+let tablesOk = null;
+export function resetSalesTables(){ tablesOk = null; }
+export async function salesTables(){
+  if (tablesOk != null) return tablesOk;
+  try { const { ensureSalesSchema } = await import('./migrate.js'); const st = await ensureSalesSchema(); tablesOk = st === 'up-to-date' || st === 'applied'; }
+  catch (_) { tablesOk = false; }
+  return tablesOk;
+}
+async function pageAll(make, size = 1000, maxPages = 80) {
+  const out = [], seen = new Set();
+  for (let i = 0; i < maxPages; i++) {
+    const { data, error } = await make().range(i * size, i * size + size - 1);
+    if (error) throw new Error(error.message || 'read failed');
+    const fresh = (data || []).filter((r) => !seen.has(r.id) && seen.add(r.id));
+    out.push(...fresh);
+    if (!data || data.length < size || !fresh.length) break;
+  }
+  return out;
+}
+const META_KEYS = ['v', 'tz', 'done_until', 'backfilled', 'updated_at', 'clients_at', 'client_sync'];
+
 export async function loadLedger(c, tenantId) {
+  let meta = {};
   try {
     const { data } = await c.from('platform_settings').select('value').eq('key', keyOf(tenantId)).maybeSingle();
-    const v = data?.value;
-    return v && typeof v === 'object' ? { payments: {}, orders: {}, ...v } : { v: 1, payments: {}, orders: {} };
-  } catch (_) { return { v: 1, payments: {}, orders: {} }; }
+    if (data?.value && typeof data.value === 'object') meta = data.value;
+  } catch (_) {}
+  if (!(await salesTables())) return { v: 1, payments: {}, orders: {}, ...meta, store: 'blob' };
+  const led = { v: 2, ...Object.fromEntries(META_KEYS.filter((k) => meta[k] != null).map((k) => [k, meta[k]])), payments: {}, orders: {}, store: 'tables' };
+  const cut = new Date(Date.now() - KEEP_DAYS * DAY).toISOString().slice(0, 10);
+  try {
+    const sales = await pageAll(() => c.from('salon_sales').select('id,external_id,occurred_at,day,hour,dow,net_cents,tip_cents,customer_ref,order_ref,team_ref').eq('tenant_id', tenantId).eq('provider', 'square').gte('day', cut).order('day', { ascending: true }));
+    for (const r of sales) led.payments[r.external_id] = [String(r.day).slice(0, 10), r.hour, r.dow, Number(r.net_cents) || 0, Number(r.tip_cents) || 0, r.customer_ref || null, r.order_ref || null, r.team_ref || null, r.occurred_at || null];
+    const items = await pageAll(() => c.from('salon_sale_items').select('id,order_ref,line_no,day,customer_ref,name,quantity,total_cents').eq('tenant_id', tenantId).eq('provider', 'square').gte('day', cut).order('day', { ascending: true }));
+    const byOrder = new Map();
+    for (const r of items) { if (!byOrder.has(r.order_ref)) byOrder.set(r.order_ref, { day: String(r.day).slice(0, 10), cust: r.customer_ref || null, lines: [] }); byOrder.get(r.order_ref).lines.push(r); }
+    for (const [id, o] of byOrder) led.orders[id] = [o.day, o.cust, o.lines.sort((a, b) => a.line_no - b.line_no).map((l) => [l.name, Number(l.quantity) || 1, Number(l.total_cents) || 0])];
+  } catch (_) {
+    // Tables unreadable right now: fall back to whatever the blob still holds.
+    return { v: 1, payments: {}, orders: {}, ...meta, store: 'blob' };
+  }
+  // A salon imported before the tables existed: its history moves into them on the next save.
+  if (!Object.keys(led.payments).length && meta.payments && Object.keys(meta.payments).length) {
+    led.payments = meta.payments; led.orders = meta.orders || {};
+    led._migrate = true;
+  }
+  return led;
 }
+
 async function saveLedger(c, tenantId, led) {
-  try { await c.from('platform_settings').upsert({ key: keyOf(tenantId), value: led, updated_at: new Date().toISOString() }, { onConflict: 'key' }); return true; } catch (_) { return false; }
+  const meta = Object.fromEntries(META_KEYS.filter((k) => led[k] != null).map((k) => [k, led[k]]));
+  try {
+    if (led.store === 'tables') {
+      const { data: cl } = await c.from('clients').select('id,preferences').eq('tenant_id', tenantId).limit(10000).then((x) => x, () => ({ data: [] }));
+      const clientOf = new Map((cl || []).filter((x) => x.preferences?.square_id).map((x) => [x.preferences.square_id, x.id]));
+      const pIds = led._migrate ? Object.keys(led.payments) : [...(led._dirtyP || [])];
+      const oIds = led._migrate ? Object.keys(led.orders) : [...(led._dirtyO || [])];
+      const stamp = new Date().toISOString();
+      const sales = pIds.filter((id) => led.payments[id]).map((id) => { const [day, hour, dow, net, tip, cust, order, team, at] = led.payments[id]; return {
+        tenant_id: tenantId, provider: 'square', external_id: id, occurred_at: at || new Date(day + 'T17:00:00Z').toISOString(),
+        day, hour, dow, net_cents: net, tip_cents: tip, customer_ref: cust, client_id: (cust && clientOf.get(cust)) || null, order_ref: order, team_ref: team, synced_at: stamp }; });
+      for (let i = 0; i < sales.length; i += 500) { const r = await c.from('salon_sales').upsert(sales.slice(i, i + 500), { onConflict: 'tenant_id,provider,external_id' }); if (r?.error) throw new Error(r.error.message); }
+      const drop = [...(led._dropP || [])];
+      for (let i = 0; i < drop.length; i += 200) await c.from('salon_sales').delete().eq('tenant_id', tenantId).eq('provider', 'square').in('external_id', drop.slice(i, i + 200));
+      const lines = [];
+      for (const id of oIds) { const o = led.orders[id]; if (!o) continue; (o[2] || []).forEach(([name, qty, ct], i) => lines.push({ tenant_id: tenantId, provider: 'square', order_ref: id, line_no: i, day: o[0], customer_ref: o[1], client_id: (o[1] && clientOf.get(o[1])) || null, name, quantity: qty, total_cents: ct, synced_at: stamp })); }
+      for (let i = 0; i < lines.length; i += 500) { const r = await c.from('salon_sale_items').upsert(lines.slice(i, i + 500), { onConflict: 'tenant_id,provider,order_ref,line_no' }); if (r?.error) throw new Error(r.error.message); }
+      // Keep 13 months in the tables too.
+      const cut = new Date(Date.now() - KEEP_DAYS * DAY).toISOString().slice(0, 10);
+      await c.from('salon_sales').delete().eq('tenant_id', tenantId).eq('provider', 'square').lt('day', cut).then((x) => x, () => null);
+      await c.from('salon_sale_items').delete().eq('tenant_id', tenantId).eq('provider', 'square').lt('day', cut).then((x) => x, () => null);
+      await c.from('platform_settings').upsert({ key: keyOf(tenantId), value: { ...meta, v: 2, rows: Object.keys(led.payments).length }, updated_at: stamp }, { onConflict: 'key' });
+      led._dirtyP = new Set(); led._dirtyO = new Set(); led._dropP = new Set(); led._migrate = false;
+      return true;
+    }
+    await c.from('platform_settings').upsert({ key: keyOf(tenantId), value: { ...meta, v: 1, payments: led.payments, orders: led.orders }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    return true;
+  } catch (e) { console.warn('[square-data] save:', String(e?.message || e).slice(0, 160)); return false; }
 }
 
 async function locationIds(S, integ) {
@@ -57,10 +128,11 @@ async function importWindow(S, integ, led, from, to, tz, locs) {
     if (cursor) q.set('cursor', cursor);
     const d = await S.squareCall(integ, `/v2/payments?${q}`);
     for (const p of d.payments || []) {
-      if (String(p.status || '').toUpperCase() !== 'COMPLETED') { delete led.payments[p.id]; continue; }
+      if (String(p.status || '').toUpperCase() !== 'COMPLETED') { if (led.payments[p.id]) (led._dropP ||= new Set()).add(p.id); delete led.payments[p.id]; continue; }
       const t = parts(p.created_at, tz);
       const net = cents(p.amount_money) - cents(p.refunded_money);
-      led.payments[p.id] = [t.day, t.hour, t.dow, net, cents(p.tip_money), p.customer_id || null, p.order_id || null, p.team_member_id || p.employee_id || null];
+      led.payments[p.id] = [t.day, t.hour, t.dow, net, cents(p.tip_money), p.customer_id || null, p.order_id || null, p.team_member_id || p.employee_id || null, p.created_at || null];
+      (led._dirtyP ||= new Set()).add(p.id);
     }
     cursor = d.cursor || null;
   } while (cursor && ++pages < 60);
@@ -73,6 +145,7 @@ async function importWindow(S, integ, led, from, to, tz, locs) {
       const t = parts(o.closed_at || o.created_at, tz);
       const items = (o.line_items || []).map((li) => [String(li.name || li.variation_name || 'Item').slice(0, 60), Number(li.quantity) || 1, cents(li.total_money)]);
       led.orders[o.id] = [t.day, o.customer_id || null, items];
+      (led._dirtyO ||= new Set()).add(o.id);
     }
     cursor = d.cursor || null;
   } while (cursor && ++pages < 30);
@@ -181,7 +254,7 @@ export async function importSquareSales(c, integ, { now = Date.now(), budgetMs =
   let cl = null;
   const clientsDue = !led.clients_at || now - Date.parse(led.clients_at) > 20 * 3600e3;
   if (clients && led.backfilled && clientsDue && Date.now() - started < budgetMs + 15000) {
-    try { cl = await syncClients(c, S, integ, led, { now }); led.clients_at = new Date(now).toISOString(); led.client_sync = cl; } catch (e) { if (!error) error = String(e?.message || e).slice(0, 200); }
+    try { cl = await syncClients(c, S, integ, led, { now }); led.clients_at = new Date(now).toISOString(); led.client_sync = cl; if (led.store === 'tables') led._migrate = true; /* every sale gets its LolaDesk client */ } catch (e) { if (!error) error = String(e?.message || e).slice(0, 200); }
   }
   await saveLedger(c, integ.tenant_id, led);
   return { ok: !error, error, windows, backfilled: led.backfilled, payments: Object.keys(led.payments).length, orders: Object.keys(led.orders).length, clients: cl };
@@ -204,6 +277,54 @@ export async function runSquareImports(c, { now = Date.now(), budgetMs = 30000 }
   return out;
 }
 
+// ══ Campaigns → real Square money (attribution) ══
+export const MOVE_NAMES = { win_back: 'Win back regulars', second_visit: 'Bring first-timers back', slow_day: 'Slow-day offer', ticket: 'Add-on for tomorrow', vip: 'VIP thank-you' };
+export function moveKeyOf(name = '') {
+  const n = String(name || '').toLowerCase();
+  for (const [k, label] of Object.entries(MOVE_NAMES)) if (n.startsWith(label.toLowerCase())) return k;
+  if (/win.?back|miss you|lapsed/.test(n)) return 'win_back';
+  if (/second|first.?time|came once/.test(n)) return 'second_visit';
+  if (/slow|weekday|tuesday|monday|wednesday/.test(n)) return 'slow_day';
+  if (/vip|thank/.test(n)) return 'vip';
+  if (/add.?on|upsell|upgrade/.test(n)) return 'ticket';
+  return null;
+}
+const ATTRIBUTION_DAYS = 14;
+/** Each campaign: texts sent, clients who came back and paid in Square within 14 days, and that revenue. */
+export async function campaignResults(c, tenantId, led, clients = [], { now = Date.now(), days = 240 } = {}) {
+  try {
+    const { data: camps } = await c.from('lola_campaigns').select('id,name,segment,status,created_at,started_at').eq('tenant_id', tenantId).gte('created_at', new Date(now - days * DAY).toISOString()).order('created_at', { ascending: false }).limit(100);
+    if (!camps?.length) return [];
+    const { data: recs } = await c.from('lola_campaign_recipients').select('campaign_id,client_id,status,sent_at').in('campaign_id', camps.map((x) => x.id)).eq('status', 'sent').limit(50000);
+    const sqOf = new Map(clients.filter((x) => x.preferences?.square_id).map((x) => [x.id, x.preferences.square_id]));
+    const paid = new Map();
+    for (const [day, , , net, , cust, , , at] of Object.values(led.payments || {})) { if (!cust) continue; if (!paid.has(cust)) paid.set(cust, []); paid.get(cust).push([Date.parse(at || day + 'T17:00:00Z'), net]); }
+    return camps.map((camp) => {
+      const mine = (recs || []).filter((r) => r.campaign_id === camp.id);
+      let returned = 0, revenue = 0;
+      for (const r of mine) {
+        const cust = sqOf.get(r.client_id); if (!cust) continue;
+        const t0 = Date.parse(r.sent_at || camp.started_at || camp.created_at);
+        const hits = (paid.get(cust) || []).filter(([t]) => t > t0 && t <= t0 + ATTRIBUTION_DAYS * DAY);
+        if (hits.length) { returned++; revenue += hits.reduce((x, [, n]) => x + n, 0); }
+      }
+      const texts = mine.length;
+      return { id: camp.id, name: camp.name, key: moveKeyOf(camp.name), segment: camp.segment, status: camp.status, sent_at: camp.started_at || camp.created_at,
+        texts, returned, revenue: dollars(revenue), per_text: texts ? Math.round(dollars(revenue) / texts * 10) / 10 : 0, return_rate: texts ? Math.round((returned / texts) * 100) : 0 };
+    });
+  } catch (_) { return []; }
+}
+export function learnFrom(list = []) {
+  const byKey = {};
+  for (const x of list) {
+    if (!x.key || !x.texts) continue;
+    const k = byKey[x.key] || (byKey[x.key] = { campaigns: 0, texts: 0, returned: 0, revenue: 0 });
+    k.campaigns++; k.texts += x.texts; k.returned += x.returned; k.revenue += x.revenue;
+  }
+  for (const k of Object.values(byKey)) { k.per_text = k.texts ? Math.round((k.revenue / k.texts) * 10) / 10 : 0; k.return_rate = k.texts ? Math.round((k.returned / k.texts) * 100) : 0; }
+  return { list, byKey };
+}
+
 // ══ Insights ══
 const sum = (a) => a.reduce((t, x) => t + x, 0);
 function monthKey(day) { return day.slice(0, 7); }
@@ -211,7 +332,7 @@ function addMonths(key, n) { const [y, m] = key.split('-').map(Number); const d 
 const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** Everything worth knowing, from the ledger (+ LolaDesk clients for phones/opt-outs). Pure. */
-export function insightsFrom(led, { now = Date.now(), clients = [], staffNames = new Map() } = {}) {
+export function insightsFrom(led, { now = Date.now(), clients = [], staffNames = new Map(), campaigns = [] } = {}) {
   const tz = led.tz || 'America/New_York';
   const today = parts(new Date(now).toISOString(), tz).day;
   const pays = Object.values(led.payments || {});
@@ -256,14 +377,17 @@ export function insightsFrom(led, { now = Date.now(), clients = [], staffNames =
   const lapsed = all.filter(([, s]) => s.visits >= 2 && s.last < daysAgo(60) && s.last >= daysAgo(365));
   const lapsedValue = sum(lapsed.map(([, s]) => s.spend));
   const once = all.filter(([, s]) => s.visits === 1 && s.first <= daysAgo(21) && s.first > daysAgo(150));
-  const top = all.sort((a, b) => b[1].spend - a[1].spend).slice(0, 10).map(([id, s]) => ({ name: nameOf(id) || 'Square client', spend_12m: dollars(s.spend), visits: s.visits, last_visit: s.last, usual: s.top }));
+  const person = ([id, s]) => { const cl = clientsBySq.get(id); return { client_id: cl?.id || null, name: nameOf(id) || 'Square client', spend_12m: dollars(s.spend), visits: s.visits, last_visit: s.last, usual: s.top, textable: !!(cl && e164(cl.phone) && cl.status !== 'opted_out' && !cl.opted_out) }; };
+  const lapsedList = [...lapsed].sort((a, b) => b[1].spend - a[1].spend).slice(0, 25).map(person);
+  const onceList = [...once].sort((a, b) => (b[1].first > a[1].first ? 1 : -1)).slice(0, 25).map(person);
+  const top = all.sort((a, b) => b[1].spend - a[1].spend).slice(0, 10).map(person);
   const textable = (ids) => ids.filter((id) => { const cl = clientsBySq.get(id); return cl && e164(cl.phone) && cl.status !== 'opted_out' && !cl.opted_out; }).length;
   const clientsOut = {
     paying_clients_12m: active12.length, new_clients_90d: newClients90,
     retention_pct: returning.length ? Math.round((cameBack / returning.length) * 100) : null,
     lapsed_regulars: lapsed.length, lapsed_value_12m: dollars(lapsedValue), lapsed_textable: textable(lapsed.map(([id]) => id)),
     came_once: once.length, came_once_textable: textable(once.map(([id]) => id)),
-    top_spenders: top, walk_in_share_pct: Math.round((pays.filter((p) => !p[5]).length / pays.length) * 100),
+    top_spenders: top, lapsed_list: lapsedList, came_once_list: onceList, walk_in_share_pct: Math.round((pays.filter((p) => !p[5]).length / pays.length) * 100),
   };
   // Staff (when Square records who took the payment), busiest days/hours (last 90 days).
   const p90 = pays.filter((p) => p[0] > daysAgo(90));
@@ -296,8 +420,19 @@ export function insightsFrom(led, { now = Date.now(), clients = [], staffNames =
     message: 'Hi {first_name}, you’re one of our favorite clients — thank you! Your next visit includes a little gift from us. Reply to book.' });
   for (const f of falling.slice(0, 1)) moves.push({ key: 'falling_service', segment: 'recent', audience: null, value: dollars((f.was_90d - f.now_90d) * 100 * 0.5),
     why: `${f.name} sales fell from ${money(f.was_90d * 100)} to ${money(f.now_90d * 100)} (last 90 days vs the 90 before).`, message: null });
+  // What worked before, in real Square money: past campaigns of each kind → revenue per text.
+  const learned = learnFrom(campaigns);
+  for (const mv of moves) {
+    mv.name = MOVE_NAMES[mv.key] || mv.key;
+    const L = learned.byKey[mv.key];
+    if (L && L.texts >= 5) {
+      mv.proven = L;
+      if (mv.audience) mv.value = Math.max(mv.value || 0, Math.round(L.per_text * mv.audience));
+      mv.why += ` Last time: ${L.texts} texts brought back ${L.returned} client${L.returned === 1 ? '' : 's'} and $${L.revenue.toLocaleString()} ($${L.per_text} per text).`;
+    }
+  }
   moves.sort((a, b) => (b.value || 0) - (a.value || 0));
-  return { ok: true, as_of: led.updated_at || null, backfilled: !!led.backfilled, revenue, services, falling_services: falling, clients: clientsOut, staff, times, moves };
+  return { ok: true, as_of: led.updated_at || null, backfilled: !!led.backfilled, revenue, services, falling_services: falling, clients: clientsOut, staff, times, moves, campaigns: learned.list, learned: learned.byKey };
 }
 
 export async function squareInsights(c, tenant, { now = Date.now() } = {}) {
@@ -305,7 +440,10 @@ export async function squareInsights(c, tenant, { now = Date.now() } = {}) {
   const { data: clients } = await c.from('clients').select('id,first_name,last_name,name,phone,status,opted_out,preferences').eq('tenant_id', tenant.id).limit(10000).then((x) => x, () => ({ data: [] }));
   let staffNames = new Map();
   try { const { data: maps } = await c.from('provider_mappings').select('local_id,external_id').eq('tenant_id', tenant.id).eq('provider', 'square').eq('entity_type', 'staff'); const { data: st } = await c.from('staff').select('id,name').eq('tenant_id', tenant.id); const nm = new Map((st || []).map((s) => [s.id, s.name])); staffNames = new Map((maps || []).map((m) => [m.external_id, nm.get(m.local_id)]).filter(([, n]) => n)); } catch (_) {}
-  return insightsFrom(led, { now, clients: clients || [], staffNames });
+  const campaigns = await campaignResults(c, tenant.id, led, clients || [], { now });
+  const r = insightsFrom(led, { now, clients: clients || [], staffNames, campaigns });
+  if (r) r.store = led.store || 'blob';
+  return r;
 }
 
 /** One spoken/texted answer for the owner, by focus. */

@@ -334,6 +334,73 @@ alter table public.booking_outbox enable row level security;`;
 let _ensured = null;
 
 /** Forget the memoized result (tests, or after a manual re-migration). */
+
+// salon_sales / salon_sale_items — the salon's sales from its own platform (Square today), one row per payment
+// and one per order line. LolaBrain's business analysis, campaign attribution and client spend read these.
+export const SALON_SALES_DDL = `create table if not exists public.salon_sales (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      uuid not null references public.tenants(id) on delete cascade,
+  provider       text not null default 'square',
+  external_id    text not null,
+  occurred_at    timestamptz not null,
+  day            date not null,
+  hour           smallint,
+  dow            smallint,
+  net_cents      bigint not null default 0,
+  tip_cents      bigint not null default 0,
+  refunded_cents bigint not null default 0,
+  customer_ref   text,
+  client_id      uuid references public.clients(id) on delete set null,
+  order_ref      text,
+  team_ref       text,
+  staff_id       uuid,
+  location_ref   text,
+  synced_at      timestamptz not null default now(),
+  unique (tenant_id, provider, external_id)
+);
+create index if not exists idx_salon_sales_day on public.salon_sales (tenant_id, day desc);
+create index if not exists idx_salon_sales_client on public.salon_sales (tenant_id, client_id);
+create index if not exists idx_salon_sales_customer on public.salon_sales (tenant_id, customer_ref);
+alter table public.salon_sales enable row level security;`;
+export const SALON_SALE_ITEMS_DDL = `create table if not exists public.salon_sale_items (
+  id           uuid primary key default gen_random_uuid(),
+  tenant_id    uuid not null references public.tenants(id) on delete cascade,
+  provider     text not null default 'square',
+  order_ref    text not null,
+  line_no      int not null default 0,
+  day          date not null,
+  customer_ref text,
+  client_id    uuid references public.clients(id) on delete set null,
+  name         text not null,
+  quantity     numeric not null default 1,
+  total_cents  bigint not null default 0,
+  catalog_ref  text,
+  synced_at    timestamptz not null default now(),
+  unique (tenant_id, provider, order_ref, line_no)
+);
+create index if not exists idx_salon_sale_items_day on public.salon_sale_items (tenant_id, day desc);
+create index if not exists idx_salon_sale_items_name on public.salon_sale_items (tenant_id, name);
+alter table public.salon_sale_items enable row level security;`;
+
+let _salesEnsured = null;
+export function resetSalesSchema(){ _salesEnsured = null; }
+/** The sales tables (memoized per cold start; never throws): 'up-to-date' | 'applied' | 'missing' | 'no-db'. */
+export function ensureSalesSchema(){
+  if(_salesEnsured) return _salesEnsured;
+  _salesEnsured = (async () => {
+    const c = db();
+    if(!c) return 'no-db';
+    const applied = [];
+    await ensureTable(c, 'salon_sales', SALON_SALES_DDL, applied);
+    await ensureTable(c, 'salon_sale_items', SALON_SALE_ITEMS_DDL, applied);
+    const a = await c.from('salon_sales').select('id').limit(1);
+    const b = await c.from('salon_sale_items').select('id').limit(1);
+    if(a.error || b.error){ _salesEnsured = null; return 'missing'; }
+    return applied.length ? 'applied' : 'up-to-date';
+  })().catch((e) => { _salesEnsured = null; console.warn('[migrate] sales schema:', String(e?.message || e).slice(0, 160)); return 'error'; });
+  return _salesEnsured;
+}
+
 export function resetMigrations() {
   _ensured = null;
 }

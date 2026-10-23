@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Business — LolaDesk</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="app.css"/>
+<style>
+.bz{max-width:1180px}
+.bz-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.bz-head h1{font-size:30px;font-weight:600;letter-spacing:-.025em;margin:0}
+.bz-sub{margin:6px 0 0;color:var(--text2);font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bz-dot{width:7px;height:7px;border-radius:50%;background:#30d158;display:inline-block}
+.bz-dot.warn{background:var(--warning)}.bz-dot.off{background:var(--text3)}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:9px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:38px;transition:border-color .15s,transform .15s}
+.btn:hover{border-color:var(--border2)}.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);color:#0b0b0c;border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:20px}
+.card h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);font-weight:600;margin:0 0 14px}
+.take{background:radial-gradient(ellipse 80% 140% at 0% 0%,rgba(242,242,244,.08),transparent 60%),var(--surface);margin-bottom:18px}
+.take p{font-size:15.5px;line-height:1.65;margin:0 0 10px;color:var(--text)}
+.take .by{font-size:12px;color:var(--text3)}
+.bz-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:18px}
+@media(max-width:1100px){.bz-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.bz-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.bz-kpi{background:var(--surface);border:.5px solid var(--border);border-radius:18px;padding:16px}
+.bz-kpi .l{font-size:12px;color:var(--text2)}
+.bz-kpi .v{font-size:26px;font-weight:600;letter-spacing:-.025em;margin-top:6px}
+.bz-kpi .d{font-size:12px;margin-top:4px;color:var(--text3)}
+.up{color:#30d158}.down{color:var(--danger)}
+.chart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;align-items:end;height:150px;margin-top:6px}
+.chart .b{position:relative;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+.chart .b i{display:block;width:100%;border-radius:8px 8px 4px 4px;background:rgba(255,255,255,.18);min-height:3px;transition:height .6s cubic-bezier(.22,1,.36,1)}
+.chart .b.now i{background:var(--accent)}
+.chart .b span{font-size:10.5px;color:var(--text3)}
+.chart .b em{font-style:normal;font-size:10px;color:var(--text2);white-space:nowrap}
+.grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px;margin:18px 0}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.moves{display:grid;gap:12px}
+.mv{border:1px solid var(--border);border-radius:16px;padding:16px;background:var(--bg2)}
+.mv h3{margin:0 0 6px;font-size:15px;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.mv h3 b{font-size:13px;color:#30d158;font-weight:600;white-space:nowrap}
+.mv p{margin:0 0 10px;font-size:13.5px;line-height:1.55;color:var(--text2)}
+.mv textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--text);font:inherit;font-size:13.5px;line-height:1.5;min-height:96px;resize:vertical;outline:none}
+.mv textarea:focus{border-color:var(--accent)}
+.mv .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.mv .aud{font-size:12px;color:var(--text3)}
+.proven{display:inline-block;font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(48,209,88,.12);color:#30d158;margin-left:6px}
+.list{display:grid;gap:2px}
+.li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:10px 4px;border-bottom:.5px solid var(--border);font-size:13.5px;align-items:center}
+.li:last-child{border-bottom:0}
+.li a{color:var(--text);text-decoration:none}.li a:hover{text-decoration:underline}
+.li small{display:block;color:var(--text3);font-size:12px;margin-top:2px}
+.li .amt{font-weight:600;white-space:nowrap}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+.tabs button.on{color:var(--text);border-color:var(--accent);background:var(--accent-dim)}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:18px}
+@media(max-width:1000px){.grid3{grid-template-columns:1fr}}
+.hbar{display:grid;grid-template-columns:92px minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:13px;padding:6px 0}
+.hbar .t{height:8px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
+.hbar .t i{display:block;height:100%;background:rgba(255,255,255,.34);border-radius:6px}
+.hbar.hi .t i{background:var(--accent)}
+.hbar span:last-child{text-align:right;color:var(--text2)}
+table.svc{width:100%;border-collapse:collapse;font-size:13.5px}
+table.svc td{padding:9px 4px;border-bottom:.5px solid var(--border)}
+table.svc tr:last-child td{border-bottom:0}
+table.svc td:nth-child(n+2){text-align:right;white-space:nowrap;color:var(--text2)}
+.bz-empty{font-size:14px;color:var(--text2);padding:28px;border:1px dashed var(--border);border-radius:18px;text-align:center;line-height:1.6}
+.empty .btn{margin-top:12px}
+.note{font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1c1c1f;color:#f2f2f5;border:1px solid var(--border);padding:12px 18px;border-radius:14px;font-size:14px;z-index:400;box-shadow:0 12px 40px rgba(0,0,0,.5);max-width:min(560px,calc(100vw - 32px))}
+.toast.err{border-color:rgba(255,105,97,.5)}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);display:grid;place-items:center;z-index:350;padding:16px}
+.dlg .box{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;max-width:460px;width:100%}
+.dlg h3{margin:0 0 8px;font-size:18px}.dlg p{margin:0 0 18px;color:var(--text2);font-size:14px;line-height:1.55;white-space:pre-line}
+.skel{height:18px;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.04),rgba(255,255,255,.08),rgba(255,255,255,.04));background-size:200% 100%;animation:sk 1.4s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.chart .b i{transition:none}.skel{animation:none}}
+</style>
+</head>
+<body data-page="insights">
+<div class="app"><main class="main"><div class="bz">
+  <div class="bz-head">
+    <div>
+      <h1>Your business</h1>
+      <div class="bz-sub" id="sub"><span class="bz-dot off"></span><span>Loading…</span></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="btnTake" title="Ask Lola for a fresh analysis">Ask Lola again</button>
+      <button class="btn" id="btnSync">Sync Square now</button>
+    </div>
+  </div>
+  <div id="body"><div class="card"><div class="skel" style="width:60%"></div><div class="skel" style="width:85%;margin-top:12px"></div><div class="skel" style="width:40%;margin-top:12px"></div></div></div>
+</div></main></div>
+<script src="auth-guard.js"></script>
+<script src="sidebar.js"></script>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const money=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-US');
+  const pct=p=>p==null?'':'<span class="'+(p>=0?'up':'down')+'">'+(p>=0?'▲ ':'▼ ')+Math.abs(p)+'%</span>';
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const ago=iso=>{if(!iso)return '';const m=Math.round((Date.now()-Date.parse(iso))/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago';};
+  const day=k=>{if(!k)return '';const d=new Date(k+'T12:00:00Z');return d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});};
+  const token=()=>(window.LolaAuth&&window.LolaAuth.token)||localStorage.getItem('loladesk_token')||'';
+  let D=null,CL='lapsed';
+  async function api(body,q){
+    const r=await fetch('/api/insights'+(q||''),{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token()},body:body?JSON.stringify(body):undefined});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||d.ok===false)throw new Error(d.error||('Request failed ('+r.status+')'));
+    return d;
+  }
+  function toast(m,bad){const t=document.createElement('div');t.className='toast'+(bad?' err':'');t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),4500);}
+  function confirmDlg(title,text,ok){return new Promise(res=>{const d=document.createElement('div');d.className='dlg';d.innerHTML='<div class="box" role="dialog" aria-modal="true"><h3></h3><p></p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" data-x>Not now</button><button class="btn primary" data-ok></button></div></div>';d.querySelector('h3').textContent=title;d.querySelector('p').textContent=text;d.querySelector('[data-ok]').textContent=ok;const done=v=>{d.remove();res(v);};d.querySelector('[data-x]').onclick=()=>done(false);d.querySelector('[data-ok]').onclick=()=>done(true);d.onclick=e=>{if(e.target===d)done(false);};document.body.appendChild(d);d.querySelector('[data-ok]').focus();});}
+
+  function header(){
+    const c=D.connection||{},s=D.sync||{};
+    let dot='off',txt='Square not connected';
+    if(c.connected&&!c.needs_reconnect){dot='';txt='Square'+(c.location?' · '+c.location:'')+' · '+(s.backfilled?('updated '+ago(s.updated_at)):'reading your history… '+(s.payments||0).toLocaleString()+' sales so far');}
+    else if(c.status&&c.status!=='not_connected'){dot='warn';txt='Square needs you to reconnect once';}
+    $('sub').innerHTML='<span class="bz-dot '+dot+'"></span><span>'+esc(txt)+'</span>';
+    $('btnSync').hidden=!c.connected;$('btnTake').hidden=!(D.insights&&D.insights.ok);
+  }
+  function empty(){
+    const c=D.connection||{};
+    if(!c.connected&&c.status==='not_connected') return '<div class="bz-empty"><b>Connect Square and Lola reads your whole business.</b><br>Every sale, service and client from the last 13 months — what’s growing, who stopped coming, and the texts that bring them back. Read-only: Lola never moves money.<br><a class="btn primary" href="/settings#integrations">Connect Square</a></div>';
+    if(c.needs_reconnect) return '<div class="bz-empty"><b>Reconnect Square once.</b><br>Lola needs read-only access to your sales to analyze them.<br><a class="btn primary" href="/settings#integrations">Reconnect Square</a></div>';
+    return '<div class="bz-empty"><b>Lola is reading your Square history.</b><br>'+(D.sync&&D.sync.payments?D.sync.payments.toLocaleString()+' sales read so far. ':'')+'This takes a few minutes the first time — the page fills in as it goes.<br><button class="btn" onclick="location.reload()">Refresh</button></div>';
+  }
+  function render(){
+    header();
+    const r=D.insights;
+    if(!r||!r.ok){$('body').innerHTML=empty();return;}
+    const R=r.revenue,C=r.clients;
+    const maxM=Math.max(1,...R.months.map(m=>m.revenue));
+    const months=R.months.map((m,i)=>'<div class="b'+(i===R.months.length-1?' now':'')+'" title="'+esc(m.month)+': '+money(m.revenue)+' · '+m.visits+' sales"><em>'+(m.revenue>=1000?'$'+(m.revenue/1000).toFixed(m.revenue>=10000?0:1)+'k':money(m.revenue))+'</em><i style="height:'+Math.round(m.revenue/maxM*100)+'%"></i><span>'+MON[Number(m.month.slice(5,7))-1]+'</span></div>').join('');
+    const moves=(r.moves||[]).map(m=>'<div class="mv" data-key="'+esc(m.key)+'"><h3><span>'+esc(m.name)+(m.proven?'<span class="proven">worked before</span>':'')+'</span>'+(m.value?'<b>≈ '+money(m.value)+'</b>':'')+'</h3><p>'+esc(m.why)+'</p>'+(m.message?'<textarea aria-label="Text message">'+esc(m.message)+'</textarea><div class="row"><span class="aud">'+(m.audience!=null?m.audience+' client'+(m.audience===1?'':'s')+' can be texted':'Audience: '+esc(m.segment))+' · opt-out line added · paced 9am–8pm</span><button class="btn primary" data-launch>Review &amp; send</button></div>':'')+'</div>').join('')||'<div class="bz-empty">Nothing urgent — your clients are coming back on rhythm.</div>';
+    const list=CL==='lapsed'?C.lapsed_list:CL==='once'?C.came_once_list:C.top_spenders;
+    const people=(list||[]).map(p=>'<div class="li"><div>'+(p.client_id?'<a href="/client?id='+encodeURIComponent(p.client_id)+'">'+esc(p.name)+'</a>':esc(p.name))+'<small>'+p.visits+' visit'+(p.visits===1?'':'s')+' · last '+day(p.last_visit)+(p.usual?' · '+esc(p.usual):'')+(p.textable?'':' · no mobile')+'</small></div><div class="amt">'+money(p.spend_12m)+'</div></div>').join('')||'<div class="note">Nobody here right now.</div>';
+    const maxS=Math.max(1,...(r.staff||[]).map(s=>s.revenue_90d));
+    const staff=(r.staff||[]).map((s,i)=>'<div class="hbar'+(i===0?' hi':'')+'"><span>'+esc(s.name)+'</span><div class="t"><i style="width:'+Math.round(s.revenue_90d/maxS*100)+'%"></i></div><span>'+money(s.revenue_90d)+'</span></div>').join('')||'<div class="note">Square doesn’t record who took each payment yet. Turn on “team member” at checkout in Square to see revenue per stylist.</div>';
+    const wd=r.times.by_weekday||[],maxW=Math.max(1,...wd.map(w=>w.revenue));
+    const week=wd.map(w=>'<div class="hbar'+(w.day===r.times.busiest_day?' hi':'')+'"><span>'+esc(w.day)+'</span><div class="t"><i style="width:'+Math.round(w.revenue/maxW*100)+'%"></i></div><span>'+money(w.revenue)+'</span></div>').join('');
+    const svc=(r.services||[]).map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+s.sold_90d+' sold</td><td>'+money(s.revenue_90d)+'</td><td>'+(s.trend==null?'<span class="note">new</span>':pct(s.trend))+'</td></tr>').join('');
+    const camps=(r.campaigns||[]).slice(0,8).map(x=>'<div class="li"><div>'+esc(x.name)+'<small>'+day((x.sent_at||'').slice(0,10))+' · '+x.texts+' texts · '+x.returned+' came back ('+x.return_rate+'%)</small></div><div class="amt">'+money(x.revenue)+'</div></div>').join('');
+    $('body').innerHTML=
+      (D.take&&D.take.text?'<div class="card take"><h2>Lola’s take</h2>'+D.take.text.split(/\n{2,}|\n/).filter(Boolean).map(p=>'<p>'+esc(p)+'</p>').join('')+'<div class="by">'+(D.take.by==='lola'?'LolaBrain, from your Square sales':'From your Square sales')+(D.take.at?' · '+ago(D.take.at):'')+'</div></div>':'')+
+      '<div class="bz-kpis">'+
+        '<div class="bz-kpi"><div class="l">This month</div><div class="v">'+money(R.this_month)+'</div><div class="d">'+pct(R.month_to_date_vs_last_month)+' vs last month</div></div>'+
+        '<div class="bz-kpi"><div class="l">Last 30 days</div><div class="v">'+money(R.last_30_days)+'</div><div class="d">'+pct(R.trend_30d)+' vs the 30 before</div></div>'+
+        '<div class="bz-kpi"><div class="l">Average ticket</div><div class="v">'+money(R.avg_ticket_30d)+'</div><div class="d">was '+money(R.avg_ticket_prev_30d)+'</div></div>'+
+        '<div class="bz-kpi"><div class="l">Tips · 30 days</div><div class="v">'+money(R.tips_30d)+'</div><div class="d">'+R.transactions_30d+' sales</div></div>'+
+        '<div class="bz-kpi"><div class="l">Paying clients</div><div class="v">'+C.paying_clients_12m+'</div><div class="d">'+C.new_clients_90d+' new in 90 days</div></div>'+
+        '<div class="bz-kpi"><div class="l">Come back</div><div class="v">'+(C.retention_pct==null?'—':C.retention_pct+'%')+'</div><div class="d">'+C.lapsed_regulars+' regulars lapsed</div></div>'+
+      '</div>'+
+      '<div class="card"><h2>Revenue · 12 months'+(R.vs_same_month_last_year!=null?' <span style="text-transform:none;letter-spacing:0;font-weight:500">· '+pct(R.vs_same_month_last_year)+' vs this time last year</span>':'')+'</h2><div class="chart">'+months+'</div></div>'+
+      '<div class="grid2"><div class="card"><h2>What Lola would do now</h2><div class="moves">'+moves+'</div></div>'+
+        '<div class="card"><h2>Clients</h2><div class="tabs"><button data-cl="lapsed" class="'+(CL==='lapsed'?'on':'')+'">Stopped coming · '+C.lapsed_regulars+'</button><button data-cl="once" class="'+(CL==='once'?'on':'')+'">Came once · '+C.came_once+'</button><button data-cl="top" class="'+(CL==='top'?'on':'')+'">Top spenders</button></div><div class="list">'+people+'</div>'+(CL==='lapsed'&&C.lapsed_value_12m?'<div class="note">They spent '+money(C.lapsed_value_12m)+' with you in the last year.</div>':'')+'</div></div>'+
+      '<div class="grid3"><div class="card"><h2>Best sellers · 90 days</h2>'+(svc?'<table class="svc">'+svc+'</table>':'<div class="note">No itemized orders in Square yet.</div>')+((r.falling_services||[]).length?'<div class="note">Falling: '+r.falling_services.map(f=>esc(f.name)+' '+money(f.was_90d)+' → '+money(f.now_90d)).join(' · ')+'</div>':'')+'</div>'+
+        '<div class="card"><h2>Team · 90 days</h2>'+staff+'</div>'+
+        '<div class="card"><h2>Your week</h2>'+week+(r.times.peak_hour!=null?'<div class="note">Most checkouts around '+(((r.times.peak_hour+11)%12)+1)+(r.times.peak_hour<12?'am':'pm')+'.</div>':'')+'</div></div>'+
+      (camps?'<div class="card" style="margin-bottom:18px"><h2>What your campaigns brought back · Square money, 14 days</h2><div class="list">'+camps+'</div><div class="note">Lola uses these results to rank her next suggestions.</div></div>':'');
+    document.querySelectorAll('[data-cl]').forEach(b=>b.onclick=()=>{CL=b.dataset.cl;render();});
+    document.querySelectorAll('[data-launch]').forEach(b=>b.onclick=()=>launch(b.closest('.mv')));
+  }
+  async function launch(card){
+    const key=card.dataset.key,msg=card.querySelector('textarea').value.trim(),b=card.querySelector('[data-launch]');
+    if(!msg)return toast('Write the text first.',true);
+    b.disabled=true;
+    try{
+      const p=await api({action:'preview',key,message:msg});
+      if(!p.count){toast('Nobody in this audience can be texted right now'+(p.capped?' ('+p.capped+' already got a text this week)':'')+'.',true);return;}
+      const ok=await confirmDlg('Text '+p.count+' client'+(p.count===1?'':'s')+'?','"'+(msg.length>160?msg.slice(0,160)+'…':msg)+'"\n\n'+(p.sample.length?'Including '+p.sample.join(', ')+'. ':'')+(p.sending_now?'Texts start now, a few at a time.':'Texts start at 9am.')+' Reply STOP opt-out added. You can pause anytime on Campaigns.','Send');
+      if(!ok)return;
+      const d=await api({action:'launch',key,message:msg});
+      toast('Sent'+(d.first_batch&&d.first_batch.sent?' — '+d.first_batch.sent+' out, the rest on their way':' — '+d.total+' queued')+'. Lola tracks who comes back and what they spend.');
+    }catch(e){toast(e.message,true);}finally{b.disabled=false;}
+  }
+  async function load(q){try{D=await api(null,q);render();}catch(e){$('body').innerHTML='<div class="bz-empty">'+esc(e.message)+'</div>';}}
+  $('btnSync').onclick=async()=>{const b=$('btnSync');b.disabled=true;b.textContent='Reading Square…';try{const d=await api({action:'sync'});toast(d.ok?('Up to date — '+(d.payments||0).toLocaleString()+' sales'+(d.backfilled?'.':'; still reading older history.')):('Square said: '+(d.error||'try again')),!d.ok);await load();}catch(e){toast(e.message,true);}finally{b.disabled=false;b.textContent='Sync Square now';}};
+  $('btnTake').onclick=async()=>{const b=$('btnTake');b.disabled=true;b.textContent='Lola is thinking…';await load('?refresh=1');b.disabled=false;b.textContent='Ask Lola again';};
+  (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
+})();
+</script>
+<script src="/lola-stage.js" defer></script>
+</body>
+</html>
