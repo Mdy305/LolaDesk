@@ -169,22 +169,10 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
   // GET merges Tools-Library tools into `tools` with shared:true; an update must leave them out (they are
   // managed through tool_ids / PATCH /ai/tools) — sending them back inline is what Telnyx calls "not unique".
   if (body && Array.isArray(body.tools)) body = { ...body, tools: dedupeTools(body.tools.filter((t) => t?.shared !== true)).tools.map(stripShared) };
-  // Library (shared) tools are detached with Telnyx's own endpoint (DELETE /ai/assistants/{id}/tools/{tool_id}).
-  // Sending tool_ids in an update re-attaches the ones already there — which Telnyx then refuses as
-  // "names must be unique" for every shared tool — so tool_ids never travel in an update.
-  const detach = async (b, curIds) => {
-    if (!b || !Array.isArray(b.tool_ids)) return b;
-    const want = new Set(b.tool_ids);
-    let ids = Array.isArray(curIds) ? curIds : null;
-    if (!ids) { try { ids = (telnyxData(await telnyxRequest(path, { timeoutMs })) || {}).tool_ids; } catch (_) { ids = null; } }
-    for (const tid of (Array.isArray(ids) ? ids : [])) {
-      if (want.has(tid)) continue;
-      try { await telnyxRequest(path + '/tools/' + encodeURIComponent(tid), { method: 'DELETE', timeoutMs }); } catch (_) { /* already detached */ }
-    }
-    const { tool_ids, ...rest } = b;
-    return rest;
-  };
-  if (body && Array.isArray(body.tool_ids)) body = await detach(body);
+  // Library (shared) tools: per Telnyx's docs, tool_ids in an update REPLACES the attached set (omitted =
+  // unchanged), and a Library tool whose name matches one of her inline tools makes Telnyx refuse the save
+  // ("names must be unique"). So a Library copy is detached by sending tool_ids WITHOUT it — never deleted
+  // (it stays in Telnyx → AI → Tools).
   const send = async (b) => {
     try { return await telnyxRequest(path, { method: 'POST', body: b, timeoutMs }); }
     catch (e) {
@@ -204,12 +192,13 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const dupNames = dupTools(e) ? duplicateNamesFrom(e) : [];
     const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
     let retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}) };
-    if (shared) await detach({ tool_ids: shared.tool_ids }, cur.tool_ids);
-    else if (dupNames.length) {
-      // Telnyx didn't list the attached ids: detach the Library tools with those names directly (never deleted).
+    if (shared) retry = { ...retry, tool_ids: shared.tool_ids };
+    else if (dupNames.length && Array.isArray(cur.tool_ids)) {
+      // The attached ids' names couldn't be read one by one: match them through the Library list instead.
       const lib = await libraryTools().catch(() => new Map());
       const inlineNames = new Set(tools.map(toolName));
-      for (const n of dupNames) { const hit = lib.get(norm(n)); if (hit && inlineNames.has(norm(n))) { try { await telnyxRequest(path + '/tools/' + encodeURIComponent(hit.id), { method: 'DELETE', timeoutMs }); } catch (_) {} } }
+      const drop = new Set(dupNames.map(norm).filter((n) => inlineNames.has(n)).map((n) => lib.get(n)?.id).filter(Boolean));
+      if (drop.size) retry = { ...retry, tool_ids: cur.tool_ids.filter((id) => !drop.has(id)) };
     }
     try { return await send(retry); }
     catch (e2) {
