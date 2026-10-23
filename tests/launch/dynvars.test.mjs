@@ -12,9 +12,7 @@ globalThis.fetch = async (url, init = {}) => {
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
   const tm = u.match(/\/ai\/tools\/([\w-]+)$/);
   if (tm) return J({ data: { id: tm[1], display_name: SHARED[tm[1]], type: 'webhook', tool_definition: { webhook: { name: SHARED[tm[1]], url: 'https://elsewhere.example.com' } } } });
-  // Telnyx's detach endpoint: the shared tool leaves this assistant (it stays in the Library).
-  const dt = u.match(/\/ai\/assistants\/assistant-dv1\/tools\/([\w-]+)$/);
-  if (dt && init.method === 'DELETE') { assistant = { ...assistant, tool_ids: (assistant.tool_ids || []).filter((x) => x !== dt[1]) }; return J({}); }
+  if (init.method === 'DELETE') return J({ errors: [{ detail: 'not found' }] }, 404);   // Telnyx documents no detach call
   if (u.includes('/ai/assistants/assistant-dv1')) {
     if (init.method === 'PATCH' || init.method === 'POST') {
       const b = JSON.parse(init.body); sent.push(b);

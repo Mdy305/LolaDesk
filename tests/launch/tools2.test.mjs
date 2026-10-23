@@ -12,18 +12,15 @@ const a = { id: BRAIN, name: 'LolaBrain', greeting: '{{lola_greeting}}', instruc
 let deletes = 0;
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url), J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } });
-  // Telnyx's detach endpoint (the tool itself stays in the Library); any other DELETE would be a real delete.
-  const dt = u.match(/\/ai\/assistants\/[^/]+\/tools\/([^/?]+)/);
-  if (dt && init.method === 'DELETE') { a.tool_ids = a.tool_ids.filter((x) => x !== decodeURIComponent(dt[1])); return J({}); }
-  if (init.method === 'DELETE') { deletes++; return J({}); }
+  // Telnyx documents no "remove tool from assistant" call: any DELETE would be a real delete (counted).
+  if (init.method === 'DELETE') { deletes++; return J({ errors: [{ detail: 'not found' }] }, 404); }
   if (/\/ai\/tools\/keep-me/.test(u)) return J({ data: { id: 'keep-me', type: 'transfer', display_name: 'transfer_to_salon' } });
   if (/\/ai\/tools\//.test(u)) return J({ errors: [{ detail: 'not found' }] }, 404);      // name unreadable
   if (u.includes('/ai/assistants/' + BRAIN)) {
     if (init.method === 'POST' || init.method === 'PATCH') {
       const b = JSON.parse(init.body);
-      // Telnyx: tool_ids in an update ATTACHES them — ids already attached become duplicates.
-      if (Array.isArray(b.tool_ids) && b.tool_ids.some((x) => a.tool_ids.includes(x))) return J({ errors: [{ detail: 'Webhook tools names must be unique, the following are not unique: recall_client, confirm_booking' }] }, 422);
-      const ids = a.tool_ids;
+      // Telnyx (docs): tool_ids in an update REPLACES the attached set; omitted = unchanged.
+      const ids = Array.isArray(b.tool_ids) ? b.tool_ids : a.tool_ids;
       if ('tools' in b && ids.some((x) => x.startsWith('shared'))) return J({ errors: [{ detail: 'Webhook tools names must be unique, the following are not unique: detect_upsell_opportunity, handle_recovery, escalate' }] }, 422);
       Object.assign(a, b); return J({ data: a });
     }
