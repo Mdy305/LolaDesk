@@ -2,8 +2,17 @@ import { createHash } from 'node:crypto';
 export const META = { name:'Square', description:'Bookings, payments, and customers from Square.', status:'available', docs:'https://developer.squareup.com/reference/square',
   // LIVE: Lola asks Square itself for open times and books inside Square, then reads the booking back (lib/live-booking.js).
   live: true };
-const ENV = (process.env.SQUARE_ENV || 'sandbox').toLowerCase();
-const API_BASE = ENV === 'production' ? 'https://connect.squareup.com' : 'https://connect.squareupsandbox.com';
+// Production or sandbox: SQUARE_ENV when it's set — otherwise read from the app id itself (a production app id
+// starts with "sq0idp-", a sandbox one with "sandbox-"), so a missing SQUARE_ENV can't send Connect to the
+// wrong Square. Read at call time, never frozen at boot.
+export function squareEnv() {
+  const set = String(process.env.SQUARE_ENV || '').trim().toLowerCase();
+  if (set === 'production' || set === 'sandbox') return set;
+  return /^sq0idp-/.test(String(process.env.SQUARE_APP_ID || '').trim()) ? 'production' : 'sandbox';
+}
+const API_BASE = () => squareEnv() === 'production' ? 'https://connect.squareup.com' : 'https://connect.squareupsandbox.com';
+const appId = () => String(process.env.SQUARE_APP_ID || '').trim();
+const appSecret = () => String(process.env.SQUARE_APP_SECRET || '').trim();
 const SQV = () => process.env.SQUARE_VERSION || '2024-12-18';
 // Least privilege for what Lola really does (Square permissions reference):
 //   seller-level bookings (APPOINTMENTS_ALL_*) so she sees EVERY booking the salon has — not only her own —
@@ -22,16 +31,16 @@ export function getAuthUrl(state){
   // Exactly the Redirect URL registered in the Square Developer Console (Square matches it exactly); the
   // provider rides in the sealed state, so the URL carries no query string.
   const redirect = redirectUrl();
-  return `${API_BASE}/oauth2/authorize?client_id=${process.env.SQUARE_APP_ID}&scope=${SCOPES}&session=false&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirect)}`;
+  return `${API_BASE()}/oauth2/authorize?client_id=${encodeURIComponent(appId())}&scope=${SCOPES}&session=false&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirect)}`;
 }
 export async function exchangeCode(code){
-  const r = await fetch(`${API_BASE}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':SQV()}, body: JSON.stringify({ client_id:process.env.SQUARE_APP_ID, client_secret:process.env.SQUARE_APP_SECRET, code, grant_type:'authorization_code', redirect_uri: redirectUrl() }) });
+  const r = await fetch(`${API_BASE()}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':SQV()}, body: JSON.stringify({ client_id:appId(), client_secret:appSecret(), code, grant_type:'authorization_code', redirect_uri: redirectUrl() }) });
   const data = await r.json();
   if(!r.ok) throw new Error(data.errors?.[0]?.detail || 'Square OAuth failed');
   return { access_token:data.access_token, refresh_token:data.refresh_token, expires_at:data.expires_at, merchant_id:data.merchant_id, raw:data };
 }
 export async function refreshToken(refresh_token){
-  const r = await fetch(`${API_BASE}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':SQV()}, body: JSON.stringify({ client_id:process.env.SQUARE_APP_ID, client_secret:process.env.SQUARE_APP_SECRET, refresh_token, grant_type:'refresh_token' }) });
+  const r = await fetch(`${API_BASE()}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':SQV()}, body: JSON.stringify({ client_id:appId(), client_secret:appSecret(), refresh_token, grant_type:'refresh_token' }) });
   return r.json();
 }
 /** Renew an expired Square token in place (and in the integrations row). Never throws. */
@@ -57,7 +66,7 @@ function authHeaders(i){ return { 'Content-Type':'application/json','Square-Vers
 // the salon's busy time and Lola would double-book it).
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function sq(integration, path, { method = 'GET', body } = {}, retried = false, attempt = 0){
-  const r = await fetch(`${API_BASE}${path}`, { method, headers: authHeaders(integration), ...(body ? { body: JSON.stringify(body) } : {}) });
+  const r = await fetch(`${API_BASE()}${path}`, { method, headers: authHeaders(integration), ...(body ? { body: JSON.stringify(body) } : {}) });
   const data = await r.json().catch(() => ({}));
   // Square access tokens expire after 30 days: renew once with the refresh token and keep the new one.
   if(r.status === 401 && !retried && integration?.refresh_token && await renewToken(integration)) return sq(integration, path, { method, body }, true, attempt);
@@ -287,7 +296,7 @@ export async function updateAppointment(integration, { id, starts_at, duration_m
   return normalize(data.booking || b);
 }
 export async function listClients(integration, { limit=100 } = {}){
-  const r = await fetch(`${API_BASE}/v2/customers?limit=${limit}`, { headers:authHeaders(integration) });
+  const r = await fetch(`${API_BASE()}/v2/customers?limit=${limit}`, { headers:authHeaders(integration) });
   const data = await r.json();
   if(!r.ok) return [];
   return (data.customers||[]).map(c => ({ id:c.id, name:[c.given_name,c.family_name].filter(Boolean).join(' ')||'Unknown', phone:c.phone_number||null, email:c.email_address||null, raw:c }));
@@ -446,7 +455,7 @@ export async function liveCreate(integration, p){
 /** What this token may do, straight from Square: { ok, scopes, missing, expires_at, merchant_id }. */
 export async function tokenStatus(integration){
   try{
-    const r = await fetch(`${API_BASE}/oauth2/token/status`, { method:'POST', headers: authHeaders(integration), body: '{}' });
+    const r = await fetch(`${API_BASE()}/oauth2/token/status`, { method:'POST', headers: authHeaders(integration), body: '{}' });
     const d = await r.json().catch(() => ({}));
     if(!r.ok) return { ok: false, status: r.status, code: d?.errors?.[0]?.code || null };
     const scopes = Array.isArray(d.scopes) ? d.scopes : [];
@@ -458,9 +467,9 @@ export async function tokenStatus(integration){
 export async function revokeAccess(integration){
   try{
     const merchant = integration?.metadata?.merchant_id || null;
-    const r = await fetch(`${API_BASE}/oauth2/revoke`, { method:'POST',
-      headers:{ 'Content-Type':'application/json', 'Square-Version':SQV(), 'Authorization':`Client ${process.env.SQUARE_APP_SECRET}` },
-      body: JSON.stringify({ client_id: process.env.SQUARE_APP_ID, ...(merchant ? { merchant_id: merchant } : { access_token: integration?.access_token }) }) });
+    const r = await fetch(`${API_BASE()}/oauth2/revoke`, { method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Square-Version':SQV(), 'Authorization':`Client ${appSecret()}` },
+      body: JSON.stringify({ client_id: appId(), ...(merchant ? { merchant_id: merchant } : { access_token: integration?.access_token }) }) });
     const d = await r.json().catch(() => ({}));
     return { ok: r.ok && d.success !== false, status: r.status };
   }catch(e){ return { ok: false, error: String(e?.message || e) }; }
