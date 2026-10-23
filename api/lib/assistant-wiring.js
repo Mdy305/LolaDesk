@@ -78,8 +78,14 @@ export function duplicateNamesFrom(e) {
   const m = errText(e).match(/not unique:?\s*([A-Za-z0-9_\- ,]+)/i);
   return m ? m[1].split(',').map((x) => norm(x.replace(/[.'"]/g, ''))).filter(Boolean) : [];
 }
+/** The Library tools attached to an assistant: its tool_ids — or, when Telnyx's GET leaves that out, the ids on its shared entries. */
+export function attachedToolIds(assistant) {
+  if (Array.isArray(assistant?.tool_ids)) return assistant.tool_ids.filter(Boolean);
+  const ids = (Array.isArray(assistant?.tools) ? assistant.tools : []).filter((t) => t?.shared === true).map((t) => t.id || t.tool_id || t.tool_definition?.id).filter(Boolean);
+  return ids.length ? ids : null;
+}
 export async function sharedToolCollisions(assistant, inlineTools, alsoNames = []) {
-  const ids = Array.isArray(assistant?.tool_ids) ? assistant.tool_ids.filter(Boolean) : [];
+  const ids = attachedToolIds(assistant) || [];
   if (!ids.length) return null;
   const inline = new Set([...(Array.isArray(inlineTools) ? inlineTools : []).map(toolName), ...alsoNames].filter(Boolean));
   const named = await Promise.all(ids.map(async (id) => {
@@ -163,7 +169,20 @@ export function dedupeTools(tools) {
   const out = list.filter((t, i) => { const n = toolName(t); if (!n || keep.has(i)) return true; removed.push(t?.webhook?.name || t?.function?.name || n); return false; });
   return { tools: out, removed };
 }
+export let lastRefusal = null;   // the doctor's evidence: what we sent, what Telnyx answered, what it holds
 export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
+  try { return await updateAssistantInner(id, body, { timeoutMs }); }
+  catch (e) {
+    try {
+      const cur = telnyxData(await telnyxRequest('/ai/assistants/' + encodeURIComponent(id), { timeoutMs: 8000 })) || {};
+      lastRefusal = { at: new Date().toISOString(), error: String(e?.message || e).slice(0, 400), status: e?.status || null,
+        sent: { keys: Object.keys(body || {}), tools: (body?.tools || []).map(toolName), tool_ids: body?.tool_ids ?? '(not sent)' },
+        holds: { tools: (cur.tools || []).map((t) => (t?.shared ? 'library:' : 'inline:') + (toolName(t) || t?.type || '?') + (t?.id ? '#' + String(t.id).slice(-6) : '')), tool_ids: cur.tool_ids ?? '(not in GET)', mcp_servers: (cur.mcp_servers || []).length } };
+    } catch (_) {}
+    throw e;
+  }
+}
+async function updateAssistantInner(id, body, { timeoutMs = 12000 } = {}) {
   const path = '/ai/assistants/' + encodeURIComponent(id);
   if (body && body.dynamic_variables && typeof body.dynamic_variables === 'object') body = { ...body, dynamic_variables: telnyxSafeVariables(body.dynamic_variables) };
   // GET merges Tools-Library tools into `tools` with shared:true; an update must leave them out (they are
@@ -193,12 +212,13 @@ export async function updateAssistant(id, body, { timeoutMs = 12000 } = {}) {
     const shared = dupTools(e) ? await sharedToolCollisions(cur, tools, dupNames).catch(() => null) : null;
     let retry = { ...body, dynamic_variables: dv, ...(tools.length ? { tools } : {}) };
     if (shared) retry = { ...retry, tool_ids: shared.tool_ids };
-    else if (dupNames.length && Array.isArray(cur.tool_ids)) {
+    else if (dupNames.length) {
       // The attached ids' names couldn't be read one by one: match them through the Library list instead.
       const lib = await libraryTools().catch(() => new Map());
       const inlineNames = new Set(tools.map(toolName));
       const drop = new Set(dupNames.map(norm).filter((n) => inlineNames.has(n)).map((n) => lib.get(n)?.id).filter(Boolean));
-      if (drop.size) retry = { ...retry, tool_ids: cur.tool_ids.filter((id) => !drop.has(id)) };
+      const attached = attachedToolIds(cur);
+      if (drop.size) retry = { ...retry, tool_ids: (attached || [...lib.values()].map((x) => x.id)).filter((id) => !drop.has(id) && (attached || []).includes(id)) };
     }
     try { return await send(retry); }
     catch (e2) {
@@ -544,3 +564,5 @@ export async function wireAssistant({ heal = false } = {}) {
     healed, error,
   };
 }
+
+export { toolName };

@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ ok: false, error: 'GET/POST only' });
   if (!process.env.CRON_SECRET) return res.status(503).json({ ok: false, error: 'CRON_SECRET is not set — lola-heal cron is disabled' });
   if ((req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  if (!process.env.TELNYX_API_KEY) return res.status(200).json({ ok: true, skipped: 'TELNYX_API_KEY not set' });
+  if (!process.env.TELNYX_API_KEY) { try { const { runDoctor } = await import('../lib/doctor.js'); await runDoctor({ c: db() }); } catch (_) {} return res.status(200).json({ ok: true, skipped: 'TELNYX_API_KEY not set' }); }
   const out = {};
   await step('models', async () => { const tm = await import('../lib/telnyx-models.js'); await tm.telnyxModels({ fresh: true }); return { ok: true, fast: await tm.modelFor('fast'), power: await tm.modelFor('power'), assistant: await tm.modelFor('assistant') }; }, out);
   await step('assistant', async () => {
@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     const w = await wireAssistant({ heal: true });
     return { ok: !!w.ok, healed: !!w.healed, model: w.model || null, fixed: (w.miswired || []).length, added: w.added_tools || [], error: w.error || null };
   }, out);
+  await step('doctor', async () => { const { runDoctor } = await import('../lib/doctor.js'); const r = await runDoctor({ c: db() }); return { ok: r.ok, failing: r.checks.filter((x) => !x.ok).map((x) => x.key), repaired: r.checks.filter((x) => x.healed).map((x) => x.key) }; }, out);
   await step('support_line', async () => {
     const { careState } = await import('../lib/customer-care.js');
     const care = await careState(db());

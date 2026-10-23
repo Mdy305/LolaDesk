@@ -13,7 +13,7 @@
 import { telnyxVoiceMode } from './lib/voice-mode.js';
 import { db } from './lib/db.js';
 
-export const RELEASE = 'lola-toolsdoc';
+export const RELEASE = 'lola-doctor';
 let lastHeal = 0;
 let lastLineHeal = 0;
 // 0.6s of quiet 16kHz audio: enough for speech-to-text to prove it answers.
@@ -418,6 +418,12 @@ export async function buildStatus() {
   if (settings.TELNYX_API_KEY && live.telnyx_key && !live.telnyx_ai) fixes.push('Telnyx AI isn’t enabled on your account — Telnyx → AI → Inference: turn it on (Lola’s brain and hearing run there).');
   if (!settings.TELNYX_ASSISTANT && !live.assistant) fixes.push('Add TELNYX_LOLA_BRAIN_ID in Vercel = your Telnyx AI assistant id (assistant-…), then Redeploy.');
   if (!settings.TELNYX_VOICE_APP_ID) fixes.push('Add TELNYX_VOICE_APP_ID in Vercel = your Telnyx Voice API application id, then Redeploy — needed for “Call me” and calling clients.');
+  // The doctor: check → repair → verify → evidence (lib/doctor.js). Its failing lines lead the fix list.
+  try {
+    const { runDoctor, doctorLines } = await import('./lib/doctor.js');
+    const rep = await Promise.race([runDoctor({ notify: true, light: true }), new Promise((r) => setTimeout(() => r(null), 20000))]);
+    if (rep) { live.doctor_ok = rep.ok; live.doctor_lines = doctorLines(rep); for (const x of rep.checks) if (x.healed) healed.push(`${x.label}: repaired${typeof x.healed === 'string' ? ' — ' + x.healed : ''}.`); }
+  } catch (_) {}
   if (live.square_connections > 0 && !settings.SQUARE_WEBHOOK_SIGNATURE_KEY) fixes.push('Square changes arrive only by the 1-minute check: Square Developer Console → your app → Webhooks → add https://www.loladesk.com/api/square-webhook (booking.created, booking.updated, oauth.authorization.revoked), then paste its Signature key in Vercel as SQUARE_WEBHOOK_SIGNATURE_KEY and Redeploy.');
   if (live.square_connections > 0 && live.sales_tables === false) fixes.push('One step for the Business and Deposits pages: Supabase → SQL Editor → paste and run sql/square-sales.sql (from your LolaDesk folder) once. Until then sales are kept in a temporary store and deposits can’t be checked.');
   if (live.square_reconnect > 0) fixes.push(`${live.square_reconnect} salon(s) must reconnect Square once (Settings → Integrations → Square) so Lola sees every booking in their Square, not only her own.`);
@@ -455,16 +461,19 @@ const scrub = (t) => String(t || '')
   .replace(/\s*\((?:Telnyx said: )?[^()]*(?:error|refused|HTTP|status|\d{3})[^()]*\)/gi, '');
 // Provider error text (Telnyx / ElevenLabs validation messages) is what tells the owner exactly what to
 // fix, so it stays — ids, numbers and anything key-shaped are scrubbed first.
-const scrubDetail = (t) => String(t || '')
+const scrubDetail = (t, max = 300) => String(t || '')
   .replace(/assistant-[0-9a-f-]{8,}/gi, 'assistant-…')
   .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '…')
   .replace(/\b(sk|xi|KEY|key|Bearer)[-_ ]?[A-Za-z0-9_\-]{12,}/g, '…')
   .replace(/\+?\d[\d\s().-]{8,}\d/g, '…')
-  .replace(/\b\d{12,}\b/g, '…').slice(0, 300);
+  .replace(/\b\d{12,}\b/g, '…').slice(0, max);
 const PUBLIC_DETAIL = ['lola_voice', 'calendar_outbox_text', 'models_text', 'brain_model', 'brain_error', 'hearing_error', 'phone_brain_model', 'calendar_sync_text', 'onboarding_scan_text', 'lola_tools', 'tools_list', 'wiring_error', 'elevenlabs', 'voice_app_error', 'phone_voice_error', 'website_calls_error', 'phone_line_error'];
+const PUBLIC_NUMBERS = ['square_connections', 'square_reconnect', 'numbers', 'numbers_registered_10dlc', 'numbers_pending_10dlc'];
 export function publicStatus(full) {
   const live = {};
   for (const [k, v] of Object.entries(full?.live || {})) if (typeof v === 'boolean') live[k] = v;
+  for (const k of PUBLIC_NUMBERS) if (typeof full?.live?.[k] === 'number') live[k] = full.live[k];
+  if (Array.isArray(full?.live?.doctor_lines)) live.doctor_lines = full.live.doctor_lines.map((l) => scrubDetail(l, 900));
   for (const k of PUBLIC_DETAIL) if (typeof full?.live?.[k] === 'string' && full.live[k]) live[k] = scrubDetail(full.live[k]);
   return {
     ok: !!full?.ok, release: full?.release || RELEASE, live,

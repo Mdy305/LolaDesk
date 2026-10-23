@@ -18,6 +18,10 @@ export async function finishSquare(saved, tokens){
   return { metadata, map };
 }
 
+async function rememberFailure(provider, reason, tid = null){
+  try{ const c = db(); if(c) await c.from('platform_settings').upsert({ key: 'oauth:last_error', value: { at: new Date().toISOString(), provider: provider || null, reason: String(reason || '').slice(0, 300), tenant: tid }, updated_at: new Date().toISOString() }, { onConflict: 'key' }); }catch(_){}
+}
+
 export default async function handler(req, res){
   try{
     const url = new URL(req.url, `https://${req.headers.host}`);
@@ -27,11 +31,12 @@ export default async function handler(req, res){
     const provider = url.searchParams.get('provider') || openState(stateRaw)?.provider || null;
     const shop = url.searchParams.get('shop') || undefined;
     const error = url.searchParams.get('error');
-    if(error){ res.writeHead(302, { Location: `/settings.html?connect=error&provider=${provider}` }); return res.end(); }
-    if(!provider || !code){ res.writeHead(302, { Location: `/settings.html?connect=error&reason=missing_params` }); return res.end(); }
+    if(error){ await rememberFailure(provider, error + (url.searchParams.get('error_description') ? ': ' + url.searchParams.get('error_description') : '')); res.writeHead(302, { Location: `/settings.html?connect=error&provider=${encodeURIComponent(provider || '')}&reason=${encodeURIComponent(url.searchParams.get('error_description') || error)}` }); return res.end(); }
+    if(!provider || !code){ await rememberFailure(provider, 'missing_params'); res.writeHead(302, { Location: `/settings.html?connect=error&reason=missing_params` }); return res.end(); }
     // Only a state sealed by /api/oauth/connect for a signed-in owner counts.
     const state = openState(stateRaw);
     if(!state){
+      await rememberFailure(provider, 'expired_or_invalid state');
       res.writeHead(302, { Location: `/settings.html?connect=error&provider=${encodeURIComponent(provider)}&reason=expired_or_invalid` }); return res.end();
     }
     // The state names the provider it was sealed for: a code can't be replayed into another connection.
@@ -58,5 +63,5 @@ export default async function handler(req, res){
     }
     res.writeHead(302, { Location: `/settings.html?connect=success&provider=${provider}` });
     return res.end();
-  }catch(e){ res.writeHead(302, { Location: `/settings.html?connect=error&reason=${encodeURIComponent(String(e).slice(0,120))}` }); return res.end(); }
+  }catch(e){ await rememberFailure(null, String(e?.message || e)); res.writeHead(302, { Location: `/settings.html?connect=error&reason=${encodeURIComponent(String(e?.message || e).slice(0,160))}` }); return res.end(); }
 }

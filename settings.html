@@ -1058,6 +1058,23 @@ async function exportData(){
   }catch(e){alert('Export failed: '+e.message);}
 }
 
+// After Connect: say plainly what happened (a failed connection used to look like nothing happened).
+(function(){
+  const q=new URLSearchParams(location.search); const st=q.get('connect'); if(!st) return;
+  const p=(q.get('provider')||'').replace(/_/g,' '); const why=(q.get('reason')||'').replace(/_/g,' ');
+  const fixFor=(r)=>{r=r.toLowerCase();
+    if(/redirect/.test(r))return 'The Redirect URL in Square’s Developer Console must be exactly https://www.loladesk.com/api/oauth/callback.';
+    if(/client|application|not found|unauthorized/.test(r))return 'LolaDesk’s Square app settings don’t match (app id / secret / production) — LolaDesk support has been alerted.';
+    if(/expired|invalid|state/.test(r))return 'The link expired — press Connect again.';
+    if(/denied|declin/.test(r))return 'Square was told “Deny” — press Connect again and choose Allow.';
+    return 'Press Connect again. If it happens again, LolaDesk support already has the details.';};
+  const box=document.createElement('div');
+  box.setAttribute('role','status');
+  box.style.cssText='position:fixed;left:50%;top:20px;transform:translateX(-50%);z-index:500;max-width:min(560px,calc(100vw - 32px));padding:14px 18px;border-radius:14px;font-size:14px;line-height:1.5;box-shadow:0 12px 40px rgba(0,0,0,.5);background:#1c1c1f;color:#f2f2f5;border:1px solid '+(st==='success'?'rgba(48,209,88,.5)':'rgba(255,90,77,.55)');
+  box.textContent=st==='success'?('✓ '+(p?p.charAt(0).toUpperCase()+p.slice(1):'It')+' is connected. Lola is reading everything now — sales, clients, bookings and deposits.'):('✗ '+(p?p.charAt(0).toUpperCase()+p.slice(1)+' didn’t connect':'That didn’t connect')+(why?' ('+why+')':'')+'. '+fixFor(why));
+  document.body.appendChild(box); setTimeout(()=>box.remove(),st==='success'?6000:14000);
+  try{history.replaceState(null,'',location.pathname+location.hash);}catch(e){}
+})();
 (async()=>{try{await window.LolaAuth.ready;}catch(e){return;}load();})();
 </script>
 <script src="/lola-forward.js"></script>
