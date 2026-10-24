@@ -150,6 +150,25 @@ export async function runTrialReminders(c, { now = new Date() } = {}) {
 }
 
 /**
+ * Subscription card failed (stripe-webhook invoice.payment_failed). One text
+ * and email per invoice: what happens, when, and the link to fix it. Lola
+ * keeps working through the grace period (service-gate.js), so say so.
+ */
+export async function dunningNotice(c, tenant, invoiceId, { now = new Date(), notify = notifyOwner } = {}) {
+  if (!c || !tenant?.id) return { sent: false, reason: 'no_tenant' };
+  const key = 'payment_failed';
+  const last = await mem(c, tenant.id, key);
+  if (invoiceId && last?.invoice === invoiceId) return { sent: false, reason: 'already_told' };
+  const since = Date.parse(tenant.past_due_since || '') || now.getTime();
+  const until = new Date(since + 7 * DAY);
+  const day = until.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const text = `Lola here. Your card didn't go through for LolaDesk. I'm still answering your calls, but I'll pause new bookings on ${day} unless it's updated. Update your card: ${keepLolaLink()}`;
+  const r = await notify(tenant, text, { subject: "Your LolaDesk payment didn't go through" });
+  await setMem(c, tenant.id, key, { invoice: invoiceId || null, at: now.toISOString() });
+  return { sent: !!(r && (r.texted || r.emailed)), ...r };
+}
+
+/**
  * Tell the salon owner something about their account — a text from the salon
  * line to the owner's cell, plus an email to the owner. Never throws.
  * → { texted, emailed }

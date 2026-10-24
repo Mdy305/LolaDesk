@@ -53,11 +53,15 @@ export async function lolaReceipt(c, tenantId, { since, until = new Date().toISO
  * The Monday text. One sentence of proof, one link. Returns '' when there
  * is nothing worth a text — silence beats "0 calls this week".
  */
-export function receiptText(r, { salon = '', link = '' } = {}) {
+export function receiptText(r, { salon = '', link = '', invite = '' } = {}) {
   if (!r || (!r.answered && !r.booked)) return '';
   const did = [];
   if (r.answered) did.push(`answered ${plural(r.answered, 'call')}`);
   if (r.booked) did.push(`booked ${plural(r.booked, 'appointment')}${r.value ? ` worth ${money(r.value)}` : ''}`);
   const at = salon ? ` at ${salon}` : '';
-  return `Lola's week${at}: I ${did.join(' and ')}.${link ? ` ${link}` : ''}`;
+  let text = `Lola's week${at}: I ${did.join(' and ')}.${link ? ` ${link}` : ''}`;
+  // A good week is the moment to ask: one line, only then (lib/referrals.js).
+  if (invite && r.booked >= INVITE_AFTER_BOOKINGS) text += ` Know a salon that misses calls? Send them ${invite} and you both get a month free.`;
+  return text;
 }
+export const INVITE_AFTER_BOOKINGS = 3;

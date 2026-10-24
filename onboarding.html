@@ -387,6 +387,10 @@ const Q=new URLSearchParams(location.search);
 S.plan=['starter','pro','medspa'].includes(Q.get('plan'))?Q.get('plan'):'starter';
 S.billing=Q.get('billing')==='annual'?'annual':'monthly';
 try{localStorage.setItem('loladesk_billing',S.billing);}catch(e){}
+// Sent by another salon (/r/<slug>): keep it through the whole setup, even across a reload.
+S.ref=(Q.get('ref')||'').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,80);
+try{if(S.ref)localStorage.setItem('loladesk_ref',S.ref);else S.ref=localStorage.getItem('loladesk_ref')||'';}catch(e){}
+if(S.ref){const f=document.querySelector('[data-step="2"] .fine');if(f)f.textContent='14-day free trial. No credit card required. Invited by a LolaDesk salon: when you subscribe, your next month is on us.';}
 let orb;
 try{const c=document.getElementById('orbCanvas');if(window.LolaOrb&&c){orb=window.LolaOrb.mount(c,{size:360,particles:120,bleed:.2});orb.setState('idle');}}catch(e){}
 function setOrb(s){try{orb&&orb.setState(s);}catch(e){}}
@@ -544,7 +548,7 @@ async function createAccount(){
   if(!document.getElementById('agreeTerms').checked){err.textContent='Please agree to the Terms and Privacy Policy to create your workspace.';return;}
   err.textContent='';btn.disabled=true;btn.textContent='Creating…';
   try{
-    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan,ownerPhone:ownerMobile(),accept_terms:true,terms_version:'2026-10-01'})});
+    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan,ownerPhone:ownerMobile(),ref:S.ref||undefined,accept_terms:true,terms_version:'2026-10-01'})});
     const d=r.b;
     // Email verification: the account is created but NOT live until the owner
     // confirms their email. Show the check-your-email checkpoint instead of a

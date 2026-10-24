@@ -18,6 +18,7 @@ import { getBookingSettings } from '../lib/booking-repository.js';
 import { sendSms } from '../lib/sms.js';
 import { lolaReceipt, receiptText } from '../lib/lola-receipt.js';
 import { localHour } from './owner-alerts.js';
+import { referralLink } from '../lib/referrals.js';
 
 const SEND_HOUR = 9;
 const DAY = 864e5;
@@ -60,7 +61,7 @@ export async function runLolaReceipts(c, { now = new Date() } = {}) {
       if (last && last.week === week) { out.push({ tenant: t.id, skipped: 'sent' }); continue; }
 
       const r = await lolaReceipt(c, t.id, { since: new Date(now - 7 * DAY).toISOString(), until: now.toISOString() });
-      const body = receiptText(r, { salon: t.name || '', link: `${appBase()}/dashboard` });
+      const body = receiptText(r, { salon: t.name || '', link: `${appBase()}/dashboard`, invite: referralLink(t) });
       if (!body) { await setMem(c, t.id, 'receipt', { week, sent: false }); out.push({ tenant: t.id, sent: false, reason: 'quiet_week' }); continue; }
 
       const s = await sendSms({ tenant: t, to, body });
