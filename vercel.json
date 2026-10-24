@@ -163,6 +163,10 @@
       "schedule": "17 * * * *"
     },
     {
+      "path": "/api/cron/lola-receipt",
+      "schedule": "29 * * * 1"
+    },
+    {
       "path": "/api/cron/lola-heal",
       "schedule": "13,43 * * * *"
     }

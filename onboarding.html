@@ -216,6 +216,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
       <p class="sub">A private, tenant-isolated workspace. Only you can see your clients, bookings, and calls.</p>
       <div class="field"><label>Owner email</label><input class="input" id="email" type="email" placeholder="you@yoursalon.com" autocomplete="email"/></div>
       <div class="field"><label>Password</label><input class="input" id="password" type="password" placeholder="At least 8 characters" autocomplete="new-password"/></div>
+      <div class="field"><label>Your mobile <span style="opacity:.55;font-weight:400">— optional</span></label><input class="input" id="ownerPhone" type="tel" inputmode="tel" placeholder="(305) 555-0123" autocomplete="tel"/><div class="fine" style="margin-top:6px;text-align:left">Lola texts you when someone needs you, and every Monday with what she booked. Reply STOP anytime.</div></div>
       <label class="agree" for="agreeTerms"><input type="checkbox" id="agreeTerms"/><span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a>, <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, <a href="/acceptable-use" target="_blank" rel="noopener">Acceptable Use Policy</a>, <a href="/sms-terms" target="_blank" rel="noopener">Messaging Terms</a> and <a href="/dpa" target="_blank" rel="noopener">Data Processing Addendum</a>, including the arbitration agreement and class-action waiver. I’ll get my clients’ consent before Lola texts them, and I understand Lola is an AI and calls may be recorded.</span></label>
       <div class="actions"><button class="btn-p" id="createBtn" onclick="createAccount()">Create workspace</button></div>
       <div class="error" id="err2"></div>
@@ -530,6 +531,11 @@ function showEmailVerify(email){
     +'<div style="margin-top:22px;font-size:12px;color:rgba(255,255,255,.38)">Didn\u2019t get it? Check spam, or try another email address.</div>';
   document.body.appendChild(ov);
 }
+// The owner's own mobile (not the salon line): where Lola's alerts and Monday receipt go.
+function ownerMobile(){
+  const el=document.getElementById('ownerPhone');const d=String(el&&el.value||'').replace(/\D/g,'');
+  if(d.length===10)return '+1'+d; if(d.length===11&&d[0]==='1')return '+'+d; return d.length>=8?'+'+d:null;
+}
 async function createAccount(){
   const err=document.getElementById('err2'),btn=document.getElementById('createBtn');
   const email=v('email').trim(),password=v('password');
@@ -538,7 +544,7 @@ async function createAccount(){
   if(!document.getElementById('agreeTerms').checked){err.textContent='Please agree to the Terms and Privacy Policy to create your workspace.';return;}
   err.textContent='';btn.disabled=true;btn.textContent='Creating…';
   try{
-    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan,accept_terms:true,terms_version:'2026-10-01'})});
+    const r=await fetchJson('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,name:S.salonName,salonName:S.salonName,plan:S.plan,ownerPhone:ownerMobile(),accept_terms:true,terms_version:'2026-10-01'})});
     const d=r.b;
     // Email verification: the account is created but NOT live until the owner
     // confirms their email. Show the check-your-email checkpoint instead of a
@@ -649,8 +655,8 @@ async function runActivation(){
     if(S.useExisting){const row=document.getElementById('s-num');if(row){row.querySelector('b').textContent='Attaching your number';row.querySelector('small').textContent='Linking your existing number to LolaDesk — no purchase';}}
     mark('s-num','done',fmtPhone(d.phoneNumber)+(d.attachedExisting?' — linked, already yours':' — purchased'));
     mark('s-voice','done','Voice webhook connected');
-    mark('s-sms',d.messagingProfileLinked?'done':'fail',d.messagingProfileLinked?'10DLC messaging profile linked':'Set TELNYX_MESSAGING_PROFILE_ID in Vercel');
-    mark('s-brain',d.lolaBrainLinked?'done':'fail',d.lolaBrainLinked?'LolaBrain connected':'Set TELNYX_LOLA_BRAIN_ID in Vercel');
+    mark('s-sms',d.messagingProfileLinked?'done':'fail',d.messagingProfileLinked?'10DLC messaging profile linked':'Texting is finishing setup — we’ll let you know when it’s on');
+    mark('s-brain',d.lolaBrainLinked?'done':'fail',d.lolaBrainLinked?'LolaBrain connected':'Connecting — Lola still answers calls meanwhile');
     mark('s-biz','running');
     // Only ingest when the owner actually gave us a website — an empty URL
     // 400s server-side and only adds console noise to an otherwise clean flow.
@@ -658,6 +664,8 @@ async function runActivation(){
     document.getElementById('doneNum').textContent=fmtPhone(d.phoneNumber);
     document.getElementById('doneCopy').textContent='Call '+fmtPhone(d.phoneNumber)+' right now. Lola will answer, know '+S.salonName+', and can book appointments.';
     renderEmbed();
+    // The "keep your salon number" widget was drawn before this number existed.
+    try{window.dispatchEvent(new CustomEvent('lola:number-ready',{detail:{phoneNumber:d.phoneNumber}}));}catch(_){}
     finishMeter();
     setTimeout(()=>{go(6);},900);
   }catch(e){

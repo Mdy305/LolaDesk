@@ -218,6 +218,16 @@ async function resumeSub(){
   }catch(e){msg('portalMsg',e.message,false);}
 }
 
+// Sent here because a third stylist needs Pro (lib/plan-gate.js): say so once, point at Pro.
+if(new URLSearchParams(location.search).get('upgrade')==='pro'){
+  setTimeout(()=>{
+    const g=document.getElementById('plansGrid'); if(!g) return;
+    const n=document.createElement('div'); n.setAttribute('role','status');
+    n.style.cssText='margin:0 0 14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(204,255,0,.35);font-size:14px;line-height:1.45';
+    n.textContent='Your team is growing. Pro lets Lola book every stylist, with win-back campaigns and platform sync. Everyone already on the book stays as is.';
+    g.parentNode.insertBefore(n,g); g.scrollIntoView({behavior:'smooth',block:'start'});
+  },600);
+}
 if(new URLSearchParams(location.search).get('success')){
   setTimeout(()=>msg('portalMsg','Subscription active. Lola is running.',true),500);
 }

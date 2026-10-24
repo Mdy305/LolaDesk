@@ -782,8 +782,8 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       <div class="kpi-row kpi-row--single" id="kpiRow">
         <div class="kpi accent">
           <div class="kpi-val" id="kpiRevenue">$0</div>
-          <div class="kpi-label">Revenue</div>
-          <div class="kpi-sub">Last 30 days · Lola-assisted</div>
+          <div class="kpi-label">Booked by Lola</div>
+          <div class="kpi-sub" id="kpiLolaSub">Last 30 days</div>
         </div>
       </div>
     </div>
@@ -1077,7 +1077,14 @@ button{cursor:pointer;border:0;background:none;color:inherit}
   text("kpiClients", Number(k.clients || 0).toLocaleString());
   text("kpiCalls", k.calls30 || 0);
   text("kpiBookings", k.bookings30 || 0);
-  text("kpiRevenue", k.revenue30Money || money(k.revenue30 || 0));
+  // Home's one number: what Lola herself booked (api/lib/lola-receipt.js).
+  const lola = k.lola || { answered:0, booked:0, value:0 };
+  text("kpiRevenue", money(lola.value || 0));
+  text("kpiLolaSub", [
+    `${lola.booked || 0} appointment${lola.booked === 1 ? "" : "s"}`,
+    `${lola.answered || 0} call${lola.answered === 1 ? "" : "s"} answered`,
+    "last 30 days"
+  ].join(" · "));
   text("todayRevenue", k.revenue30Money || money(k.revenue30 || 0));
   renderSetupGuide(overview && overview.setup);
 
@@ -1099,7 +1106,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
     text("roiConversion", conversion + "%");
     text("roiUpsell", money(upsell));
 
-    const planCost = 399;
+    const planCost = ({ starter:99, pro:399, medspa:599, scale:599 })[String((window.LolaAuth && window.LolaAuth.tenant && window.LolaAuth.tenant.plan) || "starter").toLowerCase()] || 99;
     const multiplier = revenue > 0 ? Math.round(revenue / planCost) : 0;
     text(
       "roiSub",
@@ -1128,7 +1135,7 @@ button{cursor:pointer;border:0;background:none;color:inherit}
           ? `You are above the ${usage.planName || ""} plan's ${usage.mostUsedLabel || "usage"} allowance. Lola is still working.`
           : `You are at ${usage.mostUsedPercent || 0}% of your ${usage.planName || ""} plan's ${usage.mostUsedLabel || "usage"}.`
       }</div>
-      <button class="usage-banner-cta" onclick="location.href='settings.html'">View plan</button>
+      <button class="usage-banner-cta" onclick="location.href='/subscription'">View plan</button>
     `;
     el.style.display = "flex";
   }
