@@ -43,6 +43,21 @@
     if (!has('script[src$="ux-runtime.js"]')) { const s = document.createElement('script'); s.src = '/ux-runtime.js'; s.defer = true; document.head.appendChild(s); }
   }
 
+  // Installable on the phone's home screen: manifest, icon, and a network-only
+  // service worker (sw.js caches nothing, so a deploy is never served stale).
+  (function installable() {
+    const head = document.head;
+    const add = (tag, attrs) => { const el = document.createElement(tag); for (const k in attrs) el.setAttribute(k, attrs[k]); head.appendChild(el); };
+    if (!document.querySelector('link[rel="manifest"]')) add('link', { rel: 'manifest', href: '/manifest.webmanifest' });
+    if (!document.querySelector('link[rel="apple-touch-icon"]')) add('link', { rel: 'apple-touch-icon', href: '/assets/icons/apple-touch-icon.png' });
+    if (!document.querySelector('meta[name="apple-mobile-web-app-capable"]')) { add('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }); add('meta', { name: 'mobile-web-app-capable', content: 'yes' }); }
+    if (!document.querySelector('meta[name="apple-mobile-web-app-title"]')) add('meta', { name: 'apple-mobile-web-app-title', content: 'LolaDesk' });
+    if (!document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')) add('meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {}); }, { once: true });
+    }
+  })();
+
   // Lola's mood runs on every page (every Lola on the page feels it).
   if (!document.querySelector('script[src$="lola-call.js"]')) { const lc = document.createElement('script'); lc.src = '/lola-call.js'; lc.async = true; document.head.appendChild(lc); }
   if (!document.querySelector('script[src$="lola-ears.js"]')) { const e = document.createElement('script'); e.src = '/lola-ears.js'; e.async = true; document.head.appendChild(e); }

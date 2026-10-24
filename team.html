@@ -162,6 +162,18 @@ details.cust-wrap summary:hover{color:var(--accent)}
 .macts .primary:hover{box-shadow:0 4px 14px var(--accent-glow)}
 .err{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px}
 .err.ok{color:var(--accent)}
+.signin-card{margin-top:28px;border:1px solid var(--border);border-radius:16px;padding:20px;display:grid;gap:14px}
+.signin-card h2{font-size:16px;margin:0 0 4px}
+.signin-card p{margin:0;color:var(--text2);font-size:13px;max-width:62ch}
+.signin-form{display:grid;grid-template-columns:1fr 1.4fr 1fr auto auto;gap:8px}
+.signin-form input,.signin-form select{min-width:0;background:var(--bg2,transparent);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font:inherit;font-size:13px}
+.signin-list{display:grid;gap:6px}
+.signin-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:13px}
+.signin-row span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.signin-row small{color:var(--text3)}
+.signin-row button{background:none;border:1px solid var(--border);color:var(--text2);border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer}
+.signin-link{display:flex;gap:8px}.signin-link input{flex:1;min-width:0;background:var(--bg2,transparent);border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text2);font:inherit;font-size:12px}
+@media(max-width:820px){.signin-form{grid-template-columns:1fr 1fr}.signin-form button{grid-column:1/-1}}
 
 /* RESPONSIVE */
 @media(max-width:720px){
@@ -214,6 +226,28 @@ details.cust-wrap summary:hover{color:var(--accent)}
       <div class="sk-card"><div class="sk-top"><div class="sk-bar sk-av"></div><div style="flex:1"><div class="sk-bar" style="height:14px;width:65%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:35%"></div></div></div><div class="sk-bar" style="height:11px;width:60%;margin-bottom:8px"></div><div class="sk-bar" style="height:11px;width:45%"></div></div>
     </div>
 
+
+    <!-- Who can sign in: owner invites stylists and front desk (api/team-invite.js). Owner only. -->
+    <section class="signin-card" id="signinCard" hidden aria-labelledby="signinTitle">
+      <div class="signin-head">
+        <div>
+          <h2 id="signinTitle">Who can sign in</h2>
+          <p>Give your team their own sign-in. They see the calendar, clients, calls and messages. Billing, phone numbers and settings stay with you.</p>
+        </div>
+      </div>
+      <form class="signin-form" id="inviteForm" novalidate>
+        <input id="invName" type="text" placeholder="Name" autocomplete="off" aria-label="Their name"/>
+        <input id="invEmail" type="email" placeholder="Their email" autocomplete="off" aria-label="Their email" required/>
+        <input id="invPhone" type="tel" placeholder="Mobile (optional)" autocomplete="off" aria-label="Their mobile, optional"/>
+        <select id="invRole" aria-label="Access">
+          <option value="staff">Team member</option>
+          <option value="manager">Manager</option>
+        </select>
+        <button class="btn btn-primary" type="submit" id="invBtn">Send invite</button>
+      </form>
+      <div class="err" id="invMsg" role="status"></div>
+      <div class="signin-list" id="signinList"></div>
+    </section>
   </main>
 </div>
 
@@ -359,6 +393,76 @@ async function loadSalonHours(){
     SALON_HOURS = (bh && typeof bh === 'object') ? bh : null;
   }catch(e){ SALON_HOURS = null; }
 }
+
+// ── Who can sign in (owner only; the server enforces it too) ──
+async function loadSignins(){
+  const card = document.getElementById('signinCard');
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/team-invite', { headers: hdr(tok) });
+    if(r.status === 403 || r.status === 401){ card.hidden = true; return; }
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok){ card.hidden = true; return; }
+    card.hidden = false;
+    renderSignins(d.members || []);
+  }catch(_){ card.hidden = true; }
+}
+function renderSignins(list){
+  const host = document.getElementById('signinList');
+  host.innerHTML = '';
+  list.forEach(m => {
+    const row = document.createElement('div'); row.className = 'signin-row';
+    const who = document.createElement('span'); who.textContent = m.email || 'Pending';
+    const role = document.createElement('small'); role.textContent = (m.role_label || m.role) + (m.you ? ' · you' : '');
+    const left = document.createElement('span'); left.append(who, document.createTextNode(' '), role);
+    row.append(left);
+    if(m.role !== 'owner' && !m.you){
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Remove access';
+      b.onclick = () => removeSignin(m, b);
+      row.append(b);
+    }
+    host.append(row);
+  });
+}
+async function removeSignin(m, btn){
+  if(btn.dataset.sure !== '1'){ btn.dataset.sure = '1'; btn.textContent = 'Tap again to remove'; setTimeout(()=>{ btn.dataset.sure=''; btn.textContent='Remove access'; }, 3000); return; }
+  btn.disabled = true;
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/team-invite?user_id=' + encodeURIComponent(m.user_id), { method:'DELETE', headers: hdr(tok) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Could not remove access');
+    renderSignins(d.members || []);
+  }catch(e){ btn.disabled = false; const msg = document.getElementById('invMsg'); msg.className = 'err'; msg.textContent = e.message; }
+}
+document.getElementById('inviteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('invMsg'), btn = document.getElementById('invBtn');
+  const body = { name: document.getElementById('invName').value.trim(), email: document.getElementById('invEmail').value.trim(), phone: document.getElementById('invPhone').value.trim(), role: document.getElementById('invRole').value };
+  if(!body.email){ msg.className = 'err'; msg.textContent = 'Enter their email.'; return; }
+  btn.disabled = true; msg.className = 'err ok'; msg.textContent = 'Sending…';
+  try{
+    const tok = await authToken();
+    const r = await fetch('/api/team-invite', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(()=>({}));
+    if(!d.ok) throw new Error(d.error || 'Could not send the invite');
+    renderSignins(d.members || []);
+    document.getElementById('inviteForm').reset();
+    if(d.link){
+      msg.className = 'err'; msg.innerHTML = '';
+      const t = document.createElement('div'); t.textContent = "The email didn't go out. Send them this link yourself (it works once):";
+      const w = document.createElement('div'); w.className = 'signin-link';
+      const i = document.createElement('input'); i.readOnly = true; i.value = d.link; i.onfocus = () => i.select();
+      const c = document.createElement('button'); c.type = 'button'; c.className = 'btn'; c.textContent = 'Copy';
+      c.onclick = () => { try{ navigator.clipboard.writeText(d.link).then(()=>{ c.textContent='Copied'; }, ()=>{ i.focus(); i.select(); }); }catch(_){ i.focus(); i.select(); } };
+      w.append(i, c); msg.append(t, w);
+    }else{
+      msg.className = 'err ok';
+      msg.textContent = 'Invite sent' + (d.emailed && d.texted ? ' by email and text.' : d.texted ? ' by text.' : ' by email.') + ' They set a password and sign in.';
+    }
+  }catch(err){ msg.className = 'err'; msg.textContent = err.message; }
+  finally{ btn.disabled = false; }
+});
 
 async function load(){
   await Promise.all([loadServices(), loadSalonHours()]);
@@ -795,7 +899,7 @@ async function reactivate(id){
 $('modal').addEventListener('click', e => { if(e.target === $('modal')) closeModal(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && $('modal').classList.contains('open')) closeModal(); });
 
-(async () => { load(); })();
+(async () => { load(); loadSignins(); })();
 </script>
 </body>
 </html>
