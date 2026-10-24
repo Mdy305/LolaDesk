@@ -14,7 +14,7 @@
 import { admin } from './lib/auth.js';
 import { db } from './lib/db.js';
 import { findUserByEmail, createConfirmedUser } from './lib/auth-direct.js';
-import { requireRole, OWNER, INVITABLE } from './lib/team-access.js';
+import { requireRole, OWNER } from './lib/team-access.js';
 import { sendSms } from './lib/sms.js';
 import crypto from 'node:crypto';
 
@@ -60,13 +60,15 @@ export default async function handler(req, res) {
       if (!m) return res.status(404).json({ ok: false, error: 'That person doesn’t have access.' });
       if (m.role === 'owner') return res.status(400).json({ ok: false, error: 'The owner keeps access.' });
       await c.from('tenant_users').delete().eq('tenant_id', tenant.id).eq('user_id', id);
+      try { await a.auth.admin.updateUserById(id, { app_metadata: { loladesk_role: null, loladesk_tenant: null } }); } catch (_) {}
+      // Signed-in sessions stop at the next request: they no longer belong to any salon.
       return res.json({ ok: true, members: await members(c, a, tenant, user) });
     }
 
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
     const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const email = String(b.email || '').trim().toLowerCase();
-    const role = INVITABLE.includes(String(b.role || '').toLowerCase()) ? String(b.role).toLowerCase() : 'staff';
+    const role = 'staff'; // one role for now: Team member (see middleware.js)
     const name = String(b.name || '').trim().slice(0, 80);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'Enter their email.' });
     if (email === String(tenant.owner_email || '').toLowerCase()) return res.status(400).json({ ok: false, error: 'That’s the owner’s own email.' });
@@ -84,6 +86,12 @@ export default async function handler(req, res) {
     }
     const up = await c.from('tenant_users').upsert({ tenant_id: tenant.id, user_id: person.id, role }, { onConflict: 'tenant_id,user_id' });
     if (up.error) throw up.error;
+    // The tag every one of their tokens carries: middleware.js keeps them to the team routes.
+    const tag = await a.auth.admin.updateUserById(person.id, { app_metadata: { loladesk_role: 'staff', loladesk_tenant: tenant.id } });
+    if (tag?.error) {
+      await c.from('tenant_users').delete().eq('tenant_id', tenant.id).eq('user_id', person.id);
+      throw tag.error;
+    }
 
     // The link to set their password, by email and (optionally) text.
     const link = await setPasswordLink(a, email);

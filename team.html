@@ -165,7 +165,7 @@ details.cust-wrap summary:hover{color:var(--accent)}
 .signin-card{margin-top:28px;border:1px solid var(--border);border-radius:16px;padding:20px;display:grid;gap:14px}
 .signin-card h2{font-size:16px;margin:0 0 4px}
 .signin-card p{margin:0;color:var(--text2);font-size:13px;max-width:62ch}
-.signin-form{display:grid;grid-template-columns:1fr 1.4fr 1fr auto auto;gap:8px}
+.signin-form{display:grid;grid-template-columns:1fr 1.4fr 1fr auto;gap:8px}
 .signin-form input,.signin-form select{min-width:0;background:var(--bg2,transparent);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font:inherit;font-size:13px}
 .signin-list{display:grid;gap:6px}
 .signin-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-size:13px}
@@ -239,10 +239,7 @@ details.cust-wrap summary:hover{color:var(--accent)}
         <input id="invName" type="text" placeholder="Name" autocomplete="off" aria-label="Their name"/>
         <input id="invEmail" type="email" placeholder="Their email" autocomplete="off" aria-label="Their email" required/>
         <input id="invPhone" type="tel" placeholder="Mobile (optional)" autocomplete="off" aria-label="Their mobile, optional"/>
-        <select id="invRole" aria-label="Access">
-          <option value="staff">Team member</option>
-          <option value="manager">Manager</option>
-        </select>
+        <input type="hidden" id="invRole" value="staff"/>
         <button class="btn btn-primary" type="submit" id="invBtn">Send invite</button>
       </form>
       <div class="err" id="invMsg" role="status"></div>

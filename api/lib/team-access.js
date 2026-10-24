@@ -16,7 +16,7 @@ import { resolveTenantAccessForUser } from './tenant-access.js';
 
 export const OWNER = ['owner', 'admin'];
 export const MANAGER = ['owner', 'admin', 'manager'];
-export const INVITABLE = ['staff', 'manager'];
+export const INVITABLE = ['staff'];
 
 export function roleAllows(role, allowed) {
   return allowed.includes(String(role || '').toLowerCase());
