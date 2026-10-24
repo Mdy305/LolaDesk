@@ -155,6 +155,12 @@ async function authenticate(ws, state, token){
   try{
     const user = await getUserFromToken(token);
     const tenant = user ? await resolveTenantForUser(user) : null;
+    // Lola's owner voice runs owner tools (campaigns, numbers, channels): not for staff sign-ins (middleware.js).
+    if(String(user?.app_metadata?.loladesk_role || '').toLowerCase() === 'staff'){
+      send(ws, { type:'ready', ok:false, error:'Only the salon owner can talk to Lola here.' });
+      setTimeout(() => { try{ ws.close(4003, 'owner_only'); }catch(e){} }, 50);
+      return;
+    }
     if(!tenant?.id){
       send(ws, { type:'ready', ok:false, error:'Not authenticated' });
       setTimeout(() => { try{ ws.close(4001, 'unauthorized'); }catch(e){} }, 50);

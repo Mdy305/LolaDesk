@@ -198,6 +198,10 @@
     const suggest = document.getElementById('lbSuggest');
     let selectedClientId = null;
     let searchTimer = null;
+    // Opened from a call or a message: the caller is already filled in.
+    if (opts.client_name) clientInput.value = opts.client_name;
+    if (opts.phone) phoneInput.value = opts.phone;
+    if (opts.client_id) selectedClientId = opts.client_id;
 
     clientInput.addEventListener('input', () => {
       selectedClientId = null;

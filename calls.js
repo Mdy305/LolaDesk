@@ -137,6 +137,8 @@
       ${why ? `<div class="why">${esc(why)}</div>` : ''}
       <div class="acts">
         ${live ? '<button class="btn primary" id="aTake">Take over the call</button>' : `<button class="btn primary" id="aCall" ${c.phone ? '' : 'disabled'}>Lola, call ${esc(first || 'them')} back</button>`}
+        ${!live && c.phone ? `<a class="btn" id="aDial" href="tel:${esc(c.phone)}">Call from my phone</a>` : ''}
+        ${!live ? '<button class="btn" id="aBook">Book</button>' : ''}
         <button class="btn" id="aText" ${c.phone ? '' : 'disabled'}>Text</button>
         <button class="btn" id="aAsk">Ask Lola</button>
         ${!c.handled && !live ? '<button class="btn" id="aDone">Mark handled</button>' : ''}
@@ -154,6 +156,7 @@
     $('aDone') && ($('aDone').onclick = () => handled(c));
     $('aWait') && ($('aWait').onclick = () => waitlist(c));
     $('aAsk').onclick = () => askLola(c);
+    $('aBook') && ($('aBook').onclick = () => bookFor(c));
     if (draft != null) { compose(c); $('smsText').value = draft; }
   }
   function st(msg, k) { const e = $('st'); if (e) { e.className = 'status ' + (k || 'info'); e.textContent = msg; } }
@@ -162,6 +165,17 @@
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.ok === false) throw new Error(d.error || ('failed (' + r.status + ')'));
     return d;
+  }
+  // Book this caller without leaving the call: the booking dialog, already filled in.
+  function bookFor(c) {
+    const open = () => window.LolaBookDialog.open({
+      client_name: c.client_name || '', phone: c.phone || '', client_id: c.client_id || null,
+      onBooked: () => { st(`Booked. ${c.client_name || 'They'}'ll get the confirmation by text.`, 'ok'); if (!c.handled) handled(c); },
+    });
+    if (window.LolaBookDialog) return open();
+    const s = document.createElement('script'); s.src = '/book-dialog.js';
+    s.onload = open; s.onerror = () => { location.href = '/bookings'; };
+    document.head.appendChild(s);
   }
   async function callBack(c) {
     const b = $('aCall'); b.disabled = true; st('Lola is dialing…');

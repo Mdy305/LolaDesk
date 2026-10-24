@@ -179,7 +179,8 @@ export default async function handler(req,res){
           // has EVER had a real call, for the new-tenant empty state below.
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('bookings').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
-          c.from('services').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
+          // Real menu items only: the $0 "Consultation" seeded at provisioning isn't a menu.
+          c.from('services').select('*').eq('tenant_id',tid).limit(50).then(r=>(r.data||[]).filter(s=>s.is_active!==false && !(/^consultation$/i.test(String(s.name||'').trim()) && !(Number(s.price??s.base_price??0)>0))).length).catch(()=>0),
           // What Lola herself answered and booked — the Home number (lib/lola-receipt.js).
           lolaReceipt(c, tid, { since })
         ]);
@@ -189,7 +190,9 @@ export default async function handler(req,res){
         // A brand-new salon: nothing has happened yet, anywhere, ever. This
         // is the "wall of zeros" the core-app audit flagged — Home should
         // greet this with a guided first-run instead of cold numbers.
-        const isNew = cl===0 && everCalls===0 && everBookings===0;
+        // Importing a client list doesn't make the salon live: the guide stays
+        // until Lola has taken a real call or a booking exists.
+        const isNew = everCalls===0 && everBookings===0;
         return res.status(200).json({ tenant:tenant.name,
           kpis:{
             clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev),

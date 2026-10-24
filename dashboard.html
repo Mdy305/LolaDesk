@@ -705,6 +705,11 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 
 </style>
 <link rel="stylesheet" href="/lola-resonance.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LolaDesk">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -1190,10 +1195,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
       </button>`);
     }
     moves.push(!setup.servicesCount
-      ? `<a class="setup-action" href="/services">
+      ? `<a class="setup-action" href="/onboarding?learn=1">
           <span class="setup-step">${moves.length+1}</span>
-          <span><span class="setup-action-title">Add your menu</span>
-          <span class="setup-action-body">So Lola quotes your real prices and books the right length.</span></span>
+          <span><span class="setup-action-title">Teach Lola your menu</span>
+          <span class="setup-action-body">Paste your website or menu. Lola learns your services and prices in about 30 seconds.</span></span>
         </a>`
       : `<a class="setup-action" href="/clients">
           <span class="setup-step">${moves.length+1}</span>
