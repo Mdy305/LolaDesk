@@ -19,6 +19,7 @@ import { getUsageStatus } from './lib/usage.js';
 import { summarizeTopology, listControlPlaneAgents } from './lib/agent-topology.js';
 import { resolveTenantForUser } from './lib/tenant-access.js';
 import { bookingLinkFor } from './lib/booking-link.js';
+import { lolaReceipt } from './lib/lola-receipt.js';
 
 function ago(ts){
   if(!ts) return '';
@@ -168,7 +169,7 @@ export default async function handler(req,res){
       case 'overview':
       default: {
         const since=new Date(Date.now()-30*86400000).toISOString();
-        const [cl,ca,bk,usage,upsellEvents,everCalls,everBookings,servicesCount]=await Promise.all([
+        const [cl,ca,bk,usage,upsellEvents,everCalls,everBookings,servicesCount,lola]=await Promise.all([
           c.from('clients').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).gte('created_at',since).then(r=>r.count||0).catch(()=>0),
           c.from('bookings').select('price:total_amount').eq('tenant_id',tid).gte('start_time',since).then(r=>r.data||[]).catch(()=>[]),
@@ -178,7 +179,9 @@ export default async function handler(req,res){
           // has EVER had a real call, for the new-tenant empty state below.
           c.from('calls').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
           c.from('bookings').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
-          c.from('services').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0)
+          c.from('services').select('id',{count:'exact',head:true}).eq('tenant_id',tid).then(r=>r.count||0).catch(()=>0),
+          // What Lola herself answered and booked — the Home number (lib/lola-receipt.js).
+          lolaReceipt(c, tid, { since })
         ]);
         const rev=bk.reduce((s,r)=>s+Number(r.price||0),0);
         const upsellRev=upsellEvents.reduce((s,r)=>s+Number(r.units||0),0);
@@ -191,7 +194,8 @@ export default async function handler(req,res){
           kpis:{
             clients:cl, calls30:ca, bookings30:bk.length, revenue30:rev, revenue30Money:money(rev),
             upsellRevenue: upsellRev,
-            upsellRate: `${upsellRate}%`
+            upsellRate: `${upsellRate}%`,
+            lola
           },
           usage,
           setup:{
@@ -205,7 +209,10 @@ export default async function handler(req,res){
       }
     }
   }catch(e){
-    return res.status(200).json({ ...demo(resource), _error:String(e&&e.message||e) });
+    // A real salon never sees invented clients or revenue. The pages show
+    // their own "couldn't load" state; sample data is for no-DB dev only.
+    console.error('[data]', resource, e);
+    return res.status(503).json({ error:'Could not load your data. Try again in a moment.', _error:String(e&&e.message||e) });
   }
 }
 

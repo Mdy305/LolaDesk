@@ -13,6 +13,7 @@ import { resolveTenantForUser } from './lib/tenant-access.js';
 import { db } from './lib/db.js';
 import { tolerantWrite, replaceStaffServices, fillMissingStaffHours } from './lib/setup-store.js';
 import { getBookingSettings } from './lib/booking-repository.js';
+import { canAddStylist } from './lib/plan-gate.js';
 
 const FIELDS = [
   'first_name', 'last_name', 'name', 'role', 'phone', 'email',
@@ -52,6 +53,8 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = jsonBody(req);
       const row = { tenant_id: tenant.id, ...staffRow(body) };
+      // Paid Starter = two stylists (lib/plan-gate.js).
+      if (row.is_active !== false) { const gate = await canAddStylist(c, tenant); if (!gate.ok) return res.status(402).json(gate); }
       if (!row.name && (row.first_name || row.last_name)) {
         row.name = [row.first_name, row.last_name].filter(Boolean).join(' ');
       }

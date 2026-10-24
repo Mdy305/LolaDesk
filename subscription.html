@@ -50,6 +50,7 @@
 
 <div class="usage" id="usageGrid"></div>
 <div id="lolaBooked"></div>
+<div id="referralCard"></div>
 
 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:24px 0 14px">
   <h2 style="font-size:15px;font-weight:600;margin:0">Plans</h2>
@@ -91,6 +92,7 @@ async function load(){
     renderBanner(sr);
     renderUsage(sr.usage||{});
     renderLolaBooked(sr.lola_bookings, sr.status);
+    renderReferral(sr.referral);
     PLANS=pr.plans||[]; if(sr.interval==='annual'&&sr.has_subscription) CYCLE='annual';
     renderPlans(PLANS,sr);
     document.getElementById('cancelBtn').style.display=(sr.has_subscription&&!sr.cancel_at_period_end&&sr.status!=='canceled')?'':'none';
@@ -199,14 +201,68 @@ async function openPortal(){
   }catch(e){msg('portalMsg',e.message,false);}
 }
 
-async function cancelSub(){
-  if(!confirm('Cancel your subscription? Lola will stop answering calls at the end of your billing period.'))return;
+// Give a month, get a month: the salon's own link, one tap to copy (lib/referrals.js).
+function renderReferral(r){
+  const el=document.getElementById('referralCard');
+  if(!el) return;
+  if(!r||!r.link){ el.innerHTML=''; return; }
+  const earned=(r.months_earned||0)+(r.pending||0);
+  const tally=r.joined?(r.joined+' salon'+(r.joined===1?'':'s')+' joined through you'+(earned?' · '+earned+' free month'+(earned===1?'':'s')+(r.pending?' ('+r.pending+' waiting for your first payment)':''):'')):'';
+  el.innerHTML='<div class="card" style="margin-bottom:20px"><h3>Give a month, get a month</h3>'+
+    '<div class="desc">Send another salon your link. When they subscribe, you both get a month of LolaDesk free.</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center">'+
+    '<input id="refLink" readonly value="'+esc(r.link)+'" onfocus="this.select()" aria-label="Your referral link" style="flex:1;min-width:0;background:var(--bg2,transparent);border:.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font:inherit;font-size:13px">'+
+    '<button type="button" class="plan-btn primary" style="width:auto;padding:10px 16px" onclick="copyRef(this)">Copy link</button></div>'+
+    (tally?'<div class="desc" style="margin-top:10px">'+esc(tally)+'</div>':'')+'</div>';
+}
+function copyRef(btn){
+  const i=document.getElementById('refLink'); if(!i) return;
+  const done=()=>{btn.textContent='Copied';setTimeout(()=>{btn.textContent='Copy link';},1800);};
+  try{ navigator.clipboard.writeText(i.value).then(done,()=>{i.focus();i.select();}); }catch(_){ i.focus(); i.select(); }
+}
+
+// Cancelling: show what Lola did first, offer the cheaper plan, then cancel. No browser dialogs.
+function cancelSub(){
+  closeCancel();
+  const st=STATE||{}, lb=st.lola_bookings||{}, u=st.usage||{};
+  const money=(n)=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
+  const calls=Number(u.calls_handled||0), booked=Number(lb.lola_bookings||0), rev=Number(lb.lola_revenue||0);
+  const did=(calls||booked)?('This month Lola answered '+calls+' call'+(calls===1?'':'s')+' and booked '+booked+' appointment'+(booked===1?'':'s')+(rev?' worth '+money(rev):'')+' for you.'):'Lola is on your line for every call, day and night.';
+  const canDown=st.plan&&st.plan!=='starter'&&st.has_subscription;
+  const wrap=document.createElement('div'); wrap.id='cancelSheet';
+  wrap.setAttribute('role','dialog'); wrap.setAttribute('aria-modal','true'); wrap.setAttribute('aria-labelledby','cancelTitle');
+  wrap.style.cssText='position:fixed;inset:0;z-index:400;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.55);padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom,0px))';
+  wrap.innerHTML='<div class="card" style="max-width:460px;width:100%;margin:0 0 8px;padding:22px">'+
+    '<h3 id="cancelTitle" style="font-size:18px;margin:0 0 8px">Before you go</h3>'+
+    '<div class="desc" style="font-size:14px;line-height:1.5">'+esc(did)+' If she stops, those calls go to voicemail.</div>'+
+    '<div style="display:grid;gap:8px;margin-top:18px">'+
+    '<button type="button" class="plan-btn primary" onclick="closeCancel()">Keep Lola</button>'+
+    (canDown?'<button type="button" class="plan-btn ghost" onclick="downToStarter(this)">Move to Starter, $99 a month</button>':'')+
+    '<button type="button" class="plan-btn ghost" style="color:var(--red,#ff6b6b)" onclick="confirmCancel(this)">Cancel at the end of this billing period</button>'+
+    '</div><div class="desc" id="cancelMsg" role="status" style="margin-top:10px"></div></div>';
+  wrap.addEventListener('click',(e)=>{ if(e.target===wrap) closeCancel(); });
+  document.addEventListener('keydown',escCancel);
+  document.body.appendChild(wrap);
+  wrap.querySelector('button').focus();
+}
+function escCancel(e){ if(e.key==='Escape') closeCancel(); }
+function closeCancel(){ const w=document.getElementById('cancelSheet'); if(w) w.remove(); document.removeEventListener('keydown',escCancel); }
+async function downToStarter(btn){
+  btn.disabled=true; const m=document.getElementById('cancelMsg'); m.textContent='Moving you to Starter…';
+  try{
+    const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'switch',plan:'starter',interval:CYCLE})});
+    const d=await r.json(); if(!d.ok) throw new Error(d.error||'Could not switch plans');
+    closeCancel(); msg('portalMsg',d.message||'You are on Starter now. Lola keeps answering.',true); load();
+  }catch(e){ m.textContent=e.message; btn.disabled=false; }
+}
+async function confirmCancel(btn){
+  btn.disabled=true; const m=document.getElementById('cancelMsg'); m.textContent='Cancelling…';
   try{
     const r=await fetch('/api/billing',{method:'POST',headers:H(),body:JSON.stringify({action:'cancel'})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Cancel failed');
-    msg('portalMsg',d.message,true);load();
-  }catch(e){msg('portalMsg',e.message,false);}
+    closeCancel(); msg('portalMsg',d.message,true);load();
+  }catch(e){ m.textContent=e.message; btn.disabled=false; }
 }
 
 async function resumeSub(){
@@ -218,6 +274,16 @@ async function resumeSub(){
   }catch(e){msg('portalMsg',e.message,false);}
 }
 
+// Sent here because a third stylist needs Pro (lib/plan-gate.js): say so once, point at Pro.
+if(new URLSearchParams(location.search).get('upgrade')==='pro'){
+  setTimeout(()=>{
+    const g=document.getElementById('plansGrid'); if(!g) return;
+    const n=document.createElement('div'); n.setAttribute('role','status');
+    n.style.cssText='margin:0 0 14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(204,255,0,.35);font-size:14px;line-height:1.45';
+    n.textContent='Your team is growing. Pro lets Lola book every stylist, with win-back campaigns and platform sync. Everyone already on the book stays as is.';
+    g.parentNode.insertBefore(n,g); g.scrollIntoView({behavior:'smooth',block:'start'});
+  },600);
+}
 if(new URLSearchParams(location.search).get('success')){
   setTimeout(()=>msg('portalMsg','Subscription active. Lola is running.',true),500);
 }

@@ -68,6 +68,11 @@
       "permanent": false
     },
     {
+      "source": "/r/:slug",
+      "destination": "/onboarding?ref=:slug",
+      "permanent": false
+    },
+    {
       "source": "/sign-in",
       "destination": "/login",
       "permanent": false
@@ -161,6 +166,10 @@
     {
       "path": "/api/cron/studio-followup",
       "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/cron/lola-receipt",
+      "schedule": "29 * * * 1"
     },
     {
       "path": "/api/cron/lola-heal",

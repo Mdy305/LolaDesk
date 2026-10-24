@@ -743,6 +743,7 @@ async function save(){
     if(photoData) body.photo_data_url = photoData;
     const r = await fetch('/api/staff', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(()=>({}));
+    if(d.error === 'upgrade_required'){ showUpgrade(err, d); return; }
     if(!d.ok) throw new Error(d.error || 'Save failed');
     if(!editId && typeof window.lolaPulse === 'function') window.lolaPulse(`${first} added to the team`);
     err.textContent = 'Saved.';
@@ -755,6 +756,16 @@ async function save(){
   }finally{
     btn.disabled = false; btn.textContent = prev;
   }
+}
+
+// Paid Starter is two stylists; the server says when a second needs Pro.
+function showUpgrade(el, d){
+  el.className = 'err';
+  el.innerHTML = '';
+  const p = document.createElement('span'); p.textContent = (d.message || 'Adding your team is part of Pro.') + ' ';
+  const a = document.createElement('a'); a.href = d.upgrade_url || '/subscription?upgrade=pro'; a.textContent = 'Move to Pro →';
+  a.style.cssText = 'color:var(--accent2,#ccff00);font-weight:600;white-space:nowrap';
+  el.append(p, a);
 }
 
 async function del(id){
@@ -773,6 +784,7 @@ async function reactivate(id){
     const tok = await authToken();
     const r = await fetch('/api/staff', { method:'POST', headers:{ ...hdr(tok), 'Content-Type':'application/json' }, body: JSON.stringify({ id, name: s.name || fullName(s), role: s.role || 'Stylist', is_active: true }) });
     const d = await r.json().catch(()=>({}));
+    if(d.error === 'upgrade_required'){ location.href = d.upgrade_url || '/subscription?upgrade=pro'; return; }
     if(!d.ok) throw new Error(d.error || 'Could not reactivate');
     if(typeof window.lolaPulse === 'function') window.lolaPulse(`${firstName(s)} is bookable again`);
     load();

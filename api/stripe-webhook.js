@@ -258,6 +258,14 @@ async function handleAccountEvent(c, event) {
       if (cur === 'canceled' && subId && t.stripe_subscription_id && subId !== t.stripe_subscription_id) break;
       if (subId && t.stripe_subscription_id && subId !== t.stripe_subscription_id) break;
       await saveTenant(c, t.id, { subscription_status: 'active', past_due_since: null });
+      // Give a month, get a month (lib/referrals.js): credited once, on a real payment.
+      if (Number(obj.amount_paid) > 0) {
+        try {
+          const { creditReferral } = await import('./lib/referrals.js');
+          const { notifyOwner } = await enforce();
+          await creditReferral(c, { ...t, subscription_status: 'active', stripe_customer_id: t.stripe_customer_id || obj.customer }, { stripeApi, notify: notifyOwner });
+        } catch (e) { console.error('[stripe-webhook] referral credit failed:', e?.message || e); }
+      }
       break;
     }
     case 'invoice.payment_failed': {
@@ -269,6 +277,11 @@ async function handleAccountEvent(c, event) {
       const patch = { subscription_status: 'past_due' };
       if (!t.past_due_since) patch.past_due_since = new Date().toISOString();
       await saveTenant(c, t.id, patch);
+      // Tell the owner, once per invoice (Stripe retries the card and redelivers events).
+      try {
+        const { dunningNotice } = await enforce();
+        await dunningNotice(c, { ...t, ...patch }, obj.id);
+      } catch (e) { console.error('[stripe-webhook] dunning notice failed:', e?.message || e); }
       break;
     }
     case 'charge.dispute.created': {
