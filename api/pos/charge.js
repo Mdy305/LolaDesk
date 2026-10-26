@@ -67,10 +67,14 @@ export default async function handler(req, res) {
       stripeId = link.id;
       url = link.url;
     } else if (method === 'card' || method === 'tap') {
-      // No card reader / Payment Element is connected yet: creating an
-      // unconfirmed PaymentIntent here recorded a "sale" while no card was
-      // ever charged. Refuse honestly until Terminal is wired.
-      return res.status(400).json({ ok: false, error: 'Card-present payments are not connected yet. Use "Send payment link" or record cash.' });
+      // The front-desk reader (lib/terminal.js): the sale goes straight to the paired
+      // reader; the money goes to the salon's account with LolaDesk's fee. The row is
+      // 'pending_card' until the reader reports paid (status poll or webhook).
+      if (!body.reader_id) return res.status(400).json({ ok: false, error: 'Pair a card reader first, or send a payment link.' });
+      const { startReaderSale } = await import('../lib/terminal.js');
+      const sale = await startReaderSale(tenant, { readerId: body.reader_id, amountCents: total, description, metadata: { client_id: client?.id || '', client_name: (client?.name || 'Walk-in').slice(0, 128), tip_cents: String(body.tip_cents || 0) } });
+      if (!sale.ok) return res.status(400).json({ ok: false, error: sale.say });
+      stripeId = sale.payment_intent;
     } else {
       // Other methods: PaymentIntent confirmed elsewhere.
       const pi = await s.createPaymentIntent({
@@ -120,7 +124,7 @@ export default async function handler(req, res) {
       // email delivery could go here if you have api/lib/email-templates.js + a sender.
     }
 
-    return res.json({ ok: true, data: { id: saleId, stripe_id: stripeId, url, method } });
+    return res.json({ ok: true, data: { id: saleId, stripe_id: stripeId, url, method, reader_id: body.reader_id || null } });
   } catch (e) {
     console.error('[pos/charge]', e?.message);
     return res.status(500).json({ ok: false, error: String(e?.message || e) });

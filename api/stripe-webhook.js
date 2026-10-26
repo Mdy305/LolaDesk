@@ -292,6 +292,21 @@ async function handleAccountEvent(c, event) {
       const full = obj.refunded === true || (Number(obj.amount_refunded) >= Number(obj.amount) && Number(obj.amount) > 0);
       if (full) await c.from('deposits').update({ status: 'refunded' }).eq('stripe_payment_intent_id', pi).in('status', ['paid', 'kept', 'refunding', 'disputed', 'flagged']);
       await c.from('payments').update({ refunded: true, status: full ? 'refunded' : 'partially_refunded' }).eq('stripe_id', pi);
+      if (full) { try { await c.from('pos_transactions').update({ status: 'refunded', refunded_at: new Date().toISOString() }).eq('stripe_id', pi); } catch (_) {} }
+      break;
+    }
+    // A front-desk reader sale (lib/terminal.js): the checkout row → paid, even if nobody was watching the screen.
+    case 'payment_intent.succeeded': {
+      if (obj.metadata?.pos_sale !== 'true' || !obj.metadata?.tenant_id) break;
+      const { markPosPaid } = await import('./lib/terminal.js');
+      await markPosPaid(c, obj);
+      break;
+    }
+    case 'payment_intent.payment_failed':
+    case 'payment_intent.canceled': {
+      if (obj.metadata?.pos_sale !== 'true') break;
+      const st = event.type === 'payment_intent.canceled' ? 'canceled' : 'failed';
+      try { await c.from('pos_transactions').update({ status: st }).eq('stripe_id', obj.id).neq('status', 'paid'); } catch (_) {}
       break;
     }
   }

@@ -139,6 +139,10 @@ export function routeOwnerIntent(input) {
     return { tool: 'today_brief', args: { date: dayOf(t) || 'today' } };
   }
 
+  // ── money ready now (lib/money.js) ──
+  if (/\b(pay me (?:out|now)|cash (?:me )?out|send (?:it|the money|my money|that) to (?:my|the) bank|take (?:my )?money out|instant payout)\b/.test(t)) return { tool: 'pay_me_now', args: {} };
+  if (/\b(what'?s ready (?:for me|to (?:send|take out))|how much can i (?:take out|cash out|withdraw|pay out)|what'?s (?:my|the) balance|how much (?:is|do i have) in (?:my )?(?:stripe|balance))\b/.test(t)) return { tool: 'money_today', args: {} };
+
   // ── deposits: did the money reach the bank? ──
   if (/\b(deposits?|payouts?|bank (?:transfers?|deposits?)|transfers? (?:to|from) (?:my|the) (?:bank|account)|did (?:all )?(?:my|the) money (?:arrive|come in|land)|was i paid|did (?:square|i) (?:pay|get paid)|reconcil(?:e|iation)|money in (?:my|the) (?:bank|account))\b/.test(t) && !/\b(take|collect|require|ask for|charge) (?:a )?deposit|\b(booking|client'?s?|no.?show|card on file|turn (?:on|off)|enable|disable|policy|refund (?:a|the|her|his) deposit)\b/.test(t)) {
     const days = /\b(year|12 months|365)\b/.test(t) ? 365 : /\b(90 days|quarter|3 months)\b/.test(t) ? 90 : 30;

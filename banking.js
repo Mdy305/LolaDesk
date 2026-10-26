@@ -122,6 +122,44 @@ const LolaBank = {
     }
   },
 
+  /* ── money home (api/money.js) ──────────────────────────────── */
+  async loadMoney(){
+    const { ok, data } = await this.api('/api/money');
+    const set = (id, v) => { const e = this.$(id); if(e) e.textContent = v; };
+    if(!ok || !data || data.connected === false) return;
+    this.state.money = data;
+    const t = data.today || {};
+    set('mhReady', this.money(data.ready_cents || 0, 'usd'));
+    set('mhToday', t.clients ? `From ${t.clients} client${t.clients === 1 ? '' : 's'} today` : 'Nothing new through LolaDesk today yet');
+    set('mhDeposits', this.money(t.deposits_cents || 0, 'usd'));
+    set('mhNoShow', this.money(t.no_show_cents || 0, 'usd'));
+    set('mhCard', this.money(t.card_sales_cents || 0, 'usd'));
+    set('mhNext', data.next_payout ? `${this.money(data.next_payout.amount_cents, 'usd')} · ${new Date(data.next_payout.arrives).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}` : 'None scheduled');
+    const btn = this.$('mhPay');
+    const can = (data.ready_cents || 0) >= 100 && data.payouts_enabled !== false;
+    if(btn){ btn.disabled = !can; btn.textContent = data.instant ? 'Get paid now' : 'Pay out now'; }
+    set('mhFine', !can ? (data.pending_cents ? `${this.money(data.pending_cents, 'usd')} is still clearing` : '') :
+      data.instant ? `In your bank in about 30 minutes${data.instant_fee_cents ? ` · instant fee ${this.money(data.instant_fee_cents, 'usd')}` : ''}` : 'Arrives with your bank’s normal timing (1–2 business days)');
+  },
+  async getPaidNow(){
+    const btn = this.$('mhPay'), msg = this.$('mhMsg');
+    const m = this.state.money || {};
+    if(!btn || btn.disabled) return;
+    // Two taps: the first shows exactly what will be sent; the second sends it.
+    if(btn.dataset.sure !== '1'){
+      btn.dataset.sure = '1';
+      btn.textContent = `Send ${this.money(m.ready_cents || 0, 'usd')} to my bank`;
+      setTimeout(() => { if(btn.dataset.sure === '1'){ btn.dataset.sure = ''; btn.textContent = m.instant ? 'Get paid now' : 'Pay out now'; } }, 5000);
+      return;
+    }
+    btn.dataset.sure = ''; btn.disabled = true; btn.textContent = 'Sending…';
+    if(!this.state.payoutRequest) this.state.payoutRequest = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const { ok, data } = await this.api('/api/money', { method: 'POST', body: JSON.stringify({ action: 'payout', request_id: this.state.payoutRequest }) });
+    if(msg){ msg.className = 'mh-msg ' + (ok && data.ok ? 'ok' : 'err'); msg.textContent = (data && data.say) || (ok ? 'Sent.' : 'That didn’t go through.'); }
+    if(ok && data.ok) this.state.payoutRequest = null;
+    await Promise.all([this.loadMoney(), this.loadBalance(), this.loadPayouts(6)]);
+  },
+
   /* ── loaders ────────────────────────────────────────────────── */
   async loadStatus(){
     const { ok, data } = await this.api('/api/stripe/connect/status');

@@ -81,6 +81,8 @@ export const OWNER_TOOLS = [
   fn('mark_no_show', "Mark a client's booking as a no-show.", { client: clientArg, date: dateArg, confirmed: confirmedArg }, ['client']),
   fn('add_to_waitlist', 'Put a client on the waitlist for the next opening.', { client: clientArg, preferred_date: dateArg, service: { type: 'string' } }, ['client']),
   fn('fill_gap', 'Offer an open slot to waitlisted and lapsed clients by text.', { date: dateArg, time: { type: 'string' }, duration_minutes: { type: 'integer' }, confirmed: confirmedArg }, ['date', 'time']),
+  fn('money_today', "The salon's money right now: what's ready to send to the bank, whether it can arrive in about 30 minutes, what Lola collected today (deposits, no-show fees, card sales at the front desk) and the next automatic payout. Use for 'how much did I make today', 'what's in my account', 'how much can I take out'."),
+  fn('pay_me_now', "Send the money that's ready to the owner's bank now (about 30 minutes when their debit card or bank supports it). Always call with confirmed=false first; the owner confirms the amount.", { confirmed: confirmedArg }),
   fn('away_brief', "What happened while the owner was away: calls, who needs a call back, bookings made and cancelled. Use for 'what did I miss', 'anything I should know'.", { hours: { type: 'integer', description: 'How far back, in hours (default 12).' } }),
   fn('set_alerts', 'Turn owner text alerts on or off (Lola texts the owner when a caller asks for them, is unhappy or was missed, or a booking in the next 48h is cancelled), and/or set the phone they go to.', { enabled: { type: 'boolean' }, phone: { type: 'string', description: "Owner's mobile number for alerts." } }),
   fn('learn_business', "Read the salon's website and/or a menu the owner pastes, and learn services, prices, team, hours, FAQ, brand voice and marketing ideas. Use for 'learn my website', 'read my site', or when the owner pastes a price list.", { website: { type: 'string' }, notes: { type: 'string', description: 'Menu, prices or anything the owner pasted.' } }),
@@ -142,7 +144,7 @@ export function isBareYes(t) { return /^(?:yes|y|yep|yeah|confirm|confirmed|do i
 export function isBareNo(t) { return /^(?:no|n|nope|cancel|stop[- ]that)$/.test(bare(t)); }
 
 /** Tools that only read — the only ones an UNVERIFIED channel may run. */
-export const OWNER_READ_TOOLS = new Set(['verify_deposits', 'business_insights', 'open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
+export const OWNER_READ_TOOLS = new Set(['money_today', 'verify_deposits', 'business_insights', 'open_questions', 'support_status', 'today_brief', 'revenue_report', 'find_client', 'list_bookings', 'campaign_report', 'away_brief', 'confirmation_status', 'open_page']);
 
 export async function ownerSystemPrompt(tenant) {
   const tz = await tenantTz(tenant.id);
@@ -156,6 +158,7 @@ export async function ownerSystemPrompt(tenant) {
     'When the owner answers something clients asked you (or says "tell clients that…"), call teach_lola with the question and the answer — from then on you answer it on every call, text and the website.',
     'If LolaDesk itself is not working, something is confusing, or they want a person from LolaDesk, call contact_support with the problem in their own words (plus what you saw in this conversation); it is previewed and sent when they say yes. For "did support answer" / "my tickets" call support_status.',
     'For texts, calls, cancellations, moves, no-shows, gap fills and blocking time, call the tool with confirmed=false; the system shows the owner a preview and asks them to confirm.',
+    'For money right now ("how much did I make today", "what can I take out") call money_today; for "pay me now" / "send it to my bank" call pay_me_now with confirmed=false.',
     'For revenue ahead ("locked in", "booked for next week") call revenue_report with the matching period (next_week = Monday to Sunday of next week) or from/to dates.',
     'You also set the salon up, by conversation: their phone line (a new LolaDesk number, forwarding their current number, or moving/porting it), business-texting registration, and Instagram / Facebook Messenger / WhatsApp. Use the setup tools (start with setup_status or channels_status). Ask for missing details one or two at a time, in plain words; never show IDs or technical terms. Everything is included in their plan — never quote fees.',
     'You are also their marketing manager and business analyst: for sales, trends, services, clients, staff, busiest days, finances or how to grow, call business_insights (their real Square sales) and answer with the numbers that matter plus 2-3 specific moves for THIS business; when they want to act on a move, call launch_campaign with that move’s segment, message and name (its name lets Lola measure what it brought back in Square money), confirmed=false first. The Business page shows all of it.',
@@ -498,6 +501,29 @@ async function runOwnerToolInner({ tenant, name, args = {}, req }) {
         const out = await learnBusiness(c, tenant, { website: args.website, notes: args.notes });
         try { (await import('./owner-awareness.js')).forgetTenant(tenant.id); } catch { /* cache only */ }
         return { ok: !!out.ok, say: out.say, suggestions: out.suggestions, ui: out.ok && out.report && (out.report.services_added || out.report.team_added) ? { refresh: 'services' } : undefined };
+      }
+
+      case 'money_today': {
+        const { moneySnapshot, usd } = await import('./money.js');
+        const m = await moneySnapshot(tenant.id, { c, tz });
+        if (!m.connected) return { ok: true, say: "Payments aren't on yet. Turn them on in Payments and I'll take deposits and stop no-shows for you.", money: m };
+        const t = m.today || {};
+        const got = [t.deposits_cents && `${usd(t.deposits_cents)} in deposits`, t.no_show_cents && `${usd(t.no_show_cents)} in no-show fees`, t.card_sales_cents && `${usd(t.card_sales_cents)} at the front desk`].filter(Boolean);
+        const today = got.length ? `Today I collected ${got.join(', ')}.` : 'Nothing has come in through LolaDesk yet today.';
+        const ready = m.ready_cents >= 100 ? ` ${usd(m.ready_cents)} is ready${m.instant ? ' and can be in your bank in about 30 minutes' : ' to send to your bank'}.` : '';
+        const next = m.next_payout ? ` Your next automatic payout of ${usd(m.next_payout.amount_cents)} is already on its way.` : '';
+        return { ok: true, say: today + ready + next, money: m };
+      }
+
+      case 'pay_me_now': {
+        const { moneySnapshot, payOut, usd } = await import('./money.js');
+        // Confirmed: send it. The owner already heard the amount.
+        if (confirmed) return { ...(await payOut(tenant.id, { c, idempotencyKey: `owner_payout_${tenant.id}_${new Date().toISOString().slice(0, 13)}` })), ui: { refresh: 'banking' } };
+        const m = await moneySnapshot(tenant.id, { c, tz });
+        if (!m.connected) return { ok: false, say: 'Turn on payments first. It takes about 3 minutes on the Payments page.' };
+        if (!(m.ready_cents >= 100)) return { ok: false, say: m.pending_cents ? `Nothing's ready yet. ${usd(m.pending_cents)} is still clearing.` : 'There’s nothing to send yet.' };
+        const how = m.instant ? `It lands in about 30 minutes${m.instant_fee_cents ? ` (instant fee ${usd(m.instant_fee_cents)}, already taken out)` : ''}.` : 'It arrives with your bank’s normal timing.';
+        return park(tenant.id, name, {}, `Send ${usd(m.ready_cents)} to your bank now? ${how}`);
       }
 
       case 'away_brief': {
