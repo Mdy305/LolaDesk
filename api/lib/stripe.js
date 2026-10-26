@@ -319,6 +319,10 @@ export async function createPaymentLink({ amountCents, description, successUrl, 
   if(dest){
     body.transfer_data = { destination: dest };
     body.on_behalf_of = dest;
+    // LolaDesk's fee (lib/payments-fee.js). Off unless PAYMENTS_FEE_* is set.
+    const { feeFor } = await import('./payments-fee.js');
+    const fee = feeFor(amountCents);
+    if(fee > 0) body.application_fee_amount = fee;
   }
   const link = await stripeRest('/payment_links', 'POST', body);
   return { id: link.id, url: link.url, destination: dest || null };

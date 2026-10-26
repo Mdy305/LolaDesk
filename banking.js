@@ -127,6 +127,9 @@ const LolaBank = {
     const { ok, data } = await this.api('/api/stripe/connect/status');
     if(!ok){ this.state.connected = false; return; }
     this.state.connected = !!data.connected;
+    // LolaDesk's card fee, shown before they connect (lib/payments-fee.js). Hidden when there's none.
+    const fee = this.$('connectFee');
+    if(fee){ const l = data.fee && data.fee.on && data.fee.label; fee.hidden = !l; if(l) fee.textContent = 'Card fee: ' + l + ' on deposits, no-show fees and payments Lola collects. No monthly cost.'; }
     this.state.sub_state = data.sub_state || 'unknown';
     this.state.account_id = data.account_id || null;
   },
