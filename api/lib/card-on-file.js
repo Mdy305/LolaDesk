@@ -138,6 +138,7 @@ export async function chargeSavedCard({ tenantId, clientId, amountCents, descrip
     metadata: { tenant_id: tenantId, client_id: clientId, ...metadata },
   };
   body.transfer_data = { destination: dest }; body.on_behalf_of = dest;
+  { const { feeFor } = await import('./payments-fee.js'); const fee = feeFor(body.amount); if (fee > 0) body.application_fee_amount = fee; }
   const headers = idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {};
   const cardError = (e) => Number(e?.status) === 402 || e?.type === 'card_error' || /authentication_required|card_declined|expired_card|incorrect_cvc|insufficient_funds/i.test(String(e?.code || '') + String(e?.decline_code || ''));
   for (let attempt = 0; attempt < 2; attempt++) {

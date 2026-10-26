@@ -1,4 +1,10 @@
 // GET /api/stripe/connect/status
+// LolaDesk's fee on deposits and no-show fees, so the salon sees it before turning payments on.
+async function feeInfo() {
+  try { const { paymentsFee, feeLabel } = await import('../../lib/payments-fee.js'); const p = paymentsFee(); return { on: p.on, percent: p.percent, cents: p.cents, label: feeLabel(p) }; }
+  catch (_) { return { on: false, label: '' }; }
+}
+
 export default async function handler(req, res) {
   let cors, bearer, getUserFromToken, resolveTenantForUser, dbFn, stripePlatform, connectAccount;
   try {
@@ -23,7 +29,7 @@ export default async function handler(req, res) {
     if (!account) {
       return res.json({
         ok: true,
-        data: { connected: false, charges_enabled: false, payouts_enabled: false, business_name: tenant.name || '', requirements: null }
+        data: { connected: false, charges_enabled: false, payouts_enabled: false, business_name: tenant.name || '', requirements: null, fee: await feeInfo() }
       });
     }
 
@@ -41,6 +47,7 @@ export default async function handler(req, res) {
     return res.json({
       ok: true,
       data: {
+        fee: await feeInfo(),
         connected: true,
         charges_enabled: !!remote.charges_enabled,
         payouts_enabled: !!remote.payouts_enabled,

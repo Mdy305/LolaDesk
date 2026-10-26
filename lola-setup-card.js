@@ -26,7 +26,7 @@
     location.href = '/dashboard?setup=1';
   }
 
-  function rows(setup, ch) {
+  function rows(setup, ch, pay) {
     const t = setup && setup.telecom || {};
     const line = t.line || {}, tx = t.texting || {};
     const out = [];
@@ -36,6 +36,9 @@
     out.push({ key: 'current', title: 'Your current salon number', done: keepDone, optional: true,
       say: port ? (port.say || 'Moving your number to LolaDesk…') : fwd === 'verified' ? 'Calls you miss forward to Lola.' : 'Keep your number: forward missed calls to Lola, or move it to LolaDesk.',
       ask: port ? 'How is moving my number going?' : 'I want to keep my current salon number — help me forward it or move it to LolaDesk.' });
+    // Payments: deposits and no-show fees need it. Opens the Payments page (Stripe sign-up there).
+    if (pay) out.push({ key: 'payments', title: 'Take deposits & no-show fees', done: !!pay.charges_enabled, href: '/banking',
+      say: pay.charges_enabled ? 'Deposits and no-show fees go straight to your bank.' : pay.connected ? 'Finish your Stripe details to start getting paid.' : 'Stop no-shows: Lola takes a deposit when a new client books. About 3 minutes.' });
     out.push({ key: 'texting', title: 'Business texting', done: tx.state === 'approved', say: tx.say || 'Register your business so carriers deliver Lola’s texts.', ask: tx.state === 'awaiting_code' ? 'I got the texting verification code.' : 'Register my business for texting.' });
     if (ch) {
       out.push({ key: 'instagram', title: 'Instagram DMs', done: !!(ch.instagram && ch.instagram.on), optional: true, soon: ch.instagram && ch.instagram.available === false, say: ch.instagram && ch.instagram.say, ask: 'Connect my Instagram.' });
@@ -65,9 +68,9 @@
   }
 
   async function render(host) {
-    const [setup, ch] = await Promise.all([get('/api/setup'), get('/api/channels')]);
+    const [setup, ch, ps] = await Promise.all([get('/api/setup'), get('/api/channels'), get('/api/stripe/connect/status')]);
     if (!setup || setup.ok === false) { host.innerHTML = ''; return; }
-    const list = rows(setup, ch && ch.ok !== false ? ch : null);
+    const list = rows(setup, ch && ch.ok !== false ? ch : null, ps && ps.ok && ps.data ? ps.data : null);
     const required = list.filter((r) => !r.optional);
     const left = list.filter((r) => !r.done && !r.soon);
     if (!left.length) { host.innerHTML = ''; return; }
@@ -79,7 +82,7 @@
       ${list.map((r) => `<div class="lsc-row${r.done ? ' done' : ''}">
         <div class="lsc-dot" aria-hidden="true">${r.done ? '✓' : ''}</div>
         <div><div class="lsc-t">${esc(r.title)}</div><div class="lsc-s">${esc(r.say || '')}</div></div>
-        ${r.done ? '<span></span>' : `<button class="lsc-b" data-ask="${esc(r.ask)}"${r.soon ? ' disabled' : ''}>${r.soon ? 'Soon' : 'Do it with Lola'}</button>`}
+        ${r.done ? '<span></span>' : r.href ? `<a class="lsc-b" href="${esc(r.href)}" style="text-decoration:none;display:inline-flex;align-items:center">Turn on</a>` : `<button class="lsc-b" data-ask="${esc(r.ask)}"${r.soon ? ' disabled' : ''}>${r.soon ? 'Soon' : 'Do it with Lola'}</button>`}
       </div>`).join('')}
       <button class="lsc-all" data-ask="Let's finish setting up my salon — what's next?">Finish setup with Lola</button>
     </section>`;
