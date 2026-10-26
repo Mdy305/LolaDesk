@@ -162,6 +162,74 @@ const LolaBank = {
     await Promise.all([this.loadMoney(), this.loadBalance(), this.loadPayouts(6)]);
   },
 
+  /* ── transactions (api/money.js ?view=transactions) ─────────── */
+  async loadTx(range){
+    this.state.txRange = range || this.state.txRange || 'today';
+    document.querySelectorAll('.tx-range button').forEach((b) => b.classList.toggle('on', b.dataset.range === this.state.txRange));
+    const list = this.$('txList'), tots = this.$('txTotals');
+    if(!list) return;
+    const { ok, data } = await this.api('/api/money?view=transactions&range=' + encodeURIComponent(this.state.txRange));
+    if(!ok || !data || !Array.isArray(data.rows)){ list.innerHTML = '<div class="tx-empty">Couldn’t load transactions. Try again in a moment.</div>'; if(tots) tots.innerHTML = ''; return; }
+    this.state.tx = data.rows;
+    const t = data.totals || {};
+    const m = (c) => this.money(c || 0, 'usd');
+    if(tots) tots.innerHTML = [['Collected', m(t.gross_cents)], ['Tips', m(t.tips_cents)], ['LolaDesk fees', m(t.fees_cents)], ['You receive', m(t.net_cents)]]
+      .map(([k, v]) => `<div class="tx-tot"><small>${k}</small><b>${v}</b></div>`).join('');
+    if(!data.rows.length){ list.innerHTML = `<div class="tx-empty">${this.state.txRange === 'today' ? 'No payments yet today.' : 'No payments in this period.'}</div>`; return; }
+    list.innerHTML = data.rows.map((r, i) => this.txRowHtml(r, i)).join('');
+  },
+  txRowHtml(r, i){
+    const esc = (v) => this.esc(v == null ? '' : String(v));
+    const m = (c) => this.money(c || 0, 'usd');
+    const when = new Date(r.created);
+    const time = when.toLocaleString('en-US', this.state.txRange === 'today' ? { hour:'numeric', minute:'2-digit' } : { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    const ST = { paid:'Paid', refunded:'Refunded', partially_refunded:'Partly refunded', disputed:'Disputed', failed:'Failed', canceled:'Canceled', pending:'Waiting' };
+    const card = r.card ? `${r.card.wallet ? esc({ apple_pay:'Apple Pay', google_pay:'Google Pay' }[r.card.wallet] || r.card.wallet) + ' · ' : ''}${esc((r.card.brand || 'Card').replace(/^./, (c) => c.toUpperCase()))} •••• ${esc(r.card.last4)}` : '—';
+    const appt = r.booking ? [r.booking.service, r.booking.stylist && ('with ' + r.booking.stylist), r.booking.start_time && new Date(r.booking.start_time).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })].filter(Boolean).join(' · ') : '';
+    const kv = (k, v, cls) => v ? `<div class="tx-kv${cls ? ' ' + cls : ''}"><span>${k}</span><b>${v}</b></div>` : '';
+    return `<div class="tx-row" role="listitem">
+      <button type="button" class="tx-line" aria-expanded="false" onclick="LolaBank.toggleTx(${i}, this)">
+        <span class="tx-who">${esc(r.client_name || r.description || 'Client')}</span><span class="tx-amt">${m(r.amount_cents)}</span>
+        <span class="tx-what">${esc(r.kind_label)} · ${esc(time)}</span><span class="tx-st ${esc(r.status)}">${ST[r.status] || esc(r.status)}</span>
+      </button>
+      <div class="tx-detail" id="txd-${i}" hidden>
+        ${kv('What', esc(r.kind_label) + (r.description && r.kind === 'pos' ? ' · ' + esc(r.description) : ''))}
+        ${kv('Appointment', esc(appt))}
+        ${kv('When', esc(when.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })))}
+        ${kv('Paid with', card)}
+        ${kv('Amount', m(r.amount_cents))}
+        ${r.tip_cents ? kv('Tip', m(r.tip_cents)) : ''}
+        ${r.fee_cents ? kv('LolaDesk fee', '−' + m(r.fee_cents)) : ''}
+        ${r.refunded_cents ? kv('Refunded', '−' + m(r.refunded_cents)) : ''}
+        ${kv('You receive', m(r.net_cents), 'net')}
+        ${r.failure ? kv('Why it failed', esc(r.failure)) : ''}
+        <div class="tx-actions">
+          ${r.receipt_url ? `<a href="${esc(r.receipt_url)}" target="_blank" rel="noopener">Receipt</a>` : ''}
+          ${r.client_id ? `<a href="/client.html?id=${encodeURIComponent(r.client_id)}">Client</a>` : ''}
+          ${r.status === 'paid' ? `<button type="button" class="danger" onclick="LolaBank.refundTx(${i}, this)">Refund</button>` : ''}
+        </div>
+        <div class="tx-msg" id="txm-${i}" role="status"></div>
+      </div>
+    </div>`;
+  },
+  toggleTx(i, btn){
+    const d = this.$('txd-' + i); if(!d) return;
+    d.hidden = !d.hidden; btn.setAttribute('aria-expanded', String(!d.hidden));
+  },
+  async refundTx(i, btn){
+    const r = (this.state.tx || [])[i]; if(!r) return;
+    const msg = this.$('txm-' + i);
+    if(btn.dataset.sure !== '1'){
+      btn.dataset.sure = '1'; btn.textContent = `Refund ${this.money(r.amount_cents, 'usd')} to the client`;
+      setTimeout(() => { if(btn.dataset.sure === '1'){ btn.dataset.sure = ''; btn.textContent = 'Refund'; } }, 5000);
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Refunding…';
+    const { ok, data } = await this.api('/api/money', { method:'POST', body: JSON.stringify({ action:'refund', payment_intent: r.id }) });
+    if(msg){ msg.textContent = (data && data.say) || (ok ? 'Refunded.' : 'That didn’t go through.'); }
+    if(ok && data.ok){ setTimeout(() => { this.loadTx(); this.loadMoney(); }, 1200); } else { btn.disabled = false; btn.dataset.sure = ''; btn.textContent = 'Refund'; }
+  },
+
   /* ── loaders ────────────────────────────────────────────────── */
   async loadStatus(){
     const { ok, data } = await this.api('/api/stripe/connect/status');

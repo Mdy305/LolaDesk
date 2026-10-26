@@ -136,3 +136,60 @@ test('Lola hears money phrases', () => {
   assert.equal(routeOwnerIntent('did my deposits arrive')?.tool, 'verify_deposits');
   assert.equal(routeOwnerIntent('how much did I make today')?.tool, 'revenue_report');
 });
+
+// ── Transactions in detail ─────────────────────────────────────────
+const { txFromIntent, listTransactions, refundTransaction } = await import('../api/lib/money.js');
+
+test('a deposit paid with Apple Pay: amount, LolaDesk fee, what the salon receives', () => {
+  const r = txFromIntent({ id: 'pi_d', created: 1792990000, status: 'succeeded', amount: 5000, amount_received: 5000, application_fee_amount: 200,
+    metadata: { tenant_id: 't1', kind: 'deposit', booking_id: 'b1' },
+    latest_charge: { amount_refunded: 0, receipt_url: 'https://pay.stripe.com/r/1', payment_method_details: { card: { brand: 'visa', last4: '4242', wallet: { type: 'apple_pay' } } } } });
+  assert.equal(r.kind_label, 'Booking deposit');
+  assert.deepEqual([r.amount_cents, r.fee_cents, r.net_cents, r.status], [5000, 200, 4800, 'paid']);
+  assert.deepEqual(r.card, { brand: 'visa', last4: '4242', wallet: 'apple_pay' });
+});
+
+test('reader sale with tip, partly refunded; salon-account payments carry no LolaDesk fee', () => {
+  const r = txFromIntent({ id: 'pi_p', created: 1, status: 'succeeded', amount: 21000, amount_received: 21000, application_fee_amount: 744,
+    metadata: { pos_sale: 'true', payment_method: 'card', tip_cents: '3000', client_name: 'Ana Ruiz' },
+    latest_charge: { amount_refunded: 5000, payment_method_details: { card_present: { brand: 'mastercard', last4: '1111' } } } });
+  assert.deepEqual([r.kind, r.tip_cents, r.net_cents, r.status, r.card.last4], ['pos', 3000, 21000 - 744 - 5000, 'partially_refunded', '1111']);
+  const d = txFromIntent({ id: 'pi_x', created: 1, status: 'succeeded', amount: 1000, amount_received: 1000, application_fee_amount: 99, metadata: {} }, { source: 'account' });
+  assert.equal(d.fee_cents, 0);
+});
+
+test('transactions: both Stripe accounts, newest first, client and appointment filled in, totals', async () => {
+  fake.reset();
+  fake.seed('stripe_connect_accounts', [{ tenant_id: 't1', stripe_account_id: 'acct_salon' }]);
+  fake.seed('bookings', [{ id: 'b1', tenant_id: 't1', client_id: 'c1', service: 'Balayage', stylist: 'Ana', start_time: '2026-10-30T18:00:00Z' }]);
+  fake.seed('clients', [{ id: 'c1', tenant_id: 't1', first_name: 'Sarah', last_name: 'Cole' }]);
+  const now = Math.floor(Date.now() / 1000);
+  const queries = [];
+  const api = { paymentIntents: { search: async (p, o) => {
+    queries.push([p.query, o?.stripeAccount || null]);
+    if (o?.stripeAccount) return { data: [{ id: 'pi_old', created: now - 60, status: 'succeeded', amount: 1500, amount_received: 1500, metadata: { tenant_id: 't1' }, latest_charge: {} }] };
+    return { data: [{ id: 'pi_dep', created: now - 10, status: 'succeeded', amount: 5000, amount_received: 5000, application_fee_amount: 200, metadata: { tenant_id: 't1', kind: 'deposit', booking_id: 'b1' }, latest_charge: {} }] };
+  } } };
+  const out = await listTransactions('t1', { c: fake, api, since: new Date(Date.now() - 864e5) });
+  assert.match(queries[0][0], /^metadata\['tenant_id'\]:'t1' AND created>\d+$/);
+  assert.deepEqual(queries.map((q) => q[1]).sort(), [null, 'acct_salon'].sort());
+  assert.deepEqual(out.rows.map((r) => r.id), ['pi_dep', 'pi_old']);
+  assert.equal(out.rows[0].client_name, 'Sarah Cole');
+  assert.equal(out.rows[0].booking.service, 'Balayage');
+  assert.deepEqual([out.totals.count, out.totals.gross_cents, out.totals.fees_cents, out.totals.net_cents], [2, 6500, 200, 6300]);
+});
+
+test('refund: only the salon’s own paid payment; deposits pull the money back from the salon', async () => {
+  fake.reset();
+  const made = [];
+  const api = {
+    paymentIntents: { retrieve: async (id) => ({ pi_mine: { id: 'pi_mine', status: 'succeeded', metadata: { tenant_id: 't1' }, transfer_data: { destination: 'acct_salon' } }, pi_theirs: { id: 'pi_theirs', status: 'succeeded', metadata: { tenant_id: 't2' } } }[id] || (() => { throw new Error('no'); })()) },
+    refunds: { create: async (p, o) => { made.push([p, o]); return { amount: 5000 }; } },
+  };
+  assert.equal((await refundTransaction('t1', 'pi_theirs', { c: fake, api })).ok, false);
+  assert.equal(made.length, 0);
+  const r = await refundTransaction('t1', 'pi_mine', { c: fake, api });
+  assert.equal(r.ok, true);
+  assert.equal(made[0][0].reverse_transfer, true);
+  assert.equal(made[0][1].idempotencyKey, 'owner_refund_pi_mine');
+});

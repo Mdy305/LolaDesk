@@ -127,3 +127,108 @@ export async function payOut(tenantId, { c = db(), api = null, idempotencyKey = 
     return { ok: false, say: `Stripe didn't send it: ${String(e?.message || e).slice(0, 140)}` };
   }
 }
+
+// ── Transactions: every payment LolaDesk took for the salon, in detail ──────
+const KIND_LABEL = { deposit: 'Booking deposit', no_show_fee: 'No-show fee', pos: 'Card at the front desk', link: 'Pay link', payment: 'Payment' };
+
+/** Pure: one Stripe PaymentIntent (with latest_charge) → the row the salon sees. Exported for tests. */
+export function txFromIntent(pi, { source = 'platform' } = {}) {
+  const md = pi.metadata || {};
+  const ch = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : {};
+  const pmd = ch.payment_method_details || {};
+  const card = pmd.card_present || pmd.card || pmd.interac_present || {};
+  const wallet = pmd.card?.wallet?.type || null;
+  const kind = md.pos_sale === 'true' ? (md.payment_method === 'link' ? 'link' : 'pos') : (md.kind === 'no_show_fee' ? 'no_show_fee' : md.kind === 'deposit' ? 'deposit' : 'payment');
+  const amount = Number(pi.amount_received || (pi.status === 'succeeded' ? pi.amount : 0)) || 0;
+  const refunded = Number(ch.amount_refunded) || 0;
+  const fee = source === 'platform' ? (Number(pi.application_fee_amount) || 0) : 0;
+  const tip = Number(md.tip_cents) || Number(pi.amount_details?.tip?.amount) || 0;
+  const status = ch.disputed ? 'disputed' : refunded >= amount && amount > 0 ? 'refunded' : refunded > 0 ? 'partially_refunded'
+    : pi.status === 'succeeded' ? 'paid' : pi.status === 'canceled' ? 'canceled' : pi.last_payment_error ? 'failed' : 'pending';
+  return {
+    id: pi.id, source, kind, kind_label: KIND_LABEL[kind] || 'Payment',
+    created: new Date((pi.created || 0) * 1000).toISOString(), status,
+    amount_cents: amount || Number(pi.amount) || 0, tip_cents: tip, fee_cents: fee, refunded_cents: refunded,
+    net_cents: Math.max(0, amount - fee - refunded),
+    card: card.last4 ? { brand: card.brand || null, last4: card.last4, wallet } : null,
+    receipt_url: ch.receipt_url || null, description: pi.description || null,
+    client_id: md.client_id || null, client_name: md.client_name || null, booking_id: md.booking_id || null,
+    failure: pi.last_payment_error?.message || null,
+  };
+}
+
+async function searchAll(fn, query, opts, max = 300) {
+  const out = [];
+  let page = null;
+  for (let i = 0; i < 3 && out.length < max; i++) {
+    const r = await fn({ query, limit: 100, expand: ['data.latest_charge'], ...(page ? { page } : {}) }, opts);
+    out.push(...(r?.data || []));
+    if (!r?.has_more || !r.next_page) break;
+    page = r.next_page;
+  }
+  return out;
+}
+
+/**
+ * Every payment for the salon since `since` (Date): deposits, no-show fees, front-desk
+ * card sales, pay links — straight from Stripe, with client, service and stylist filled in.
+ * Never throws. → { ok, rows, totals }
+ */
+export async function listTransactions(tenantId, { since = new Date(Date.now() - 864e5), c = db(), api = null } = {}) {
+  const s = api || stripeClient();
+  const after = Math.floor(since.getTime() / 1000);
+  const q = `metadata['tenant_id']:'${String(tenantId).replace(/'/g, '')}' AND created>${after}`;
+  const acct = await connectedAccount(c, tenantId);
+  const [plat, direct] = await Promise.all([
+    searchAll((p, o) => s.paymentIntents.search(p, o), q).catch(() => []),
+    acct?.stripe_account_id ? searchAll((p, o) => s.paymentIntents.search(p, o), q, { stripeAccount: acct.stripe_account_id }).catch(() => []) : [],
+  ]);
+  let rows = [...plat.map((p) => txFromIntent(p, { source: 'platform' })), ...direct.map((p) => txFromIntent(p, { source: 'account' }))]
+    .filter((r) => r.status !== 'pending' || Date.now() - Date.parse(r.created) < 3600e3)   // drop stale unpaid links
+    .sort((a, b) => Date.parse(b.created) - Date.parse(a.created));
+
+  // Who and what: bookings and clients from LolaDesk.
+  const bIds = [...new Set(rows.map((r) => r.booking_id).filter(Boolean))];
+  const bookings = bIds.length ? await rows_(c.from('bookings').select('id,client_id,service,stylist,start_time,service_id,staff_id').eq('tenant_id', tenantId).in('id', bIds)) : [];
+  const byBooking = new Map(bookings.map((b) => [b.id, b]));
+  const cIds = [...new Set([...rows.map((r) => r.client_id), ...bookings.map((b) => b.client_id)].filter(Boolean))];
+  const clients = cIds.length ? await rows_(c.from('clients').select('*').eq('tenant_id', tenantId).in('id', cIds)) : [];
+  const byClient = new Map(clients.map((x) => [x.id, x]));
+  rows = rows.map((r) => {
+    const b = r.booking_id ? byBooking.get(r.booking_id) : null;
+    const cl = byClient.get(r.client_id || b?.client_id);
+    const name = (cl && ([cl.first_name, cl.last_name].filter(Boolean).join(' ') || cl.name)) || r.client_name || null;
+    return { ...r, client_id: r.client_id || b?.client_id || null, client_name: name && name !== 'Walk-in' ? name : (r.kind === 'pos' ? 'Walk-in' : name),
+      booking: b ? { service: b.service || null, stylist: b.stylist || null, start_time: b.start_time || null } : null };
+  });
+  const paid = rows.filter((r) => ['paid', 'partially_refunded', 'disputed'].includes(r.status));
+  const totals = {
+    count: paid.length,
+    gross_cents: paid.reduce((n, r) => n + r.amount_cents, 0),
+    tips_cents: paid.reduce((n, r) => n + r.tip_cents, 0),
+    fees_cents: paid.reduce((n, r) => n + r.fee_cents, 0),
+    refunded_cents: rows.reduce((n, r) => n + r.refunded_cents, 0),
+    net_cents: paid.reduce((n, r) => n + r.net_cents, 0),
+  };
+  return { ok: true, rows, totals };
+}
+async function rows_(p) { try { const r = await p; return (r && !r.error && r.data) || []; } catch { return []; } }
+
+/** Refund one payment (whole amount). Platform charges pull the money back from the salon too. */
+export async function refundTransaction(tenantId, paymentIntentId, { c = db(), api = null } = {}) {
+  if (!/^pi_[A-Za-z0-9]+$/.test(String(paymentIntentId || ''))) return { ok: false, say: 'That payment wasn’t found.' };
+  const s = api || stripeClient();
+  const acct = await connectedAccount(c, tenantId);
+  // Find it: on LolaDesk's account (deposits, reader sales) or on the salon's own (older pay links).
+  let pi = null, opts = undefined;
+  try { pi = await s.paymentIntents.retrieve(paymentIntentId); } catch (_) {}
+  if (!pi && acct?.stripe_account_id) { try { opts = { stripeAccount: acct.stripe_account_id }; pi = await s.paymentIntents.retrieve(paymentIntentId, {}, opts); } catch (_) { pi = null; } }
+  if (!pi || pi.metadata?.tenant_id !== tenantId) return { ok: false, say: 'That payment wasn’t found.' };
+  if (pi.status !== 'succeeded') return { ok: false, say: 'Only paid payments can be refunded.' };
+  try {
+    const params = { payment_intent: pi.id, ...(pi.transfer_data?.destination ? { reverse_transfer: true } : {}), metadata: { tenant_id: tenantId, by: 'owner' } };
+    const r = await s.refunds.create(params, { ...(opts || {}), idempotencyKey: 'owner_refund_' + pi.id });
+    try { await c.from('pos_transactions').update({ status: 'refunded', refunded_at: new Date().toISOString(), refunded_amount_cents: r.amount }).eq('stripe_id', pi.id); } catch (_) {}
+    return { ok: true, say: `Refunded ${usd(r.amount)}. It reaches the client's card in 5–10 days.` };
+  } catch (e) { return { ok: false, say: `Stripe didn't refund it: ${String(e?.message || e).slice(0, 140)}` }; }
+}

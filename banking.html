@@ -72,6 +72,20 @@
         <div class="mh-msg" id="mhMsg" role="status"></div>
       </section>
 
+      <!-- TRANSACTIONS — every payment, in detail (api/money.js ?view=transactions) -->
+      <section class="tx-card" aria-label="Transactions">
+        <div class="tx-head">
+          <span class="tx-title">Transactions</span>
+          <div class="tx-range" role="group" aria-label="Period">
+            <button type="button" class="on" data-range="today" onclick="LolaBank.loadTx('today')">Today</button>
+            <button type="button" data-range="7d" onclick="LolaBank.loadTx('7d')">7 days</button>
+            <button type="button" data-range="30d" onclick="LolaBank.loadTx('30d')">30 days</button>
+          </div>
+        </div>
+        <div class="tx-totals" id="txTotals"></div>
+        <div class="tx-list" id="txList" role="list"><div class="tx-empty">Loading…</div></div>
+      </section>
+
       <!-- HERO — one big number: this week's revenue -->
       <section class="revenue-hero" aria-label="Revenue this week">
         <div class="revenue-hero-left">
@@ -197,6 +211,7 @@
   LolaBank.showConnected();
   await Promise.all([
     LolaBank.loadMoney(),
+    LolaBank.loadTx('today'),
     LolaBank.loadWeekMetrics(),
     LolaBank.loadBalance(),
     LolaBank.loadPayouts(6),
