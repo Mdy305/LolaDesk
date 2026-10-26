@@ -35,8 +35,10 @@ export function getAuthUrl(state){
 }
 export async function exchangeCode(code){
   const r = await fetch(`${API_BASE()}/oauth2/token`, { method:'POST', headers:{'Content-Type':'application/json','Square-Version':SQV()}, body: JSON.stringify({ client_id:appId(), client_secret:appSecret(), code, grant_type:'authorization_code', redirect_uri: redirectUrl() }) });
-  const data = await r.json();
-  if(!r.ok) throw new Error(data.errors?.[0]?.detail || 'Square OAuth failed');
+  const data = await r.json().catch(() => ({}));
+  // Square's OAuth errors come in two shapes: { errors:[{detail}] } and the older { message, type }.
+  // Show the real reason (e.g. "Not Authorized" = wrong SQUARE_APP_SECRET for this app / environment).
+  if(!r.ok) throw new Error('Square OAuth failed: ' + (data.errors?.[0]?.detail || data.message || data.error_description || data.type || ('HTTP ' + r.status)) + ' [' + squareEnv() + ']');
   return { access_token:data.access_token, refresh_token:data.refresh_token, expires_at:data.expires_at, merchant_id:data.merchant_id, raw:data };
 }
 export async function refreshToken(refresh_token){
