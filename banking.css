@@ -268,3 +268,47 @@
   .connect-hero{padding:28px 20px}
   .detail-grid{grid-template-columns:1fr}
 }
+
+/* ── Money home: one number, one button ─────────────────────── */
+.money-home{max-width:440px;margin:4px auto 28px;text-align:center;background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:30px 26px 22px}
+.mh-label{font-size:13px;color:var(--text3)}
+.mh-amount{font-size:56px;font-weight:600;letter-spacing:-.035em;line-height:1.05;margin:8px 0 6px;font-variant-numeric:tabular-nums;color:var(--text)}
+.mh-sub{font-size:13px;color:var(--text3);margin-bottom:20px}
+.mh-btn{width:100%;height:50px;border:0;border-radius:999px;background:var(--accent,#ccff00);color:#0a0b05;font:inherit;font-size:15px;font-weight:650;cursor:pointer;transition:transform .15s}
+.mh-btn:hover:not(:disabled){transform:translateY(-1px)}
+.mh-btn:disabled{opacity:.45;cursor:default}
+.mh-fine{font-size:12px;color:var(--text3);margin:9px 0 18px;min-height:15px}
+.mh-rows{border-top:.5px solid var(--border);padding-top:10px;text-align:left}
+.mh-row{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:7px 0;color:var(--text2)}
+.mh-row b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.mh-msg{font-size:13px;margin-top:10px;min-height:16px;color:var(--text2)}
+.mh-msg.ok{color:var(--accent,#ccff00)}.mh-msg.err{color:#ff8a8a}
+
+/* ── Transactions: one line each, tap for everything ────────────── */
+.tx-card{max-width:720px;margin:0 auto 28px;background:var(--surface);border:.5px solid var(--border);border-radius:20px;padding:18px 20px}
+.tx-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.tx-title{font-size:15px;font-weight:600;color:var(--text)}
+.tx-range{display:inline-flex;border:.5px solid var(--border);border-radius:999px;padding:3px}
+.tx-range button{border:0;background:transparent;color:var(--text3);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+.tx-range button.on{background:var(--text);color:var(--bg,#000);font-weight:600}
+.tx-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.tx-tot{background:var(--surface2,rgba(255,255,255,.03));border-radius:12px;padding:10px 12px}
+.tx-tot small{display:block;font-size:11.5px;color:var(--text3)}
+.tx-tot b{font-size:16px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.tx-row{border-top:.5px solid var(--border)}
+.tx-line{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;background:none;border:0;color:inherit;font:inherit;text-align:left;padding:12px 2px;cursor:pointer}
+.tx-who{font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-what{font-size:12.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-amt{font-size:14px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
+.tx-st{font-size:11.5px;text-align:right;color:var(--text3)}
+.tx-st.refunded,.tx-st.partially_refunded{color:#ffb340}.tx-st.disputed,.tx-st.failed{color:#ff8a8a}
+.tx-detail{padding:2px 2px 14px;display:grid;gap:2px}
+.tx-kv{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;padding:5px 0;color:var(--text2)}
+.tx-kv b{color:var(--text);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+.tx-kv.net b{font-weight:650}
+.tx-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tx-actions a,.tx-actions button{border:.5px solid var(--border);background:transparent;color:var(--text);border-radius:999px;padding:7px 14px;font:inherit;font-size:12.5px;text-decoration:none;cursor:pointer}
+.tx-actions button.danger{color:#ff8a8a}
+.tx-msg{font-size:12.5px;color:var(--text2);min-height:14px;margin-top:6px}
+.tx-empty{font-size:13px;color:var(--text3);padding:14px 2px}
+@media(max-width:560px){.tx-totals{grid-template-columns:repeat(2,minmax(0,1fr))}.tx-card{padding:16px 14px}}

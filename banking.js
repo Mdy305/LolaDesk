@@ -88,7 +88,9 @@ const LolaBank = {
     let r;
     try{ r = await fetch(path, merged); }
     catch(e){ return { ok:false, status:0, data:{ error:String(e.message||e) } }; }
-    const data = await r.json().catch(()=>({}));
+    const body = await r.json().catch(()=>({}));
+    // The Connect endpoints answer { ok, data:{…} }; the rest answer flat. Read both the same way.
+    const data = body && body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? { ...body, ...body.data } : body;
     return { ok: r.ok, status: r.status, data };
   },
 
@@ -120,6 +122,112 @@ const LolaBank = {
     } else {
       b.hidden = true;
     }
+  },
+
+  /* ── money home (api/money.js) ──────────────────────────────── */
+  async loadMoney(){
+    const { ok, data } = await this.api('/api/money');
+    const set = (id, v) => { const e = this.$(id); if(e) e.textContent = v; };
+    if(!ok || !data || data.connected === false) return;
+    this.state.money = data;
+    const t = data.today || {};
+    set('mhReady', this.money(data.ready_cents || 0, 'usd'));
+    set('mhToday', t.clients ? `From ${t.clients} client${t.clients === 1 ? '' : 's'} today` : 'Nothing new through LolaDesk today yet');
+    set('mhDeposits', this.money(t.deposits_cents || 0, 'usd'));
+    set('mhNoShow', this.money(t.no_show_cents || 0, 'usd'));
+    set('mhCard', this.money(t.card_sales_cents || 0, 'usd'));
+    set('mhNext', data.next_payout ? `${this.money(data.next_payout.amount_cents, 'usd')} · ${new Date(data.next_payout.arrives).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}` : 'None scheduled');
+    const btn = this.$('mhPay');
+    const can = (data.ready_cents || 0) >= 100 && data.payouts_enabled !== false;
+    if(btn){ btn.disabled = !can; btn.textContent = data.instant ? 'Get paid now' : 'Pay out now'; }
+    set('mhFine', !can ? (data.pending_cents ? `${this.money(data.pending_cents, 'usd')} is still clearing` : '') :
+      data.instant ? `In your bank in about 30 minutes${data.instant_fee_cents ? ` · instant fee ${this.money(data.instant_fee_cents, 'usd')}` : ''}` : 'Arrives with your bank’s normal timing (1–2 business days)');
+  },
+  async getPaidNow(){
+    const btn = this.$('mhPay'), msg = this.$('mhMsg');
+    const m = this.state.money || {};
+    if(!btn || btn.disabled) return;
+    // Two taps: the first shows exactly what will be sent; the second sends it.
+    if(btn.dataset.sure !== '1'){
+      btn.dataset.sure = '1';
+      btn.textContent = `Send ${this.money(m.ready_cents || 0, 'usd')} to my bank`;
+      setTimeout(() => { if(btn.dataset.sure === '1'){ btn.dataset.sure = ''; btn.textContent = m.instant ? 'Get paid now' : 'Pay out now'; } }, 5000);
+      return;
+    }
+    btn.dataset.sure = ''; btn.disabled = true; btn.textContent = 'Sending…';
+    if(!this.state.payoutRequest) this.state.payoutRequest = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const { ok, data } = await this.api('/api/money', { method: 'POST', body: JSON.stringify({ action: 'payout', request_id: this.state.payoutRequest }) });
+    if(msg){ msg.className = 'mh-msg ' + (ok && data.ok ? 'ok' : 'err'); msg.textContent = (data && data.say) || (ok ? 'Sent.' : 'That didn’t go through.'); }
+    if(ok && data.ok) this.state.payoutRequest = null;
+    await Promise.all([this.loadMoney(), this.loadBalance(), this.loadPayouts(6)]);
+  },
+
+  /* ── transactions (api/money.js ?view=transactions) ─────────── */
+  async loadTx(range){
+    this.state.txRange = range || this.state.txRange || 'today';
+    document.querySelectorAll('.tx-range button').forEach((b) => b.classList.toggle('on', b.dataset.range === this.state.txRange));
+    const list = this.$('txList'), tots = this.$('txTotals');
+    if(!list) return;
+    const { ok, data } = await this.api('/api/money?view=transactions&range=' + encodeURIComponent(this.state.txRange));
+    if(!ok || !data || !Array.isArray(data.rows)){ list.innerHTML = '<div class="tx-empty">Couldn’t load transactions. Try again in a moment.</div>'; if(tots) tots.innerHTML = ''; return; }
+    this.state.tx = data.rows;
+    const t = data.totals || {};
+    const m = (c) => this.money(c || 0, 'usd');
+    if(tots) tots.innerHTML = [['Collected', m(t.gross_cents)], ['Tips', m(t.tips_cents)], ['LolaDesk fees', m(t.fees_cents)], ['You receive', m(t.net_cents)]]
+      .map(([k, v]) => `<div class="tx-tot"><small>${k}</small><b>${v}</b></div>`).join('');
+    if(!data.rows.length){ list.innerHTML = `<div class="tx-empty">${this.state.txRange === 'today' ? 'No payments yet today.' : 'No payments in this period.'}</div>`; return; }
+    list.innerHTML = data.rows.map((r, i) => this.txRowHtml(r, i)).join('');
+  },
+  txRowHtml(r, i){
+    const esc = (v) => this.esc(v == null ? '' : String(v));
+    const m = (c) => this.money(c || 0, 'usd');
+    const when = new Date(r.created);
+    const time = when.toLocaleString('en-US', this.state.txRange === 'today' ? { hour:'numeric', minute:'2-digit' } : { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    const ST = { paid:'Paid', refunded:'Refunded', partially_refunded:'Partly refunded', disputed:'Disputed', failed:'Failed', canceled:'Canceled', pending:'Waiting' };
+    const card = r.card ? `${r.card.wallet ? esc({ apple_pay:'Apple Pay', google_pay:'Google Pay' }[r.card.wallet] || r.card.wallet) + ' · ' : ''}${esc((r.card.brand || 'Card').replace(/^./, (c) => c.toUpperCase()))} •••• ${esc(r.card.last4)}` : '—';
+    const appt = r.booking ? [r.booking.service, r.booking.stylist && ('with ' + r.booking.stylist), r.booking.start_time && new Date(r.booking.start_time).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })].filter(Boolean).join(' · ') : '';
+    const kv = (k, v, cls) => v ? `<div class="tx-kv${cls ? ' ' + cls : ''}"><span>${k}</span><b>${v}</b></div>` : '';
+    return `<div class="tx-row" role="listitem">
+      <button type="button" class="tx-line" aria-expanded="false" onclick="LolaBank.toggleTx(${i}, this)">
+        <span class="tx-who">${esc(r.client_name || r.description || 'Client')}</span><span class="tx-amt">${m(r.amount_cents)}</span>
+        <span class="tx-what">${esc(r.kind_label)} · ${esc(time)}</span><span class="tx-st ${esc(r.status)}">${ST[r.status] || esc(r.status)}</span>
+      </button>
+      <div class="tx-detail" id="txd-${i}" hidden>
+        ${kv('What', esc(r.kind_label) + (r.description && r.kind === 'pos' ? ' · ' + esc(r.description) : ''))}
+        ${kv('Appointment', esc(appt))}
+        ${kv('When', esc(when.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })))}
+        ${kv('Paid with', card)}
+        ${kv('Amount', m(r.amount_cents))}
+        ${r.tip_cents ? kv('Tip', m(r.tip_cents)) : ''}
+        ${r.fee_cents ? kv('LolaDesk fee', '−' + m(r.fee_cents)) : ''}
+        ${r.refunded_cents ? kv('Refunded', '−' + m(r.refunded_cents)) : ''}
+        ${kv('You receive', m(r.net_cents), 'net')}
+        ${r.failure ? kv('Why it failed', esc(r.failure)) : ''}
+        <div class="tx-actions">
+          ${r.receipt_url ? `<a href="${esc(r.receipt_url)}" target="_blank" rel="noopener">Receipt</a>` : ''}
+          ${r.client_id ? `<a href="/client.html?id=${encodeURIComponent(r.client_id)}">Client</a>` : ''}
+          ${r.status === 'paid' ? `<button type="button" class="danger" onclick="LolaBank.refundTx(${i}, this)">Refund</button>` : ''}
+        </div>
+        <div class="tx-msg" id="txm-${i}" role="status"></div>
+      </div>
+    </div>`;
+  },
+  toggleTx(i, btn){
+    const d = this.$('txd-' + i); if(!d) return;
+    d.hidden = !d.hidden; btn.setAttribute('aria-expanded', String(!d.hidden));
+  },
+  async refundTx(i, btn){
+    const r = (this.state.tx || [])[i]; if(!r) return;
+    const msg = this.$('txm-' + i);
+    if(btn.dataset.sure !== '1'){
+      btn.dataset.sure = '1'; btn.textContent = `Refund ${this.money(r.amount_cents, 'usd')} to the client`;
+      setTimeout(() => { if(btn.dataset.sure === '1'){ btn.dataset.sure = ''; btn.textContent = 'Refund'; } }, 5000);
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Refunding…';
+    const { ok, data } = await this.api('/api/money', { method:'POST', body: JSON.stringify({ action:'refund', payment_intent: r.id }) });
+    if(msg){ msg.textContent = (data && data.say) || (ok ? 'Refunded.' : 'That didn’t go through.'); }
+    if(ok && data.ok){ setTimeout(() => { this.loadTx(); this.loadMoney(); }, 1200); } else { btn.disabled = false; btn.dataset.sure = ''; btn.textContent = 'Refund'; }
   },
 
   /* ── loaders ────────────────────────────────────────────────── */
@@ -166,9 +274,10 @@ const LolaBank = {
   async loadBalance(){
     const { ok, data } = await this.api('/api/stripe/connect/balance');
     if(!ok) return;
-    const avail = (data.available && data.available[0]) || { amount:0, currency:'usd' };
-    const pend  = (data.pending   && data.pending[0])   || { amount:0, currency:'usd' };
-    const trans = (data.instant_available && data.instant_available[0]) || { amount:0, currency:'usd' };
+    const cur = data.currency || 'usd';
+    const avail = (data.available && data.available[0]) || { amount: Number(data.available_amount)||0, currency: cur };
+    const pend  = (data.pending   && data.pending[0])   || { amount: Number(data.pending_amount)||0, currency: cur };
+    const trans = (data.instant_available && data.instant_available[0]) || { amount: Number(data.in_transit_amount)||0, currency: cur };
     const set = (id, val) => { const el = this.$(id); if(el) el.textContent = val; };
     set('balanceAmount', this.money(avail.amount, avail.currency));
     set('balanceCurrency', (avail.currency||'usd').toUpperCase());
@@ -186,6 +295,7 @@ const LolaBank = {
     const host = this.$('payoutsList');
     if(!host) return;
     const { ok, data } = await this.api('/api/stripe/connect/payouts' + (limit?('?limit='+limit):''));
+    if(ok && !Array.isArray(data.payouts) && Array.isArray(data.rows)) data.payouts = data.rows;
     if(!ok || !Array.isArray(data.payouts) || !data.payouts.length){
       host.innerHTML = `<div class="payouts-empty">No payouts yet. Once you take your first booking with a deposit, it will land here.</div>`;
       return;
@@ -215,7 +325,7 @@ const LolaBank = {
   async loadSchedule(){
     const { ok, data } = await this.api('/api/stripe/connect/schedule');
     if(!ok) return;
-    this.state.schedule = data.schedule || this.state.schedule;
+    this.state.schedule = data.schedule || (data.interval ? { interval: data.interval, weekly_anchor: data.weekly_anchor, monthly_anchor: data.monthly_anchor } : this.state.schedule);
     this.state.currentSchedule = this.state.schedule.interval || 'weekly';
     const label = this.state.currentSchedule === 'daily' ? 'Daily'
       : this.state.currentSchedule === 'weekly' ? `Weekly, ${(this.state.schedule.weekly_anchor||'friday').charAt(0).toUpperCase()+ (this.state.schedule.weekly_anchor||'friday').slice(1)}s`

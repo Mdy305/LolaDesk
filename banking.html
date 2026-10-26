@@ -56,6 +56,36 @@
     <!-- STATE 2: CONNECTED — the working banking surface -->
     <div id="bankingBody" hidden>
 
+      <!-- MONEY HOME — one number, one button (api/money.js). Everything below stays one scroll away. -->
+      <section class="money-home" aria-label="Money ready for you">
+        <div class="mh-label">Ready for you</div>
+        <div class="mh-amount" id="mhReady">—</div>
+        <div class="mh-sub" id="mhToday">Checking today…</div>
+        <button class="mh-btn" id="mhPay" type="button" onclick="LolaBank.getPaidNow()" disabled>Get paid now</button>
+        <div class="mh-fine" id="mhFine"></div>
+        <div class="mh-rows">
+          <div class="mh-row"><span>Deposits Lola collected today</span><b id="mhDeposits">$0</b></div>
+          <div class="mh-row"><span>No-show fees recovered today</span><b id="mhNoShow">$0</b></div>
+          <div class="mh-row"><span>Card sales at the front desk today</span><b id="mhCard">$0</b></div>
+          <div class="mh-row"><span>Next automatic payout</span><b id="mhNext">—</b></div>
+        </div>
+        <div class="mh-msg" id="mhMsg" role="status"></div>
+      </section>
+
+      <!-- TRANSACTIONS — every payment, in detail (api/money.js ?view=transactions) -->
+      <section class="tx-card" aria-label="Transactions">
+        <div class="tx-head">
+          <span class="tx-title">Transactions</span>
+          <div class="tx-range" role="group" aria-label="Period">
+            <button type="button" class="on" data-range="today" onclick="LolaBank.loadTx('today')">Today</button>
+            <button type="button" data-range="7d" onclick="LolaBank.loadTx('7d')">7 days</button>
+            <button type="button" data-range="30d" onclick="LolaBank.loadTx('30d')">30 days</button>
+          </div>
+        </div>
+        <div class="tx-totals" id="txTotals"></div>
+        <div class="tx-list" id="txList" role="list"><div class="tx-empty">Loading…</div></div>
+      </section>
+
       <!-- HERO — one big number: this week's revenue -->
       <section class="revenue-hero" aria-label="Revenue this week">
         <div class="revenue-hero-left">
@@ -180,6 +210,8 @@
   if(!LolaBank.state.connected){ LolaBank.showConnect(); return; }
   LolaBank.showConnected();
   await Promise.all([
+    LolaBank.loadMoney(),
+    LolaBank.loadTx('today'),
     LolaBank.loadWeekMetrics(),
     LolaBank.loadBalance(),
     LolaBank.loadPayouts(6),
@@ -192,6 +224,7 @@ setInterval(() => {
   if(document.hidden || !LolaBank.state.connected) return;
   LolaBank.loadBalance();
   LolaBank.loadWeekMetrics();
+  LolaBank.loadMoney();
 }, 60000);
 </script>
 </body>
