@@ -15,7 +15,7 @@
  * The token is decoded, not verified: the gate only ever REMOVES access. A
  * forged token without the tag still has to pass Supabase in the route itself.
  */
-export const config = { matcher: ['/api/:path*'] };
+export const config = { runtime: 'nodejs', matcher: ['/api/:path*'] };
 
 // Every method, unless a method list is given. Paths are exact or end in '/' (prefix).
 export const STAFF_ALLOW = [
