@@ -88,7 +88,9 @@ const LolaBank = {
     let r;
     try{ r = await fetch(path, merged); }
     catch(e){ return { ok:false, status:0, data:{ error:String(e.message||e) } }; }
-    const data = await r.json().catch(()=>({}));
+    const body = await r.json().catch(()=>({}));
+    // The Connect endpoints answer { ok, data:{…} }; the rest answer flat. Read both the same way.
+    const data = body && body.data && typeof body.data === 'object' && !Array.isArray(body.data) ? { ...body, ...body.data } : body;
     return { ok: r.ok, status: r.status, data };
   },
 
@@ -204,9 +206,10 @@ const LolaBank = {
   async loadBalance(){
     const { ok, data } = await this.api('/api/stripe/connect/balance');
     if(!ok) return;
-    const avail = (data.available && data.available[0]) || { amount:0, currency:'usd' };
-    const pend  = (data.pending   && data.pending[0])   || { amount:0, currency:'usd' };
-    const trans = (data.instant_available && data.instant_available[0]) || { amount:0, currency:'usd' };
+    const cur = data.currency || 'usd';
+    const avail = (data.available && data.available[0]) || { amount: Number(data.available_amount)||0, currency: cur };
+    const pend  = (data.pending   && data.pending[0])   || { amount: Number(data.pending_amount)||0, currency: cur };
+    const trans = (data.instant_available && data.instant_available[0]) || { amount: Number(data.in_transit_amount)||0, currency: cur };
     const set = (id, val) => { const el = this.$(id); if(el) el.textContent = val; };
     set('balanceAmount', this.money(avail.amount, avail.currency));
     set('balanceCurrency', (avail.currency||'usd').toUpperCase());
@@ -224,6 +227,7 @@ const LolaBank = {
     const host = this.$('payoutsList');
     if(!host) return;
     const { ok, data } = await this.api('/api/stripe/connect/payouts' + (limit?('?limit='+limit):''));
+    if(ok && !Array.isArray(data.payouts) && Array.isArray(data.rows)) data.payouts = data.rows;
     if(!ok || !Array.isArray(data.payouts) || !data.payouts.length){
       host.innerHTML = `<div class="payouts-empty">No payouts yet. Once you take your first booking with a deposit, it will land here.</div>`;
       return;
@@ -253,7 +257,7 @@ const LolaBank = {
   async loadSchedule(){
     const { ok, data } = await this.api('/api/stripe/connect/schedule');
     if(!ok) return;
-    this.state.schedule = data.schedule || this.state.schedule;
+    this.state.schedule = data.schedule || (data.interval ? { interval: data.interval, weekly_anchor: data.weekly_anchor, monthly_anchor: data.monthly_anchor } : this.state.schedule);
     this.state.currentSchedule = this.state.schedule.interval || 'weekly';
     const label = this.state.currentSchedule === 'daily' ? 'Daily'
       : this.state.currentSchedule === 'weekly' ? `Weekly, ${(this.state.schedule.weekly_anchor||'friday').charAt(0).toUpperCase()+ (this.state.schedule.weekly_anchor||'friday').slice(1)}s`
