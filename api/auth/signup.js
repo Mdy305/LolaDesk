@@ -108,8 +108,6 @@ export default async function handler(req, res){
         if(!tenant) return res.status(500).json({ error: 'Could not create workspace' });
         trial = await decideTrial(db(), tenant, b, ipGate);
         await recordSignupAttempt(db(), ip, { email: cleanEmail, tenant_id: tenant.id, trial: trial.trial });
-        // Sent by another salon (loladesk.com/r/<slug>): remember who, for "give a month, get a month".
-        if(b.ref){ try{ const { recordReferral } = await import('../lib/referrals.js'); await recordReferral(db(), tenant, b.ref, { trial: trial.trial }); }catch(_){} }
       }
       // A workspace left "pending email" by the old flow goes live now.
       try{ const { activateTenant } = await import('../lib/db.js'); if(tenant.activation_status === 'pending_email') await activateTenant(db(), tenant); }catch(_){}
@@ -151,7 +149,6 @@ export default async function handler(req, res){
     const ip2 = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
     const trial2 = await decideTrial(db(), tenant, b, await ipAllowed(db(), ip2));
     await recordSignupAttempt(db(), ip2, { email, tenant_id: tenant.id, trial: trial2.trial });
-    if(b.ref){ try{ const { recordReferral } = await import('../lib/referrals.js'); await recordReferral(db(), tenant, b.ref, { trial: trial2.trial }); }catch(_){} }
 
     return res.status(200).json({
       ok: true,

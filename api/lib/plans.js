@@ -30,7 +30,7 @@ export const PLANS = {
     annualMonthlyCents: 7900,        // shown per month on the annual toggle
     annualCents: 7900 * 12,          // what Stripe charges once a year
     numbers: 1,                      // phone numbers included
-    features: ['Lola answers & books 24/7', 'Up to 2 stylists on the book', 'Your custom voice', 'Pricing, services & recommendations', 'Lead capture — never lose a caller', '1 phone number included'],
+    features: ['Lola answers & books 24/7', 'Your custom voice', 'Pricing, services & recommendations', 'Lead capture — never lose a caller', '1 phone number included'],
     quotas: { voice_call: 150, sms_sent: 500, ai_token: 2000 },
   },
   pro: {
@@ -41,7 +41,7 @@ export const PLANS = {
     annualMonthlyCents: 31900,
     annualCents: 31900 * 12,
     numbers: 1,
-    features: ['Everything in Starter', 'Your whole team, every stylist', 'Multi-stylist resource calendar', 'Win-back & rebooking campaigns', 'Booking platform sync (Square, Google)', 'Live activity & smart insights', 'Priority call handling'],
+    features: ['Everything in Starter', 'Multi-stylist resource calendar', 'Win-back & rebooking campaigns', 'Booking platform sync (Square, Google)', 'Live activity & smart insights', 'Priority call handling'],
     quotas: { voice_call: 600, sms_sent: 2500, ai_token: 8000 },
   },
   medspa: {

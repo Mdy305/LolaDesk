@@ -30,10 +30,6 @@
     }
     steps.addEventListener('click', (e) => { const b = e.target.closest('.lf-copy'); if (!b) return; try { navigator.clipboard.writeText(b.dataset.code); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); } catch (_) {} });
     car.addEventListener('change', plan);
-    // Mounted before the salon had a sign-in or a Lola number (onboarding step 3)?
-    // Fetch again when it is opened and whenever the page says the number changed.
-    el.__lfPlan = plan;
-    const det = el.closest('details'); if (det) det.addEventListener('toggle', () => { if (det.open) plan(); });
     el.querySelector('.lf-test').addEventListener('click', async () => {
       msg.className = 'lf-note'; msg.textContent = 'Calling your salon number…';
       try {
@@ -53,7 +49,5 @@
   }
   const run = () => document.querySelectorAll('[data-lola-forward]').forEach(mount);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
-  const refresh = () => document.querySelectorAll('[data-lola-forward]').forEach((el) => { if (el.__lfPlan) el.__lfPlan(); else mount(el); });
-  window.addEventListener('lola:number-ready', refresh);
-  window.LolaForward = { mount, run, refresh };
+  window.LolaForward = { mount, run };
 })();

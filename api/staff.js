@@ -18,7 +18,6 @@ import { db } from './lib/db.js';
 import { ensureBookingSetupSchema } from './lib/migrate.js';
 import { tolerantWrite, loadSetup, decorateStaff, replaceSchedule, replaceStaffServices, normalizeHours, fillMissingStaffHours } from './lib/setup-store.js';
 import { getBookingSettings } from './lib/booking-repository.js';
-import { canAddStylist } from './lib/plan-gate.js';
 
 const OPTIONAL = ['first_name', 'last_name', 'phone', 'email', 'color', 'photo_url'];
 
@@ -53,15 +52,9 @@ export default async function handler(req,res){
       if(b.hours!=null){
         try{ normalizeHours(b.hours); }catch(e){ return res.status(400).json({ok:false,error:e.message}); }
       }
-      let own=null;
       if(b.id){
-        ({data:own}=await c.from('staff').select('*').eq('id',b.id).eq('tenant_id',tenant.id).maybeSingle());
+        const {data:own}=await c.from('staff').select('id').eq('id',b.id).eq('tenant_id',tenant.id).maybeSingle();
         if(!own)return res.status(404).json({ok:false,error:'Staff member not found'});
-      }
-      // Paid Starter = two stylists. Adding (or re-activating) another asks for Pro (lib/plan-gate.js).
-      if(active && (!own || own.is_active===false || own.active===false)){
-        const gate=await canAddStylist(c,tenant);
-        if(!gate.ok)return res.status(402).json(gate);
       }
       const {data,error}=await tolerantWrite(p=>b.id
         ?c.from('staff').update(p).eq('id',b.id).eq('tenant_id',tenant.id).select().single()

@@ -136,8 +136,6 @@ export default async function handler(req,res){
         usage,
         // What Lola booked for this salon this month, and LolaDesk's per-appointment fee.
         lola_bookings:await feeSummary(c,{tenantId:tenant.id}).catch(()=>null),
-        // Give a month, get a month: this salon's link and what it has earned (lib/referrals.js).
-        referral:await import('./lib/referrals.js').then(m=>m.referralStatus(c,tenant)).catch(()=>null),
         stripe_configured:!!sk()
       });
     }

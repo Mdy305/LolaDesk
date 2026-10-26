@@ -274,12 +274,9 @@ input:focus,select:focus,textarea:focus{
 /* ══════════ 11 · RESPONSIVE ══════════ */
 @media(max-width:720px){
   .topbar{flex-direction:column;align-items:flex-start!important;gap:4px;padding:2px 2px 14px;border-bottom:0}
-  .kpis{display:none!important}
+  .kpis,.kpi-row{display:none!important}
   .dash-header{flex-direction:column;align-items:flex-start!important;gap:6px;padding:2px 2px 14px;border-bottom:0}
-  /* The one number stays on the phone: what Lola booked. */
-  .kpi-row:not(#kpiRow){display:none!important}
-  #kpiRow{display:grid!important;width:100%;grid-template-columns:1fr!important}
-  #kpiRow .kpi{padding:18px 20px}
+  .kpi-row{display:none!important}
   .lola-orb-stage{width:min(78vw,300px);height:min(78vw,300px)}
   #lolaPresencePill{left:14px;bottom:86px}
 }

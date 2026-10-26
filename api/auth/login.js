@@ -84,30 +84,11 @@ export default async function handler(req, res){
       } catch (_) { setup_done = !!tenant.phone_number; }
     }
 
-    // Has Lola been taught this salon (Teach Lola: menu, prices, team)? A salon
-    // that only has the seeded $0 "Consultation" isn't — Lola would quote and
-    // book nothing real. Owners who confirm their email skip that step, so the
-    // browser sends them there once (login.html land()).
-    let taught = true;
-    if (c && tenant?.id) {
-      try {
-        let k = tenant.knowledge;
-        try { k = typeof k === 'string' ? JSON.parse(k) : k; } catch (_) { k = null; }
-        const hasKnowledge = !!(k && typeof k === 'object' && Object.keys(k).length);
-        if (!hasKnowledge) {
-          const { data: svc } = await c.from('services').select('*').eq('tenant_id', tenant.id).eq('is_active', true).limit(25);
-          const real = (svc || []).filter((s) => !(/^consultation$/i.test(String(s.name || '').trim()) && !(Number(s.price ?? s.base_price ?? s.price_cents ?? 0) > 0)));
-          taught = real.length > 0;
-        }
-      } catch (_) { taught = true; }
-    }
-
     return res.status(200).json({
       session: sess.session,
       user: sess.user,
       tenant: tenant || null,
       setup_done,
-      taught,
       onboarding_required: !tenant
     });
   }catch(e){

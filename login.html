@@ -267,11 +267,6 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
     if (!d.tenant) { location.href = '/onboarding'; return; }
     try { localStorage.setItem('loladesk_tenant_id', d.tenant.id || ''); } catch (_) {}
     if (d.setup_done === false) { location.href = '/onboarding?resume=1'; return; }
-    // Lola has a number but doesn't know the salon yet: teach her first (once per device).
-    if (d.taught === false) {
-      let asked = false; try { asked = localStorage.getItem('loladesk_teach_prompted') === (d.tenant.id || '1'); localStorage.setItem('loladesk_teach_prompted', d.tenant.id || '1'); } catch (_) {}
-      if (!asked) { location.href = '/onboarding?learn=1'; return; }
-    }
     location.href = safeNext() || '/dashboard';
   }
   function keep(session){ try { localStorage.setItem('loladesk_token', session.access_token || ''); localStorage.setItem('loladesk_refresh', session.refresh_token || ''); } catch (_) {} }
